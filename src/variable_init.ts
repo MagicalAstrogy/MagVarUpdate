@@ -42,10 +42,11 @@ export async function initCheck() {
         enabled_lorebook_list.push(char_lorebook);
     }
     if (variables === undefined) {
-        variables = { display_data: {}, initialized_lorebooks: [], stat_data: {}, delta_data: {} };
+        // initialized_lorebooks 初始化为空对象 {}
+        variables = { display_data: {}, initialized_lorebooks: {}, stat_data: {}, delta_data: {} };
     }
     if (!_.has(variables, 'initialized_lorebooks')) {
-        variables.initialized_lorebooks = [];
+        variables.initialized_lorebooks = {};
     }
     if (!variables.stat_data) {
         variables.stat_data = {};
@@ -53,8 +54,11 @@ export async function initCheck() {
 
     var is_updated = false;
     for (const current_lorebook of enabled_lorebook_list) {
-        if (variables.initialized_lorebooks.includes(current_lorebook)) continue;
-        variables.initialized_lorebooks.push(current_lorebook);
+        // 检查方式从 _.includes 变为 _.has，以适应对象结构
+        if (_.has(variables.initialized_lorebooks, current_lorebook)) continue;
+
+        // 将知识库名称作为键添加到对象中，值为一个空数组，用于未来存储元数据
+        variables.initialized_lorebooks[current_lorebook] = [];
         var init_entries = (await getLorebookEntries(current_lorebook)) as LorebookEntry[];
 
         for (const entry of init_entries) {
@@ -62,7 +66,8 @@ export async function initCheck() {
                 try {
                     const jsonData = JSON.parse(substitudeMacros(entry.content));
                     variables.stat_data = _.merge(variables.stat_data, jsonData);
-                } catch (e) {
+                } catch (e: any) {
+                    // 明确 e 的类型
                     console.error(`Failed to parse JSON from lorebook entry: ${e}`);
                     // @ts-ignore
                     toastr.error(e.message, 'Failed to parse JSON from lorebook entry', {
@@ -83,7 +88,9 @@ export async function initCheck() {
 
     for (var i = 0; i < last_msg.swipes.length; i++) {
         var current_swipe_data = _.cloneDeep(variables);
-        await updateVariables(substitudeMacros(last_msg.swipes[i]), current_swipe_data);
+        // 此处调用的是新版 updateVariables，它将支持 insert/delete
+        // 不再需要手动调用 substitudeMacros，updateVariables 会处理
+        await updateVariables(last_msg.swipes[i], current_swipe_data);
         //新版本这个接口给deprecated了，但是新版本的接口不好用，先这样
         //@ts-ignore
         await setChatMessage({ data: current_swipe_data }, last_msg.message_id, {
