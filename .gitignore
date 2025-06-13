@@ -29,3 +29,6 @@ coverage/
 
 # Ignore Webpack cache
 .cache/
+
+# Ignore Visual Studio
+.vs/
