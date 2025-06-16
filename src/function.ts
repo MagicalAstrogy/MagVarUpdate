@@ -74,7 +74,7 @@ export function parseCommandValue(valStr: string): any {
 // 接口定义：用于统一不同命令的结构
 // 新增：Command 接口，比 SetCommand 更通用
 interface Command {
-    command: 'set' | 'insert' | 'delete';
+    command: 'set' | 'insert' | 'delete' | 'alter';
     fullMatch: string;
     args: string[];
     reason: string;
@@ -99,15 +99,15 @@ export function extractCommands(inputText: string): Command[] {
 
     while (i < inputText.length) {
         // 循环处理整个输入文本，直到找不到更多命令
-        // 使用正则匹配 _.set(、_.insert( 或 _.delete(，重构后支持多种命令，相比原仅支持 _.set 更灵活
-        const setMatch = inputText.substring(i).match(/_\.(set|insert|delete)\(/);
+        // 使用正则匹配 _.set(、_.insert(、_.delete( 或 _.alter(，重构后支持多种命令
+        const setMatch = inputText.substring(i).match(/_\.(set|insert|delete|alter)\(/);
         if (!setMatch || setMatch.index === undefined) {
             // 没有找到匹配的命令，退出循环，防止无限循环
             break;
         }
 
-        // 提取命令类型（set、insert 或 delete），并计算命令的起始位置
-        const commandType = setMatch[1] as 'set' | 'insert' | 'delete';
+        // 提取命令类型（set、insert、delete 或 alter），并计算命令的起始位置
+        const commandType = setMatch[1] as 'set' | 'insert' | 'delete' | 'alter';
         const setStart = i + setMatch.index;
         // 计算开括号位置，用于后续提取参数
         const openParen = setStart + setMatch[0].length;
@@ -150,7 +150,10 @@ export function extractCommands(inputText: string): Command[] {
             isValid = true; // _.set 至少需要路径和值
         else if (commandType === 'insert' && params.length >= 2)
             isValid = true; // _.insert 支持两种参数格式
-        else if (commandType === 'delete' && params.length >= 1) isValid = true; // _.delete 至少需要路径
+        else if (commandType === 'delete' && params.length >= 1)
+            isValid = true; // _.delete 至少需要路径
+        else if (commandType === 'alter' && (params.length === 1 || params.length === 2))
+            isValid = true; // _.alter 需要1个或2个参数
 
         if (isValid) {
             // 命令有效，添加到结果列表，包含命令类型、完整匹配、参数和注释
@@ -361,6 +364,13 @@ export async function updateVariables(
             command.command // 根据命令类型执行不同操作
         ) {
             case 'set': {
+                // _.has 检查，确保路径存在
+                if (!_.has(variables.stat_data, path)) {
+                    console.warn(
+                        `Path '${path}' does not exist in stat_data, skipping set command ${reason_str}`
+                    );
+                    continue;
+                }
                 // 获取路径上的旧值，可能为 undefined（路径不存在）
                 const oldValue = _.get(variables.stat_data, path);
                 // 支持两种格式：_.set(path, newValue) 或 _.set(path, oldValue, newValue)
@@ -368,7 +378,6 @@ export async function updateVariables(
                 // 解析新值，支持字符串、数字、布尔值、JSON 对象等
                 const newValue = parseCommandValue(newValueStr);
 
-                // 重构改进：移除 _.has 检查，允许创建新路径，增强灵活性
                 if (typeof oldValue === 'number') {
                     // 如果旧值是数字，强制转换新值为数字，保持类型一致
                     _.set(variables.stat_data, path, Number(newValue));
@@ -581,6 +590,97 @@ export async function updateVariables(
                 } else {
                     // 删除失败，记录警告并继续
                     console.warn(`Failed to execute delete on '${path}'`);
+                    continue;
+                }
+                break;
+            }
+
+            case 'alter': {
+                // 验证路径存在
+                if (!_.has(variables.stat_data, path)) {
+                    console.warn(
+                        `Path '${path}' does not exist in stat_data, skipping alter command ${reason_str}`
+                    );
+                    continue;
+                }
+                // 获取当前值
+                const initialValue = _.get(variables.stat_data, path);
+                const oldValue = _.get(variables.stat_data, path);
+                let valueToAlter = oldValue;
+                let isValueWithDescription =
+                    Array.isArray(oldValue) &&
+                    oldValue.length === 2 &&
+                    typeof oldValue[0] !== 'object';
+
+                if (isValueWithDescription) {
+                    valueToAlter = oldValue[0]; // Use the first element for ValueWithDescription
+                }
+
+                if (command.args.length === 1) {
+                    // 单参数：切换布尔值
+                    if (typeof valueToAlter !== 'boolean') {
+                        console.warn(
+                            `Path '${path}' is not a boolean${isValueWithDescription ? ' or ValueWithDescription<boolean>' : ''}, skipping alter command ${reason_str}`
+                        );
+                        continue;
+                    }
+                    const newValue = !valueToAlter;
+                    if (isValueWithDescription) {
+                        oldValue[0] = newValue; // Update the first element
+                        _.set(variables.stat_data, path, oldValue);
+                    } else {
+                        _.set(variables.stat_data, path, newValue);
+                    }
+                    display_str = `${JSON.stringify(initialValue)}->${JSON.stringify(isValueWithDescription ? oldValue : newValue)} ${reason_str}`;
+                    variable_modified = true;
+                    console.info(
+                        `ALTERED boolean '${path}' from '${valueToAlter}' to '${newValue}' ${reason_str}`
+                    );
+                    await eventEmit(
+                        variable_events.SINGLE_VARIABLE_UPDATED,
+                        variables.stat_data,
+                        path,
+                        initialValue,
+                        isValueWithDescription ? oldValue : newValue
+                    );
+                } else if (command.args.length === 2) {
+                    // 双参数：调整数值
+                    const delta = parseCommandValue(command.args[1]);
+                    if (typeof valueToAlter !== 'number') {
+                        console.warn(
+                            `Path '${path}' is not a number${isValueWithDescription ? ' or ValueWithDescription<number>' : ''}, skipping alter command ${reason_str}`
+                        );
+                        continue;
+                    }
+                    if (typeof delta !== 'number') {
+                        console.warn(
+                            `Delta '${command.args[1]}' is not a number, skipping alter command ${reason_str}`
+                        );
+                        continue;
+                    }
+                    const newValue = valueToAlter + delta;
+                    if (isValueWithDescription) {
+                        oldValue[0] = newValue; // Update the first element
+                        _.set(variables.stat_data, path, oldValue);
+                    } else {
+                        _.set(variables.stat_data, path, newValue);
+                    }
+                    display_str = `${JSON.stringify(initialValue)}->${JSON.stringify(isValueWithDescription ? oldValue : newValue)} ${reason_str}`;
+                    variable_modified = true;
+                    console.info(
+                        `ALTERED number '${path}' from '${valueToAlter}' to '${newValue}' by delta '${delta}' ${reason_str}`
+                    );
+                    await eventEmit(
+                        variable_events.SINGLE_VARIABLE_UPDATED,
+                        variables.stat_data,
+                        path,
+                        initialValue,
+                        isValueWithDescription ? oldValue : newValue
+                    );
+                } else {
+                    console.warn(
+                        `Invalid number of arguments for _.alter on path '${path}' ${reason_str}`
+                    );
                     continue;
                 }
                 break;

@@ -39,6 +39,15 @@ const adaptCommandToOldTestFormat = (cmd: any) => {
             // 格式: _.delete('path', target)
             oldFormat.targetToDelete = parseCommandValue(cmd.args[1]);
         }
+    } else if (cmd.command === 'alter') {
+        // 为 alter 命令添加适配逻辑
+        if (cmd.args.length === 1) {
+            // 格式: _.alter('path') for boolean toggle
+            // No additional fields needed, path is sufficient
+        } else if (cmd.args.length === 2) {
+            // 格式: _.alter('path', delta) for number adjustment
+            oldFormat.delta = parseCommandValue(cmd.args[1]);
+        }
     }
     return oldFormat;
 };
@@ -305,6 +314,82 @@ describe('Insert 和 Delete 命令测试', () => {
         expect(command.path).toBe('debuffs');
         expect(command.targetToDelete).toBe('poison_effect');
         expect(command.reason).toBe('中毒效果已解除');
+    });
+});
+
+describe('Alter 命令测试', () => {
+    test('简单的 alter 调用（切换布尔值）', () => {
+        const input = `_.alter('user.is_active');//切换活跃状态`;
+        const result = extractCommands(input).map(adaptCommandToOldTestFormat);
+
+        expect(result).toHaveLength(1);
+        const command = result[0];
+        expect(command.path).toBe('user.is_active');
+        expect(command.delta).toBeUndefined();
+        expect(command.reason).toBe('切换活跃状态');
+    });
+
+    test('带增量的 alter 调用（调整数值）', () => {
+        const input = `_.alter('player.health', 10);//恢复10点生命值`;
+        const result = extractCommands(input).map(adaptCommandToOldTestFormat);
+
+        expect(result).toHaveLength(1);
+        const command = result[0];
+        expect(command.path).toBe('player.health');
+        expect(command.delta).toBe(10);
+        expect(command.reason).toBe('恢复10点生命值');
+    });
+
+    test('复杂路径的 alter 调用', () => {
+        const input = `_.alter('悠纪.金手指系统.是否激活');//激活金手指`;
+        const result = extractCommands(input).map(adaptCommandToOldTestFormat);
+
+        expect(result).toHaveLength(1);
+        const command = result[0];
+        expect(command.path).toBe('悠纪.金手指系统.是否激活');
+        expect(command.delta).toBeUndefined();
+        expect(command.reason).toBe('激活金手指');
+    });
+
+    test('带数学表达式的 alter 调用', () => {
+        const input = `_.alter('score.total', 100 * 2 + 50);//增加250分`;
+        const result = extractCommands(input).map(adaptCommandToOldTestFormat);
+
+        expect(result).toHaveLength(1);
+        const command = result[0];
+        expect(command.path).toBe('score.total');
+        expect(command.delta).toBe(250); // 100 * 2 + 50 = 250
+        expect(command.reason).toBe('增加250分');
+    });
+
+    test('无效参数数量的 alter 调用', () => {
+        const input = `_.alter('path', 10, 20);//参数过多`;
+        const result = extractCommands(input).map(adaptCommandToOldTestFormat);
+
+        expect(result).toHaveLength(0); // 无效命令应被过滤
+    });
+
+    test('缺少分号的 alter 调用', () => {
+        const input = `_.alter('path', 5)`; // 缺少分号
+        const result = extractCommands(input).map(adaptCommandToOldTestFormat);
+
+        expect(result).toHaveLength(0);
+    });
+
+    test('混合命令中的 alter 调用', () => {
+        const input = `
+            _.set('name', 'old', 'new');//更新名字
+            _.alter('user.is_online');//切换在线状态
+            _.insert('items', 'sword');//添加武器
+            _.alter('player.mana', 20);//增加20点魔法值
+        `;
+        const result = extractCommands(input).map(adaptCommandToOldTestFormat);
+
+        expect(result).toHaveLength(4);
+        expect(result[1].path).toBe('user.is_online');
+        expect(result[1].delta).toBeUndefined();
+        expect(result[3].path).toBe('player.mana');
+        expect(result[3].delta).toBe(20);
     });
 });
 
