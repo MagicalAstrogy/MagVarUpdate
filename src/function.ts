@@ -1,6 +1,43 @@
 import { variable_events } from '@/main';
 import * as math from 'mathjs';
 
+/**
+ * 辅助函数：为数据路径获取对应的 Schema 规则。
+ * 能够处理数组索引，将其转换为 .elementType 来查询 Schema。
+ * @param schema - 完整的 Schema 对象
+ * @param path - 要查询的数据路径
+ * @returns 对应路径的 Schema 节点，如果找不到则返回 null。
+ */
+function getSchemaForPath(schema: any, path: string): any {
+    if (!path) {
+        return schema;
+    }
+    // 将 lodash 路径字符串转换为段数组，例如 'a.b[0].c' -> ['a', 'b', '0', 'c']
+    const pathSegments = _.toPath(path);
+    let currentSchema = schema;
+
+    for (const segment of pathSegments) {
+        if (!currentSchema) return null;
+
+        // 如果 segment 是数字（数组索引），则移动到 elementType
+        if (/^\d+$/.test(segment)) {
+            if (currentSchema.type === 'array' && currentSchema.elementType) {
+                currentSchema = currentSchema.elementType;
+            } else {
+                return null; // 路径试图索引一个非数组或无 elementType 的 schema
+            }
+        } else {
+            // 否则，作为对象属性访问
+            if (currentSchema.properties && currentSchema.properties[segment]) {
+                currentSchema = currentSchema.properties[segment];
+            } else {
+                return null; // 路径中的键在 schema 中不存在
+            }
+        }
+    }
+    return currentSchema;
+}
+
 export function trimQuotesAndBackslashes(str: string): string {
     // Regular expression to match backslashes and quotes (including backticks) at the beginning and end
     return str.replace(/^[\\"'` ]*(.*?)[\\"'` ]*$/, '$1');
@@ -43,9 +80,14 @@ export function parseCommandValue(valStr: string): any {
     // 'hello_world', '10 + 2', 'sqrt(16)'
 
     try {
+        // 创建一个 scope 对象，将 JavaScript 原生的 Math 对象注入到 mathjs 的执行环境中。
+        // 这样 mathjs 在求值时就能识别和使用 Math.max, Math.floor, Math.E 等。
+        const scope = {
+            Math: Math,
+        };
         // 尝试使用 mathjs 进行数学求值
         // math.evaluate 对于无法识别为表达式的纯字符串会抛出错误
-        const result = math.evaluate(trimmed);
+        const result = math.evaluate(trimmed, scope);
         // 如果结果是 mathjs 的复数或矩阵对象，则将其转换为字符串表示形式
         if (math.isComplex(result) || math.isMatrix(result)) {
             return result.toString();
@@ -62,6 +104,19 @@ export function parseCommandValue(valStr: string): any {
         // 如果 math.evaluate 失败，说明它不是一个有效的表达式，
         // 那么它就是一个普通的未加引号的字符串。
     }
+
+    // 实验性功能，暂不启用
+    // 尝试将字符串解析为日期对象，用于传入_.alter直接以毫秒数更新时间，如 `_.alter('当前时间', 10 * 60 * 1000);`
+    // 此检查用于识别日期字符串（例如 "2024-01-01T12:00:00Z"）
+    // `isNaN(Number(trimmed))`确保纯数字字符串（如 "12345"）不会被错误地解析为日期
+    /*
+    if (isNaN(Number(trimmed))) {
+        const potentialDate = new Date(trimQuotesAndBackslashes(trimmed));
+        if (!isNaN(potentialDate.getTime())) {
+            return potentialDate;
+        }
+    }
+    */
 
     // 最终，返回这个去除了首尾引号的字符串
     return trimQuotesAndBackslashes(valStr);
@@ -332,7 +387,7 @@ function pathFix(path: string): string {
     return segments.join('.');
 }
 
-// 重构 updateVariables 以处理 set, insert, delete 命令
+// 重构 updateVariables 以处理更多命令
 export async function updateVariables(
     current_message_content: string,
     variables: any
@@ -348,9 +403,11 @@ export async function updateVariables(
     // 重构新增：统一处理宏替换，确保命令中的宏（如 ${variable}）被替换，提升一致性
     const processed_message_content = substitudeMacros(current_message_content);
 
-    // 使用重构后的 extractCommands 提取所有命令，支持 set、insert、delete
+    // 使用重构后的 extractCommands 提取所有命令
     let commands = extractCommands(processed_message_content);
     var variable_modified = false;
+
+    const schema = variables.schema; // 获取 schema
 
     for (const command of commands) {
         // 遍历所有命令，逐一处理
@@ -376,7 +433,12 @@ export async function updateVariables(
                 // 支持两种格式：_.set(path, newValue) 或 _.set(path, oldValue, newValue)
                 const newValueStr = command.args.length >= 3 ? command.args[2] : command.args[1];
                 // 解析新值，支持字符串、数字、布尔值、JSON 对象等
-                const newValue = parseCommandValue(newValueStr);
+                let newValue = parseCommandValue(newValueStr);
+
+                // 在写入前，将 Date 对象序列化为 ISO 字符串
+                if (newValue instanceof Date) {
+                    newValue = newValue.toISOString();
+                }
 
                 if (typeof oldValue === 'number') {
                     // 如果旧值是数字，强制转换新值为数字，保持类型一致
@@ -413,6 +475,64 @@ export async function updateVariables(
             }
 
             case 'insert': {
+                // 检查目标路径是否指向一个集合（数组或对象）
+                // 如果路径已存在且其值为原始类型（字符串、数字等），则跳过此命令，以防止结构污染
+                const targetPath = path;
+                const existingValue = _.get(variables.stat_data, targetPath);
+                const targetSchema = getSchemaForPath(schema, targetPath);
+
+                // 验证1：目标是否为原始类型？如果是，则无法插入。
+                if (
+                    existingValue !== null &&
+                    !Array.isArray(existingValue) &&
+                    !_.isObject(existingValue)
+                ) {
+                    console.warn(
+                        `Cannot insert into path '${targetPath}' because it holds a primitive value (${typeof existingValue}). Operation skipped. ${reason_str}`
+                    );
+                    continue;
+                }
+
+                // 验证2：Schema 规则
+                if (targetSchema) {
+                    if (targetSchema.type === 'object' && targetSchema.extensible === false) {
+                        if (command.args.length === 2) {
+                            // 合并
+                            console.warn(
+                                `SCHEMA VIOLATION: Cannot merge data into non-extensible object at path '${targetPath}'. ${reason_str}`
+                            );
+                            continue;
+                        }
+                        if (command.args.length >= 3) {
+                            // 插入键
+                            const newKey = String(parseCommandValue(command.args[1]));
+                            if (!_.has(targetSchema.properties, newKey)) {
+                                console.warn(
+                                    `SCHEMA VIOLATION: Cannot insert new key '${newKey}' into non-extensible object at path '${targetPath}'. ${reason_str}`
+                                );
+                                continue;
+                            }
+                        }
+                    } else if (
+                        targetSchema.type === 'array' &&
+                        (targetSchema.extensible === false || targetSchema.extensible === undefined)
+                    ) {
+                        console.warn(
+                            `SCHEMA VIOLATION: Cannot insert elements into non-extensible array at path '${targetPath}'. ${reason_str}`
+                        );
+                        continue;
+                    }
+                } else if (
+                    !_.get(variables.stat_data, _.toPath(targetPath).slice(0, -1).join('.'))
+                ) {
+                    // 验证3：如果要插入到新路径，确保其父路径存在且可扩展
+                    console.warn(
+                        `Cannot insert into non-existent path '${targetPath}' without an extensible parent. ${reason_str}`
+                    );
+                    continue;
+                }
+                // --- 所有验证通过，现在可以安全执行 ---
+
                 // 深拷贝旧值，防止直接修改影响后续比较
                 const oldValue = _.cloneDeep(_.get(variables.stat_data, path));
                 let successful = false; // 标记插入是否成功
@@ -420,7 +540,17 @@ export async function updateVariables(
                 if (command.args.length === 2) {
                     // _.insert('path.to.array', value)
                     // 解析插入值，支持复杂类型
-                    const valueToInsert = parseCommandValue(command.args[1]);
+                    let valueToInsert = parseCommandValue(command.args[1]);
+
+                    // 在写入前，将 Date 对象（或数组中的Date）序列化
+                    if (valueToInsert instanceof Date) {
+                        valueToInsert = valueToInsert.toISOString();
+                    } else if (Array.isArray(valueToInsert)) {
+                        valueToInsert = valueToInsert.map(item =>
+                            item instanceof Date ? item.toISOString() : item
+                        );
+                    }
+
                     // 获取目标集合，可能为数组或对象
                     let collection = _.get(variables.stat_data, path);
 
@@ -459,8 +589,18 @@ export async function updateVariables(
                 } else if (command.args.length >= 3) {
                     // _.insert('path', key/index, value)
                     // 解析插入值和键/索引
-                    const valueToInsert = parseCommandValue(command.args[2]);
+                    let valueToInsert = parseCommandValue(command.args[2]);
                     const keyOrIndex = parseCommandValue(command.args[1]);
+
+                    // 在写入前，将 Date 对象（或数组中的Date）序列化
+                    if (valueToInsert instanceof Date) {
+                        valueToInsert = valueToInsert.toISOString();
+                    } else if (Array.isArray(valueToInsert)) {
+                        valueToInsert = valueToInsert.map(item =>
+                            item instanceof Date ? item.toISOString() : item
+                        );
+                    }
+
                     let collection = _.get(variables.stat_data, path);
 
                     if (Array.isArray(collection) && typeof keyOrIndex === 'number') {
@@ -514,6 +654,67 @@ export async function updateVariables(
                     console.error(`undefined Path: ${path} in _.delete command`);
                     continue;
                 }
+
+                // --- 模式校验开始 ---
+                let containerPath = path;
+                let keyOrIndexToDelete: string | number | undefined;
+
+                if (command.args.length > 1) {
+                    // _.delete('path', key_or_index)
+                    keyOrIndexToDelete = parseCommandValue(command.args[1]);
+                    // 如果 key 是字符串，需要去除可能存在的引号
+                    if (typeof keyOrIndexToDelete === 'string') {
+                        keyOrIndexToDelete = trimQuotesAndBackslashes(keyOrIndexToDelete);
+                    }
+                } else {
+                    // _.delete('path.to.key[index]')
+                    const pathParts = _.toPath(path);
+                    const lastPart = pathParts.pop();
+                    if (lastPart) {
+                        keyOrIndexToDelete = /^\d+$/.test(lastPart) ? Number(lastPart) : lastPart;
+                        containerPath = pathParts.join('.');
+                    }
+                }
+
+                if (keyOrIndexToDelete === undefined) {
+                    console.error(
+                        `Could not determine target for deletion for command on path '${path}' ${reason_str}`
+                    );
+                    continue;
+                }
+                if (!_.has(variables.stat_data, containerPath)) {
+                    console.warn(
+                        `Cannot delete from non-existent path '${containerPath}'. ${reason_str}`
+                    );
+                    continue;
+                }
+
+                const containerSchema = getSchemaForPath(schema, containerPath);
+
+                if (containerSchema) {
+                    if (containerSchema.type === 'array') {
+                        if (containerSchema.extensible !== true) {
+                            console.warn(
+                                `SCHEMA VIOLATION: Cannot delete element from non-extensible array at path '${containerPath}'. ${reason_str}`
+                            );
+                            continue;
+                        }
+                    } else if (containerSchema.type === 'object') {
+                        const keyString = String(keyOrIndexToDelete);
+                        if (
+                            _.has(containerSchema.properties, keyString) &&
+                            containerSchema.properties[keyString].required === true
+                        ) {
+                            console.warn(
+                                `SCHEMA VIOLATION: Cannot delete required key '${keyString}' from path '${containerPath}'. ${reason_str}`
+                            );
+                            continue;
+                        }
+                    }
+                }
+
+                // --- 所有验证通过，现在可以安全执行 ---
+
                 // 解析删除目标，可能是值或索引
                 const targetToDelete =
                     command.args.length > 1 ? parseCommandValue(command.args[1]) : undefined;
@@ -536,6 +737,16 @@ export async function updateVariables(
                 } else {
                     // _.delete('path.to.array', value_or_index)
                     const collection = _.get(variables.stat_data, path);
+
+                    // 当从一个集合中删除元素时，必须确保目标路径确实是一个集合
+                    // 如果目标是原始值（例如字符串），则无法执行删除操作
+                    if (!Array.isArray(collection) && !_.isObject(collection)) {
+                        console.warn(
+                            `Cannot delete from path '${path}' because it is not an array or object. Skipping command. ${reason_str}`
+                        );
+                        continue;
+                    }
+
                     if (Array.isArray(collection)) {
                         // 目标是数组，删除指定元素
                         const originalArray = _.cloneDeep(collection);
@@ -604,7 +815,7 @@ export async function updateVariables(
                     continue;
                 }
                 // 获取当前值
-                const initialValue = _.get(variables.stat_data, path);
+                const initialValue = _.cloneDeep(_.get(variables.stat_data, path));
                 const oldValue = _.get(variables.stat_data, path);
                 let valueToAlter = oldValue;
                 let isValueWithDescription =
@@ -613,7 +824,20 @@ export async function updateVariables(
                     typeof oldValue[0] !== 'object';
 
                 if (isValueWithDescription) {
-                    valueToAlter = oldValue[0]; // Use the first element for ValueWithDescription
+                    valueToAlter = oldValue[0]; // 对 ValueWithDescription 类型，操作其第一个元素
+                }
+                console.warn(valueToAlter);
+
+                // 尝试将当前值解析为 Date 对象，无论其原始类型是 Date 还是字符串
+                let potentialDate: Date | null = null;
+                if (valueToAlter instanceof Date) {
+                    potentialDate = valueToAlter;
+                } else if (typeof valueToAlter === 'string') {
+                    const parsedDate = new Date(valueToAlter);
+                    // 确保它是一个有效的日期，并且不是一个可以被 `new Date` 解析的纯数字字符串
+                    if (!isNaN(parsedDate.getTime()) && isNaN(Number(valueToAlter))) {
+                        potentialDate = parsedDate;
+                    }
                 }
 
                 if (command.args.length === 1) {
@@ -631,7 +855,8 @@ export async function updateVariables(
                     } else {
                         _.set(variables.stat_data, path, newValue);
                     }
-                    display_str = `${JSON.stringify(initialValue)}->${JSON.stringify(isValueWithDescription ? oldValue : newValue)} ${reason_str}`;
+                    const finalNewValue = _.get(variables.stat_data, path);
+                    display_str = `${JSON.stringify(initialValue)}->${JSON.stringify(finalNewValue)} ${reason_str}`;
                     variable_modified = true;
                     console.info(
                         `ALTERED boolean '${path}' from '${valueToAlter}' to '${newValue}' ${reason_str}`
@@ -641,42 +866,81 @@ export async function updateVariables(
                         variables.stat_data,
                         path,
                         initialValue,
-                        isValueWithDescription ? oldValue : newValue
+                        finalNewValue
                     );
                 } else if (command.args.length === 2) {
-                    // 双参数：调整数值
+                    // 双参数：调整数值或日期
                     const delta = parseCommandValue(command.args[1]);
-                    if (typeof valueToAlter !== 'number') {
-                        console.warn(
-                            `Path '${path}' is not a number${isValueWithDescription ? ' or ValueWithDescription<number>' : ''}, skipping alter command ${reason_str}`
+
+                    // 处理 Date 类型
+                    if (potentialDate) {
+                        if (typeof delta !== 'number') {
+                            console.warn(
+                                `Delta '${command.args[1]}' for Date operation is not a number, skipping alter command ${reason_str}`
+                            );
+                            continue;
+                        }
+                        // delta 是毫秒数，更新时间
+                        const newDate = new Date(potentialDate.getTime() + delta);
+                        // 总是将更新后的 Date 对象转换为 ISO 字符串再存回去
+                        const finalValueToSet = newDate.toISOString();
+
+                        if (isValueWithDescription) {
+                            oldValue[0] = finalValueToSet;
+                            _.set(variables.stat_data, path, oldValue);
+                        } else {
+                            _.set(variables.stat_data, path, finalValueToSet);
+                        }
+
+                        const finalNewValue = _.get(variables.stat_data, path);
+                        display_str = `${JSON.stringify(initialValue)}->${JSON.stringify(finalNewValue)} ${reason_str}`;
+                        variable_modified = true;
+                        console.info(
+                            `ALTERED date '${path}' from '${potentialDate.toISOString()}' to '${newDate.toISOString()}' by delta '${delta}'ms ${reason_str}`
                         );
-                        continue;
-                    }
-                    if (typeof delta !== 'number') {
-                        console.warn(
-                            `Delta '${command.args[1]}' is not a number, skipping alter command ${reason_str}`
+                        await eventEmit(
+                            variable_events.SINGLE_VARIABLE_UPDATED,
+                            variables.stat_data,
+                            path,
+                            initialValue,
+                            finalNewValue
                         );
-                        continue;
-                    }
-                    const newValue = valueToAlter + delta;
-                    if (isValueWithDescription) {
-                        oldValue[0] = newValue; // Update the first element
-                        _.set(variables.stat_data, path, oldValue);
+                    } else if (typeof valueToAlter === 'number') {
+                        // 原有的处理 number 类型的逻辑
+                        if (typeof delta !== 'number') {
+                            console.warn(
+                                `Delta '${command.args[1]}' is not a number, skipping alter command ${reason_str}`
+                            );
+                            continue;
+                        }
+                        let newValue = valueToAlter + delta;
+                        newValue = parseFloat(newValue.toPrecision(12)); // 避免浮点数精度误差
+                        if (isValueWithDescription) {
+                            oldValue[0] = newValue; // Update the first element
+                            _.set(variables.stat_data, path, oldValue);
+                        } else {
+                            _.set(variables.stat_data, path, newValue);
+                        }
+                        const finalNewValue = _.get(variables.stat_data, path);
+                        display_str = `${JSON.stringify(initialValue)}->${JSON.stringify(finalNewValue)} ${reason_str}`;
+                        variable_modified = true;
+                        console.info(
+                            `ALTERED number '${path}' from '${valueToAlter}' to '${newValue}' by delta '${delta}' ${reason_str}`
+                        );
+                        await eventEmit(
+                            variable_events.SINGLE_VARIABLE_UPDATED,
+                            variables.stat_data,
+                            path,
+                            initialValue,
+                            finalNewValue
+                        );
                     } else {
-                        _.set(variables.stat_data, path, newValue);
+                        // 如果值不是可识别的类型（布尔、日期、数字），则跳过
+                        console.warn(
+                            `Path '${path}' value is not a boolean, date, or number; skipping alter command ${reason_str}`
+                        );
+                        continue;
                     }
-                    display_str = `${JSON.stringify(initialValue)}->${JSON.stringify(isValueWithDescription ? oldValue : newValue)} ${reason_str}`;
-                    variable_modified = true;
-                    console.info(
-                        `ALTERED number '${path}' from '${valueToAlter}' to '${newValue}' by delta '${delta}' ${reason_str}`
-                    );
-                    await eventEmit(
-                        variable_events.SINGLE_VARIABLE_UPDATED,
-                        variables.stat_data,
-                        path,
-                        initialValue,
-                        isValueWithDescription ? oldValue : newValue
-                    );
                 } else {
                     console.warn(
                         `Invalid number of arguments for _.alter on path '${path}' ${reason_str}`

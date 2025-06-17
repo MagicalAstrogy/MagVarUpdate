@@ -487,3 +487,79 @@ describe('高等数学与高级运算测试', () => {
         expect(result[0].newValue).toBeCloseTo(2.581988897);
     });
 });
+/* 实验性功能，暂不启用
+describe('日期处理与时间运算测试', () => {
+    test('将 ISO 8601 标准格式的字符串解析为 Date 对象', () => {
+        const input = "_.set('事件.开始时间', null, '2024-07-26T10:00:00.000Z');//设定具体时间";
+        const result = extractCommands(input).map(adaptCommandToOldTestFormat);
+        expect(result).toHaveLength(1);
+        expect(result[0].newValue).toEqual(new Date('2024-07-26T10:00:00.000Z'));
+        expect(result[0].reason).toBe('设定具体时间');
+    });
+
+    test('将多种常见的日期字符串格式解析为 Date 对象', () => {
+        const input = "_.set('历史.重要日期', 'old', 'December 17, 1995 03:24:00');//记录一个历史时刻";
+        const result = extractCommands(input).map(adaptCommandToOldTestFormat);
+        expect(result).toHaveLength(1);
+        expect(result[0].newValue).toEqual(new Date('December 17, 1995 03:24:00'));
+    });
+
+    test('解析仅包含日期的字符串（YYYY-MM-DD）', () => {
+        const input = "_.set('假期.开始日期', null, '2025-01-01');//新年第一天";
+        const result = extractCommands(input).map(adaptCommandToOldTestFormat);
+        expect(result).toHaveLength(1);
+        // JS `new Date()` 在没有时区信息时，会根据运行环境的时区来解析。为保证测试一致性，我们验证它是否为UTC午夜。
+        expect(result[0].newValue).toEqual(new Date('2025-01-01T00:00:00.000Z'));
+    });
+
+    test('正确解析用于时间增减的命令', () => {
+        // 增加10分钟
+        const input = "_.alter('世界.当前时间', 10 * 60 * 1000);//时间流逝10分钟";
+        const result = extractCommands(input).map(adaptCommandToOldTestFormat);
+        expect(result).toHaveLength(1);
+        const command = result[0];
+        expect(command.path).toBe('世界.当前时间');
+        expect(command.delta).toBe(600000);
+        expect(command.reason).toBe('时间流逝10分钟');
+    });
+
+    test('处理负数增量（时间倒流）', () => {
+        // 时间倒退一小时
+        const input = "_.alter('时间机器.目标时间', -3600 * 1000);//启动时间机器，回到一小时前";
+        const result = extractCommands(input).map(adaptCommandToOldTestFormat);
+        expect(result).toHaveLength(1);
+        const command = result[0];
+        expect(command.path).toBe('时间机器.目标时间');
+        expect(command.delta).toBe(-3600000);
+        expect(command.reason).toBe('启动时间机器，回到一小时前');
+    });
+
+    test('不应将纯数字字符串错误地解析为 Date 对象', () => {
+        // 这是一个纯数字字符串，应该被解析为数字，而不是一个日期对象
+        const input = "_.set('记录.编号', '0', '1672531200000');//记录时间戳数字";
+        const result = extractCommands(input).map(adaptCommandToOldTestFormat);
+        expect(result).toHaveLength(1);
+        expect(result[0].newValue).toBe('1672531200000');
+        expect(result[0].newValue).not.toBeInstanceOf(Date);
+    });
+
+    test('处理非标准的但可被JS Date解析的疯狂格式（RFC 2822）', () => {
+        const input = "_.set('古代遗物.发现日期', 'unknown', 'Mon, 25 Dec 1995 13:30:00 GMT');//考古重大发现";
+        const result = extractCommands(input).map(adaptCommandToOldTestFormat);
+        expect(result).toHaveLength(1);
+        expect(result[0].newValue).toEqual(new Date('Mon, 25 Dec 1995 13:30:00 GMT'));
+        expect(result[0].reason).toBe('考古重大发现');
+    });
+
+    test('结合数学表达式来增加一天', () => {
+        // 增加一天
+        const input = "_.alter('日记.日期', 24 * 60 * 60 * 1000);//翻到下一页";
+        const result = extractCommands(input).map(adaptCommandToOldTestFormat);
+        expect(result).toHaveLength(1);
+        const command = result[0];
+        expect(command.path).toBe('日记.日期');
+        expect(command.delta).toBe(86400000);
+        expect(command.reason).toBe('翻到下一页');
+    });
+});
+*/

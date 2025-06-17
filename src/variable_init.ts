@@ -7,6 +7,55 @@ type LorebookEntry = {
     comment?: string;
 };
 
+// 模式生成函数
+/**
+ * 递归地为数据对象生成一个模式。
+ * @param data - 要为其生成模式的数据对象 (stat_data)。
+ * @returns - 生成的模式对象。
+ */
+function generateSchema(data: any): any {
+    if (Array.isArray(data)) {
+        // 数组将其元素的 schema 生成委托出去
+        return {
+            type: 'array',
+            elementType: data.length > 0 ? generateSchema(data[0]) : { type: 'any' },
+        };
+    }
+    if (_.isObject(data) && !_.isDate(data)) {
+        const typedData = data as Record<string, any>; // 类型断言
+        const schemaNode: any = {
+            type: 'object',
+            properties: {},
+            extensible: false,
+        };
+
+        // 检查当前节点是否可扩展
+        let isCurrentlyExtensible = false;
+        if (typedData.$meta) {
+            if (typedData.$meta.extensible) {
+                schemaNode.extensible = true;
+                isCurrentlyExtensible = true; // 标记当前节点是可扩展的
+            }
+            // 从实际数据中移除 $meta 键
+            delete typedData.$meta;
+        }
+
+        for (const key in data) {
+            // 递归生成子节点的 schema
+            const childSchema = generateSchema(typedData[key]);
+
+            // 子节点是否必需，取决于当前节点 (即其父节点) 是否可扩展。
+            // 如果当前节点是可扩展的 (isCurrentlyExtensible is true)，那么其子节点就不是必需的。
+            childSchema.required = !isCurrentlyExtensible;
+
+            schemaNode.properties[key] = childSchema;
+        }
+        return schemaNode;
+    }
+    // 处理原始类型
+    return { type: typeof data };
+}
+
 export async function initCheck() {
     //generation_started 的最新一条是正在生成的那条。
     var last_chat_msg: ChatMessageSwiped[] = [];
@@ -43,13 +92,22 @@ export async function initCheck() {
     }
     if (variables === undefined) {
         // initialized_lorebooks 初始化为空对象 {}
-        variables = { display_data: {}, initialized_lorebooks: {}, stat_data: {}, delta_data: {} };
+        variables = {
+            display_data: {},
+            initialized_lorebooks: {},
+            stat_data: {},
+            delta_data: {},
+            schema: {},
+        };
     }
     if (!_.has(variables, 'initialized_lorebooks')) {
         variables.initialized_lorebooks = {};
     }
     if (!variables.stat_data) {
         variables.stat_data = {};
+    }
+    if (!variables.schema) {
+        variables.schema = {};
     }
 
     var is_updated = false;
@@ -79,6 +137,12 @@ export async function initCheck() {
         }
         is_updated = true;
     }
+
+    // 在所有 lorebook 初始化完成后，生成最终的模式
+    if (is_updated || !variables.schema || _.isEmpty(variables.schema)) {
+        variables.schema = generateSchema(_.cloneDeep(variables.stat_data));
+    }
+
     if (!is_updated) {
         return;
     }
