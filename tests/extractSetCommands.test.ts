@@ -438,6 +438,15 @@ describe('数学和表达式测试', () => {
 
         expect(result[0].newValue).toBe('derivative(\'x^3\', \'x\').evaluate({x: 2})');
     });
+
+    test('处理 cmath + mathjs 混合运算', () => {
+        const input = "_.set('悠纪.余额', 10, Math.floor(( Math.PI * 100 ) / 3 + math.pow(5, 3)) + derivative('x^3', 'x').evaluate({x: 2}));//获得奖励";
+        const result = extractCommands(input).map(adaptCommandToOldTestFormat);
+
+        expect(result).toHaveLength(1);
+
+        expect(result[0].newValue).toBe(241);
+    });
 });
 
 describe('高等数学与高级运算测试', () => {

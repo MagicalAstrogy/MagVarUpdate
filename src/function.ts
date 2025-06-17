@@ -80,10 +80,15 @@ export function parseCommandValue(valStr: string): any {
     // 'hello_world', '10 + 2', 'sqrt(16)'
 
     try {
-        // 创建一个 scope 对象，将 JavaScript 原生的 Math 对象注入到 mathjs 的执行环境中。
-        // 这样 mathjs 在求值时就能识别和使用 Math.max, Math.floor, Math.E 等。
+        // 创建一个 scope 对象，将多种数学库/对象注入到 mathjs 的执行环境中，
+        // 以便统一处理不同风格的数学表达式。
         const scope = {
+            // 支持 JavaScript 标准的 Math 对象 (e.g., Math.sqrt(), Math.PI)
             Math: Math,
+            // 支持 Python 风格的 math 库用法 (e.g., math.sqrt(), math.pi)，
+            // 这在 LLM 生成的代码中很常见。
+            // 'math' 是我们导入的 mathjs 库本身。
+            math: math,
         };
         // 尝试使用 mathjs 进行数学求值
         // math.evaluate 对于无法识别为表达式的纯字符串会抛出错误
