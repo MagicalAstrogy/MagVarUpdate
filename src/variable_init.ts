@@ -103,6 +103,15 @@ export async function initCheck() {
     if (!_.has(variables, 'initialized_lorebooks')) {
         variables.initialized_lorebooks = {};
     }
+    if (Array.isArray(variables.initialized_lorebooks)) {
+        console.warn('Old "initialized_lorebooks" array format detected. Migrating to the new object format.');
+        const oldArray = variables.initialized_lorebooks as string[];
+        const newObject: Record<string, any[]> = {};
+        for (const lorebookName of oldArray) {
+            newObject[lorebookName] = []; // 按照新格式，值为一个空数组
+        }
+        variables.initialized_lorebooks = newObject;
+    }
     if (!variables.stat_data) {
         variables.stat_data = {};
     }

@@ -175,8 +175,10 @@ export function extractCommands(inputText: string): Command[] {
         // 使用 findMatchingCloseParen 查找匹配的闭括号，解决原正则匹配在嵌套结构（如 _.set('path', ['inner);'])）中提前结束的问题
         let closeParen = findMatchingCloseParen(inputText, openParen);
         if (closeParen === -1) {
-            // 找不到闭括号，说明命令格式错误，停止解析以避免错误传播
-            break;
+            // 找不到闭括号，说明命令格式错误
+            // 跳过此无效命令，并从开括号后继续搜索，以防无限循环
+            i = openParen; // 从开括号后继续搜索
+            continue; // 继续 while 循环，寻找下一个命令
         }
 
         // 检查闭括号后是否紧跟分号，确保命令语法完整，防止误解析字符串中的类似结构
@@ -445,17 +447,16 @@ export async function updateVariables(
                     newValue = newValue.toISOString();
                 }
 
-                if (typeof oldValue === 'number') {
-                    // 如果旧值是数字，强制转换新值为数字，保持类型一致
+                if (typeof oldValue === 'number' && newValue !== null) {
+                    // 仅当旧值为数字且新值不为 null 时，才强制转换为数字
+                    // 这允许将数字字段设置为 null (例如角色死亡后好感度变为 null)
                     _.set(variables.stat_data, path, Number(newValue));
                 } else if (
                     Array.isArray(oldValue) &&
-                    oldValue.length === 2 &&
-                    typeof oldValue[0] !== 'object'
+                    oldValue.length === 2
                 ) {
                     // 处理 ValueWithDescription<T> 类型，更新数组第一个元素
-                    oldValue[0] = typeof oldValue[0] === 'number' ? Number(newValue) : newValue;
-                    _.set(variables.stat_data, path, oldValue);
+                    oldValue[0] = typeof oldValue[0] === 'number' && newValue !== null ? Number(newValue) : newValue;
                 } else {
                     // 其他情况直接设置新值，支持任意类型
                     _.set(variables.stat_data, path, newValue);
@@ -468,6 +469,43 @@ export async function updateVariables(
                 variable_modified = true; // 标记变量已修改
                 // 记录操作日志，便于调试
                 console.info(`Set '${path}' to '${JSON.stringify(finalNewValue)}' ${reason_str}`);
+
+                // 如果数据类型发生变化（如好感度变为null），动态更新 Schema
+                const oldType = oldValue === null ? 'null' : typeof oldValue;
+                const newType = finalNewValue === null ? 'null' : typeof finalNewValue;
+
+                if (oldType !== newType) {
+                    console.log(`Type changed for path '${path}' from '${oldType}' to '${newType}'. Updating schema.`);
+                    // 找到 schema 中对应的节点并更新它
+                    const pathSegments = _.toPath(path);
+                    let currentSchemaNode = variables.schema;
+                    for (let i = 0; i < pathSegments.length; i++) {
+                        const segment = pathSegments[i];
+                        if (!currentSchemaNode) break;
+
+                        if (/^\d+$/.test(segment)) { // 数组索引
+                            if (currentSchemaNode.type === 'array' && currentSchemaNode.elementType) {
+                                currentSchemaNode = currentSchemaNode.elementType;
+                            } else {
+                                currentSchemaNode = null;
+                                break;
+                            }
+                        } else { // 对象属性
+                            if (currentSchemaNode.properties && currentSchemaNode.properties[segment]) {
+                                // 如果是最后一个 segment，更新 type
+                                if (i === pathSegments.length - 1) {
+                                    currentSchemaNode.properties[segment].type = newType;
+                                } else {
+                                    currentSchemaNode = currentSchemaNode.properties[segment];
+                                }
+                            } else {
+                                currentSchemaNode = null;
+                                break;
+                            }
+                        }
+                    }
+                }
+
                 // 触发单变量更新事件，通知外部系统
                 await eventEmit(
                     variable_events.SINGLE_VARIABLE_UPDATED,

@@ -432,6 +432,13 @@ describe('数学和表达式测试', () => {
         expect(result[0].newValue).toBe('10 + 2'); // 应该得到字符串 '10 + 2'，而不是数字 12
     });
 
+    test('参数是字符串，不应错误地执行运算（以日期为例）', () => {
+        const input = "_.set('日期', ['2015-01-01', '当前日期 YYYY - MM - DD']);";//设置日期";
+        const result = extractCommands(input).map(adaptCommandToOldTestFormat);
+
+        expect(result[0].newValue).toStrictEqual(['2015-01-01', '当前日期 YYYY - MM - DD']);
+    });
+
     test('不应将普通的字符串误判为微积分（例如包含derivative）', () => {
         const input = "_.set('笔记.内容', 'old', 'derivative('x^3', 'x').evaluate({x: 2})');//记录算式";
         const result = extractCommands(input).map(adaptCommandToOldTestFormat);
