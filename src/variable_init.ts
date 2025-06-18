@@ -195,19 +195,28 @@ export async function initCheck() {
         // 2. generateSchema 会读取并移除克隆体中的标记，生成正确的 schema
         variables.schema = generateSchema(dataForSchema);
         // 3. 现在，清理真实的 stat_data，让它在后续操作中保持干净
-        (function cleanUpMarkers(data) {
+        (function cleanUpMetaData(data) {
+            // 如果是数组，移除魔法字符串并递归
             if (Array.isArray(data)) {
                 let i = data.length;
                 while (i--) {
                     if (data[i] === EXTENSIBLE_MARKER) {
                         data.splice(i, 1);
                     } else {
-                        cleanUpMarkers(data[i]);
+                        // 对数组中的其他元素（可能是对象或数组）进行递归清理
+                        cleanUpMetaData(data[i]);
                     }
                 }
-            } else if (_.isObject(data)) {
+            }
+            // 如果是对象，移除 $meta 并递归
+            else if (_.isObject(data) && !_.isDate(data)) {
+                // 如果当前对象有 $meta，删除它
+                if (data.$meta) {
+                    delete data.$meta;
+                }
+                // 递归清理对象的所有属性值
                 for (const key in data) {
-                    cleanUpMarkers(data[key]);
+                    cleanUpMetaData(data[key]);
                 }
             }
         })(variables.stat_data);

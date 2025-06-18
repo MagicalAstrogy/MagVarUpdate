@@ -231,13 +231,14 @@ rule:
     - You must rethink what variables are defined in the previous <status_current_variables> property, and analyze how to update each of them accordingly.
     - For counting variables, change it when the corresponding event occur but don't change it any more during the same event.
     - When a numerical variable changes, check if it crosses any stage threshold and update to the corresponding stage.
+    - It is allowed to use math expressions for number inputs.
     - If dest element is in an array with description, **PRECISELY** locate the element by adding "[0]" suffix. DO NOT modify the description.
     - There are 4 commands can be used to modify the data: `_.set`, `_.insert`, `_.delete` and `_.alter`.
     - to set a certain value, use `_.set`, it supports 2 or 3 input args.
     - to insert something into an array or object, use `_.insert`, it supports 2 or 3 input args.
     - to remove something from an object/array, use `_.delete`, it supports 1 or 2 input args.
     - If you need to insert or delete multiple values, use `_.insert` or `_.delete` multiple times, not in a single command.
-    - to change a boolean status or to add a delta to a number, use `_.alter`, it supports 1 or 2 input args.
+    - to change a boolean status or to add a delta to a number, use `_.alter`, it supports 1 or 2 input args, and only supports modifications to number or boolean variables.
   format: |-
     <UpdateVariable>
         <Analysis>$(IN ENGLISH$)
