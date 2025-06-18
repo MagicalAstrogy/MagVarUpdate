@@ -1,5 +1,6 @@
 import { variable_events } from '@/main';
 import * as math from 'mathjs';
+import { generateSchema } from '@/variable_init';
 
 /**
  * 辅助函数：为数据路径获取对应的 Schema 规则。
@@ -36,6 +37,26 @@ function getSchemaForPath(schema: any, path: string): any {
         }
     }
     return currentSchema;
+}
+
+/**
+ * 调和函数：比较数据和旧 Schema，生成并应用一个与当前数据状态完全同步的新 Schema。
+ * @param variables - 包含 stat_data 和旧 schema 的变量对象。
+ */
+function reconcileAndApplySchema(variables: any) {
+    console.log("Reconciling schema with current data state...");
+
+    // 1. 深拷贝数据，以防 generateSchema 修改原始数据（例如删除 $meta）
+    const currentDataClone = _.cloneDeep(variables.stat_data);
+
+    // 2. 使用改进后的 generateSchema 生成一个与当前数据完全匹配的新 Schema，
+    //    并在此过程中从旧 Schema 继承元数据。
+    const newSchema = generateSchema(currentDataClone, variables.schema);
+
+    // 3. 直接用新 Schema 替换旧 Schema
+    variables.schema = newSchema;
+
+    console.log("Schema reconciliation complete.");
 }
 
 export function trimQuotesAndBackslashes(str: string): string {
@@ -464,47 +485,23 @@ export async function updateVariables(
 
                 // 获取最终设置的新值，用于日志和事件
                 const finalNewValue = _.get(variables.stat_data, path);
-                // 生成显示字符串，记录变化详情
-                display_str = `${JSON.stringify(oldValue)}->${JSON.stringify(finalNewValue)} ${reason_str}`;
+
+                // 检查是否为 ValueWithDescription 类型，以优化显示
+                const isValueWithDescription =
+                    Array.isArray(oldValue) &&
+                    oldValue.length === 2;
+
+                if (isValueWithDescription && Array.isArray(finalNewValue)) {
+                    // 如果是 ValueWithDescription，只显示值的变化
+                    display_str = `${JSON.stringify(oldValue[0])}->${JSON.stringify(finalNewValue[0])} ${reason_str}`;
+                } else {
+                    // 否则，按常规显示
+                    display_str = `${JSON.stringify(oldValue)}->${JSON.stringify(finalNewValue)} ${reason_str}`;
+                }
+
                 variable_modified = true; // 标记变量已修改
                 // 记录操作日志，便于调试
                 console.info(`Set '${path}' to '${JSON.stringify(finalNewValue)}' ${reason_str}`);
-
-                // 如果数据类型发生变化（如好感度变为null），动态更新 Schema
-                const oldType = oldValue === null ? 'null' : typeof oldValue;
-                const newType = finalNewValue === null ? 'null' : typeof finalNewValue;
-
-                if (oldType !== newType) {
-                    console.log(`Type changed for path '${path}' from '${oldType}' to '${newType}'. Updating schema.`);
-                    // 找到 schema 中对应的节点并更新它
-                    const pathSegments = _.toPath(path);
-                    let currentSchemaNode = variables.schema;
-                    for (let i = 0; i < pathSegments.length; i++) {
-                        const segment = pathSegments[i];
-                        if (!currentSchemaNode) break;
-
-                        if (/^\d+$/.test(segment)) { // 数组索引
-                            if (currentSchemaNode.type === 'array' && currentSchemaNode.elementType) {
-                                currentSchemaNode = currentSchemaNode.elementType;
-                            } else {
-                                currentSchemaNode = null;
-                                break;
-                            }
-                        } else { // 对象属性
-                            if (currentSchemaNode.properties && currentSchemaNode.properties[segment]) {
-                                // 如果是最后一个 segment，更新 type
-                                if (i === pathSegments.length - 1) {
-                                    currentSchemaNode.properties[segment].type = newType;
-                                } else {
-                                    currentSchemaNode = currentSchemaNode.properties[segment];
-                                }
-                            } else {
-                                currentSchemaNode = null;
-                                break;
-                            }
-                        }
-                    }
-                }
 
                 // 触发单变量更新事件，通知外部系统
                 await eventEmit(
@@ -869,7 +866,7 @@ export async function updateVariables(
                 if (isValueWithDescription) {
                     valueToAlter = oldValue[0]; // 对 ValueWithDescription 类型，操作其第一个元素
                 }
-                console.warn(valueToAlter);
+                // console.warn(valueToAlter);
 
                 // 尝试将当前值解析为 Date 对象，无论其原始类型是 Date 还是字符串
                 let potentialDate: Date | null = null;
@@ -899,7 +896,11 @@ export async function updateVariables(
                         _.set(variables.stat_data, path, newValue);
                     }
                     const finalNewValue = _.get(variables.stat_data, path);
-                    display_str = `${JSON.stringify(initialValue)}->${JSON.stringify(finalNewValue)} ${reason_str}`;
+                    if (isValueWithDescription) {
+                        display_str = `${JSON.stringify(initialValue[0])}->${JSON.stringify(finalNewValue[0])} ${reason_str}`;
+                    } else {
+                        display_str = `${JSON.stringify(initialValue)}->${JSON.stringify(finalNewValue)} ${reason_str}`;
+                    }
                     variable_modified = true;
                     console.info(
                         `ALTERED boolean '${path}' from '${valueToAlter}' to '${newValue}' ${reason_str}`
@@ -936,7 +937,11 @@ export async function updateVariables(
                         }
 
                         const finalNewValue = _.get(variables.stat_data, path);
-                        display_str = `${JSON.stringify(initialValue)}->${JSON.stringify(finalNewValue)} ${reason_str}`;
+                        if (isValueWithDescription) {
+                            display_str = `${JSON.stringify(initialValue[0])}->${JSON.stringify(finalNewValue[0])} ${reason_str}`;
+                        } else {
+                            display_str = `${JSON.stringify(initialValue)}->${JSON.stringify(finalNewValue)} ${reason_str}`;
+                        }
                         variable_modified = true;
                         console.info(
                             `ALTERED date '${path}' from '${potentialDate.toISOString()}' to '${newDate.toISOString()}' by delta '${delta}'ms ${reason_str}`
@@ -965,7 +970,11 @@ export async function updateVariables(
                             _.set(variables.stat_data, path, newValue);
                         }
                         const finalNewValue = _.get(variables.stat_data, path);
-                        display_str = `${JSON.stringify(initialValue)}->${JSON.stringify(finalNewValue)} ${reason_str}`;
+                        if (isValueWithDescription) {
+                            display_str = `${JSON.stringify(initialValue[0])}->${JSON.stringify(finalNewValue[0])} ${reason_str}`;
+                        } else {
+                            display_str = `${JSON.stringify(initialValue)}->${JSON.stringify(finalNewValue)} ${reason_str}`;
+                        }
                         variable_modified = true;
                         console.info(
                             `ALTERED number '${path}' from '${valueToAlter}' to '${newValue}' by delta '${delta}' ${reason_str}`
@@ -999,6 +1008,11 @@ export async function updateVariables(
             _.set(out_status.stat_data, path, display_str);
             _.set(delta_status.stat_data, path, display_str);
         }
+    }
+
+    // 在所有命令执行完毕后，如果数据有任何变动，则执行一次 Schema 调和
+    if (variable_modified) {
+        reconcileAndApplySchema(variables);
     }
 
     // 更新变量的显示和增量数据

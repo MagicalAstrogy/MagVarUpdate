@@ -7,18 +7,35 @@ type LorebookEntry = {
     comment?: string;
 };
 
+// 定义魔法字符串为常量，便于管理和引用
+const EXTENSIBLE_MARKER = "$__META_EXTENSIBLE__$";
+
 // 模式生成函数
 /**
  * 递归地为数据对象生成一个模式。
  * @param data - 要为其生成模式的数据对象 (stat_data)。
+ * @param oldSchemaNode - (可选) 来自旧 Schema 的对应节点，用于继承元数据。
  * @returns - 生成的模式对象。
  */
-function generateSchema(data: any): any {
+export function generateSchema(data: any, oldSchemaNode?: any): any {
     if (Array.isArray(data)) {
-        // 数组将其元素的 schema 生成委托出去
+        let isExtensible = oldSchemaNode?.extensible === true; // 默认继承旧 Schema
+
+        // 检查并处理魔法字符串
+        const markerIndex = data.indexOf(EXTENSIBLE_MARKER);
+        if (markerIndex > -1) {
+            isExtensible = true;
+            // 从数组中移除标记，以免影响后续的类型推断
+            data.splice(markerIndex, 1);
+            console.log(`Extensible marker found and removed from an array.`);
+        }
+
+        // 对于数组，关注其 elementType
+        const oldElementType = oldSchemaNode?.elementType;
         return {
             type: 'array',
-            elementType: data.length > 0 ? generateSchema(data[0]) : { type: 'any' },
+            extensible: isExtensible, // 应用最终的 extensible 状态
+            elementType: data.length > 0 ? generateSchema(data[0], oldElementType) : { type: 'any' },
         };
     }
     if (_.isObject(data) && !_.isDate(data)) {
@@ -26,27 +43,24 @@ function generateSchema(data: any): any {
         const schemaNode: any = {
             type: 'object',
             properties: {},
-            extensible: false,
+            // 默认不可扩展，但如果旧 schema 或 $meta 定义了，则可扩展
+            extensible: oldSchemaNode?.extensible === true || typedData.$meta?.extensible === true,
         };
 
-        // 检查当前节点是否可扩展
-        let isCurrentlyExtensible = false;
+        // 从 $meta 中读取信息后，将其从数据中移除，避免污染
         if (typedData.$meta) {
-            if (typedData.$meta.extensible) {
-                schemaNode.extensible = true;
-                isCurrentlyExtensible = true; // 标记当前节点是可扩展的
-            }
-            // 从实际数据中移除 $meta 键
             delete typedData.$meta;
         }
 
         for (const key in data) {
-            // 递归生成子节点的 schema
-            const childSchema = generateSchema(typedData[key]);
+            const oldChildNode = oldSchemaNode?.properties?.[key];
+            const childSchema = generateSchema(typedData[key], oldChildNode);
 
-            // 子节点是否必需，取决于当前节点 (即其父节点) 是否可扩展。
-            // 如果当前节点是可扩展的 (isCurrentlyExtensible is true)，那么其子节点就不是必需的。
-            childSchema.required = !isCurrentlyExtensible;
+            // 一个属性是否必需？
+            // 1. 如果其父节点是可扩展的(schemaNode.extensible)，那么子节点就不是必需的。
+            // 2. 否则，看旧 schema 是否定义了它不是必需的。
+            // 3. 默认是必需的。
+            childSchema.required = !schemaNode.extensible && oldChildNode?.required !== false;
 
             schemaNode.properties[key] = childSchema;
         }
@@ -147,9 +161,56 @@ export async function initCheck() {
         is_updated = true;
     }
 
+    // --- 一次性清理所有魔法字符串 ---
+    if (is_updated) {
+        // 递归遍历整个 stat_data，移除所有魔法字符串
+        const cleanData = (data: any) => {
+            if (Array.isArray(data)) {
+                // 使用 filter 创建一个不含标记的新数组
+                const cleanedArray = data.filter(item => item !== EXTENSIBLE_MARKER);
+                // 递归清理数组内的对象或数组
+                cleanedArray.forEach(cleanData);
+                return cleanedArray;
+            }
+            if (_.isObject(data)) {
+                const newObj: Record<string, any> = {};
+                const typedData = data as Record<string, any>; // 类型断言
+                for (const key in data) {
+                    // 递归清理子节点，并将结果赋给新对象
+                    newObj[key] = cleanData(typedData[key]);
+                }
+                return newObj;
+            }
+            return data;
+        };
+        // 在生成 Schema 之前，先清理一遍 stat_data
+        // 这里需要先生成 Schema，再清理数据
+        // 所以还是得用克隆
+    }
+
     // 在所有 lorebook 初始化完成后，生成最终的模式
     if (is_updated || !variables.schema || _.isEmpty(variables.schema)) {
-        variables.schema = generateSchema(_.cloneDeep(variables.stat_data));
+        // 1. 克隆数据用于 Schema 生成
+        const dataForSchema = _.cloneDeep(variables.stat_data);
+        // 2. generateSchema 会读取并移除克隆体中的标记，生成正确的 schema
+        variables.schema = generateSchema(dataForSchema);
+        // 3. 现在，清理真实的 stat_data，让它在后续操作中保持干净
+        (function cleanUpMarkers(data) {
+            if (Array.isArray(data)) {
+                let i = data.length;
+                while (i--) {
+                    if (data[i] === EXTENSIBLE_MARKER) {
+                        data.splice(i, 1);
+                    } else {
+                        cleanUpMarkers(data[i]);
+                    }
+                }
+            } else if (_.isObject(data)) {
+                for (const key in data) {
+                    cleanUpMarkers(data[key]);
+                }
+            }
+        })(variables.stat_data);
     }
 
     if (!is_updated) {
