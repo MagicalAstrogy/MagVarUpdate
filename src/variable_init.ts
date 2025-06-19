@@ -231,7 +231,7 @@ export async function initCheck() {
 
     for (var i = 0; i < last_msg.swipes.length; i++) {
         var current_swipe_data = _.cloneDeep(variables);
-        // 此处调用的是新版 updateVariables，它将支持 insert/delete
+        // 此处调用的是新版 updateVariables，它将支持更多命令
         // 不再需要手动调用 substitudeMacros，updateVariables 会处理
         await updateVariables(last_msg.swipes[i], current_swipe_data);
         //新版本这个接口给deprecated了，但是新版本的接口不好用，先这样

@@ -8,76 +8,76 @@
 
 除了熟悉的 `_.set`，现在新增了三个语义更明确的命令，让AI能更清晰地表达它的意图。
 
-### `_.alter` - 方便地修改布尔值和数值
+### `_.modify` - 方便地修改布尔值和数值
 
 这是最推荐的“状态变更”命令，专门用于修改布尔值和数值。让LLM在set命令中自己动脑子计算一遍旧值和新值比较容易出错，有些时候它根本不会遵循描述中写的变化范围（当然谷圣新模型的智力基本上都上来了，不过还是推荐这样做）。
 
 *   **布尔值切换（一个参数）**：
     ```
     // 如果 is_raining 是 true，它会变成 false，反之亦然
-    _.alter('is_raining');
+    _.modify('is_raining');
     ```
     这比写 `_.set('is_raining', true, false);` 简单多了。
 
 *   **数值增减（两个参数）**：
     ```
     // gold 增加 10
-    _.alter('gold', 10);
+    _.modify('gold', 10);
 
     // health 减少 5
-    _.alter('health', -5);
+    _.modify('health', -5);
     ```
     AI不再需要自己构建 `_.set('gold', 10, 12);` 这样的表达式，大大降低了出错的风险。
 
-### `_.insert` - 插入元素
+### `_.assign` - 插入元素
 
 这个命令用于向数组或对象里添加新东西。
 
 *   **向数组添加元素**：
     ```
     // 在'inventory'数组末尾添加'新获得的钥匙'
-    _.insert('inventory', '新获得的钥匙');
+    _.assign('inventory', '新获得的钥匙');
 
     // 在'inventory'数组的第 0 个位置插入'古老的卷轴'
-    _.insert('inventory', 0, '古老的卷轴');
+    _.assign('inventory', 0, '古老的卷轴');
     ```
 
 *   **向对象添加键值对**：
     ```
     // 在'achievements'对象中添加一个新的成就
-    _.insert('achievements', 'FIRST_MEETING', '与悠纪的初次相遇');
+    _.assign('achievements', 'FIRST_MEETING', '与悠纪的初次相遇');
     ```
 
-### `_.delete` - 删除元素
+### `_.remove` - 删除元素
 
 *   **删除整个变量**：
     ```
     // 删除一个临时的任务标记
-    _.delete('temp_quest_marker');
+    _.remove('temp_quest_marker');
     ```
 
 *   **从数组中删除**：
     ```
     // 从'inventory'数组中删除'用掉的药水'这个物品
-    _.delete('inventory', '用掉的药水');
+    _.remove('inventory', '用掉的药水');
 
     // 从'inventory'数组中删除索引为 2 的物品
-    _.delete('inventory', 2);
+    _.remove('inventory', 2);
     ```
 
 *   **从对象中删除**：
     ```
     // 按键名删除
-    _.delete('achievements', 'FIRST_MEETING');
+    _.remove('achievements', 'FIRST_MEETING');
 
     // 按数字索引删除
     // 如果'achievements'是{"a":1, "b":2, "c":3}，下面这行会删除'"b":2'
-    _.delete('achievements', 1);
+    _.remove('achievements', 1);
     ```
 
 ## 2. 数据结构安全：用 `"$meta"` 和 `"$__META_EXTENSIBLE__$"` 规则保护你的变量
 
-LLM可能会误用 `insert` 或 `delete` 命令，破坏你精心设计的数据结构（例如，给角色属性添加一个不存在的字段，或者在角色死亡时发癫将整个角色删除）。为了解决这个问题，现在引入了**模式保护机制**。
+LLM可能会误用 `assign` 或 `remove` 命令，破坏你精心设计的数据结构（例如，给角色属性添加一个不存在的字段，或者在角色死亡时发癫将整个角色删除）。为了解决这个问题，现在引入了**模式保护机制**。
 
 你可以在 `[InitVar]` 的JSON文件中，通过添加一个特殊的 `"$meta"` 键来定义规则，告诉系统哪些部分是固定的，哪些是可变的。
 对于数组，你可以通过在其中任意位置添加一个 `"$__META_EXTENSIBLE__$"` 字符串来定义它的结构可变，如果不填，默认是不可变的。
@@ -86,7 +86,7 @@ LLM可能会误用 `insert` 或 `delete` 命令，破坏你精心设计的数据
 
 `"$meta"` 对象目前只接受一个属性：`"extensible"` (可扩展的)。
 *   `"extensible": false` (默认，你可以不写，如果你不写出来的话就默认是这个值)：意味着这个对象是**锁定的**。LLM不能向其添加新的键，也不能删除已有的键。
-*   `"extensible": true`：意味着这个对象是**开放的**。LLM可以用 `_.insert` 添加新键，或用 `_.delete` 删除键。
+*   `"extensible": true`：意味着这个对象是**开放的**。LLM可以用 `_.assign` 添加新键，或用 `_.remove` 删除键。
 *   这个键在初始化完成后会被移除，不会出现在后续的 `stat_data` 里面，所以不用担心它占用token和模型注意力。
 
 **示例：保护角色属性，同时开放飞机清单**
@@ -187,7 +187,7 @@ _.set('当前日期', '2000-01-01');
     _.set('福建.舰载机[0].补给中.J-35', 8, 9);
 
     // 精准定位到“可部署”列表，然后插入新飞机
-    _.insert('福建.舰载机[0].可部署', 'J-15T', 12);
+    _.assign('福建.舰载机[0].可部署', 'J-15T', 12);
     ```
 -   **错误 ❌**
     ```
@@ -195,12 +195,12 @@ _.set('当前日期', '2000-01-01');
     _.set('福建.舰载机.补给中.J-35', 8, 9);
 
     // 而这个操作因为尝试污染数据结构，会被屏蔽掉
-    _.insert('福建.舰载机.补给中', 'J-15T', 8);
+    _.assign('福建.舰载机.补给中', 'J-15T', 8);
     ```
 
 #### 便利的快捷方式（仅限简单值）
 
-为了保证对老卡的兼容性，当使用 `_.set` 或 `_.alter` 操作**简单值**（字符串、数字、布尔值）时，可以省略 `[0]`，脚本能正确处理。但这只是为了兼容老卡的写法，并不推荐在新卡中使用这种方式。
+为了保证对老卡的兼容性，当使用 `_.set` 或 `_.modify` 操作**简单值**（字符串、数字、布尔值）时，可以省略 `[0]`，脚本能正确处理。但这只是为了兼容老卡的写法，并不推荐在新卡中使用这种方式。
 
 ```
 // 这两种写法现在都能安全工作
@@ -208,7 +208,7 @@ _.set('经历天数', 1);
 _.set('经历天数[0]', 1);
 ```
 
-虽然有快捷方式，但我依然强烈建议，**在编写提示词引导LLM时，要求它始终使用带 `[0]` 的精确路径**。这是一种更严谨、更不会出错的方法。特别地，当你的卡涉及到增删操作时，请务必让LLM填写精确路径，因为insert和delete是不支持快捷输入的。
+虽然有快捷方式，但我依然强烈建议，**在编写提示词引导LLM时，要求它始终使用带 `[0]` 的精确路径**。这是一种更严谨、更不会出错的方法。特别地，当你的卡涉及到增删操作时，请务必让LLM填写精确路径，因为assign和remove是不支持快捷输入的。
 
 ## 5. 推荐的提示词（LLM操作指南）
 
@@ -233,12 +233,12 @@ rule:
     - When a numerical variable changes, check if it crosses any stage threshold and update to the corresponding stage.
     - It is allowed to use math expressions for number inputs.
     - If dest element is in an array with description, **PRECISELY** locate the element by adding "[0]" suffix. DO NOT modify the description.
-    - There are 4 commands can be used to modify the data: `_.set`, `_.insert`, `_.delete` and `_.alter`.
+    - There are 4 commands can be used to modify the data: `_.set`, `_.assign`, `_.remove` and `_.modify`.
     - to set a certain value, use `_.set`, it supports 2 or 3 input args.
-    - to insert something into an array or object, use `_.insert`, it supports 2 or 3 input args.
-    - to remove something from an object/array, use `_.delete`, it supports 1 or 2 input args.
-    - If you need to insert or delete multiple values, use `_.insert` or `_.delete` multiple times, not in a single command.
-    - to change a boolean status or to add a delta to a number, use `_.alter`, it supports 1 or 2 input args, and only supports modifications to number or boolean variables.
+    - to insert something into an array or object, use `_.assign`, it supports 2 or 3 input args.
+    - to delete something from an object/array, use `_.remove`, it supports 1 or 2 input args.
+    - If you need to assign or remove multiple values, use `_.assign` or `_.remove` multiple times, not in a single command.
+    - to change a boolean status or to add a delta to a number, use `_.modify`, it supports 1 or 2 input args, and only supports modifications to number or boolean variables.
   format: |-
     <UpdateVariable>
         <Analysis>$(IN ENGLISH$)
@@ -249,10 +249,10 @@ rule:
             - Ignore summary related content when evaluate.
             ...
         </Analysis>
-        _.set('${path}', ${old?}, ${new});//${reason}
-        _.insert('${path}', ${key_or_index?}, ${value});//${reason}
-        _.delete('${path}', ${key_or_index?});//${reason}
-        _.alter('${path}', ${delta?});//${reason}
+        _.set('${path}', ${old}?, ${new});//${reason}
+        _.assign('${path}', ${key_or_index}?, ${value});//${reason}
+        _.remove('${path}', ${key_or_index_or_value}?);//${reason}
+        _.modify('${path}', ${delta}?);//${reason}
     </UpdateVariable>
   example: |-
     <UpdateVariable>
@@ -264,8 +264,8 @@ rule:
             ...
         </Analysis>
         _.set('当前时间[0]', '2026-6-1 10:05', '2026-6-1 10:15');//时间流逝
-        _.alter('悠纪.好感度[0]', 2);//与悠纪的好感度增加
-        _.insert('悠纪.重要成就[0]', '2026年6月1日，悠纪对<user>告白成功');//悠纪对<user>成功告白
-        _.delete('悠纪.着装[0]', '粉色缎带');//悠纪脱下粉色缎带
+        _.modify('悠纪.好感度[0]', 2);//与悠纪的好感度增加
+        _.assign('悠纪.重要成就[0]', '2026年6月1日，悠纪对<user>告白成功');//悠纪对<user>成功告白
+        _.remove('悠纪.着装[0]', '粉色缎带');//悠纪脱下粉色缎带
     </UpdateVariable>
 ```
