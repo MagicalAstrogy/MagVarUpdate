@@ -215,8 +215,9 @@ _.set('经历天数[0]', 1);
 为了让LLM更好地理解并使用上述新功能，我提供了一份推荐的提示词模板。你可以将它整合到你的世界书或角色卡设定中，换掉原来那份模板。这份提示词明确地告知了LLM所有可用的命令以及最重要的 `[0]` 规则。
 
 ```ejs
-<%_ setvar('initialized_lorebooks.-SnowYuki[0]', true); _%>
-{{//这个值是用来判别世界书是否初始化的，在世界书加载一次之后就永久为true，可以在某些变量需要屏蔽来自LLM的更新时使用，避免将初始化设置也屏蔽掉}}
+<%_ setLocalVar('initialized_lorebooks.-SnowYuki[0]', true); _%>
+{{// 这个值是用来判别世界书是否初始化的，在世界书加载一次之后就永久为true，可以在某些变量需要屏蔽来自LLM的更新时使用，避免将初始化设置也屏蔽掉}}
+{{// 不要使用setvar，会插入到用户消息变量中导致消息swipe出错}}
 【变量更新】
 最后，进行变量更新。
 以下是故事中需要追踪的关键变量，当前状态以这些变量的值为准。
@@ -225,20 +226,21 @@ _.set('经历天数[0]', 1);
 </status_current_variables>
 严格按照以下规则和格式进行输出，并确定每一个变量是否需要更新，不要遗漏：
 rule:
-  description: You should output the update analysis in the end of the next response, following the variables list defined in <status_current_variables> section which will be provided by the previous turn.
-  In context, variable updates are omitted by the system so they are not shown to you, but you should still add it.
-  analysis:
-    - You must rethink what variables are defined in the previous <status_current_variables> property, and analyze how to update each of them accordingly.
-    - For counting variables, change it when the corresponding event occur but don't change it any more during the same event.
-    - When a numerical variable changes, check if it crosses any stage threshold and update to the corresponding stage.
-    - It is allowed to use math expressions for number inputs.
-    - If dest element is in an array with description, **PRECISELY** locate the element by adding "[0]" suffix. DO NOT modify the description.
-    - There are 4 commands can be used to modify the data: `_.set`, `_.assign`, `_.remove` and `_.modify`.
+  description:
+    - You should output the update analysis in the end of the next response, following the variables list defined in <status_current_variables> section which will be provided by the previous turn.
+    - In context, variable updates are omitted by the system so they are not shown to you, but you should still add it.
+    - There are 4 commands can be used to adjust the data: `_.set`, `_.assign`, `_.remove` and `_.modify`.
     - to set a certain value, use `_.set`, it supports 2 or 3 input args.
     - to insert something into an array or object, use `_.assign`, it supports 2 or 3 input args.
     - to delete something from an object/array, use `_.remove`, it supports 1 or 2 input args.
     - If you need to assign or remove multiple values, use `_.assign` or `_.remove` multiple times, not in a single command.
-    - to change a boolean status or to add a delta to a number, use `_.modify`, it supports 1 or 2 input args, and only supports modifications to number or boolean variables.
+    - to toggle a boolean status or to add a delta to a number, use `_.modify`, it supports 1 or 2 input args, and only supports modifications to number or boolean variables.
+    - It is allowed to use math expressions for number inputs.
+  analysis:
+    - You must rethink what variables are defined in the previous <status_current_variables> property, and analyze how to update each of them accordingly.
+    - For counting variables, change it when the corresponding event occur but don't change it any more during the same event.
+    - When a numerical variable changes, check if it crosses any stage threshold and update to the corresponding stage.
+    - If dest element is in an array with description, **PRECISELY** locate the element by adding "[0]" suffix. DO NOT change the description.
   format: |-
     <UpdateVariable>
         <Analysis>$(IN ENGLISH$)
