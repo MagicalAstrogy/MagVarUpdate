@@ -253,6 +253,18 @@ describe('Assign 和 Remove 命令测试', () => {
         expect(parseCommandValue(cmd.args[2])).toStrictEqual({ "功能": "让人体能飞升，变身体育生！", "是否激活": false });
     });
 
+    test('对根路径的 assign 调用', () => {
+        const input = `_.assign('', '新角色', {});`;
+        const result = extractCommands(input);
+
+        expect(result).toHaveLength(1);
+        const cmd = result[0];
+        expect(cmd.command).toBe('assign');
+        expect(parseCommandValue(cmd.args[0])).toBe('');
+        expect(parseCommandValue(cmd.args[1])).toBe('新角色');
+        expect(parseCommandValue(cmd.args[2])).toStrictEqual({});
+    });
+
     test('简单的 remove 调用（删除属性）', () => {
         const input = `_.remove('user.status.is_tired');//不再疲劳`;
         const result = extractCommands(input);

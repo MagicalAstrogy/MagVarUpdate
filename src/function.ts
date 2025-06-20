@@ -520,7 +520,8 @@ export async function updateVariables(
                 // 检查目标路径是否指向一个集合（数组或对象）
                 // 如果路径已存在且其值为原始类型（字符串、数字等），则跳过此命令，以防止结构污染
                 const targetPath = path;
-                const existingValue = _.get(variables.stat_data, targetPath);
+                // 统一获取目标值和目标Schema，优雅地处理根路径
+                const existingValue = targetPath === '' ? variables.stat_data : _.get(variables.stat_data, targetPath);
                 const targetSchema = getSchemaForPath(schema, targetPath);
 
                 // 验证1：目标是否为原始类型？如果是，则无法插入。
@@ -565,6 +566,8 @@ export async function updateVariables(
                         continue;
                     }
                 } else if (
+                    // 增加 targetPath !== '' 条件，防止对根路径进行父路径检查
+                    targetPath !== '' && 
                     !_.get(variables.stat_data, _.toPath(targetPath).slice(0, -1).join('.'))
                 ) {
                     // 验证3：如果要插入到新路径，确保其父路径存在且可扩展
@@ -594,7 +597,7 @@ export async function updateVariables(
                     }
 
                     // 获取目标集合，可能为数组或对象
-                    let collection = _.get(variables.stat_data, path);
+                    let collection = targetPath === '' ? variables.stat_data : _.get(variables.stat_data, path);
 
                     // 如果目标不存在，初始化为空数组或对象
                     if (!Array.isArray(collection) && !_.isObject(collection)) {
@@ -643,7 +646,7 @@ export async function updateVariables(
                         );
                     }
 
-                    let collection = _.get(variables.stat_data, path);
+                    let collection = targetPath === '' ? variables.stat_data : _.get(variables.stat_data, path);
 
                     if (Array.isArray(collection) && typeof keyOrIndex === 'number') {
                         // 目标是数组且索引是数字，插入到指定位置

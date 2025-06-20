@@ -55,12 +55,34 @@ export function generateSchema(data: any, oldSchemaNode?: any): any {
         for (const key in data) {
             const oldChildNode = oldSchemaNode?.properties?.[key];
             const childSchema = generateSchema(typedData[key], oldChildNode);
+            const childData = typedData[key] as Record<string, any>;
 
             // 一个属性是否必需？
-            // 1. 如果其父节点是可扩展的(schemaNode.extensible)，那么子节点就不是必需的。
-            // 2. 否则，看旧 schema 是否定义了它不是必需的。
-            // 3. 默认是必需的。
-            childSchema.required = !schemaNode.extensible && oldChildNode?.required !== false;
+
+            // 1. 默认值
+            let isRequired = true;
+
+            // 2. 检查父节点是否是 extensible
+            if (schemaNode.extensible) {
+                // 如果父节点可扩展，则子节点默认变为可选
+                isRequired = false;
+            }
+
+            // 3. 检查子节点自身是否有 'required: true' 的覆盖元数据
+            //    (需要先判断 childData 是否为对象)
+            if (_.isObject(childData) && !Array.isArray(childData) && childData.$meta?.required === true) {
+                isRequired = true;
+            }
+
+            // 4. 检查旧 schema 的设置，作为最后的参考
+            if (oldChildNode?.required === false) {
+                // 如果旧 schema 明确说这个是可选的，那么以这个为准
+                isRequired = false;
+            } else if (oldChildNode?.required === true) {
+                isRequired = true;
+            }
+
+            childSchema.required = isRequired;
 
             schemaNode.properties[key] = childSchema;
         }
