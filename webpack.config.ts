@@ -77,15 +77,17 @@ function config(_env: any, argv: any) {
         plugins: [{ apply: watch_it }],
         optimization: {
             minimize: true,
-            minimizer: [isProd ? new TerserPlugin() :
-                    new TerserPlugin({
-                        extractComments: false,
-                        terserOptions: {
-                            format: { beautify: true, indent_level: 2 },
-                            compress: false,
-                            mangle: false,               // 如需保留变量名，也可关掉混淆
-                        },
-                    })
+            minimizer: [
+                isProd
+                    ? new TerserPlugin()
+                    : new TerserPlugin({
+                          extractComments: false,
+                          terserOptions: {
+                              format: { beautify: true, indent_level: 2 },
+                              compress: false,
+                              mangle: false, // 如需保留变量名，也可关掉混淆
+                          },
+                      }),
             ],
             splitChunks: {
                 chunks: 'async',

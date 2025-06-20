@@ -60,6 +60,7 @@ function reconcileAndApplySchema(variables: any) {
 }
 
 export function trimQuotesAndBackslashes(str: string): string {
+    if (!_.isString(str)) return str;
     // Regular expression to match backslashes and quotes (including backticks) at the beginning and end
     return str.replace(/^[\\"'` ]*(.*?)[\\"'` ]*$/, '$1');
 }
@@ -456,6 +457,7 @@ export async function updateVariables(
                     );
                     continue;
                 }
+
                 // 获取路径上的旧值，可能为 undefined（路径不存在）
                 const oldValue = _.get(variables.stat_data, path);
                 // 支持两种格式：_.set(path, newValue) 或 _.set(path, oldValue, newValue)

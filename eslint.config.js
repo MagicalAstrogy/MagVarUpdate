@@ -1,78 +1,47 @@
-import eslint from 'eslint';
-import tseslint from 'typescript-eslint';
-import prettier from 'eslint-plugin-prettier';
+import js from '@eslint/js';
+import tsParser from '@typescript-eslint/parser';
+import eslintConfigPrettier from 'eslint-config-prettier';
+import eslintPluginImportX from 'eslint-plugin-import-x';
+import { globalIgnores } from 'eslint/config';
 
 export default [
-  // Ignore patterns
-  {
-    ignores: ['dist/**', 'node_modules/**', 'artifact/**', 'slash-runner/**', 'example_src/dist/**']
-  },
-
-  // Base configuration for all JavaScript files
-  {
-    files: ['**/*.js', '**/*.jsx', '**/*.mjs', '**/*.cjs'],
-    ignores: ['**/*.config.js'],
-    languageOptions: {
-      ecmaVersion: 2020,
-      sourceType: 'module',
-      globals: {
-        window: 'readonly',
-        document: 'readonly',
-        navigator: 'readonly',
-        console: 'readonly',
-        process: 'readonly',
-        module: 'readonly',
-        require: 'readonly',
-      }
+    js.configs.recommended,
+    eslintPluginImportX.flatConfigs.recommended,
+    eslintPluginImportX.flatConfigs.typescript,
+    {
+        files: ['**/*.{js,mjs,cjs,jsx,mjsx,ts,tsx,mtsx}'],
+        languageOptions: {
+            parser: tsParser,
+            ecmaVersion: 'latest',
+            sourceType: 'module',
+        },
+        rules: {
+            'handle-callback-err': 'off',
+            'import-x/no-console': 'off',
+            'import-x/no-cycle': 'error',
+            'import-x/no-dynamic-require': 'warn',
+            'import-x/no-nodejs-modules': 'warn',
+            'no-dupe-class-members': 'off',
+            'no-empty-function': 'off',
+            'no-floating-decimal': 'error',
+            'no-lonely-if': 'error',
+            'no-multi-spaces': 'error',
+            'no-redeclare': 'off',
+            'no-shadow': ['error', { allow: ['err', 'resolve', 'reject'] }],
+            'no-undef': 'off',
+            'no-unused-vars': 'off',
+            'no-var': 'error',
+            'prefer-const': 'warn',
+            yoda: 'error',
+        },
     },
-    plugins: {
-      prettier: prettier
-    },
-    rules: {
-      // Basic rules
-      'no-console': 'warn',
-      'no-debugger': 'warn',
-      'no-duplicate-imports': 'error',
-      'prettier/prettier': 'error'
-    }
-  },
-
-  // TypeScript specific configuration
-  {
-    files: ['**/*.ts', '**/*.tsx'],
-    languageOptions: {
-      parser: tseslint.parser,
-      parserOptions: {
-        project: './tsconfig.json',
-      },
-      globals: {
-        window: 'readonly',
-        document: 'readonly',
-        navigator: 'readonly',
-        console: 'readonly',
-        process: 'readonly',
-      }
-    },
-    plugins: {
-      '@typescript-eslint': tseslint.plugin,
-      prettier: prettier
-    },
-    rules: {
-      // Basic rules
-      'no-console': 'warn',
-      'no-debugger': 'warn',
-      'no-duplicate-imports': 'error',
-
-      // TypeScript specific rules
-      '@typescript-eslint/explicit-function-return-type': 'off',
-      '@typescript-eslint/explicit-module-boundary-types': 'off',
-      '@typescript-eslint/no-explicit-any': 'warn',
-      '@typescript-eslint/no-unused-vars': ['warn', {
-        argsIgnorePattern: '^_',
-        varsIgnorePattern: '^_'
-      }],
-      '@typescript-eslint/no-empty-function': 'warn',
-      'prettier/prettier': 'error'
-    }
-  }
+    eslintConfigPrettier,
+    globalIgnores([
+        'artifact/**',
+        'example_src/dist/**',
+        'node_modules/**',
+        'slash-runner/**',
+        'eslint.config.mjs',
+        'webpack.config.ts',
+    ]),
 ];

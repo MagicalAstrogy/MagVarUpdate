@@ -32,3 +32,6 @@ coverage/
 
 # Ignore Visual Studio
 .vs/
+
+# Ignore OS generated files
+.DS_Store
