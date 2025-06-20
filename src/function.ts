@@ -98,6 +98,12 @@ export function parseCommandValue(valStr: string): any {
         }
     }
 
+    try {
+        // 对于非标准JSON的值，使用 YAML.parse
+        return YAML.parse(trimmed);
+    } catch (e) {
+    }
+
     // 如果代码走到这里，说明 trimmed 是一个未加引号的字符串，例如：
     // 'hello_world', '10 + 2', 'sqrt(16)'
 
