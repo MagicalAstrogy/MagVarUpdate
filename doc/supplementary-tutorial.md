@@ -8,24 +8,17 @@
 
 除了熟悉的 `_.set`，现在新增了三个语义更明确的命令，让AI能更清晰地表达它的意图。
 
-### `_.modify` - 方便地修改布尔值和数值
+### `_.add` - 方便地修改数值
 
-这是最推荐的“状态变更”命令，专门用于修改布尔值和数值。让LLM在set命令中自己动脑子计算一遍旧值和新值比较容易出错，有些时候它根本不会遵循描述中写的变化范围（当然谷圣新模型的智力基本上都上来了，不过还是推荐这样做）。
-
-*   **布尔值切换（一个参数）**：
-    ```
-    // 如果 is_raining 是 true，它会变成 false，反之亦然
-    _.modify('is_raining');
-    ```
-    这比写 `_.set('is_raining', true, false);` 简单多了。
+这是最推荐的“数值变更”命令。让LLM在set命令中自己动脑子计算一遍旧值和新值比较容易出错，有些时候它根本不会遵循描述中写的变化范围（当然谷圣新模型的智力基本上都上来了，不过还是推荐这样做）。
 
 *   **数值增减（两个参数）**：
     ```
     // gold 增加 10
-    _.modify('gold', 10);
+    _.add('gold', 10);
 
     // health 减少 5
-    _.modify('health', -5);
+    _.add('health', -5);
     ```
     AI不再需要自己构建 `_.set('gold', 10, 12);` 这样的表达式，大大降低了出错的风险。
 
@@ -200,7 +193,7 @@ _.set('当前日期', '2000-01-01');
 
 #### 便利的快捷方式（仅限简单值）
 
-为了保证对老卡的兼容性，当使用 `_.set` 或 `_.modify` 操作**简单值**（字符串、数字、布尔值）时，可以省略 `[0]`，脚本能正确处理。但这只是为了兼容老卡的写法，并不推荐在新卡中使用这种方式。
+为了保证对老卡的兼容性，当使用 `_.set` 或 `_.add` 操作**简单值**（字符串、数字、布尔值）时，可以省略 `[0]`，脚本能正确处理。但这只是为了兼容老卡的写法，并不推荐在新卡中使用这种方式。
 
 ```
 // 这两种写法现在都能安全工作
@@ -229,12 +222,12 @@ rule:
   description:
     - You should output the update analysis in the end of the next response, following the variables list defined in <status_current_variables> section which will be provided by the previous turn.
     - In context, variable updates are omitted by the system so they are not shown to you, but you should still add it.
-    - There are 4 commands can be used to adjust the data: `_.set`, `_.assign`, `_.remove` and `_.modify`.
+    - There are 4 commands can be used to adjust the data: `_.set`, `_.assign`, `_.remove` and `_.add`.
     - to set a certain value, use `_.set`, it supports 2 or 3 input args.
     - to insert something into an array or object, use `_.assign`, it supports 2 or 3 input args.
     - to delete something from an object/array, use `_.remove`, it supports 1 or 2 input args.
     - If you need to assign or remove multiple values, use `_.assign` or `_.remove` multiple times, not in a single command.
-    - to toggle a boolean status or to add a delta to a number, use `_.modify`, it supports 1 or 2 input args, and only supports modifications to number or boolean variables.
+    - to add a delta to a number, use `_.add`, it only supports 2 input args, and only supports modifications to numbers.
     - It is allowed to use math expressions for number inputs.
   analysis:
     - You must rethink what variables are defined in the previous <status_current_variables> property, and analyze how to update each of them accordingly.
@@ -254,7 +247,7 @@ rule:
         _.set('${path}', ${old}?, ${new});//${reason}
         _.assign('${path}', ${key_or_index}?, ${value});//${reason}
         _.remove('${path}', ${key_or_index_or_value}?);//${reason}
-        _.modify('${path}', ${delta}?);//${reason}
+        _.add('${path}', ${delta});//${reason}
     </UpdateVariable>
   example: |-
     <UpdateVariable>
@@ -266,7 +259,7 @@ rule:
             ...
         </Analysis>
         _.set('当前时间[0]', '2026-6-1 10:05', '2026-6-1 10:15');//时间流逝
-        _.modify('悠纪.好感度[0]', 2);//与悠纪的好感度增加
+        _.add('悠纪.好感度[0]', 2);//与悠纪的好感度增加
         _.assign('悠纪.重要成就[0]', '2026年6月1日，悠纪对<user>告白成功');//悠纪对<user>成功告白
         _.remove('悠纪.着装[0]', '粉色缎带');//悠纪脱下粉色缎带
     </UpdateVariable>

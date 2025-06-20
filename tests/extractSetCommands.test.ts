@@ -290,85 +290,72 @@ describe('Assign 和 Remove 命令测试', () => {
     });
 });
 
-describe('Modify 命令测试', () => {
-    test('简单的 modify 调用（切换布尔值）', () => {
-        const input = `_.modify('user.is_active');//切换活跃状态`;
+describe('Add 命令测试', () => {
+/*    test('简单的 add 调用（切换布尔值）', () => {
+        const input = `_.add('user.is_active');//切换活跃状态`;
         const result = extractCommands(input);
 
         expect(result).toHaveLength(1);
         const cmd = result[0];
-        expect(cmd.command).toBe('modify');
+        expect(cmd.command).toBe('add');
         expect(cmd.reason).toBe('切换活跃状态');
         expect(cmd.args).toHaveLength(1);
         expect(parseCommandValue(cmd.args[0])).toBe('user.is_active');
     });
-
-    test('带增量的 modify 调用（调整数值）', () => {
-        const input = `_.modify('player.health', 10);//恢复10点生命值`;
+*/
+    test('带增量的 add 调用（调整数值）', () => {
+        const input = `_.add('player.health', 10);//恢复10点生命值`;
         const result = extractCommands(input);
 
         expect(result).toHaveLength(1);
         const cmd = result[0];
-        expect(cmd.command).toBe('modify');
+        expect(cmd.command).toBe('add');
         expect(cmd.reason).toBe('恢复10点生命值');
         expect(parseCommandValue(cmd.args[0])).toBe('player.health');
         expect(parseCommandValue(cmd.args[1])).toBe(10);
     });
 
-    test('复杂路径的 modify 调用', () => {
-        const input = `_.modify('悠纪.金手指系统.是否激活');//激活金手指`;
+    test('带数学表达式的 add 调用', () => {
+        const input = `_.add('score.total', 100 * 2 + 50);//增加250分`;
         const result = extractCommands(input);
 
         expect(result).toHaveLength(1);
         const cmd = result[0];
-        expect(cmd.command).toBe('modify');
-        expect(cmd.reason).toBe('激活金手指');
-        expect(parseCommandValue(cmd.args[0])).toBe('悠纪.金手指系统.是否激活');
-    });
-
-    test('带数学表达式的 modify 调用', () => {
-        const input = `_.modify('score.total', 100 * 2 + 50);//增加250分`;
-        const result = extractCommands(input);
-
-        expect(result).toHaveLength(1);
-        const cmd = result[0];
-        expect(cmd.command).toBe('modify');
+        expect(cmd.command).toBe('add');
         expect(cmd.reason).toBe('增加250分');
         expect(parseCommandValue(cmd.args[0])).toBe('score.total');
         expect(parseCommandValue(cmd.args[1])).toBe(250);
     });
 
-    test('无效参数数量的 modify 调用', () => {
-        const input = `_.modify('path', 10, 20);//参数过多`;
+    test('无效参数数量的 add 调用', () => {
+        const input = `_.add('path', 10, 20);//参数过多`;
         const result = extractCommands(input);
 
         expect(result).toHaveLength(0); // 无效命令应被过滤
     });
 
-    test('缺少分号的 modify 调用', () => {
-        const input = `_.modify('path', 5)`; // 缺少分号
+    test('缺少分号的 add 调用', () => {
+        const input = `_.add('path', 5)`; // 缺少分号
         const result = extractCommands(input);
 
         expect(result).toHaveLength(0);
     });
 
-    test('混合命令中的 modify 调用', () => {
+    test('混合命令中的 add 调用', () => {
         const input = `
             _.set('name', 'old', 'new');//更新名字
-            _.modify('user.is_online');//切换在线状态
             _.assign('items', 'sword');//添加武器
-            _.modify('player.mana', 20);//增加20点魔法值
+            _.add('player.mana', 20);//增加20点魔法值
         `;
         const result = extractCommands(input);
 
-        expect(result).toHaveLength(4);
-        expect(result[1].command).toBe('modify');
-        expect(parseCommandValue(result[1].args[0])).toBe('user.is_online');
-        expect(result[1].args).toHaveLength(1);
+        expect(result).toHaveLength(3);
+        expect(result[1].command).toBe('assign');
+        expect(result[1].args).toHaveLength(2);
 
-        expect(result[3].command).toBe('modify');
-        expect(parseCommandValue(result[3].args[0])).toBe('player.mana');
-        expect(parseCommandValue(result[3].args[1])).toBe(20);
+        expect(result[2].command).toBe('add');
+        expect(parseCommandValue(result[2].args[0])).toBe('player.mana');
+        expect(parseCommandValue(result[2].args[1])).toBe(20);
     });
 });
 
@@ -516,11 +503,11 @@ describe('日期处理与时间运算测试', () => {
 
     test('正确解析用于时间增减的命令', () => {
         // 增加10分钟
-        const input = "_.modify('世界.当前时间', 10 * 60 * 1000);//时间流逝10分钟";
+        const input = "_.add('世界.当前时间', 10 * 60 * 1000);//时间流逝10分钟";
         const result = extractCommands(input);
         expect(result).toHaveLength(1);
         const cmd = result[0];
-        expect(cmd.command).toBe('modify');
+        expect(cmd.command).toBe('add');
         expect(parseCommandValue(cmd.args[0])).toBe('世界.当前时间');
         expect(parseCommandValue(cmd.args[1])).toBe(600000);
         expect(cmd.reason).toBe('时间流逝10分钟');
@@ -528,11 +515,11 @@ describe('日期处理与时间运算测试', () => {
 
     test('处理负数增量（时间倒流）', () => {
         // 时间倒退一小时
-        const input = "_.modify('时间机器.目标时间', -3600 * 1000);//启动时间机器，回到一小时前";
+        const input = "_.add('时间机器.目标时间', -3600 * 1000);//启动时间机器，回到一小时前";
         const result = extractCommands(input);
         expect(result).toHaveLength(1);
         const cmd = result[0];
-        expect(cmd.command).toBe('modify');
+        expect(cmd.command).toBe('add');
         expect(parseCommandValue(cmd.args[0])).toBe('时间机器.目标时间');
         expect(parseCommandValue(cmd.args[1])).toBe(-3600000);
         expect(cmd.reason).toBe('启动时间机器，回到一小时前');
@@ -558,11 +545,11 @@ describe('日期处理与时间运算测试', () => {
 
     test('结合数学表达式来增加一天', () => {
         // 增加一天
-        const input = "_.modify('日记.日期', 24 * 60 * 60 * 1000);//翻到下一页";
+        const input = "_.add('日记.日期', 24 * 60 * 60 * 1000);//翻到下一页";
         const result = extractCommands(input);
         expect(result).toHaveLength(1);
         const cmd = result[0];
-        expect(cmd.command).toBe('modify');
+        expect(cmd.command).toBe('add');
         expect(parseCommandValue(cmd.args[0])).toBe('日记.日期');
         expect(parseCommandValue(cmd.args[1])).toBe(86400000);
         expect(cmd.reason).toBe('翻到下一页');

@@ -133,7 +133,7 @@ export function parseCommandValue(valStr: string): any {
     }
 
     // 实验性功能，暂不启用
-    // 尝试将字符串解析为日期对象，用于传入_.modify直接以毫秒数更新时间，如 `_.modify('当前时间', 10 * 60 * 1000);`
+    // 尝试将字符串解析为日期对象，用于传入_.add直接以毫秒数更新时间，如 `_.add('当前时间', 10 * 60 * 1000);`
     // 此检查用于识别日期字符串（例如 "2024-01-01T12:00:00Z"）
     // `isNaN(Number(trimmed))`确保纯数字字符串（如 "12345"）不会被错误地解析为日期
     /*
@@ -156,7 +156,7 @@ export function parseCommandValue(valStr: string): any {
 // 接口定义：用于统一不同命令的结构
 // 新增：Command 接口，比 SetCommand 更通用
 interface Command {
-    command: 'set' | 'assign' | 'remove' | 'modify';
+    command: 'set' | 'assign' | 'remove' | 'add';
     fullMatch: string;
     args: string[];
     reason: string;
@@ -181,15 +181,15 @@ export function extractCommands(inputText: string): Command[] {
 
     while (i < inputText.length) {
         // 循环处理整个输入文本，直到找不到更多命令
-        // 使用正则匹配 _.set(、_.assign(、_.remove( 或 _.modify(，重构后支持多种命令
-        const setMatch = inputText.substring(i).match(/_\.(set|assign|remove|modify)\(/);
+        // 使用正则匹配 _.set(、_.assign(、_.remove( 或 _.add(，重构后支持多种命令
+        const setMatch = inputText.substring(i).match(/_\.(set|assign|remove|add)\(/);
         if (!setMatch || setMatch.index === undefined) {
             // 没有找到匹配的命令，退出循环，防止无限循环
             break;
         }
 
-        // 提取命令类型（set、assign、remove 或 modify），并计算命令的起始位置
-        const commandType = setMatch[1] as 'set' | 'assign' | 'remove' | 'modify';
+        // 提取命令类型（set、assign、remove 或 add），并计算命令的起始位置
+        const commandType = setMatch[1] as 'set' | 'assign' | 'remove' | 'add';
         const setStart = i + setMatch.index;
         // 计算开括号位置，用于后续提取参数
         const openParen = setStart + setMatch[0].length;
@@ -236,8 +236,8 @@ export function extractCommands(inputText: string): Command[] {
             isValid = true; // _.assign 支持两种参数格式
         else if (commandType === 'remove' && params.length >= 1)
             isValid = true; // _.remove 至少需要路径
-        else if (commandType === 'modify' && (params.length === 1 || params.length === 2))
-            isValid = true; // _.modify 需要1个或2个参数
+        else if (commandType === 'add' && (/*params.length === 1 || */params.length === 2))
+            isValid = true; // _.add 需要1个或2个参数
 
         if (isValid) {
             // 命令有效，添加到结果列表，包含命令类型、完整匹配、参数和注释
@@ -848,49 +848,49 @@ export async function updateVariables(
                 break;
             }
 
-            case 'modify': {
+            case 'add': {
                 // 验证路径存在
                 if (!_.has(variables.stat_data, path)) {
                     console.warn(
-                        `Path '${path}' does not exist in stat_data, skipping modify command ${reason_str}`
+                        `Path '${path}' does not exist in stat_data, skipping add command ${reason_str}`
                     );
                     continue;
                 }
                 // 获取当前值
                 const initialValue = _.cloneDeep(_.get(variables.stat_data, path));
                 const oldValue = _.get(variables.stat_data, path);
-                let valueToModify = oldValue;
+                let valueToAdd = oldValue;
                 let isValueWithDescription =
                     Array.isArray(oldValue) &&
                     oldValue.length === 2 &&
                     typeof oldValue[0] !== 'object';
 
                 if (isValueWithDescription) {
-                    valueToModify = oldValue[0]; // 对 ValueWithDescription 类型，操作其第一个元素
+                    valueToAdd = oldValue[0]; // 对 ValueWithDescription 类型，操作其第一个元素
                 }
-                // console.warn(valueToModify);
+                // console.warn(valueToAdd);
 
                 // 尝试将当前值解析为 Date 对象，无论其原始类型是 Date 还是字符串
                 let potentialDate: Date | null = null;
-                if (valueToModify instanceof Date) {
-                    potentialDate = valueToModify;
-                } else if (typeof valueToModify === 'string') {
-                    const parsedDate = new Date(valueToModify);
+                if (valueToAdd instanceof Date) {
+                    potentialDate = valueToAdd;
+                } else if (typeof valueToAdd === 'string') {
+                    const parsedDate = new Date(valueToAdd);
                     // 确保它是一个有效的日期，并且不是一个可以被 `new Date` 解析的纯数字字符串
-                    if (!isNaN(parsedDate.getTime()) && isNaN(Number(valueToModify))) {
+                    if (!isNaN(parsedDate.getTime()) && isNaN(Number(valueToAdd))) {
                         potentialDate = parsedDate;
                     }
                 }
 
-                if (command.args.length === 1) {
+/*                if (command.args.length === 1) {
                     // 单参数：切换布尔值
-                    if (typeof valueToModify !== 'boolean') {
+                    if (typeof valueToAdd !== 'boolean') {
                         console.warn(
-                            `Path '${path}' is not a boolean${isValueWithDescription ? ' or ValueWithDescription<boolean>' : ''}, skipping modify command ${reason_str}`
+                            `Path '${path}' is not a boolean${isValueWithDescription ? ' or ValueWithDescription<boolean>' : ''}, skipping add command ${reason_str}`
                         );
                         continue;
                     }
-                    const newValue = !valueToModify;
+                    const newValue = !valueToAdd;
                     if (isValueWithDescription) {
                         oldValue[0] = newValue; // Update the first element
                         _.set(variables.stat_data, path, oldValue);
@@ -905,7 +905,7 @@ export async function updateVariables(
                     }
                     variable_modified = true;
                     console.info(
-                        `MODIFIED boolean '${path}' from '${valueToModify}' to '${newValue}' ${reason_str}`
+                        `ADDED boolean '${path}' from '${valueToAdd}' to '${newValue}' ${reason_str}`
                     );
                     await eventEmit(
                         variable_events.SINGLE_VARIABLE_UPDATED,
@@ -914,7 +914,7 @@ export async function updateVariables(
                         initialValue,
                         finalNewValue
                     );
-                } else if (command.args.length === 2) {
+                } else */if (command.args.length === 2) {
                     // 双参数：调整数值或日期
                     const delta = parseCommandValue(command.args[1]);
 
@@ -922,7 +922,7 @@ export async function updateVariables(
                     if (potentialDate) {
                         if (typeof delta !== 'number') {
                             console.warn(
-                                `Delta '${command.args[1]}' for Date operation is not a number, skipping modify command ${reason_str}`
+                                `Delta '${command.args[1]}' for Date operation is not a number, skipping add command ${reason_str}`
                             );
                             continue;
                         }
@@ -946,7 +946,7 @@ export async function updateVariables(
                         }
                         variable_modified = true;
                         console.info(
-                            `MODIFIED date '${path}' from '${potentialDate.toISOString()}' to '${newDate.toISOString()}' by delta '${delta}'ms ${reason_str}`
+                            `ADDED date '${path}' from '${potentialDate.toISOString()}' to '${newDate.toISOString()}' by delta '${delta}'ms ${reason_str}`
                         );
                         await eventEmit(
                             variable_events.SINGLE_VARIABLE_UPDATED,
@@ -955,15 +955,15 @@ export async function updateVariables(
                             initialValue,
                             finalNewValue
                         );
-                    } else if (typeof valueToModify === 'number') {
+                    } else if (typeof valueToAdd === 'number') {
                         // 原有的处理 number 类型的逻辑
                         if (typeof delta !== 'number') {
                             console.warn(
-                                `Delta '${command.args[1]}' is not a number, skipping modify command ${reason_str}`
+                                `Delta '${command.args[1]}' is not a number, skipping add command ${reason_str}`
                             );
                             continue;
                         }
-                        let newValue = valueToModify + delta;
+                        let newValue = valueToAdd + delta;
                         newValue = parseFloat(newValue.toPrecision(12)); // 避免浮点数精度误差
                         if (isValueWithDescription) {
                             oldValue[0] = newValue; // Update the first element
@@ -979,7 +979,7 @@ export async function updateVariables(
                         }
                         variable_modified = true;
                         console.info(
-                            `MODIFIED number '${path}' from '${valueToModify}' to '${newValue}' by delta '${delta}' ${reason_str}`
+                            `ADDED number '${path}' from '${valueToAdd}' to '${newValue}' by delta '${delta}' ${reason_str}`
                         );
                         await eventEmit(
                             variable_events.SINGLE_VARIABLE_UPDATED,
@@ -989,15 +989,15 @@ export async function updateVariables(
                             finalNewValue
                         );
                     } else {
-                        // 如果值不是可识别的类型（布尔、日期、数字），则跳过
+                        // 如果值不是可识别的类型（日期、数字），则跳过
                         console.warn(
-                            `Path '${path}' value is not a boolean, date, or number; skipping modify command ${reason_str}`
+                            `Path '${path}' value is not a date or number; skipping add command ${reason_str}`
                         );
                         continue;
                     }
                 } else {
                     console.warn(
-                        `Invalid number of arguments for _.modify on path '${path}' ${reason_str}`
+                        `Invalid number of arguments for _.add on path '${path}' ${reason_str}`
                     );
                     continue;
                 }

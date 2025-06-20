@@ -28,7 +28,6 @@
         "not dead"
     ],
     "private": true,
-
     "dependencies": {
         "corepack": "^0.32.0",
         "json5": "^2.2.3",
