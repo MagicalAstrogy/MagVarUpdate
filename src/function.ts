@@ -201,7 +201,7 @@ export function extractCommands(inputText: string): Command[] {
         const openParen = setStart + setMatch[0].length;
 
         // 使用 findMatchingCloseParen 查找匹配的闭括号，解决原正则匹配在嵌套结构（如 _.set('path', ['inner);'])）中提前结束的问题
-        let closeParen = findMatchingCloseParen(inputText, openParen);
+        const closeParen = findMatchingCloseParen(inputText, openParen);
         if (closeParen === -1) {
             // 找不到闭括号，说明命令格式错误
             // 跳过此无效命令，并从开括号后继续搜索，以防无限循环
@@ -373,19 +373,15 @@ export function parseParameters(paramsString: string): string[] {
     return params;
 }
 
-export async function getLastValidVariable(startNum: number): Promise<Record<string, any>> {
-    for (;;) {
-        if (startNum < 0) break;
-        var currentMsg = await getChatMessages(startNum);
-        if (currentMsg.length > 0) {
-            var variables = currentMsg[0].data;
-            if (_.has(variables, 'stat_data')) {
-                return variables;
-            }
-        }
-        --startNum;
-    }
-    return await getVariables();
+export async function getLastValidVariable(message_id: number): Promise<Record<string, any>> {
+    return (
+        structuredClone(
+            SillyTavern.chat
+                .slice(0, message_id + 1)
+                .map(chat_message => _.get(chat_message, ['variables', chat_message.swipe_id ?? 0]))
+                .findLast(variables => _.has(variables, 'stat_data'))
+        ) ?? getVariables()
+    );
 }
 
 function pathFix(path: string): string {
@@ -1035,65 +1031,36 @@ export async function updateVariables(
     return variable_modified || out_is_modifed;
 }
 
-export async function handleResponseMessage() {
-    const last_message = await getLastMessageId();
-    var last_chat_msg_list = await getChatMessages(last_message);
-    if (last_chat_msg_list.length > 0) {
-        var current_chat_msg = last_chat_msg_list[last_chat_msg_list.length - 1];
-        if (current_chat_msg.role != 'assistant') return;
-        var content_modified: boolean = false;
-        var current_message_content = current_chat_msg.message;
-
-        //更新变量状态，从最后一条之前的取，local优先级最低
-        const variables = await getLastValidVariable(last_message - 1);
-        if (!_.has(variables, 'stat_data')) {
-            console.error('cannot found stat_data.');
-            return;
-        }
-
-        // 使用正则解析 _.set(${path}, ${newvalue});//${reason} 格式的部分，并遍历结果
-        var variable_modified: boolean = false;
-        variable_modified =
-            variable_modified || (await updateVariables(current_message_content, variables));
-        if (variable_modified) {
-            //更新到当前聊天
-            await replaceVariables(variables);
-        }
-        //@ts-ignore
-        await setChatMessage({ data: variables }, last_message, { refresh: 'none' });
-
-        //如果是ai人物，则不插入
-        if (!current_message_content.includes('<CharView')) {
-            if (!current_message_content.includes('<StatusPlaceHolderImpl/>')) {
-                //替换状态为实际的显示内容
-                if (current_message_content.includes('<StatusPlaceHolder/>')) {
-                    //const display_str = "```\n" + YAML.stringify(out_status.stat_data, 2) + "```\n";
-                    //保证在输出完成后，才会渲染。
-                    const display_str = '<StatusPlaceHolderImpl/>'; //status_entry.content;
-                    //const display_str = "```\n" + vanilla_str + "```\n";
-                    current_message_content = current_message_content.replace(
-                        '<StatusPlaceHolder/>',
-                        display_str
-                    );
-
-                    content_modified = true;
-                } else {
-                    //如果没有，则固定插入到文本尾部
-                    const display_str = '<StatusPlaceHolderImpl/>'; //status_entry.content;
-                    current_message_content += '\n\n' + display_str;
-                    content_modified = true;
-                }
-            }
-        }
-
-        if (content_modified) {
-            console.info(`Replace content....`);
-            //@ts-ignore
-            await setChatMessage({ message: current_message_content }, last_message, {
-                refresh: 'display_and_render_current',
-            });
-        }
+export async function handleVariablesInMessage(message_id: number) {
+    const chat_message = getChatMessages(message_id).at(-1);
+    if (!chat_message) {
+        return;
     }
 
-    //eventRemoveListener(tavern_events.GENERATION_ENDED, hello);
+    const message_content = chat_message.message;
+    const variables = await getLastValidVariable(message_id);
+    if (!_.has(variables, 'stat_data')) {
+        console.error(`cannot found stat_data for ${message_id}`);
+        return;
+    }
+
+    const has_variable_modified = await updateVariables(message_content, variables);
+    if (has_variable_modified) {
+        await replaceVariables(variables, { type: 'chat' });
+    }
+    await replaceVariables(variables, { type: 'message', message_id: message_id });
+
+    if (chat_message.role !== 'user' && !message_content.includes('<StatusPlaceHolderImpl/>')) {
+        await setChatMessages(
+            [
+                {
+                    message_id: message_id,
+                    message: message_content + '\n\n<StatusPlaceHolderImpl/>',
+                },
+            ],
+            {
+                refresh: 'affected',
+            }
+        );
+    }
 }
