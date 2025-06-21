@@ -30,5 +30,8 @@ coverage/
 # Ignore Webpack cache
 .cache/
 
+# Ignore Visual Studio
+.vs/
+
 # Ignore OS generated files
 .DS_Store

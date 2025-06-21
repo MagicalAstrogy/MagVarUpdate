@@ -28,6 +28,15 @@
         "not dead"
     ],
     "private": true,
+    "dependencies": {
+        "corepack": "^0.32.0",
+        "json5": "^2.2.3",
+        "jszip": "^3.10.1",
+        "lodash": "^4.17.21",
+        "mathjs": "^12.4.1",
+        "moment": "^2.30.1",
+        "rxjs": "^7.8.2"
+    },
     "ts-node": {
         "compilerOptions": {
             "module": "CommonJS"
