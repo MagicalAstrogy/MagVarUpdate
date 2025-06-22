@@ -472,17 +472,20 @@ export async function updateVariables(
                     newValue = newValue.toISOString();
                 }
 
-                if (typeof oldValue === 'number' && newValue !== null) {
-                    // 仅当旧值为数字且新值不为 null 时，才强制转换为数字
-                    // 这允许将数字字段设置为 null (例如角色死亡后好感度变为 null)
-                    _.set(variables.stat_data, path, Number(newValue));
-                } else if (
+                if (
                     Array.isArray(oldValue) &&
-                    oldValue.length === 2
+                    oldValue.length === 2 &&
+                    typeof oldValue[1] === 'string' &&
+                    !Array.isArray(oldValue[0])
                 ) {
                     // 处理 ValueWithDescription<T> 类型，更新数组第一个元素
+                    // 仅当旧值为数字且新值不为 null 时，才强制转换为数字
+                    // 这允许将数字字段设置为 null (例如角色死亡后好感度变为 null)
                     oldValue[0] = typeof oldValue[0] === 'number' && newValue !== null ? Number(newValue) : newValue;
-                } else {
+                } else if (typeof oldValue === 'number' && newValue !== null) {
+                    _.set(variables.stat_data, path, Number(newValue));
+                }
+                else {
                     // 其他情况直接设置新值，支持任意类型
                     _.set(variables.stat_data, path, newValue);
                 }
