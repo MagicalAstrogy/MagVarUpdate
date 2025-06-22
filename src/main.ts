@@ -1,4 +1,3 @@
-// src/index.ts
 import { handleVariablesInMessage } from '@/function';
 import { initCheck } from '@/variable_init';
 
