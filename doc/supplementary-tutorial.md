@@ -4,7 +4,7 @@
 
 本次更新的核心目标是：**赋予你（和LLM）更强大、更灵活、更直观的变量操作能力，同时保证整个过程的绝对安全。**
 
-如果你需要一张示例卡，可以参考项目内example及example_src中的beta内容，或者直接来这里：https://discord.com/channels/1134557553011998840/1380780338539663360
+如果你需要一张示例卡，可以参考[此仓库](https://gitgud.io/KazePsi/file-storage/-/tree/master/mobius/example)中的内容，或者直接来[这里](https://discord.com/channels/1134557553011998840/1380780338539663360)。
 
 ## 1. 新增的变量操作命令
 
