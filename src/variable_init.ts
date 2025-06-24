@@ -47,6 +47,9 @@ export function generateSchema(data: any, oldSchemaNode?: any): any {
             extensible: oldSchemaNode?.extensible === true || typedData.$meta?.extensible === true,
         };
 
+        // 暂存父节点的 $meta，以便在循环中使用
+        const parentMeta = typedData.$meta;
+
         // 从 $meta 中读取信息后，将其从数据中移除，避免污染
         if (typedData.$meta) {
             delete typedData.$meta;
@@ -55,26 +58,20 @@ export function generateSchema(data: any, oldSchemaNode?: any): any {
         for (const key in data) {
             const oldChildNode = oldSchemaNode?.properties?.[key];
             const childSchema = generateSchema(typedData[key], oldChildNode);
-            const childData = typedData[key] as Record<string, any>;
 
             // 一个属性是否必需？
 
-            // 1. 默认值
-            let isRequired = true;
+            // 1. 默认值: 如果父节点可扩展，子节点默认为可选；否则为必需。
+            let isRequired = !schemaNode.extensible;
 
-            // 2. 检查父节点是否是 extensible
-            if (schemaNode.extensible) {
-                // 如果父节点可扩展，则子节点默认变为可选
-                isRequired = false;
-            }
-
-            // 3. 检查子节点自身是否有 'required: true' 的覆盖元数据
-            //    (需要先判断 childData 是否为对象)
-            if (_.isObject(childData) && !Array.isArray(childData) && childData.$meta?.required === true) {
+            // 2. 覆盖规则: 检查父元数据中的 'required' 数组。
+            //    如果父节点的 $meta.required 是一个数组，并且当前 key 在这个数组里，
+            //    则无论默认值是什么，都强制覆盖为必需。
+            if (Array.isArray(parentMeta?.required) && parentMeta.required.includes(key)) {
                 isRequired = true;
             }
 
-            // 4. 检查旧 schema 的设置，作为最后的参考
+            // 3. 检查旧 schema 的设置，作为最后的参考
             if (oldChildNode?.required === false) {
                 // 如果旧 schema 明确说这个是可选的，那么以这个为准
                 isRequired = false;
