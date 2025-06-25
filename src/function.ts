@@ -22,8 +22,8 @@ export function parseCommandValue(valStr: string): any {
     if (trimmed === 'undefined') return undefined;
 
     try {
-        // 如果字符串能被 YAML.parse / JSON.parse 解析，说明它是一个标准格式，直接返回解析结果
-        return YAML.parse(trimmed);
+        // 如果字符串能被 JSON.parse 解析，说明它是一个标准格式，直接返回解析结果
+        return JSON.parse(trimmed);
     } catch (e) {
         // Handle JavaScript array or object literals
         if (
@@ -88,6 +88,12 @@ export function parseCommandValue(valStr: string): any {
         }
     }
     */
+
+    try {
+        // 尝试 YAML.parse
+        return YAML.parse(trimmed);
+    } catch (e) {
+    }
 
     // 最终，返回这个去除了首尾引号的字符串
     return trimQuotesAndBackslashes(valStr);
