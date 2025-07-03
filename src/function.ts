@@ -1032,15 +1032,15 @@ export async function handleVariablesInMessage(message_id: number) {
 
 
 export async function handleVariablesInCallback(message_content: string, variable_info : VariableData) {
-    if (variable_info.oldVariables === undefined)
+    if (variable_info.old_variables === undefined)
     {
         return;
     }
-    variable_info.newVariables = _.cloneDeep(variable_info.oldVariables);
-    const variables = variable_info.newVariables;
+    variable_info.new_variables = _.cloneDeep(variable_info.old_variables);
+    const variables = variable_info.new_variables;
 
     const modified = await updateVariables(message_content, variables);
     //如果没有修改，则不产生 newVariable
     if (!modified)
-        delete variable_info.newVariables;
+        delete variable_info.new_variables;
 }

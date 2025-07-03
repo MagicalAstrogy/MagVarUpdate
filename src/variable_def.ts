@@ -13,11 +13,11 @@ export type GameData = {
 
 export interface VariableData
 {
-    oldVariables: GameData,
+    old_variables: GameData,
     /**
      * 输出变量，仅当实际产生了变量变更的场合，会产生 newVariables
      */
-    newVariables?: GameData
+    new_variables?: GameData
 }
 
 export const variable_events = {

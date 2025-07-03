@@ -203,7 +203,7 @@ describe('trimQuotesAndBackslashes', () => {
 describe('invokeVariableTest', () => {
     test('should update variable value', async () => {
         const inputData : VariableData = {
-            oldVariables: {
+            old_variables: {
                 initialized_lorebooks: {},
                 stat_data: {"喵呜": 20},
                 display_data: {},
@@ -212,13 +212,13 @@ describe('invokeVariableTest', () => {
             }
         };
         await handleVariablesInCallback("_.set('喵呜', 114);//测试", inputData);
-        expect(inputData.newVariables).not.toBeUndefined();
-        expect(inputData.newVariables!.stat_data.喵呜).toBe(114);
-        expect(inputData.oldVariables.stat_data.喵呜).toBe(20);
+        expect(inputData.new_variables).not.toBeUndefined();
+        expect(inputData.new_variables!.stat_data.喵呜).toBe(114);
+        expect(inputData.old_variables.stat_data.喵呜).toBe(20);
     });
     test('expect not updated', async () => {
         const inputData : VariableData = {
-            oldVariables: {
+            old_variables: {
                 initialized_lorebooks: {},
                 stat_data: {"喵呜": 20},
                 display_data: {},
@@ -227,6 +227,6 @@ describe('invokeVariableTest', () => {
             }
         };
         await handleVariablesInCallback("这是一个没有更新的文本。明天见是最好的预言。", inputData);
-        expect(inputData.newVariables).toBeUndefined();
+        expect(inputData.new_variables).toBeUndefined();
     });
 });
