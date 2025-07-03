@@ -209,18 +209,11 @@ describe('invokeVariableTest', () => {
                 display_data: {},
                 delta_data: {},
                 schema: {}
-            },
-            newVariable: {
-                initialized_lorebooks: {},
-                stat_data: {},
-                display_data: {},
-                delta_data: {},
-                schema: {}
-            },
-            modified: false
+            }
         };
         await handleVariablesInCallback("_.set('喵呜', 114);//测试", inputData);
-        expect(inputData.newVariable.stat_data.喵呜).toBe(114);
+        expect(inputData.newVariable).not.toBeUndefined();
+        expect(inputData.newVariable!.stat_data.喵呜).toBe(114);
         expect(inputData.oldVariable.stat_data.喵呜).toBe(20);
         expect(inputData.modified).toBe(true);
     });

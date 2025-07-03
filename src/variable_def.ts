@@ -14,8 +14,8 @@ export type GameData = {
 export interface VariableData
 {
     oldVariable: GameData,
-    newVariable: GameData,
-    modified: boolean
+    newVariable?: GameData,
+    modified?: boolean
 }
 
 export const variable_events = {
