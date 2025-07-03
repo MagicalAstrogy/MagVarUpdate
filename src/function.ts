@@ -1031,16 +1031,16 @@ export async function handleVariablesInMessage(message_id: number) {
 
 
 
-export async function handleVariablesInCallback(messageContent: string, variableInfo : VariableData) {
-    if (variableInfo.oldVariables === undefined)
+export async function handleVariablesInCallback(message_content: string, variable_info : VariableData) {
+    if (variable_info.oldVariables === undefined)
     {
         return;
     }
-    variableInfo.newVariables = _.cloneDeep(variableInfo.oldVariables);
-    const variables = variableInfo.newVariables;
+    variable_info.newVariables = _.cloneDeep(variable_info.oldVariables);
+    const variables = variable_info.newVariables;
 
-    const modified = await updateVariables(messageContent, variables);
+    const modified = await updateVariables(message_content, variables);
     //如果没有修改，则不产生 newVariable
     if (!modified)
-        delete variableInfo.newVariables;
+        delete variable_info.newVariables;
 }
