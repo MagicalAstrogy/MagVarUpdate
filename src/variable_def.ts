@@ -39,5 +39,5 @@ export type ExtendedListenerType = {
             out_is_updated: boolean
     ) => void;
     [variable_events.VARIABLE_UPDATE_ENDED]: (variables: GameData, out_is_updated: boolean) => void;
-    [variable_events.INVOKE_MVU_PROCESS]: (message_content: string, variableInfo : VariableData) => void;
+    [variable_events.INVOKE_MVU_PROCESS]: (message_content: string, variable_info : VariableData) => void;
 };
