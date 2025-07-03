@@ -20,3 +20,12 @@ $(window).on('unload', () => {
     eventRemoveListener(tavern_events.MESSAGE_RECEIVED, handleVariablesInMessage);
     eventRemoveListener(variable_events.INVOKE_MVU_PROCESS, handleVariablesInCallback);
 });
+
+eventOnButton('重新处理变量', async function () {
+    const last_msg = getLastMessageId();
+    if (last_msg < 0) return;
+    if (SillyTavern.chat.length === 0) return;
+    await deleteVariable('stat_data', { type: 'message', message_id: last_msg });
+    //重新处理变量
+    await handleVariablesInMessage(getLastMessageId());
+});
