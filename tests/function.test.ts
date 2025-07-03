@@ -1,4 +1,5 @@
-import { parseParameters, trimQuotesAndBackslashes } from '../src/function';
+import {handleVariablesInCallback, parseParameters, trimQuotesAndBackslashes} from '@/function';
+import {VariableData} from "@/variable_def";
 
 describe('parseParameters', () => {
     describe('基本参数解析', () => {
@@ -196,5 +197,29 @@ describe('trimQuotesAndBackslashes', () => {
 
     test('处理仅空格', () => {
         expect(trimQuotesAndBackslashes('   ')).toBe('');
+    });
+});
+
+describe('invokeVariableTest', () => {
+    test('should update variable value', async () => {
+        const inputData : VariableData = {
+            oldVariable: {
+                initialized_lorebooks: {},
+                stat_data: {"喵呜": 20},
+                display_data: {},
+                delta_data: {},
+                schema: {}
+            },
+            newVariable: {
+                initialized_lorebooks: {},
+                stat_data: {},
+                display_data: {},
+                delta_data: {},
+                schema: {}
+            },
+            modified: false
+        };
+        await handleVariablesInCallback("_.set('喵呜', 114);//测试", inputData);
+        expect(inputData.newVariable.stat_data.喵呜).toBe(114);
     });
 });

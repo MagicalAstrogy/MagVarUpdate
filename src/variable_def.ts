@@ -11,10 +11,18 @@ export type GameData = {
     schema: Record<string, any>;
 };
 
+export interface VariableData
+{
+    oldVariable: GameData,
+    newVariable: GameData,
+    modified: boolean
+}
+
 export const variable_events = {
     SINGLE_VARIABLE_UPDATED: 'mag_variable_updated',
     VARIABLE_UPDATE_ENDED: 'mag_variable_update_ended',
     VARIABLE_UPDATE_STARTED: 'mag_variable_update_started',
+    INVOKE_MVU_PROCESS: 'mag_invoke_mvu'
 } as const;
 
 export type ExtendedListenerType = {
@@ -29,4 +37,5 @@ export type ExtendedListenerType = {
             out_is_updated: boolean
     ) => void;
     [variable_events.VARIABLE_UPDATE_ENDED]: (variables: GameData, out_is_updated: boolean) => void;
+    [variable_events.INVOKE_MVU_PROCESS]: (message_content: string, variableInfo : VariableData) => void;
 };
