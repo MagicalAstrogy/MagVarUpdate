@@ -23,7 +23,7 @@ $(window).on('unload', () => {
 
 eventOnButton('重新处理变量', async function () {
     const last_msg = getLastMessageId();
-    if (last_msg < 0) return;
+    if (last_msg < 1) return;
     if (SillyTavern.chat.length === 0) return;
     await deleteVariable('stat_data', { type: 'message', message_id: last_msg });
     //重新处理变量
