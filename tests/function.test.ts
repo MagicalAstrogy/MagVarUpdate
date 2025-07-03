@@ -1,4 +1,5 @@
-import { parseParameters, trimQuotesAndBackslashes } from '../src/function';
+import {handleVariablesInCallback, parseParameters, trimQuotesAndBackslashes} from '@/function';
+import {VariableData} from "@/variable_def";
 
 describe('parseParameters', () => {
     describe('基本参数解析', () => {
@@ -196,5 +197,34 @@ describe('trimQuotesAndBackslashes', () => {
 
     test('处理仅空格', () => {
         expect(trimQuotesAndBackslashes('   ')).toBe('');
+    });
+});
+
+describe('invokeVariableTest', () => {
+    test('should update variable value', async () => {
+        const inputData : VariableData = {
+            old_variables: {
+                initialized_lorebooks: [],
+                stat_data: {"喵呜": 20},
+                display_data: {},
+                delta_data: {}
+            }
+        };
+        await handleVariablesInCallback("_.set('喵呜', 114);//测试", inputData);
+        expect(inputData.new_variables).not.toBeUndefined();
+        expect(inputData.new_variables!.stat_data.喵呜).toBe(114);
+        expect(inputData.old_variables.stat_data.喵呜).toBe(20);
+    });
+    test('expect not updated', async () => {
+        const inputData : VariableData = {
+            old_variables: {
+                initialized_lorebooks: [],
+                stat_data: {"喵呜": 20},
+                display_data: {},
+                delta_data: {}
+            }
+        };
+        await handleVariablesInCallback("这是一个没有更新的文本。明天见是最好的预言。", inputData);
+        expect(inputData.new_variables).toBeUndefined();
     });
 });

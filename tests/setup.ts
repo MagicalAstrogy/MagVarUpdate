@@ -7,6 +7,11 @@ import * as _ from 'lodash';
 // Mock window object
 (globalThis as any).window = globalThis;
 
+// Mock TavernHelper
+(globalThis as any).window.TavernHelper = {
+  substitudeMacros: jest.fn(input => input),
+};
+
 // Mock tavern events
 (globalThis as any).tavern_events = {
   GENERATION_ENDED: 'GENERATION_ENDED',
@@ -24,3 +29,4 @@ import * as _ from 'lodash';
 (globalThis as any).setChatMessage = jest.fn();
 (globalThis as any).getCurrentCharPrimaryLorebook = jest.fn();
 (globalThis as any).getAvailableLorebooks = jest.fn();
+(globalThis as any).substitudeMacros = jest.fn(input => input);

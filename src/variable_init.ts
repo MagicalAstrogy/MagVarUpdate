@@ -1,6 +1,6 @@
 // 整体游戏数据类型
 import { updateVariables } from '@/function';
-import { GameData } from '@/main';
+import {GameData} from "@/variable_def";
 
 type LorebookEntry = {
     content: string;
@@ -9,7 +9,7 @@ type LorebookEntry = {
 
 export async function initCheck() {
     //generation_started 的最新一条是正在生成的那条。
-    var last_chat_msg: ChatMessageSwiped[] = [];
+    let last_chat_msg: ChatMessageSwiped[] = [];
     try {
         (await getChatMessages(-2, {
             role: 'assistant',
@@ -22,7 +22,7 @@ export async function initCheck() {
         last_chat_msg = [];
     }
     if (last_chat_msg.length <= 0) {
-        var first_msg = await getChatMessages(0, {
+        const first_msg = await getChatMessages(0, {
             include_swipes: true,
         });
         if (first_msg && first_msg.length > 0) {
@@ -32,12 +32,12 @@ export async function initCheck() {
             return;
         }
     }
-    var last_msg = last_chat_msg[0];
+    const last_msg = last_chat_msg[0];
     //检查最近一条消息的当前swipe
-    var variables = last_msg.swipes_data[last_msg.swipe_id] as GameData & Record<string, any>;
-    var lorebook_settings = await getLorebookSettings();
-    var enabled_lorebook_list = lorebook_settings.selected_global_lorebooks;
-    var char_lorebook = await getCurrentCharPrimaryLorebook();
+    let variables = last_msg.swipes_data[last_msg.swipe_id] as GameData & Record<string, any>;
+    const lorebook_settings = await getLorebookSettings();
+    const enabled_lorebook_list = lorebook_settings.selected_global_lorebooks;
+    const char_lorebook = await getCurrentCharPrimaryLorebook();
     if (char_lorebook !== null) {
         enabled_lorebook_list.push(char_lorebook);
     }
@@ -51,11 +51,11 @@ export async function initCheck() {
         variables.stat_data = {};
     }
 
-    var is_updated = false;
+    let is_updated = false;
     for (const current_lorebook of enabled_lorebook_list) {
         if (variables.initialized_lorebooks.includes(current_lorebook)) continue;
         variables.initialized_lorebooks.push(current_lorebook);
-        var init_entries = (await getLorebookEntries(current_lorebook)) as LorebookEntry[];
+        const init_entries = (await getLorebookEntries(current_lorebook)) as LorebookEntry[];
 
         for (const entry of init_entries) {
             if (entry.comment?.toLowerCase().includes('[initvar]')) {
@@ -81,8 +81,8 @@ export async function initCheck() {
     console.info(`Init chat variables.`);
     await insertOrAssignVariables(variables);
 
-    for (var i = 0; i < last_msg.swipes.length; i++) {
-        var current_swipe_data = _.cloneDeep(variables);
+    for (let i = 0; i < last_msg.swipes.length; i++) {
+        const current_swipe_data = _.cloneDeep(variables);
         await updateVariables(substitudeMacros(last_msg.swipes[i]), current_swipe_data);
         //新版本这个接口给deprecated了，但是新版本的接口不好用，先这样
         //@ts-ignore

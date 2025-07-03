@@ -1,4 +1,5 @@
-import { variable_events } from '@/main';
+import {variable_events, VariableData} from "@/variable_def";
+
 
 export function trimQuotesAndBackslashes(str: string): string {
     if (!_.isString(str)) return str;
@@ -404,4 +405,19 @@ export async function handleVariablesInMessage(message_id: number) {
             }
         );
     }
+}
+
+
+export async function handleVariablesInCallback(message_content: string, variable_info : VariableData) {
+    if (variable_info.old_variables === undefined)
+    {
+        return;
+    }
+    variable_info.new_variables = _.cloneDeep(variable_info.old_variables);
+    const variables = variable_info.new_variables;
+
+    const modified = await updateVariables(message_content, variables);
+    //如果没有修改，则不产生 newVariable
+    if (!modified)
+        delete variable_info.new_variables;
 }
