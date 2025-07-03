@@ -18,4 +18,5 @@ $(window).on('unload', () => {
     eventRemoveListener(tavern_events.MESSAGE_SENT, initCheck);
     eventRemoveListener(tavern_events.MESSAGE_SENT, handleVariablesInMessage);
     eventRemoveListener(tavern_events.MESSAGE_RECEIVED, handleVariablesInMessage);
+    eventRemoveListener(variable_events.INVOKE_MVU_PROCESS, handleVariablesInCallback);
 });
