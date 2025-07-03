@@ -1031,7 +1031,7 @@ export async function handleVariablesInMessage(message_id: number) {
 
 
 
-export async function handleVariablesInCallback(message_content: string, variableInfo : VariableData) {
+export async function handleVariablesInCallback(messageContent: string, variableInfo : VariableData) {
     if (variableInfo.oldVariable === undefined)
     {
         variableInfo.modified = false;
@@ -1040,5 +1040,5 @@ export async function handleVariablesInCallback(message_content: string, variabl
     variableInfo.newVariable = _.cloneDeep(variableInfo.oldVariable);
     const variables = variableInfo.newVariable;
 
-    variableInfo.modified = await updateVariables(message_content, variables);
+    variableInfo.modified = await updateVariables(messageContent, variables);
 }
