@@ -21,17 +21,15 @@ $(window).on('unload', () => {
     eventRemoveListener(variable_events.INVOKE_MVU_PROCESS, handleVariablesInCallback);
 });
 
-eventOnButton('重新处理变量', async function() {
+eventOnButton('重新处理变量', async function () {
     const last_msg = getLastMessageId();
-    if (last_msg < 0)
-        return;
-    if (SillyTavern.chat.length === 0)
-        return;
+    if (last_msg < 0) return;
+    if (SillyTavern.chat.length === 0) return;
     {
         const last_msg_data = SillyTavern.chat[last_msg];
-        if (last_msg_data.variables?.length??0 > 0) {
+        if (last_msg_data.variables?.length ?? 0 > 0) {
             //代表之前最后的楼层可能有变量，需要进行清理。
-            if (_.has(last_msg_data.variables![last_msg_data.swipe_id??0], 'stat_data')) {
+            if (_.has(last_msg_data.variables![last_msg_data.swipe_id ?? 0], 'stat_data')) {
                 //清空楼层当前 swipe 的数据。
                 await replaceVariables({}, { type: 'message', message_id: last_msg });
             }
