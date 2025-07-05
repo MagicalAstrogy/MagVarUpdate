@@ -693,7 +693,8 @@ export async function updateVariables(
                     );
                     continue;
                 }
-                if (!_.has(variables.stat_data, containerPath)) {
+                // 只有当容器路径不是根路径（即不为空）时，才检查其是否存在
+                if (containerPath !== '' && !_.has(variables.stat_data, containerPath)) {
                     console.warn(
                         `Cannot remove from non-existent path '${containerPath}'. ${reason_str}`
                     );
