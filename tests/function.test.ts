@@ -208,7 +208,8 @@ describe('invokeVariableTest', () => {
                 stat_data: {"喵呜": 20},
                 display_data: {},
                 delta_data: {},
-                schema: {}
+                schema: {},
+                error_data: {}
             }
         };
         await handleVariablesInCallback("_.set('喵呜', 114);//测试", inputData);
@@ -223,10 +224,68 @@ describe('invokeVariableTest', () => {
                 stat_data: {"喵呜": 20},
                 display_data: {},
                 delta_data: {},
-                schema: {}
+                schema: {},
+                error_data: {}
             }
         };
         await handleVariablesInCallback("这是一个没有更新的文本。明天见是最好的预言。", inputData);
         expect(inputData.new_variables).toBeUndefined();
+    });
+
+});
+
+describe('errorDataTest', () => {
+    test('should record an error for invalid commands', async () => {
+        const inputData: VariableData = {
+            old_variables: {
+                initialized_lorebooks: {},
+                stat_data: { "health": 100 },
+                display_data: {},
+                delta_data: {},
+                schema: {},
+                error_data: {} // 初期状態は空のオブジェクト
+            }
+        };
+        // 存在しないパスへの set コマンド
+        await handleVariablesInCallback("_.set('nonexistent.path', 123);//無効なパス", inputData);
+        
+        // expect(inputData.new_variables).not.toBeUndefined();
+        // error_data オブジェクトにキーが1つ存在することを確認
+        const errorKeys = Object.keys(inputData.new_variables!.error_data);
+        expect(errorKeys).toHaveLength(1);
+        const error = inputData.new_variables!.error_data[errorKeys[0]];
+        // エラーオブジェクトの内容を確認
+        expect(error.type).toBe('InvalidPath');
+        expect(error.message).toContain("'nonexistent.path'");
+        expect(error.command).toContain("_.set('nonexistent.path', 123)");
+    });
+
+    test('should record an error for invalid commands 2', async () => {
+        const inputData: VariableData = {
+            old_variables: {
+                initialized_lorebooks: {},
+                stat_data: { "health": 100 },
+                display_data: {},
+                delta_data: {},
+                schema: {},
+                error_data: {} // 初期状態は空のオブジェクト
+            }
+        };
+        // 存在しないパスへの assign コマンド
+        const commandStr = "_.assign('nonexistent', 'path', { 'abc': 111 });//無効なパス";
+        await handleVariablesInCallback(commandStr, inputData);
+        
+        // new_variables が存在することをまず確認
+        expect(inputData.new_variables).not.toBeUndefined();
+
+        // error_data オブジェクトにキーが1つ存在することを確認
+        const errorKeys = Object.keys(inputData.new_variables!.error_data);
+        expect(errorKeys).toHaveLength(1);
+        const error = inputData.new_variables!.error_data[errorKeys[0]];
+
+        // エラーオブジェクトの内容を確認
+        expect(error.type).toBe('InvalidPath');
+        expect(error.message).toContain("'nonexistent'");
+        expect(error.command).toBe(commandStr);
     });
 });

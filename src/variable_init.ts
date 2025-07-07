@@ -50,6 +50,7 @@ export async function initCheck() {
             stat_data: {},
             delta_data: {},
             schema: {},
+            error_data: [],
         };
     }
     if (!_.has(variables, 'initialized_lorebooks')) {

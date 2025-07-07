@@ -172,10 +172,12 @@ describe('extractCommands', () => {
             expect(result).toHaveLength(0);
         });
 
-        test('处理参数不足的情况', () => {
+        test('处理参数不足的情况 - extractCommands应该能解析，由updateVariables处理错误', () => {
             const input = `_.set('name');//只有一个参数`;
             const result = extractCommands(input);
-            expect(result).toHaveLength(0);
+            expect(result).toHaveLength(1);
+            expect(result[0].command).toBe('set');
+            expect(result[0].args).toEqual(["'name'"]);
         });
     });
 
@@ -339,11 +341,13 @@ describe('Add 命令测试', () => {
         expect(parseCommandValue(cmd.args[1])).toBe(250);
     });
 
-    test('无效参数数量的 add 调用', () => {
+    test('无效参数数量的 add 调用 - extractCommands应该能解析，由updateVariables处理错误', () => {
         const input = `_.add('path', 10, 20);//参数过多`;
         const result = extractCommands(input);
 
-        expect(result).toHaveLength(0); // 无效命令应被过滤
+        expect(result).toHaveLength(1); // 无效命令不应被过滤，而是被解析
+        expect(result[0].command).toBe('add');
+        expect(result[0].args).toHaveLength(3);
     });
 
     test('缺少分号的 add 调用', () => {
