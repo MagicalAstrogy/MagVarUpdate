@@ -8,23 +8,36 @@ type LorebookEntry = {
     comment?: string;
 };
 
+/**
+ * 在每次生成开始时，精确地重置与MagVarUpdate相关的上下文（error_data, delta_data），
+ * 而不影响其他聊天级变量。
+ */
+export async function resetMagVarUpdateContext() {
+    const msgId = getLastMessageId();
+    if (msgId < 0) return; // 首次生成，无历史可重置
+
+    const lastStableVars = await getLastValidVariable(msgId);
+    if (!lastStableVars) return;
+
+    // 仅提取我们需要重置的字段。如果字段不存在，则默认为空对象。
+    const contextUpdate = {
+        error_data: _.cloneDeep(lastStableVars.error_data) || {},
+        delta_data: _.cloneDeep(lastStableVars.delta_data) || {},
+    };
+
+    // 使用非破坏性的 `updateVariablesWith` 进行合并更新，而不是 `replaceVariables`
+    await updateVariablesWith(currentChatVars => {
+        // 返回一个合并了新上下文和现有变量的新对象
+        return { ...currentChatVars, ...contextUpdate };
+    }, { type: 'chat' });
+}
 
 
 export async function initCheck() {
     {
         // 本函数尝试解决 error_data, delta_data 的同步问题，特此告知。
         // 目标：解决 swipe 一次仍然沿用上一个当前楼层swipe的报错信息 的问题，使得swipe一次之后，沿用的是非本楼层的error_data状态与delta_data的上一次MagVarUpdate更新后的状态。
-        const current_generating_msg_id = getLastMessageId();
-        // 如果这是第一次生成 (id < 0), 则无需操作。
-        if (current_generating_msg_id < 0) {} else {
-            // 调用已修正的 getLastValidVariable，它能正确地找到上一个稳定消息的状态。
-            const last_stable_variables = await getLastValidVariable(current_generating_msg_id);
-            if (last_stable_variables && _.has(last_stable_variables, 'stat_data')) {
-                // 强制用上一个稳定状态覆盖 chat-level 变量。
-                // 这样，即将构建的 prompt 中的 {{get_chat_variable::...}} 就会读取到正确的上下文。
-                await replaceVariables(_.cloneDeep(last_stable_variables), { type: 'chat' });
-            }
-        }
+        await resetMagVarUpdateContext();
     }
     //generation_started 的最新一条是正在生成的那条。
     let last_chat_msg: ChatMessageSwiped[] = [];
