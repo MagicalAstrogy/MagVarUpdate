@@ -1,4 +1,4 @@
-import {variable_events, VariableData} from '@/variable_def';
+import {variable_events, VariableData, ProcessingError, ErrorType} from '@/variable_def';
 import * as math from 'mathjs';
 
 import {getSchemaForPath, reconcileAndApplySchema} from "@/schema";
@@ -76,7 +76,7 @@ export function parseCommandValue(valStr: string): any {
         // 那么它就是一个普通的未加引号的字符串。
     }
 
-    // 实验性功能，暂不启用
+    // 实验性功能，暂不启用 
     // 尝试将字符串解析为日期对象，用于传入_.add直接以毫秒数更新时间，如 `_.add('当前时间', 10 * 60 * 1000);`
     // 此检查用于识别日期字符串（例如 "2024-01-01T12:00:00Z"）
     // `isNaN(Number(trimmed))`确保纯数字字符串（如 "12345"）不会被错误地解析为日期
@@ -127,7 +127,8 @@ interface Command {
 }
 
 /**
- * 从输入文本中提取所有 _.set() 调用
+ * 从输入文本中提取所有 `_.<command>(...)` 调用。
+ * 此函数**仅负责结构化解析**，将参数有效性验证移交 `updateVariables` 函数统一处理，以便进行结构化错误报告。
  *
  * 问题背景：
  * 原本使用正则表达式 /_\.set\(([\s\S]*?)\);/ 来匹配，但这种非贪婪匹配会在遇到
@@ -145,8 +146,8 @@ export function extractCommands(inputText: string): Command[] {
 
     while (i < inputText.length) {
         // 循环处理整个输入文本，直到找不到更多命令
-        // 使用正则匹配 _.set(、_.assign(、_.remove( 或 _.add(，重构后支持多种命令
-        const setMatch = inputText.substring(i).match(/_\.(set|assign|remove|add)\(/);
+        // 使用正则匹配 _.set(、_.assign(、_.remove( 、 _.add( 或 _.insert(，重构后支持多种命令
+        const setMatch = inputText.substring(i).match(/_\.(set|assign|remove|add|insert)\(/);
         if (!setMatch || setMatch.index === undefined) {
             // 没有找到匹配的命令，退出循环，防止无限循环
             break;
@@ -192,31 +193,18 @@ export function extractCommands(inputText: string): Command[] {
         // 使用 parseParameters 解析参数，支持嵌套结构（如数组、对象）
         const params = parseParameters(paramsString);
 
-        // 验证命令有效性，根据命令类型检查参数数量，防止无效命令进入结果
-        let isValid = false;
-        if (commandType === 'set' && params.length >= 2)
-            isValid = true; // _.set 至少需要路径和值
-        else if (commandType === 'assign' && params.length >= 2)
-            isValid = true; // _.assign 支持两种参数格式
-        else if (commandType === 'insert' && params.length >= 2)
-            isValid = true; // _.insert 支持两种参数格式
-        else if (commandType === 'remove' && params.length >= 1)
-            isValid = true; // _.remove 至少需要路径
-        else if (commandType === 'add' && (/*params.length === 1 || */params.length === 2))
-            isValid = true; // _.add 需要1个或2个参数
-
-        if (isValid) {
-            // 命令有效，添加到结果列表，包含命令类型、完整匹配、参数和注释
-            results.push({ command: commandType, fullMatch, args: params, reason: comment });
-        }
+        // 直接将解析出的命令（无论参数数量是否“正确”）添加到结果中
+        // 参数数量的验证将移至 updateVariables 中进行，以便能够报告 ArgumentError
+        results.push({ command: commandType, fullMatch, args: params, reason: comment });
 
         // 更新搜索索引到命令末尾，继续查找下一个命令
         i = endPos;
     }
 
-    // 返回所有解析出的有效命令
+    // 返回所有解析出的命令
     return results;
 }
+
 
 /**
  * 辅助函数：找到匹配的闭括号
@@ -334,14 +322,29 @@ export function parseParameters(paramsString: string): string[] {
 }
 
 export async function getLastValidVariable(message_id: number): Promise<Record<string, any>> {
-    return (
-        structuredClone(
-            SillyTavern.chat
-                .slice(0, message_id + 1)
-                .map(chat_message => _.get(chat_message, ['variables', chat_message.swipe_id ?? 0]))
-                .findLast(variables => _.has(variables, 'stat_data'))
-        ) ?? getVariables()
-    );
+    // 步骤 1: 优先在当前消息之前的历史记录中查找。
+    // 这是处理所有后续消息（message_id > 0）的正确逻辑，能彻底解决因 swipe 导致的基线错误问题。
+    const lastVariableInHistory = SillyTavern.chat
+        .slice(0, message_id)
+        .map(chat_message => _.get(chat_message, ['variables', chat_message.swipe_id ?? 0]))
+        .findLast(variables => _.has(variables, 'stat_data'));
+    if (lastVariableInHistory) {
+        return structuredClone(lastVariableInHistory);
+    }
+    // 步骤 2: 如果历史记录中没有找到变量，则判定为初始消息 (message_id = 0) 的特殊情况。
+    // 此时，initCheck 函数已将正确的初始状态（包含 lorebook 数据）保存在了当前消息上。
+    // 我们必须从当前消息中获取这个状态作为基线，以避免丢失初始化数据。
+    const currentMessage = SillyTavern.chat[message_id];
+    if (currentMessage) {
+        const variablesOnCurrentMessage = _.get(currentMessage, ['variables', currentMessage.swipe_id ?? 0]);
+        if (variablesOnCurrentMessage && _.has(variablesOnCurrentMessage, 'stat_data')) {
+            // 注意：此处不应深拷贝，因为这是 updateVariables 的直接输入，
+            // 它是对同一个消息数据的就地修改。
+            return variablesOnCurrentMessage;
+        }
+    }
+    // 步骤 3: 作为最终的、不太可能发生的后备方案。
+    return getVariables();
 }
 
 function pathFix(path: string): string {
@@ -378,11 +381,62 @@ function pathFix(path: string): string {
     return segments.join('.');
 }
 
-// 重构 updateVariables 以处理更多命令
+/**
+ * 中心化的错误报告函数。
+ * @param variables - 当前的变量状态对象，用于写入 error_data。
+ * @param command - 导致错误的完整命令对象。
+ * @param details - 包含错误类型、级别、消息和上下文的结构化对象。
+ */
+function reportError(
+    variables: any,
+    command: Command,
+    details: {
+        type: ErrorType;
+        level: 'warn' | 'error';
+        message: string;
+        context?: any;
+    }
+): void {
+    const path = trimQuotesAndBackslashes(command.args[0] ?? '');
+    const error: ProcessingError = {
+        type: details.type,
+        level: details.level,
+        path: path,
+        message: details.message,
+        command: command.fullMatch,
+        context: details.context,
+    };
+
+    // 使用完整的命令字符串作为键，可以自然地对重复的错误命令进行去重，
+    // 避免在 error_data 中产生大量冗余条目，这对于后续的 LLM 反馈至关重要。
+    variables.error_data[command.fullMatch] = error;
+
+    // 仍然在控制台打印，便于实时调试。
+    const reason_str = command.reason ? `(${command.reason})` : '';
+    console[details.level](`${error.type} on path '${path}': ${error.message} ${reason_str}`, { command: error.command, context: error.context });
+}
+
+// 声明式命令定义注册表
+const COMMAND_DEFINITIONS: Record<string, any> = {
+    'set':    { minArgs: 2 },
+    'assign': { minArgs: 2 },
+    'remove': { minArgs: 1 },
+    'add':    { requiredArgs: 2 },
+    'insert': { aliasFor: 'assign' },
+};
+
+
+/**
+ * 更新 state_data 中的变量
+ * @param current_message_content 当前消息的内容
+ * @param variables 变量对象，包含 stat_data
+ * @returns 一个 Promise，解析为一个对象，包含 modified (布尔值) 和 errorAdded (布尔值)，
+ *          指示变量是否被修改或是否添加了新的错误。
+ */
 export async function updateVariables(
     current_message_content: string,
     variables: any
-): Promise<boolean> {
+): Promise<{ modified: boolean; errorAdded: boolean; }> {
     const out_is_modifed = false;
     // 触发变量更新开始事件，通知外部系统
     await eventEmit(variable_events.VARIABLE_UPDATE_STARTED, variables, out_is_modifed);
@@ -390,18 +444,63 @@ export async function updateVariables(
     const out_status: Record<string, any> = _.cloneDeep(variables);
     // 初始化增量状态对象，记录变化详情
     const delta_status: Record<string, any> = { stat_data: {} };
-
-    // 重构新增：统一处理宏替换，确保命令中的宏（如 ${variable}）被替换，提升一致性
+    // 确保 error_data 存在
+    variables.error_data = {};
+    // 统一处理宏替换，确保命令中的宏（如 ${variable}）被替换，提升一致性
     const processed_message_content = substitudeMacros(current_message_content);
-
     // 使用重构后的 extractCommands 提取所有命令
     const commands = extractCommands(processed_message_content);
     let variable_modified = false;
-
     const schema = variables.schema; // 获取 schema
 
-    for (const command of commands) {
-        // 遍历所有命令，逐一处理
+    for (const original_command of commands) {
+        let command = { ...original_command };
+        // 1. 验证和别名处理
+        let def = COMMAND_DEFINITIONS[command.command];
+
+        if (!def) {
+            reportError(variables, command, {
+                type: 'InvalidCommand',
+                level: 'error',
+                message: `Command '${command.command}' is not a valid command.`,
+            });
+            
+            continue;
+        }
+
+        if (def.aliasFor) {
+            command.command = def.aliasFor as CommandNames;
+            def = COMMAND_DEFINITIONS[command.command];
+        }
+
+        const { args } = command;
+        const argCount = args.length;
+        let isValid = true;
+        let errorMsg = '';
+
+        if (def.requiredArgs !== undefined && argCount !== def.requiredArgs) {
+            isValid = false;
+            errorMsg = `Command '${command.command}' requires exactly ${def.requiredArgs} arguments, but received ${argCount}.`;
+        } else if (def.minArgs !== undefined && argCount < def.minArgs) {
+            isValid = false;
+            errorMsg = `Command '${command.command}' requires at least ${def.minArgs} arguments, but received ${argCount}.`;
+        } else if (def.maxArgs !== undefined && argCount > def.maxArgs) {
+            isValid = false;
+            errorMsg = `Command '${command.command}' requires at most ${def.maxArgs} arguments, but received ${argCount}.`;
+        }
+
+        if (!isValid) {
+            reportError(variables, command, {
+                type: 'ArgumentError',
+                level: 'warn',
+                message: errorMsg,
+                context: { command: command.command, receivedCount: argCount, definition: def }
+            });
+            
+            continue;
+        }
+
+        // 2. 命令执行
         // 修正路径格式，去除首尾引号和反斜杠，确保路径有效
         const path = pathFix(trimQuotesAndBackslashes(command.args[0]));
         // 生成原因字符串，用于日志和显示
@@ -414,9 +513,13 @@ export async function updateVariables(
             case 'set': {
                 // _.has 检查，确保路径存在
                 if (!_.has(variables.stat_data, path)) {
-                    console.warn(
-                        `Path '${path}' does not exist in stat_data, skipping set command ${reason_str}`
-                    );
+                    reportError(variables, command, {
+                        type: 'InvalidPath',
+                        level: 'warn',
+                        message: `Path '${path}' does not exist in stat_data, skipping set command ${reason_str}`,
+                        context: { attemptedPath: path },
+                    });
+                    
                     continue;
                 }
 
@@ -480,11 +583,19 @@ export async function updateVariables(
                 );
                 break;
             }
-
             case 'insert':
             case 'assign': {
                 // 检查目标路径是否指向一个集合（数组或对象）
-                // 如果路径已存在且其值为原始类型（字符串、数字等），则跳过此命令，以防止结构污染
+                if (path !== '' && !_.has(variables.stat_data, path)) {
+                    reportError(variables, command, {
+                        type: 'InvalidPath',
+                        level: 'warn',
+                        message: `Path '${path}' does not exist, skipping assign command.`,
+                        context: { attemptedPath: path },
+                    });
+                    continue;
+                }
+
                 const targetPath = path;
                 // 统一获取目标值和目标Schema，优雅地处理根路径
                 const existingValue = targetPath === '' ? variables.stat_data : _.get(variables.stat_data, targetPath);
@@ -496,29 +607,39 @@ export async function updateVariables(
                     !Array.isArray(existingValue) &&
                     !_.isObject(existingValue)
                 ) {
-                    console.warn(
-                        `Cannot assign into path '${targetPath}' because it holds a primitive value (${typeof existingValue}). Operation skipped. ${reason_str}`
-                    );
+                    reportError(variables, command, {
+                        type: 'TypeMismatch',
+                        level: 'warn',
+                        message: `Cannot assign into path '${targetPath}' because it holds a primitive value (${typeof existingValue}). Operation skipped. ${reason_str}`,
+                        context: { path: targetPath, actualType: typeof existingValue, expectedType: 'array | object' },
+                    });
                     continue;
                 }
 
+                // [修改点] 将 console.warn 替换为 reportError
                 // 验证2：Schema 规则
                 if (targetSchema) {
                     if (targetSchema.type === 'object' && targetSchema.extensible === false) {
                         if (command.args.length === 2) {
                             // 合并
-                            console.warn(
-                                `SCHEMA VIOLATION: Cannot merge data into non-extensible object at path '${targetPath}'. ${reason_str}`
-                            );
+                            reportError(variables, command, {
+                                type: 'SchemaViolation',
+                                level: 'warn',
+                                message: `Cannot merge data into non-extensible object at path '${targetPath}'.`,
+                                context: { path: targetPath, rule: 'extensible', value: false },
+                            });
                             continue;
                         }
                         if (command.args.length >= 3) {
                             // 插入键
                             const newKey = String(parseCommandValue(command.args[1]));
                             if (!_.has(targetSchema.properties, newKey)) {
-                                console.warn(
-                                    `SCHEMA VIOLATION: Cannot assign new key '${newKey}' into non-extensible object at path '${targetPath}'. ${reason_str}`
-                                );
+                                reportError(variables, command, {
+                                    type: 'SchemaViolation',
+                                    level: 'warn',
+                                    message: `Cannot assign new key '${newKey}' into non-extensible object at path '${targetPath}'.`,
+                                    context: { path: targetPath, rule: 'extensible', value: false, attemptedKey: newKey },
+                                });
                                 continue;
                             }
                         }
@@ -526,9 +647,12 @@ export async function updateVariables(
                         targetSchema.type === 'array' &&
                         (targetSchema.extensible === false || targetSchema.extensible === undefined)
                     ) {
-                        console.warn(
-                            `SCHEMA VIOLATION: Cannot assign elements into non-extensible array at path '${targetPath}'. ${reason_str}`
-                        );
+                        reportError(variables, command, {
+                            type: 'SchemaViolation',
+                            level: 'warn',
+                            message: `Cannot assign elements into non-extensible array at path '${targetPath}'.`,
+                            context: { path: targetPath, rule: 'extensible', value: false },
+                        });
                         continue;
                     }
                 } else if (
@@ -537,9 +661,12 @@ export async function updateVariables(
                     !_.get(variables.stat_data, _.toPath(targetPath).slice(0, -1).join('.'))
                 ) {
                     // 验证3：如果要插入到新路径，确保其父路径存在且可扩展
-                    console.warn(
-                        `Cannot assign into non-existent path '${targetPath}' without an extensible parent. ${reason_str}`
-                    );
+                    reportError(variables, command, {
+                        type: 'InvalidPath',
+                        level: 'warn',
+                        message: `Cannot assign into non-existent path '${targetPath}' without an extensible parent.`,
+                        context: { path: targetPath },
+                    });
                     continue;
                 }
                 // --- 所有验证通过，现在可以安全执行 ---
@@ -591,9 +718,12 @@ export async function updateVariables(
                             successful = true;
                         } else {
                             // 不支持将数组或非对象合并到对象，记录错误
-                            console.error(
-                                `Cannot merge ${Array.isArray(valueToAssign) ? 'array' : 'non-object'} into object at '${path}'`
-                            );
+                            reportError(variables, command, {
+                                type: 'TypeMismatch',
+                                level: 'error',
+                                message: `Cannot merge ${Array.isArray(valueToAssign) ? 'array' : 'non-object'} into object at '${path}'`,
+                                context: { path: targetPath, valueType: Array.isArray(valueToAssign) ? 'array' : typeof valueToAssign, targetType: 'object' },
+                            });
                             continue;
                         }
                     }
@@ -638,7 +768,7 @@ export async function updateVariables(
                         successful = true;
                     }
                 }
-
+                
                 if (successful) {
                     // 插入成功，获取新值并触发事件
                     const newValue = _.get(variables.stat_data, path);
@@ -662,7 +792,12 @@ export async function updateVariables(
             case 'remove': {
                 // 验证路径存在，防止无效删除
                 if (!_.has(variables.stat_data, path)) {
-                    console.error(`undefined Path: ${path} in _.remove command`);
+                    reportError(variables, command, {
+                        type: 'InvalidPath',
+                        level: 'warn',
+                        message: `Path '${path}' does not exist, cannot execute _.remove.`,
+                        context: { attemptedPath: path },
+                    });
                     continue;
                 }
 
@@ -688,16 +823,21 @@ export async function updateVariables(
                 }
 
                 if (keyOrIndexToRemove === undefined) {
-                    console.error(
-                        `Could not determine target for deletion for command on path '${path}' ${reason_str}`
-                    );
+                    reportError(variables, command, {
+                        type: 'ArgumentError',
+                        level: 'error',
+                        message: `Could not determine target for deletion for command on path '${path}'.`,
+                    });
                     continue;
                 }
                 // 只有当容器路径不是根路径（即不为空）时，才检查其是否存在
                 if (containerPath !== '' && !_.has(variables.stat_data, containerPath)) {
-                    console.warn(
-                        `Cannot remove from non-existent path '${containerPath}'. ${reason_str}`
-                    );
+                    reportError(variables, command, {
+                        type: 'InvalidPath',
+                        level: 'warn',
+                        message: `Cannot remove from non-existent container path '${containerPath}'.`,
+                        context: { attemptedPath: containerPath },
+                    });
                     continue;
                 }
 
@@ -706,9 +846,12 @@ export async function updateVariables(
                 if (containerSchema) {
                     if (containerSchema.type === 'array') {
                         if (containerSchema.extensible !== true) {
-                            console.warn(
-                                `SCHEMA VIOLATION: Cannot remove element from non-extensible array at path '${containerPath}'. ${reason_str}`
-                            );
+                            reportError(variables, command, {
+                                type: 'SchemaViolation',
+                                level: 'warn',
+                                message: `Cannot remove element from non-extensible array at path '${containerPath}'.`,
+                                context: { path: containerPath, rule: 'extensible', value: false },
+                            });
                             continue;
                         }
                     } else if (containerSchema.type === 'object') {
@@ -717,9 +860,12 @@ export async function updateVariables(
                             _.has(containerSchema.properties, keyString) &&
                             containerSchema.properties[keyString].required === true
                         ) {
-                            console.warn(
-                                `SCHEMA VIOLATION: Cannot remove required key '${keyString}' from path '${containerPath}'. ${reason_str}`
-                            );
+                             reportError(variables, command, {
+                                type: 'SchemaViolation',
+                                level: 'warn',
+                                message: `Cannot remove required key '${keyString}' from path '${containerPath}'.`,
+                                context: { path: containerPath, rule: 'required', value: true, attemptedKey: keyString },
+                            });
                             continue;
                         }
                     }
@@ -753,9 +899,12 @@ export async function updateVariables(
                     // 当从一个集合中删除元素时，必须确保目标路径确实是一个集合
                     // 如果目标是原始值（例如字符串），则无法执行删除操作
                     if (!Array.isArray(collection) && !_.isObject(collection)) {
-                        console.warn(
-                            `Cannot remove from path '${path}' because it is not an array or object. Skipping command. ${reason_str}`
-                        );
+                        reportError(variables, command, {
+                            type: 'TypeMismatch',
+                            level: 'warn',
+                            message: `Cannot remove from path '${path}' because it is not an array or object.`,
+                            context: { path: path, actualType: typeof collection, expectedType: 'array | object' },
+                        });
                         continue;
                     }
 
@@ -812,7 +961,12 @@ export async function updateVariables(
                     console.info(display_str);
                 } else {
                     // 删除失败，记录警告并继续
-                    console.warn(`Failed to execute remove on '${path}'`);
+                    reportError(variables, command, {
+                        type: 'ArgumentError',
+                        level: 'warn',
+                        message: `Failed to execute remove on '${path}'. The specified item or key was not found.`,
+                        context: { path: path, itemNotFound: targetToRemove },
+                    });
                     continue;
                 }
                 break;
@@ -821,9 +975,12 @@ export async function updateVariables(
             case 'add': {
                 // 验证路径存在
                 if (!_.has(variables.stat_data, path)) {
-                    console.warn(
-                        `Path '${path}' does not exist in stat_data, skipping add command ${reason_str}`
-                    );
+                    reportError(variables, command, {
+                        type: 'InvalidPath',
+                        level: 'warn',
+                        message: `Path '${path}' does not exist, skipping add command.`,
+                        context: { attemptedPath: path },
+                    });
                     continue;
                 }
                 // 获取当前值
@@ -890,10 +1047,14 @@ export async function updateVariables(
 
                     // 处理 Date 类型
                     if (potentialDate) {
-                        if (typeof delta !== 'number') {
-                            console.warn(
-                                `Delta '${command.args[1]}' for Date operation is not a number, skipping add command ${reason_str}`
-                            );
+                        if (typeof delta !== 'number') {                            
+                            reportError(variables, command, {
+                                type: 'TypeMismatch',
+                                level: 'warn',
+                                message: `Delta for Date operation is not a number.`,
+                                context: { path: path, actualType: typeof delta, expectedType: 'number' },
+                            });
+                            
                             continue;
                         }
                         // delta 是毫秒数，更新时间
@@ -960,15 +1121,26 @@ export async function updateVariables(
                         );
                     } else {
                         // 如果值不是可识别的类型（日期、数字），则跳过
-                        console.warn(
-                            `Path '${path}' value is not a date or number; skipping add command ${reason_str}`
-                        );
+                        reportError(variables, command, {
+                            type: 'TypeMismatch', 
+                            level: 'warn', 
+                            message: `Path '${path}' value is not a date or number; cannot perform add operation.`, 
+                            context: { path: path, actualType: typeof valueToAdd, expectedType: 'number | date-string' }
+                        });
+                        
                         continue;
                     }
                 } else {
-                    console.warn(
-                        `Invalid number of arguments for _.add on path '${path}' ${reason_str}`
-                    );
+                    reportError(variables, command, {
+                        type: 'ArgumentError',
+                        level: 'warn',
+                        message: `Invalid number of arguments for _.add on path '${path}'`,
+                        context: { 
+                            path: path,
+                            receivedCount: command.args.length,
+                            expected: '2 arguments' // 旧代码中没有指定确切数量，这里提供一个通用说明
+                        }
+                    });
                     continue;
                 }
                 break;
@@ -993,7 +1165,7 @@ export async function updateVariables(
     // 触发变量更新结束事件
     await eventEmit(variable_events.VARIABLE_UPDATE_ENDED, variables, out_is_modifed);
     // 返回是否修改了变量
-    return variable_modified || out_is_modifed;
+    return { modified: variable_modified || out_is_modifed, errorAdded: Object.keys(variables.error_data).length > 0 };
 }
 
 export async function handleVariablesInMessage(message_id: number) {
@@ -1009,10 +1181,13 @@ export async function handleVariablesInMessage(message_id: number) {
         return;
     }
 
-    const has_variable_modified = await updateVariables(message_content, variables);
-    if (has_variable_modified) {
-        await replaceVariables(variables, { type: 'chat' });
+    const result = await updateVariables(message_content, variables);
+    // 只要变量被修改或产生了新错误，就更新聊天级别的变量
+    if (result.modified || result.errorAdded) {
+        // 使用 cloneDeep 确保 chat 级快照与 message 级状态完全分离，防止数据污染
+        await replaceVariables(_.cloneDeep(variables), { type: 'chat' });
     }
+    
     await replaceVariables(variables, { type: 'message', message_id: message_id });
 
     if (chat_message.role !== 'user' && !message_content.includes('<StatusPlaceHolderImpl/>')) {
@@ -1040,8 +1215,8 @@ export async function handleVariablesInCallback(message_content: string, variabl
     variable_info.new_variables = _.cloneDeep(variable_info.old_variables);
     const variables = variable_info.new_variables;
 
-    const modified = await updateVariables(message_content, variables);
-    //如果没有修改，则不产生 newVariable
-    if (!modified)
+    const result = await updateVariables(message_content, variables);
+    //如果没有修改，并且没有添加任何错误，则不产生 newVariable
+    if (!result.modified && !result.errorAdded)
         delete variable_info.new_variables;
 }

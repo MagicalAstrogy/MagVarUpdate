@@ -1,14 +1,44 @@
+
 // 整体游戏数据类型
-import {updateVariables} from '@/function';
+import {updateVariables, getLastValidVariable} from '@/function';
 import {GameData} from "@/variable_def";
 import {EXTENSIBLE_MARKER, generateSchema} from "@/schema";
-
 type LorebookEntry = {
     content: string;
     comment?: string;
 };
 
+/**
+ * 在每次生成开始时，精确地重置与MagVarUpdate相关的上下文（error_data, delta_data），
+ * 而不影响其他聊天级变量。
+ */
+export async function resetMagVarUpdateContext() {
+    const msgId = getLastMessageId();
+    if (msgId < 0) return; // 首次生成，无历史可重置
+
+    const lastStableVars = await getLastValidVariable(msgId);
+    if (!lastStableVars) return;
+
+    // 仅提取我们需要重置的字段。如果字段不存在，则默认为空对象。
+    const contextUpdate = {
+        error_data: _.cloneDeep(lastStableVars.error_data) || {},
+        delta_data: _.cloneDeep(lastStableVars.delta_data) || {},
+    };
+
+    // 使用非破坏性的 `updateVariablesWith` 进行合并更新，而不是 `replaceVariables`
+    await updateVariablesWith(currentChatVars => {
+        // 返回一个合并了新上下文和现有变量的新对象
+        return { ...currentChatVars, ...contextUpdate };
+    }, { type: 'chat' });
+}
+
+
 export async function initCheck() {
+    {
+        // 本函数尝试解决 error_data, delta_data 的同步问题，特此告知。
+        // 目标：解决 swipe 一次仍然沿用上一个当前楼层swipe的报错信息 的问题，使得swipe一次之后，沿用的是非本楼层的error_data状态与delta_data的上一次MagVarUpdate更新后的状态。
+        await resetMagVarUpdateContext();
+    }
     //generation_started 的最新一条是正在生成的那条。
     let last_chat_msg: ChatMessageSwiped[] = [];
     try {
@@ -50,6 +80,7 @@ export async function initCheck() {
             stat_data: {},
             delta_data: {},
             schema: {},
+            error_data: [],
         };
     }
     if (!_.has(variables, 'initialized_lorebooks')) {
@@ -70,16 +101,16 @@ export async function initCheck() {
     if (!variables.schema) {
         variables.schema = {};
     }
-
+    if (!variables.error_data) {
+        variables.error_data = {};
+    }
     let is_updated = false;
     for (const current_lorebook of enabled_lorebook_list) {
         // 检查方式从 _.includes 变为 _.has，以适应对象结构
         if (_.has(variables.initialized_lorebooks, current_lorebook)) continue;
-
         // 将知识库名称作为键添加到对象中，值为一个空数组，用于未来存储元数据
         variables.initialized_lorebooks[current_lorebook] = [];
         const init_entries = (await getLorebookEntries(current_lorebook)) as LorebookEntry[];
-
         for (const entry of init_entries) {
             if (entry.comment?.toLowerCase().includes('[initvar]')) {
                 try {
@@ -98,7 +129,6 @@ export async function initCheck() {
         }
         is_updated = true;
     }
-
     // --- 一次性清理所有魔法字符串 ---
     if (is_updated) {
         // 递归遍历整个 stat_data，移除所有魔法字符串
@@ -125,7 +155,6 @@ export async function initCheck() {
         // 这里需要先生成 Schema，再清理数据
         // 所以还是得用克隆
     }
-
     // 在所有 lorebook 初始化完成后，生成最终的模式
     if (is_updated || !variables.schema || _.isEmpty(variables.schema)) {
         // 1. 克隆数据用于 Schema 生成
@@ -159,19 +188,12 @@ export async function initCheck() {
             }
         })(variables.stat_data);
     }
-
     if (!is_updated) {
         return;
     }
-
     console.info(`Init chat variables.`);
-    await insertOrAssignVariables(variables);
-
     for (let i = 0; i < last_msg.swipes.length; i++) {
         const current_swipe_data = _.cloneDeep(variables);
-        // 此处调用的是新版 updateVariables，它将支持更多命令
-        // 不再需要手动调用 substitudeMacros，updateVariables 会处理
-        await updateVariables(last_msg.swipes[i], current_swipe_data);
         //新版本这个接口给deprecated了，但是新版本的接口不好用，先这样
         //@ts-ignore
         await setChatMessage({ data: current_swipe_data }, last_msg.message_id, {
@@ -179,7 +201,9 @@ export async function initCheck() {
             swipe_id: i,
         });
     }
-
+    // 移除 insertOrAssignVariables(variables); 调用，因为它会造成一次冗余的、
+    // 且可能被后续 handleVariablesInMessage 中的 replaceVariables 覆盖的写入操作。
+    // await insertOrAssignVariables(variables); 
     const expected_settings = {
         /*预期设置*/
         context_percentage: 100,
@@ -190,5 +214,4 @@ export async function initCheck() {
         setLorebookSettings(expected_settings);
     }
 }
-
 //window.initCheck = initCheck;
