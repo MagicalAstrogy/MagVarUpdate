@@ -322,14 +322,29 @@ export function parseParameters(paramsString: string): string[] {
 }
 
 export async function getLastValidVariable(message_id: number): Promise<Record<string, any>> {
-    return (
-        structuredClone(
-            SillyTavern.chat
-                .slice(0, message_id + 1)
-                .map(chat_message => _.get(chat_message, ['variables', chat_message.swipe_id ?? 0]))
-                .findLast(variables => _.has(variables, 'stat_data'))
-        ) ?? getVariables()
-    );
+    // 步骤 1: 优先在当前消息之前的历史记录中查找。
+    // 这是处理所有后续消息（message_id > 0）的正确逻辑，能彻底解决因 swipe 导致的基线错误问题。
+    const lastVariableInHistory = SillyTavern.chat
+        .slice(0, message_id)
+        .map(chat_message => _.get(chat_message, ['variables', chat_message.swipe_id ?? 0]))
+        .findLast(variables => _.has(variables, 'stat_data'));
+    if (lastVariableInHistory) {
+        return structuredClone(lastVariableInHistory);
+    }
+    // 步骤 2: 如果历史记录中没有找到变量，则判定为初始消息 (message_id = 0) 的特殊情况。
+    // 此时，initCheck 函数已将正确的初始状态（包含 lorebook 数据）保存在了当前消息上。
+    // 我们必须从当前消息中获取这个状态作为基线，以避免丢失初始化数据。
+    const currentMessage = SillyTavern.chat[message_id];
+    if (currentMessage) {
+        const variablesOnCurrentMessage = _.get(currentMessage, ['variables', currentMessage.swipe_id ?? 0]);
+        if (variablesOnCurrentMessage && _.has(variablesOnCurrentMessage, 'stat_data')) {
+            // 注意：此处不应深拷贝，因为这是 updateVariables 的直接输入，
+            // 它是对同一个消息数据的就地修改。
+            return variablesOnCurrentMessage;
+        }
+    }
+    // 步骤 3: 作为最终的、不太可能发生的后备方案。
+    return getVariables();
 }
 
 function pathFix(path: string): string {
@@ -1167,9 +1182,12 @@ export async function handleVariablesInMessage(message_id: number) {
     }
 
     const result = await updateVariables(message_content, variables);
-    if (result.modified) {
-        await replaceVariables(variables, { type: 'chat' });
+    // 只要变量被修改或产生了新错误，就更新聊天级别的变量
+    if (result.modified || result.errorAdded) {
+        // 使用 cloneDeep 确保 chat 级快照与 message 级状态完全分离，防止数据污染
+        await replaceVariables(_.cloneDeep(variables), { type: 'chat' });
     }
+    
     await replaceVariables(variables, { type: 'message', message_id: message_id });
 
     if (chat_message.role !== 'user' && !message_content.includes('<StatusPlaceHolderImpl/>')) {

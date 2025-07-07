@@ -3,6 +3,7 @@ import {initCheck} from '@/variable_init';
 import {variable_events} from "@/variable_def";
 
 $(() => {
+    eventOn(tavern_events.GENERATION_STARTED, init2);
     eventOn(tavern_events.GENERATION_STARTED, initCheck);
     eventOn(tavern_events.MESSAGE_SENT, initCheck);
     eventOn(tavern_events.MESSAGE_SENT, handleVariablesInMessage);
@@ -14,6 +15,7 @@ $(() => {
 });
 
 $(window).on('unload', () => {
+    eventRemoveListener(tavern_events.GENERATION_STARTED, init2);
     eventRemoveListener(tavern_events.GENERATION_STARTED, initCheck);
     eventRemoveListener(tavern_events.MESSAGE_SENT, initCheck);
     eventRemoveListener(tavern_events.MESSAGE_SENT, handleVariablesInMessage);

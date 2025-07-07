@@ -1,5 +1,5 @@
 // 整体游戏数据类型
-import {updateVariables} from '@/function';
+import {updateVariables, getLastValidVariable} from '@/function';
 import {GameData} from "@/variable_def";
 import {EXTENSIBLE_MARKER, generateSchema} from "@/schema";
 
@@ -7,6 +7,21 @@ type LorebookEntry = {
     content: string;
     comment?: string;
 };
+
+// 本函数尝试解决 error_data, delta_data 的同步问题，特此告知。
+// 目标：解决 swipe 一次仍然沿用上一个当前楼层swipe的报错信息 的问题，使得swipe一次之后，沿用的是非本楼层的error_data状态与delta_data的上一次MagVarUpdate更新后的状态。
+export async function init2() {
+    const current_generating_msg_id = getLastMessageId();
+    // 如果这是第一次生成 (id < 0), 则无需操作。
+    if (current_generating_msg_id < 0) return;
+    // 调用已修正的 getLastValidVariable，它能正确地找到上一个稳定消息的状态。
+    const last_stable_variables = await getLastValidVariable(current_generating_msg_id);
+    if (last_stable_variables && _.has(last_stable_variables, 'stat_data')) {
+        // 强制用上一个稳定状态覆盖 chat-level 变量。
+        // 这样，即将构建的 prompt 中的 {{get_chat_variable::...}} 就会读取到正确的上下文。
+        await replaceVariables(_.cloneDeep(last_stable_variables), { type: 'chat' });
+    }
+}
 
 export async function initCheck() {
     //generation_started 的最新一条是正在生成的那条。
