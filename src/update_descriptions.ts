@@ -21,9 +21,9 @@
  *   }
  * }
  */
-export function updateDescriptions(init_path: string, init_data: any, msg_data: any, target_data: any) {
+export function updateDescriptions(_init_path: string, init_data: any, msg_data: any, target_data: any) {
     _.forEach(init_data, (value, key) => {
-        const current_path = init_path ? `${init_path}.${key}` : key;
+        const current_path = key;//init_path ? `${init_path}.${key}` : key;
 
         if (_.isArray(value)) {
             // 检查是否为 ValueWithDescription<T> 类型 (长度为2，第二个元素是字符串)
@@ -36,22 +36,40 @@ export function updateDescriptions(init_path: string, init_data: any, msg_data: 
                         _.set(target_data, `${current_path}[1]`, value[1]);
 
                         // 如果第一个元素是对象或数组，需要递归处理
-                        if (_.isObject(value[0])) {
-                            updateDescriptions(`${current_path}[0]`, value[0], msgValue[0], _.get(target_data, `${current_path}[0]`));
+                        if (_.isObject(value[0]) && !_.isArray(value[0])) {
+                            // 处理对象
+                            const targetObj = _.get(target_data, `${key}[0]`);
+
+                            // 如果对象包含description属性，需要特殊处理
+                            if (_.has(value[0], 'description') && _.isString(value[0].description)) {
+                                if (_.has(msgValue[0], 'description')) {
+                                    _.set(target_data, `${current_path}[0].description`, value[0].description);
+                                }
+                            }
+
+                            // 递归处理对象的其他属性
+                            updateDescriptions(`${current_path}[0]`, value[0], msgValue[0], targetObj);
+                        } else if (_.isArray(value[0])) {
+                            // 处理数组
+                            updateDescriptions(`${current_path}[0]`, value[0], msgValue[0], target_data[0]);
                         }
                     }
                 }
             } else if (_.has(msg_data, current_path) && _.isArray(_.get(msg_data, current_path))) {
                 // 普通数组，递归处理每个元素
-                const msgArray = _.get(msg_data, current_path);
+                const msg_array = _.get(msg_data, current_path);
                 value.forEach((item, index) => {
-                    if (index < msgArray.length) {
-                        if (_.isObject(item) && !_.isArray(item)) {
-                            // 数组元素是对象，递归处理
-                            updateDescriptions(`${current_path}[${index}]`, item, msgArray[index], _.get(target_data, `${current_path}[${index}]`));
-                        } else if (_.isArray(item)) {
-                            // 数组元素是数组，递归处理
-                            updateDescriptions(`${current_path}[${index}]`, item, msgArray[index], _.get(target_data, `${current_path}[${index}]`));
+                    if (index < msg_array.length) {
+                        if (_.isObject(item)) {
+                            const current_target = _.get(target_data, `${current_path}[${index}]`);
+                            // 如果对象包含description属性，需要特殊处理
+                            if (_.has(item, 'description') && _.isString(item.description)) {
+                                if (_.has(msg_array[index], 'description')) {
+                                    _.set(current_target, `description`, item.description);
+                                }
+                            }
+
+                            updateDescriptions(`${current_path}[${index}]`, value[index], msg_array[index], current_target);
                         }
                     }
                 });
