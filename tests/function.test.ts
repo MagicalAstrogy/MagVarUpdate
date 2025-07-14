@@ -208,7 +208,8 @@ describe('invokeVariableTest', () => {
                 stat_data: {"喵呜": 20},
                 display_data: {},
                 delta_data: {},
-                schema: {}
+                schema: {},
+                error_data: {}
             }
         };
         await handleVariablesInCallback("_.set('喵呜', 114);//测试", inputData);
@@ -223,10 +224,71 @@ describe('invokeVariableTest', () => {
                 stat_data: {"喵呜": 20},
                 display_data: {},
                 delta_data: {},
-                schema: {}
+                schema: {},
+                error_data: {}
             }
         };
         await handleVariablesInCallback("这是一个没有更新的文本。明天见是最好的预言。", inputData);
         expect(inputData.new_variables).toBeUndefined();
+    });
+
+});
+
+describe('错误数据测试 (errorDataTest)', () => {
+    test('应该为无效命令记录一个错误', async () => {
+        const inputData: VariableData = {
+            old_variables: {
+                initialized_lorebooks: {},
+                stat_data: { "health": 100 },
+                display_data: {},
+                delta_data: {},
+                schema: {},
+                error_data: {} // 初始状态为空对象
+            }
+        };
+        // 一个针对不存在路径的 set 命令
+        await handleVariablesInCallback("_.set('nonexistent.path', 123);//无效的路径", inputData);
+        
+        // 确认 new_variables 不是 undefined
+        expect(inputData.new_variables).not.toBeUndefined();
+        
+        // 确认 error_data 对象中存在一个键
+        const errorKeys = Object.keys(inputData.new_variables!.error_data);
+        expect(errorKeys).toHaveLength(1);
+        const error = inputData.new_variables!.error_data[errorKeys[0]];
+
+        // 检查错误对象的内容
+        expect(error.type).toBe('InvalidPath');
+        expect(error.message).toContain("'nonexistent.path'");
+        expect(error.command).toContain("_.set('nonexistent.path', 123)");
+    });
+
+    test('应该为无效命令记录一个错误 2', async () => {
+        const inputData: VariableData = {
+            old_variables: {
+                initialized_lorebooks: {},
+                stat_data: { "health": 100 },
+                display_data: {},
+                delta_data: {},
+                schema: {},
+                error_data: {} // 初始状态为空对象
+            }
+        };
+        // 一个针对不存在路径的 assign 命令
+        const commandStr = "_.assign('nonexistent', 'path', { 'abc': 111 });//无效的路径";
+        await handleVariablesInCallback(commandStr, inputData);
+        
+        // 首先，确认 new_variables 存在
+        expect(inputData.new_variables).not.toBeUndefined();
+
+        // 确认 error_data 对象中存在一个键
+        const errorKeys = Object.keys(inputData.new_variables!.error_data);
+        expect(errorKeys).toHaveLength(1);
+        const error = inputData.new_variables!.error_data[errorKeys[0]];
+
+        // 检查错误对象的内容
+        expect(error.type).toBe('InvalidPath');
+        expect(error.message).toContain("'nonexistent'");
+        expect(error.command).toBe(commandStr);
     });
 });
