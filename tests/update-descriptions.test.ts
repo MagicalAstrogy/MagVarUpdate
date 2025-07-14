@@ -429,4 +429,346 @@ describe('updateDescriptions', () => {
             expect(targetData.属性2).toEqual([250, '旧描述', '额外元素']);
         });
     });
+
+    describe('PR #20 讨论中的 edge cases', () => {
+        it('应该正确处理 array-based value-with-description 的复杂嵌套', () => {
+            // 基于 PR #20 讨论的具体场景
+            const initData = {
+                复杂数据: [["数据1","数据2"],"更改后的描述"]
+            };
+            const msgData = {
+                复杂数据: [["数据3","数据4"],"更改前的描述"]
+            };
+            const targetData = _.merge(_.cloneDeep(initData), msgData);
+
+            updateDescriptions('', initData, msgData, targetData);
+
+            // 验证数组内容来自 msgData，但描述来自 initData
+            expect(targetData.复杂数据).toEqual([["数据3","数据4"],"更改后的描述"]);
+        });
+
+        it('应该处理对象形式的 ValueWithDescription', () => {
+            const initData = {
+                "变量1": { "value": 100, "description": "初始含义/规则" },
+                "变量2": { "value": [1, 2, 3], "description": "初始数组描述" }
+            };
+            const msgData = {
+                "变量1": { "value": 200, "description": "更新后含义/规则" },
+                "变量2": { "value": [4, 5, 6], "description": "更新后数组描述" }
+            };
+            const targetData = _.merge(_.cloneDeep(initData), msgData);
+
+            updateDescriptions('', initData, msgData, targetData);
+
+            // value 来自 msgData，description 来自 initData
+            expect(targetData["变量1"]).toEqual({ "value": 200, "description": "初始含义/规则" });
+            expect(targetData["变量2"]).toEqual({ "value": [4, 5, 6], "description": "初始数组描述" });
+        });
+
+        it('应该处理混合的数组和对象 ValueWithDescription 格式', () => {
+            const initData = {
+                "数组格式": [100, "数组形式的初始描述"],
+                "对象格式": { "value": 200, "description": "对象形式的初始描述" },
+                "嵌套混合": {
+                    "数组子项": [50, "嵌套数组描述"],
+                    "对象子项": { "value": 75, "description": "嵌套对象描述" }
+                }
+            };
+            const msgData = {
+                "数组格式": [150, "数组形式的更新描述"],
+                "对象格式": { "value": 250, "description": "对象形式的更新描述" },
+                "嵌套混合": {
+                    "数组子项": [80, "嵌套数组更新描述"],
+                    "对象子项": { "value": 90, "description": "嵌套对象更新描述" }
+                }
+            };
+            const targetData = _.merge(_.cloneDeep(initData), msgData);
+
+            updateDescriptions('', initData, msgData, targetData);
+
+            expect(targetData["数组格式"]).toEqual([150, "数组形式的初始描述"]);
+            expect(targetData["对象格式"]).toEqual({ "value": 250, "description": "对象形式的初始描述" });
+            expect(targetData["嵌套混合"]["数组子项"]).toEqual([80, "嵌套数组描述"]);
+            expect(targetData["嵌套混合"]["对象子项"]).toEqual({ "value": 90, "description": "嵌套对象描述" });
+        });
+
+        it('应该处理 InitVar 更新合并逻辑', () => {
+            // 模拟 latest_init_data 和 latest_msg_data 的比较场景
+            const latest_init_data = {
+                玩家属性: {
+                    生命值: { value: 100, description: "玩家的生命值上限" },
+                    魔法值: [50, "玩家的魔法值上限"],
+                    等级: { value: 1, description: "玩家当前等级" }
+                },
+                游戏设置: {
+                    难度: ["普通", "游戏难度设置"],
+                    音效: { value: true, description: "音效开关" }
+                }
+            };
+            const latest_msg_data = {
+                玩家属性: {
+                    生命值: { value: 120, description: "更新的生命值描述" },
+                    魔法值: [60, "更新的魔法值描述"],
+                    等级: { value: 2, description: "更新的等级描述" }
+                },
+                游戏设置: {
+                    难度: ["困难", "更新的难度描述"],
+                    音效: { value: false, description: "更新的音效描述" }
+                }
+            };
+            const targetData = _.merge(_.cloneDeep(latest_init_data), latest_msg_data);
+
+            updateDescriptions('', latest_init_data, latest_msg_data, targetData);
+
+            // 验证合并结果：值来自 latest_msg_data，描述来自 latest_init_data
+            expect(targetData.玩家属性.生命值).toEqual({ value: 120, description: "玩家的生命值上限" });
+            expect(targetData.玩家属性.魔法值).toEqual([60, "玩家的魔法值上限"]);
+            expect(targetData.玩家属性.等级).toEqual({ value: 2, description: "玩家当前等级" });
+            expect(targetData.游戏设置.难度).toEqual(["困难", "游戏难度设置"]);
+            expect(targetData.游戏设置.音效).toEqual({ value: false, description: "音效开关" });
+        });
+
+        it('应该处理三层嵌套的复杂数组对象结构', () => {
+            const initData = {
+                装备库: [
+                    {
+                        分类: "武器",
+                        物品列表: [
+                            { 名称: "短剑", 属性: [10, "基础攻击力"], description: "普通的短剑" },
+                            { 名称: "长剑", 属性: [20, "高攻击力"], description: "锋利的长剑" }
+                        ]
+                    },
+                    {
+                        分类: "防具",
+                        物品列表: [
+                            { 名称: "皮甲", 属性: { value: 5, description: "基础防御力" }, description: "简单的皮甲" }
+                        ]
+                    }
+                ]
+            };
+            const msgData = {
+                装备库: [
+                    {
+                        分类: "武器",
+                        物品列表: [
+                            { 名称: "短剑", 属性: [15, "更新的攻击力描述"], description: "更新的短剑描述" },
+                            { 名称: "长剑", 属性: [25, "更新的高攻击力描述"], description: "更新的长剑描述" }
+                        ]
+                    },
+                    {
+                        分类: "防具",
+                        物品列表: [
+                            { 名称: "皮甲", 属性: { value: 8, description: "更新的防御力描述" }, description: "更新的皮甲描述" }
+                        ]
+                    }
+                ]
+            };
+            const targetData = _.merge(_.cloneDeep(initData), msgData);
+
+            updateDescriptions('', initData, msgData, targetData);
+
+            // 验证三层嵌套结构中的描述更新
+            expect(targetData.装备库[0].物品列表[0].属性).toEqual([15, "基础攻击力"]);
+            expect(targetData.装备库[0].物品列表[0].description).toBe("普通的短剑");
+            expect(targetData.装备库[0].物品列表[1].属性).toEqual([25, "高攻击力"]);
+            expect(targetData.装备库[0].物品列表[1].description).toBe("锋利的长剑");
+            expect(targetData.装备库[1].物品列表[0].属性).toEqual({ value: 8, description: "基础防御力" });
+            expect(targetData.装备库[1].物品列表[0].description).toBe("简单的皮甲");
+        });
+    });
+
+    describe('不应该修改的情况', () => {
+        it('不应该将普通数组中的元素误认为是描述', () => {
+            const initData = {
+                数值数组: [1, 2],
+                坐标: [100, 200],
+                混合数组: [1, 2, 3, 4, 5],
+                文本数组: ["apple", "banana", "orange"]
+            };
+            const msgData = {
+                数值数组: [3, 4],
+                坐标: [150, 250],
+                混合数组: [6, 7, 8, 9, 10],
+                文本数组: ["pear", "grape", "mango"]
+            };
+            const targetData = _.merge(_.cloneDeep(initData), msgData);
+
+            updateDescriptions('', initData, msgData, targetData);
+
+            // 普通数组应该保持 merge 后的结果，不应该将第二个元素替换
+            expect(targetData.数值数组).toEqual([3, 4]);
+            expect(targetData.坐标).toEqual([150, 250]);
+            expect(targetData.混合数组).toEqual([6, 7, 8, 9, 10]);
+            expect(targetData.文本数组).toEqual(["pear", "grape", "mango"]);
+        });
+
+        it('不应该修改长度不为2的数组', () => {
+            const initData = {
+                空数组: [],
+                单元素数组: [100],
+                三元素数组: [1, 2, 3],
+                多元素数组: [10, 20, 30, 40, 50]
+            };
+            const msgData = {
+                空数组: [1, 2],
+                单元素数组: [200],
+                三元素数组: [4, 5, 6],
+                多元素数组: [60, 70, 80, 90, 100]
+            };
+            const targetData = _.merge(_.cloneDeep(initData), msgData);
+
+            updateDescriptions('', initData, msgData, targetData);
+
+            // 所有数组都应该保持 merge 后的结果
+            expect(targetData.空数组).toEqual([1, 2]);
+            expect(targetData.单元素数组).toEqual([200]);
+            expect(targetData.三元素数组).toEqual([4, 5, 6]);
+            expect(targetData.多元素数组).toEqual([60, 70, 80, 90, 100]);
+        });
+
+        it('不应该修改第二个元素不是字符串的数组', () => {
+            const initData = {
+                数字第二元素: [100, 200],
+                布尔第二元素: ["value", true],
+                对象第二元素: ["data", { key: "value" }],
+                数组第二元素: ["nested", [1, 2, 3]],
+                null第二元素: ["something", null],
+                undefined第二元素: ["something", undefined]
+            };
+            const msgData = {
+                数字第二元素: [300, 400],
+                布尔第二元素: ["newValue", false],
+                对象第二元素: ["newData", { key: "newValue" }],
+                数组第二元素: ["newNested", [4, 5, 6]],
+                null第二元素: ["newSomething", null],
+                undefined第二元素: ["newSomething", undefined]
+            };
+            const targetData = _.merge(_.cloneDeep(initData), msgData);
+
+            updateDescriptions('', initData, msgData, targetData);
+
+            // 第二个元素不是字符串的数组不应该被处理为 ValueWithDescription
+            expect(targetData.数字第二元素).toEqual([300, 400]);
+            expect(targetData.布尔第二元素).toEqual(["newValue", false]);
+            expect(targetData.对象第二元素).toEqual(["newData", { key: "newValue" }]);
+            expect(targetData.数组第二元素).toEqual(["newNested", [4, 5, 6]]);
+            expect(targetData.null第二元素).toEqual(["newSomething", null]);
+            expect(targetData.undefined第二元素).toEqual(["newSomething", undefined]);
+        });
+
+        it('不应该修改不包含 description 字段的对象', () => {
+            const initData = {
+                普通对象: {
+                    name: "初始名称",
+                    value: 100,
+                    active: true
+                },
+                嵌套对象: {
+                    config: {
+                        setting1: "value1",
+                        setting2: 123
+                    }
+                }
+            };
+            const msgData = {
+                普通对象: {
+                    name: "更新名称",
+                    value: 200,
+                    active: false
+                },
+                嵌套对象: {
+                    config: {
+                        setting1: "value2",
+                        setting2: 456
+                    }
+                }
+            };
+            const targetData = _.merge(_.cloneDeep(initData), msgData);
+
+            updateDescriptions('', initData, msgData, targetData);
+
+            // 没有 description 字段的对象应该保持 merge 后的结果
+            expect(targetData.普通对象).toEqual({
+                name: "更新名称",
+                value: 200,
+                active: false
+            });
+            expect(targetData.嵌套对象).toEqual({
+                config: {
+                    setting1: "value2",
+                    setting2: 456
+                }
+            });
+        });
+
+        it('应该区分真正的 ValueWithDescription 和普通的两元素数组', () => {
+            const initData = {
+                真正的描述: [100, "这是一个描述"],
+                坐标数组: [10, 20],
+                范围数组: [0, 100],
+                混合场景: {
+                    属性值: [50, "属性的描述"],
+                    位置: [30, 40],
+                    配置: {
+                        选项: [1, "选项说明"],
+                        边界: [5, 15]
+                    }
+                }
+            };
+            const msgData = {
+                真正的描述: [200, "更新的描述"],
+                坐标数组: [50, 60],
+                范围数组: [10, 90],
+                混合场景: {
+                    属性值: [75, "更新的属性描述"],
+                    位置: [70, 80],
+                    配置: {
+                        选项: [2, "更新的选项说明"],
+                        边界: [20, 25]
+                    }
+                }
+            };
+            const targetData = _.merge(_.cloneDeep(initData), msgData);
+
+            updateDescriptions('', initData, msgData, targetData);
+
+            // 真正的 ValueWithDescription（第二个元素是字符串）应该被更新
+            expect(targetData.真正的描述).toEqual([200, "这是一个描述"]);
+            expect(targetData.混合场景.属性值).toEqual([75, "属性的描述"]);
+            expect(targetData.混合场景.配置.选项).toEqual([2, "选项说明"]);
+
+            // 普通的两元素数组不应该被修改
+            expect(targetData.坐标数组).toEqual([50, 60]);
+            expect(targetData.范围数组).toEqual([10, 90]);
+            expect(targetData.混合场景.位置).toEqual([70, 80]);
+            expect(targetData.混合场景.配置.边界).toEqual([20, 25]);
+        });
+
+        it('不应该修改原始类型的值', () => {
+            const initData = {
+                字符串: "初始文本",
+                数字: 100,
+                布尔值: true,
+                空值: null,
+                未定义: undefined
+            };
+            const msgData = {
+                字符串: "更新文本",
+                数字: 200,
+                布尔值: false,
+                空值: null,
+                未定义: undefined
+            };
+            const targetData = _.merge(_.cloneDeep(initData), msgData);
+
+            updateDescriptions('', initData, msgData, targetData);
+
+            // 原始类型应该保持 merge 后的结果
+            expect(targetData.字符串).toBe("更新文本");
+            expect(targetData.数字).toBe(200);
+            expect(targetData.布尔值).toBe(false);
+            expect(targetData.空值).toBe(null);
+            expect(targetData.未定义).toBe(undefined);
+        });
+    });
 });
