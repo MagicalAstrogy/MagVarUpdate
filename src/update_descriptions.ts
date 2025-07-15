@@ -77,7 +77,7 @@ export function updateDescriptions(
                         }
                     }
                 }
-            } else if (_.has(msg_data, current_path) && _.isArray(_.get(msg_data, current_path))) {
+            } else if (_.isArray(_.get(msg_data, current_path))) {
                 // 普通数组，递归处理每个元素
                 const msg_array = _.get(msg_data, current_path);
                 value.forEach((item, index) => {
