@@ -1,4 +1,8 @@
-import { handleVariablesInMessage, handleVariablesInCallback, getLastValidVariable } from '@/function';
+import {
+    handleVariablesInMessage,
+    handleVariablesInCallback,
+    getLastValidVariable,
+} from '@/function';
 import { initCheck, createEmptyGameData, loadInitVarData } from '@/variable_init';
 import { variable_events } from '@/variable_def';
 import { updateDescriptions } from '@/update_descriptions';
@@ -31,7 +35,7 @@ eventOnButton('重新处理变量', async function () {
     await handleVariablesInMessage(getLastMessageId());
 });
 
-eventOnButton('读取InitVar更新', async function () {
+eventOnButton('读取InitVar更新(请先备份)', async function () {
     // 1. 创建一个新的空 GameData 并加载 InitVar 数据
     const latest_init_data = createEmptyGameData();
 
@@ -39,7 +43,7 @@ eventOnButton('读取InitVar更新', async function () {
         const hasInitData = await loadInitVarData(latest_init_data);
         if (!hasInitData) {
             console.error('没有找到 InitVar 数据');
-            toastr.error('没有找到 InitVar 数据', '', {timeOut: 3000});
+            toastr.error('没有找到 InitVar 数据', '', { timeOut: 3000 });
             return;
         }
     } catch (e) {
@@ -51,7 +55,7 @@ eventOnButton('读取InitVar更新', async function () {
     const message_id = getLastMessageId();
     if (message_id < 0) {
         console.error('没有找到消息');
-        toastr.error('没有找到消息', '', {timeOut: 3000});
+        toastr.error('没有找到消息', '', { timeOut: 3000 });
         return;
     }
 
@@ -59,7 +63,7 @@ eventOnButton('读取InitVar更新', async function () {
 
     if (!_.has(latest_msg_data, 'stat_data')) {
         console.error('最新消息中没有找到 stat_data');
-        toastr.error('最新消息中没有 stat_data', '', {timeOut: 3000});
+        toastr.error('最新消息中没有 stat_data', '', { timeOut: 3000 });
         return;
     }
 
@@ -68,11 +72,16 @@ eventOnButton('读取InitVar更新', async function () {
     merged_data.stat_data = _.merge(merged_data.stat_data, latest_msg_data.stat_data);
 
     // 4-5. 遍历并更新描述字段
-    updateDescriptions('', latest_init_data.stat_data, latest_msg_data.stat_data, merged_data.stat_data);
+    updateDescriptions(
+        '',
+        latest_init_data.stat_data,
+        latest_msg_data.stat_data,
+        merged_data.stat_data
+    );
 
     // 6. 更新变量到最新消息
-    await replaceVariables(merged_data, {type: 'message', message_id: message_id});
+    await replaceVariables(merged_data, { type: 'message', message_id: message_id });
 
     console.info('InitVar更新完成');
-    toastr.success('InitVar描述已更新', '', {timeOut: 3000});
+    toastr.success('InitVar描述已更新', '', { timeOut: 3000 });
 });

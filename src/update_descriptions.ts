@@ -21,9 +21,14 @@
  *   }
  * }
  */
-export function updateDescriptions(_init_path: string, init_data: any, msg_data: any, target_data: any) {
+export function updateDescriptions(
+    _init_path: string,
+    init_data: any,
+    msg_data: any,
+    target_data: any
+) {
     _.forEach(init_data, (value, key) => {
-        const current_path = key;//init_path ? `${init_path}.${key}` : key;
+        const current_path = key; //init_path ? `${init_path}.${key}` : key;
 
         if (_.isArray(value)) {
             // 检查是否为 ValueWithDescription<T> 类型 (长度为2，第二个元素是字符串)
@@ -41,17 +46,34 @@ export function updateDescriptions(_init_path: string, init_data: any, msg_data:
                             const targetObj = _.get(target_data, `${key}[0]`);
 
                             // 如果对象包含description属性，需要特殊处理
-                            if (_.has(value[0], 'description') && _.isString(value[0].description)) {
+                            if (
+                                _.has(value[0], 'description') &&
+                                _.isString(value[0].description)
+                            ) {
                                 if (_.has(msgValue[0], 'description')) {
-                                    _.set(target_data, `${current_path}[0].description`, value[0].description);
+                                    _.set(
+                                        target_data,
+                                        `${current_path}[0].description`,
+                                        value[0].description
+                                    );
                                 }
                             }
 
                             // 递归处理对象的其他属性
-                            updateDescriptions(`${current_path}[0]`, value[0], msgValue[0], targetObj);
+                            updateDescriptions(
+                                `${current_path}[0]`,
+                                value[0],
+                                msgValue[0],
+                                targetObj
+                            );
                         } else if (_.isArray(value[0])) {
                             // 处理数组
-                            updateDescriptions(`${current_path}[0]`, value[0], msgValue[0], target_data[0]);
+                            updateDescriptions(
+                                `${current_path}[0]`,
+                                value[0],
+                                msgValue[0],
+                                target_data[0]
+                            );
                         }
                     }
                 }
@@ -69,7 +91,12 @@ export function updateDescriptions(_init_path: string, init_data: any, msg_data:
                                 }
                             }
 
-                            updateDescriptions(`${current_path}[${index}]`, value[index], msg_array[index], current_target);
+                            updateDescriptions(
+                                `${current_path}[${index}]`,
+                                value[index],
+                                msg_array[index],
+                                current_target
+                            );
                         }
                     }
                 });

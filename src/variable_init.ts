@@ -1,6 +1,8 @@
 // 整体游戏数据类型
 import { updateVariables } from '@/function';
 import { GameData } from '@/variable_def';
+import * as JSON5 from 'json5';
+import * as TOML from 'toml';
 
 type LorebookEntry = {
     content: string;
@@ -23,8 +25,11 @@ export async function getEnabledLorebookList(): Promise<string[]> {
 /**
  * 从 lorebook 中加载所有 InitVar 数据并合并到提供的 GameData 中
  */
-export async function loadInitVarData(gameData: GameData, lorebookList?: string[]): Promise<boolean> {
-    const enabled_lorebook_list = lorebookList || await getEnabledLorebookList();
+export async function loadInitVarData(
+    gameData: GameData,
+    lorebookList?: string[]
+): Promise<boolean> {
+    const enabled_lorebook_list = lorebookList || (await getEnabledLorebookList());
     let is_updated = false;
 
     for (const current_lorebook of enabled_lorebook_list) {
@@ -34,16 +39,40 @@ export async function loadInitVarData(gameData: GameData, lorebookList?: string[
 
         for (const entry of init_entries) {
             if (entry.comment?.toLowerCase().includes('[initvar]')) {
+                const content = substitudeMacros(entry.content);
+                let parsedData: any = null;
+                let parseError: Error | null = null;
+
+                // Try YAML first (which also handles JSON)
                 try {
-                    const jsonData = YAML.parse(substitudeMacros(entry.content));
-                    gameData.stat_data = _.merge(gameData.stat_data, jsonData);
+                    parsedData = YAML.parse(content);
                 } catch (e) {
-                    console.error(`Failed to parse JSON from lorebook entry: ${e}`);
+                    // Try JSON5
+                    try {
+                        parsedData = JSON5.parse(content);
+                    } catch (e2) {
+                        // Try TOML
+                        try {
+                            parsedData = TOML.parse(content);
+                        } catch (e3) {
+                            parseError = new Error(
+                                `Failed to parse content as YAML/JSON, JSON5, or TOML: ${e3}`
+                            );
+                        }
+                    }
+                }
+
+                if (parseError) {
+                    console.error(`Failed to parse lorebook entry: ${parseError}`);
                     // @ts-ignore
-                    toastr.error(e.message, 'Failed to parse JSON from lorebook entry', {
+                    toastr.error(parseError.message, 'Failed to parse lorebook entry', {
                         timeOut: 5000,
                     });
-                    throw e;
+                    throw parseError;
+                }
+
+                if (parsedData) {
+                    gameData.stat_data = _.merge(gameData.stat_data, parsedData);
                 }
             }
         }
@@ -61,14 +90,17 @@ export function createEmptyGameData(): GameData {
         display_data: {},
         initialized_lorebooks: [],
         stat_data: {},
-        delta_data: {}
+        delta_data: {},
     };
 }
 
 /**
  * 获取最后一条消息的变量数据
  */
-export async function getLastMessageVariables(): Promise<{ message: ChatMessageSwiped, variables: GameData | undefined }> {
+export async function getLastMessageVariables(): Promise<{
+    message: ChatMessageSwiped;
+    variables: GameData | undefined;
+}> {
     let last_chat_msg: ChatMessageSwiped[] = [];
     try {
         last_chat_msg = (await getChatMessages(-2, {
