@@ -1,7 +1,9 @@
 // 整体游戏数据类型
-import {updateVariables} from '@/function';
-import {GameData} from "@/variable_def";
-import {EXTENSIBLE_MARKER, generateSchema} from "@/schema";
+import { updateVariables } from '@/function';
+import { GameData } from "@/variable_def";
+import { EXTENSIBLE_MARKER, generateSchema } from "@/schema";
+import * as JSON5 from 'json5';
+import * as TOML from 'toml';
 
 type LorebookEntry = {
     content: string;
@@ -82,17 +84,40 @@ export async function initCheck() {
 
         for (const entry of init_entries) {
             if (entry.comment?.toLowerCase().includes('[initvar]')) {
+                const content = substitudeMacros(entry.content);
+                let parsedData: any = null;
+                let parseError: Error | null = null;
+
+                // Try YAML first (which also handles JSON)
                 try {
-                    const jsonData = YAML.parse(substitudeMacros(entry.content));
-                    variables.stat_data = _.merge(variables.stat_data, jsonData);
-                } catch (e: any) {
-                    // 明确 e 的类型
-                    console.error(`Failed to parse JSON from lorebook entry: ${e}`);
+                    parsedData = YAML.parse(content);
+                } catch (e) {
+                    // Try JSON5
+                    try {
+                        parsedData = JSON5.parse(content);
+                    } catch (e2) {
+                        // Try TOML
+                        try {
+                            parsedData = TOML.parse(content);
+                        } catch (e3) {
+                            parseError = new Error(
+                                `Failed to parse content as YAML/JSON, JSON5, or TOML: ${e3}`
+                            );
+                        }
+                    }
+                }
+
+                if (parseError) {
+                    console.error(`Failed to parse lorebook entry: ${parseError}`);
                     // @ts-ignore
-                    toastr.error(e.message, 'Failed to parse JSON from lorebook entry', {
+                    toastr.error(parseError.message, 'Failed to parse lorebook entry', {
                         timeOut: 5000,
                     });
                     return;
+                }
+
+                if (parsedData) {
+                    variables.stat_data = _.merge(variables.stat_data, parsedData);
                 }
             }
         }
@@ -167,6 +192,7 @@ export async function initCheck() {
     console.info(`Init chat variables.`);
     await insertOrAssignVariables(variables);
 
+    // 更新所有 swipes
     for (let i = 0; i < last_msg.swipes.length; i++) {
         const current_swipe_data = _.cloneDeep(variables);
         // 此处调用的是新版 updateVariables，它将支持更多命令
@@ -180,14 +206,154 @@ export async function initCheck() {
         });
     }
 
+    // 更新 lorebook 设置
     const expected_settings = {
-        /*预期设置*/
         context_percentage: 100,
         recursive: true,
     };
     const settings = await getLorebookSettings();
-    if (_.isEqual(_.merge({}, settings, expected_settings), settings)) {
-        setLorebookSettings(expected_settings);
+    if (!_.isEqual(_.merge({}, settings, expected_settings), settings)) {
+        await setLorebookSettings(expected_settings);
+    }
+}
+
+/**
+ * 获取所有启用的 lorebook 列表
+ */
+export async function getEnabledLorebookList(): Promise<string[]> {
+    const lorebook_settings = await getLorebookSettings();
+    const enabled_lorebook_list = [...lorebook_settings.selected_global_lorebooks];
+    const char_lorebook = await getCurrentCharPrimaryLorebook();
+    if (char_lorebook !== null) {
+        enabled_lorebook_list.push(char_lorebook);
+    }
+    return enabled_lorebook_list;
+}
+
+/**
+ * 从 lorebook 中加载所有 InitVar 数据并合并到提供的 GameData 中
+ */
+export async function loadInitVarData(
+    gameData: GameData,
+    lorebookList?: string[]
+): Promise<boolean> {
+    const enabled_lorebook_list = lorebookList || (await getEnabledLorebookList());
+    let is_updated = false;
+
+    // 确保 initialized_lorebooks 是对象格式
+    if (!gameData.initialized_lorebooks || Array.isArray(gameData.initialized_lorebooks)) {
+        gameData.initialized_lorebooks = {};
+    }
+
+    for (const current_lorebook of enabled_lorebook_list) {
+        // 适配 beta 分支的对象结构
+        if (_.has(gameData.initialized_lorebooks, current_lorebook)) continue;
+        gameData.initialized_lorebooks[current_lorebook] = [];
+        const init_entries = (await getLorebookEntries(current_lorebook)) as LorebookEntry[];
+
+        for (const entry of init_entries) {
+            if (entry.comment?.toLowerCase().includes('[initvar]')) {
+                const content = substitudeMacros(entry.content);
+                let parsedData: any = null;
+                let parseError: Error | null = null;
+
+                // Try YAML first (which also handles JSON)
+                try {
+                    parsedData = YAML.parse(content);
+                } catch (e) {
+                    // Try JSON5
+                    try {
+                        parsedData = JSON5.parse(content);
+                    } catch (e2) {
+                        // Try TOML
+                        try {
+                            parsedData = TOML.parse(content);
+                        } catch (e3) {
+                            parseError = new Error(
+                                `Failed to parse content as YAML/JSON, JSON5, or TOML: ${e3}`
+                            );
+                        }
+                    }
+                }
+
+                if (parseError) {
+                    console.error(`Failed to parse lorebook entry: ${parseError}`);
+                    // @ts-ignore
+                    toastr.error(parseError.message, 'Failed to parse lorebook entry', {
+                        timeOut: 5000,
+                    });
+                    throw parseError;
+                }
+
+                if (parsedData) {
+                    gameData.stat_data = _.merge(gameData.stat_data, parsedData);
+                }
+            }
+        }
+        is_updated = true;
+    }
+
+    return is_updated;
+}
+
+/**
+ * 创建一个新的空 GameData 对象
+ */
+export function createEmptyGameData(): GameData {
+    return {
+        display_data: {},
+        initialized_lorebooks: {}, // 适配 beta 分支的对象结构
+        stat_data: {},
+        delta_data: {},
+        schema: {}, // beta 分支新增的 schema 字段
+    };
+}
+
+/**
+ * 获取最后一条消息的变量数据
+ */
+export async function getLastMessageVariables(): Promise<{
+    message: ChatMessageSwiped;
+    variables: GameData | undefined;
+}> {
+    let last_chat_msg: ChatMessageSwiped[] = [];
+    try {
+        last_chat_msg = (await getChatMessages(-2, {
+            role: 'assistant',
+            include_swipes: true,
+        })) as ChatMessageSwiped[];
+    } catch (e) {
+        // 在第一行时，必定发生异常。
+    }
+
+    if (!last_chat_msg || last_chat_msg.length <= 0) {
+        const first_msg = await getChatMessages(0, {
+            include_swipes: true,
+        });
+        if (first_msg && first_msg.length > 0) {
+            last_chat_msg = first_msg;
+        } else {
+            throw new Error('不存在任何一条消息');
+        }
+    }
+
+    const last_msg = last_chat_msg[0];
+    const variables = last_msg.swipes_data[last_msg.swipe_id] as GameData & Record<string, any>;
+
+    return { message: last_msg, variables };
+}
+
+/**
+ * 更新 lorebook 设置为推荐配置
+ */
+export async function updateLorebookSettings(): Promise<void> {
+    const expected_settings = {
+        context_percentage: 100,
+        recursive: true,
+    };
+    const settings = await getLorebookSettings();
+    if (!_.isEqual(_.merge({}, settings, expected_settings), settings)) {
+        await setLorebookSettings(expected_settings);
     }
 }
 
