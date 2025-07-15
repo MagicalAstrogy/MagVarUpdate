@@ -35,7 +35,7 @@ eventOnButton('重新处理变量', async function () {
     await handleVariablesInMessage(getLastMessageId());
 });
 
-eventOnButton('读取InitVar更新(请先备份)', async function () {
+eventOnButton('重新读取初始变量', async function () {
     // 1. 创建一个新的空 GameData 并加载 InitVar 数据
     const latest_init_data = createEmptyGameData();
 
@@ -68,7 +68,8 @@ eventOnButton('读取InitVar更新(请先备份)', async function () {
     }
 
     // 3. 产生新变量，以 latest_init_data 为基础，合并入 latest_msg_data 的内容
-    const merged_data = _.cloneDeep(latest_init_data);
+    //此处 latest_init_data 内不存在复杂类型，因此可以采用 structuredClone
+    const merged_data = structuredClone(latest_init_data);
     merged_data.stat_data = _.merge(merged_data.stat_data, latest_msg_data.stat_data);
 
     // 4-5. 遍历并更新描述字段

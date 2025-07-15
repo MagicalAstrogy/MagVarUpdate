@@ -347,13 +347,28 @@ export async function getLastMessageVariables(): Promise<{
  * 更新 lorebook 设置为推荐配置
  */
 export async function updateLorebookSettings(): Promise<void> {
-    const expected_settings = {
+    /*Ref:https://github.com/lolo-desu/lolocard/blob/master/src/%E6%97%A5%E8%AE%B0%E7%BB%9C%E7%BB%9C/%E8%84%9A%E6%9C%AC/%E8%B0%83%E6%95%B4%E4%B8%96%E7%95%8C%E4%B9%A6%E5%85%A8%E5%B1%80%E8%AE%BE%E7%BD%AE.ts
+    */
+    const dst_setting : Partial<LorebookSettings> = {
+        scan_depth: 2,
         context_percentage: 100,
+        budget_cap: 0,
+        min_activations: 0,
+        max_depth: 0,
+        max_recursion_steps: 0,
+
+        insertion_strategy: 'character_first',
+
+        include_names: false,
         recursive: true,
+        case_sensitive: false,
+        match_whole_words: false,
+        use_group_scoring: false,
+        overflow_alert: false,
     };
-    const settings = await getLorebookSettings();
-    if (!_.isEqual(_.merge({}, settings, expected_settings), settings)) {
-        await setLorebookSettings(expected_settings);
+    const settings = getLorebookSettings();
+    if (!_.isEqual(_.merge({}, settings, dst_setting), settings)) {
+        setLorebookSettings(dst_setting);
     }
 }
 
