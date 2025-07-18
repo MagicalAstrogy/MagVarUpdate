@@ -6,6 +6,7 @@ import {
 import { initCheck, createEmptyGameData, loadInitVarData } from '@/variable_init';
 import { variable_events } from "@/variable_def";
 import { updateDescriptions } from '@/update_descriptions';
+import {reconcileAndApplySchema} from "@/schema";
 
 $(() => {
     eventOn(tavern_events.GENERATION_STARTED, initCheck);
@@ -79,6 +80,9 @@ eventOnButton('重新读取初始变量', async function () {
         latest_msg_data.stat_data,
         merged_data.stat_data
     );
+
+    //应用
+    await reconcileAndApplySchema(merged_data);
 
     // 6. 更新变量到最新消息
     await replaceVariables(merged_data, { type: 'message', message_id: message_id });

@@ -49,6 +49,33 @@ export async function initCheck() {
     // 加载 InitVar 数据
     const is_updated = await loadInitVarData(variables);
 
+    // --- 一次性清理所有魔法字符串 ---
+    if (is_updated) {
+        // 递归遍历整个 stat_data，移除所有魔法字符串
+        const cleanData = (data: any) => {
+            if (Array.isArray(data)) {
+                // 使用 filter 创建一个不含标记的新数组
+                const cleanedArray = data.filter(item => item !== EXTENSIBLE_MARKER);
+                // 递归清理数组内的对象或数组
+                cleanedArray.forEach(cleanData);
+                return cleanedArray;
+            }
+            if (_.isObject(data)) {
+                const newObj: Record<string, any> = {};
+                const typedData = data as Record<string, any>; // 类型断言
+                for (const key in data) {
+                    // 递归清理子节点，并将结果赋给新对象
+                    newObj[key] = cleanData(typedData[key]);
+                }
+                return newObj;
+            }
+            return data;
+        };
+        // 在生成 Schema 之前，先清理一遍 stat_data
+        // 这里需要先生成 Schema，再清理数据
+        // 所以还是得用克隆
+    }
+
     // 在所有 lorebook 初始化完成后，生成最终的模式
     if (is_updated || !variables.schema || _.isEmpty(variables.schema)) {
         // 1. 克隆数据用于 Schema 生成
@@ -168,7 +195,7 @@ export async function loadInitVarData(
                 }
 
                 if (parseError) {
-                    console.error(`Failed to parse lorebook entry: ${parseError}`);
+                    console.error(`Failed to parse lorebook entry[${entry.comment}]: ${parseError}`);
                     // @ts-ignore
                     toastr.error(parseError.message, 'Failed to parse lorebook entry', {
                         timeOut: 5000,
