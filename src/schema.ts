@@ -1,3 +1,12 @@
+import {
+    SchemaNode,
+    StatData,
+    isArraySchema,
+    isObjectSchema,
+    ObjectSchemaNode,
+    GameData,
+} from '@/variable_def';
+
 // 定义魔法字符串为常量，便于管理和引用
 export const EXTENSIBLE_MARKER = '$__META_EXTENSIBLE__$';
 
@@ -8,9 +17,22 @@ export const EXTENSIBLE_MARKER = '$__META_EXTENSIBLE__$';
  * @param oldSchemaNode - (可选) 来自旧 Schema 的对应节点，用于继承元数据。
  * @returns - 生成的模式对象。
  */
-export function generateSchema(data: any, oldSchemaNode?: any): any {
+export function generateSchema(data: any, oldSchemaNode?: SchemaNode): SchemaNode {
     if (Array.isArray(data)) {
-        let isExtensible = oldSchemaNode?.extensible === true; // 默认继承旧 Schema
+        let isExtensible = false;
+        let oldElementType: SchemaNode | undefined;
+
+        // 使用类型守卫检查 oldSchemaNode 是否为 ArraySchemaNode
+        if (oldSchemaNode) {
+            if (isArraySchema(oldSchemaNode)) {
+                isExtensible = oldSchemaNode.extensible === true;
+                oldElementType = oldSchemaNode.elementType;
+            } else {
+                console.error(
+                    `Type mismatch: expected array schema but got ${oldSchemaNode.type} at path`
+                );
+            }
+        }
 
         // 检查并处理魔法字符串
         const markerIndex = data.indexOf(EXTENSIBLE_MARKER);
@@ -21,8 +43,6 @@ export function generateSchema(data: any, oldSchemaNode?: any): any {
             console.log(`Extensible marker found and removed from an array.`);
         }
 
-        // 对于数组，关注其 elementType
-        const oldElementType = oldSchemaNode?.elementType;
         return {
             type: 'array',
             extensible: isExtensible, // 应用最终的 extensible 状态
@@ -31,12 +51,28 @@ export function generateSchema(data: any, oldSchemaNode?: any): any {
         };
     }
     if (_.isObject(data) && !_.isDate(data)) {
-        const typedData = data as Record<string, any>; // 类型断言
-        const schemaNode: any = {
+        const typedData = data as StatData; // 类型断言
+
+        // 使用类型守卫检查 oldSchemaNode 是否为 ObjectSchemaNode
+        let oldExtensible = false;
+        let oldProperties: ObjectSchemaNode['properties'] | undefined;
+
+        if (oldSchemaNode) {
+            if (isObjectSchema(oldSchemaNode)) {
+                oldExtensible = oldSchemaNode.extensible === true;
+                oldProperties = oldSchemaNode.properties;
+            } else {
+                console.error(
+                    `Type mismatch: expected object schema but got ${oldSchemaNode.type} at path`
+                );
+            }
+        }
+
+        const schemaNode: ObjectSchemaNode = {
             type: 'object',
             properties: {},
             // 默认不可扩展，但如果旧 schema 或 $meta 定义了，则可扩展
-            extensible: oldSchemaNode?.extensible === true || typedData.$meta?.extensible === true,
+            extensible: oldExtensible || typedData.$meta?.extensible === true,
         };
 
         // 暂存父节点的 $meta，以便在循环中使用
@@ -48,7 +84,7 @@ export function generateSchema(data: any, oldSchemaNode?: any): any {
         }
 
         for (const key in data) {
-            const oldChildNode = oldSchemaNode?.properties?.[key];
+            const oldChildNode = oldProperties?.[key];
             const childSchema = generateSchema(typedData[key], oldChildNode);
 
             // 一个属性是否必需？
@@ -71,14 +107,20 @@ export function generateSchema(data: any, oldSchemaNode?: any): any {
                 isRequired = true;
             }
 
-            childSchema.required = isRequired;
-
-            schemaNode.properties[key] = childSchema;
+            schemaNode.properties[key] = {
+                ...childSchema,
+                required: isRequired,
+            };
         }
         return schemaNode;
     }
     // 处理原始类型
-    return { type: typeof data };
+    const dataType = typeof data;
+    if (dataType === 'string' || dataType === 'number' || dataType === 'boolean') {
+        return { type: dataType };
+    }
+    // 对于其他类型（function, symbol, bigint, undefined 等），默认返回 'any'
+    return { type: 'any' };
 }
 
 /**
@@ -88,28 +130,31 @@ export function generateSchema(data: any, oldSchemaNode?: any): any {
  * @param path - 要查询的数据路径
  * @returns 对应路径的 Schema 节点，如果找不到则返回 null。
  */
-export function getSchemaForPath(schema: any, path: string): any {
-    if (!path) {
-        return schema;
+export function getSchemaForPath(
+    schema: SchemaNode | null | undefined,
+    path: string
+): SchemaNode | null {
+    if (!path || !schema) {
+        return schema || null;
     }
     // 将 lodash 路径字符串转换为段数组，例如 'a.b[0].c' -> ['a', 'b', '0', 'c']
     const pathSegments = _.toPath(path);
-    let currentSchema = schema;
+    let currentSchema: SchemaNode | null = schema;
 
     for (const segment of pathSegments) {
         if (!currentSchema) return null;
 
         // 如果 segment 是数字（数组索引），则移动到 elementType
         if (/^\d+$/.test(segment)) {
-            if (currentSchema.type === 'array' && currentSchema.elementType) {
+            if (isArraySchema(currentSchema)) {
                 currentSchema = currentSchema.elementType;
             } else {
                 return null; // 路径试图索引一个非数组或无 elementType 的 schema
             }
-        } else if (currentSchema.properties && currentSchema.properties[segment]) {
+        } else if (isObjectSchema(currentSchema) && currentSchema.properties[segment]) {
             // 否则，作为对象属性访问
-
-            currentSchema = currentSchema.properties[segment];
+            const property = currentSchema.properties[segment];
+            currentSchema = property as SchemaNode;
         } else {
             return null; // 路径中的键在 schema 中不存在
         }
@@ -121,7 +166,7 @@ export function getSchemaForPath(schema: any, path: string): any {
  * 调和函数：比较数据和旧 Schema，生成并应用一个与当前数据状态完全同步的新 Schema。
  * @param variables - 包含 stat_data 和旧 schema 的变量对象。
  */
-export function reconcileAndApplySchema(variables: any) {
+export function reconcileAndApplySchema(variables: GameData) {
     console.log('Reconciling schema with current data state...');
 
     // 1. 深拷贝数据，以防 generateSchema 修改原始数据（例如删除 $meta）
@@ -132,6 +177,13 @@ export function reconcileAndApplySchema(variables: any) {
     const newSchema = generateSchema(currentDataClone, variables.schema);
 
     // 3. 直接用新 Schema 替换旧 Schema
+    // stat_data 的根节点应该始终是对象，所以生成的 schema 也应该是 ObjectSchemaNode
+    if (!isObjectSchema(newSchema)) {
+        console.error(
+            'Generated schema is not an object schema, which is unexpected for stat_data root'
+        );
+        return;
+    }
     variables.schema = newSchema;
 
     console.log('Schema reconciliation complete.');

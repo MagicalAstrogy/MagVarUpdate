@@ -207,8 +207,7 @@ describe('invokeVariableTest', () => {
                 initialized_lorebooks: {},
                 stat_data: {"喵呜": 20},
                 display_data: {},
-                delta_data: {},
-                schema: {}
+                delta_data: {}
             }
         };
         await handleVariablesInCallback("_.set('喵呜', 114);//测试", inputData);
@@ -222,8 +221,7 @@ describe('invokeVariableTest', () => {
                 initialized_lorebooks: {},
                 stat_data: {"喵呜": 20},
                 display_data: {},
-                delta_data: {},
-                schema: {}
+                delta_data: {}
             }
         };
         await handleVariablesInCallback("这是一个没有更新的文本。明天见是最好的预言。", inputData);

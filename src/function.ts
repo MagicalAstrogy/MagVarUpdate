@@ -1,4 +1,4 @@
-import { variable_events, VariableData } from '@/variable_def';
+import { variable_events, VariableData, GameData } from '@/variable_def';
 import * as math from 'mathjs';
 
 import { getSchemaForPath, reconcileAndApplySchema } from '@/schema';
@@ -335,15 +335,13 @@ export function parseParameters(paramsString: string): string[] {
     return params;
 }
 
-export async function getLastValidVariable(message_id: number): Promise<Record<string, any>> {
-    return (
-        structuredClone(
-            SillyTavern.chat
-                .slice(0, message_id + 1)
-                .map(chat_message => _.get(chat_message, ['variables', chat_message.swipe_id ?? 0]))
-                .findLast(variables => _.has(variables, 'stat_data'))
-        ) ?? getVariables()
-    );
+export async function getLastValidVariable(message_id: number): Promise<GameData> {
+    return (structuredClone(
+        SillyTavern.chat
+            .slice(0, message_id + 1)
+            .map(chat_message => _.get(chat_message, ['variables', chat_message.swipe_id ?? 0]))
+            .findLast(variables => _.has(variables, 'stat_data'))
+    ) ?? getVariables()) as GameData;
 }
 
 function pathFix(path: string): string {
@@ -383,15 +381,15 @@ function pathFix(path: string): string {
 // 重构 updateVariables 以处理更多命令
 export async function updateVariables(
     current_message_content: string,
-    variables: any
+    variables: GameData
 ): Promise<boolean> {
     const out_is_modifed = false;
     // 触发变量更新开始事件，通知外部系统
     await eventEmit(variable_events.VARIABLE_UPDATE_STARTED, variables, out_is_modifed);
     // 深拷贝变量对象，生成状态快照，用于记录显示数据
-    const out_status: Record<string, any> = _.cloneDeep(variables);
+    const out_status: GameData = _.cloneDeep(variables);
     // 初始化增量状态对象，记录变化详情
-    const delta_status: Record<string, any> = { stat_data: {} };
+    const delta_status: Partial<GameData> = { stat_data: {} };
 
     // 重构新增：统一处理宏替换，确保命令中的宏（如 ${variable}）被替换，提升一致性
     const processed_message_content = substitudeMacros(current_message_content);
@@ -400,7 +398,7 @@ export async function updateVariables(
     const commands = extractCommands(processed_message_content);
     let variable_modified = false;
 
-    const schema = variables.schema; // 获取 schema
+    const schema = variables.schema; // 获取 schema，可能为 undefined
 
     for (const command of commands) {
         // 遍历所有命令，逐一处理
@@ -640,7 +638,11 @@ export async function updateVariables(
                         // 目标不存在，创建新对象并插入
                         collection = {};
                         _.set(variables.stat_data, path, collection);
-                        _.set(collection, String(keyOrIndex), valueToAssign);
+                        _.set(
+                            collection as Record<string, unknown>,
+                            String(keyOrIndex),
+                            valueToAssign
+                        );
                         display_str = `CREATED object at '${path}' and ASSIGNED key '${keyOrIndex}' ${reason_str}`;
                         successful = true;
                     }
@@ -876,7 +878,7 @@ export async function updateVariables(
                     }
                     const finalNewValue = _.get(variables.stat_data, path);
                     if (isValueWithDescription) {
-                        display_str = `${JSON.stringify(initialValue[0])}->${JSON.stringify(finalNewValue[0])} ${reason_str}`;
+                        display_str = `${JSON.stringify((initialValue as any[])[0])}->${JSON.stringify((finalNewValue as any[])[0])} ${reason_str}`;
                     } else {
                         display_str = `${JSON.stringify(initialValue)}->${JSON.stringify(finalNewValue)} ${reason_str}`;
                     }
@@ -917,7 +919,7 @@ export async function updateVariables(
 
                         const finalNewValue = _.get(variables.stat_data, path);
                         if (isValueWithDescription) {
-                            display_str = `${JSON.stringify(initialValue[0])}->${JSON.stringify(finalNewValue[0])} ${reason_str}`;
+                            display_str = `${JSON.stringify((initialValue as any[])[0])}->${JSON.stringify((finalNewValue as any[])[0])} ${reason_str}`;
                         } else {
                             display_str = `${JSON.stringify(initialValue)}->${JSON.stringify(finalNewValue)} ${reason_str}`;
                         }
@@ -950,7 +952,7 @@ export async function updateVariables(
                         }
                         const finalNewValue = _.get(variables.stat_data, path);
                         if (isValueWithDescription) {
-                            display_str = `${JSON.stringify(initialValue[0])}->${JSON.stringify(finalNewValue[0])} ${reason_str}`;
+                            display_str = `${JSON.stringify((initialValue as any[])[0])}->${JSON.stringify((finalNewValue as any[])[0])} ${reason_str}`;
                         } else {
                             display_str = `${JSON.stringify(initialValue)}->${JSON.stringify(finalNewValue)} ${reason_str}`;
                         }
@@ -985,7 +987,7 @@ export async function updateVariables(
         if (display_str) {
             // 更新状态和增量数据，记录操作详情
             _.set(out_status.stat_data, path, display_str);
-            _.set(delta_status.stat_data, path, display_str);
+            _.set(delta_status.stat_data!, path, display_str);
         }
     }
 
@@ -996,7 +998,7 @@ export async function updateVariables(
 
     // 更新变量的显示和增量数据
     variables.display_data = out_status.stat_data;
-    variables.delta_data = delta_status.stat_data;
+    variables.delta_data = delta_status.stat_data!;
     // 触发变量更新结束事件
     await eventEmit(variable_events.VARIABLE_UPDATE_ENDED, variables, out_is_modifed);
     // 返回是否修改了变量
