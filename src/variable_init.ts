@@ -1,7 +1,7 @@
 // 整体游戏数据类型
 import { updateVariables } from '@/function';
 import { GameData } from "@/variable_def";
-import {cleanupMetadata, EXTENSIBLE_MARKER, generateSchema} from "@/schema";
+import {cleanUpMetadata, EXTENSIBLE_MARKER, generateSchema} from "@/schema";
 import * as JSON5 from 'json5';
 import * as TOML from 'toml';
 
@@ -83,7 +83,7 @@ export async function initCheck() {
         // 2. generateSchema 会读取并移除克隆体中的标记，生成正确的 schema
         variables.schema = generateSchema(dataForSchema);
         // 3. 现在，清理真实的 stat_data，让它在后续操作中保持干净
-        cleanupMetadata(variables.stat_data);
+        cleanUpMetadata(variables.stat_data);
     }
 
     if (!is_updated) {

@@ -147,7 +147,7 @@ function isMetaCarrier(value: unknown): value is Record<string, unknown> & { $me
  * - 从对象中删除 $meta 属性
  * @param data 需要清理的数据
  */
-export function cleanupMetadata(data: any): void {
+export function cleanUpMetadata(data: any): void {
     // 如果是数组，移除魔法字符串并递归
     if (Array.isArray(data)) {
         let i = data.length;
@@ -156,7 +156,7 @@ export function cleanupMetadata(data: any): void {
                 data.splice(i, 1);
             } else {
                 // 对数组中的其他元素（可能是对象或数组）进行递归清理
-                cleanupMetadata(data[i]);
+                cleanUpMetadata(data[i]);
             }
         }
     }
@@ -167,7 +167,7 @@ export function cleanupMetadata(data: any): void {
 
         // 递归
         for (const key in data) {
-            cleanupMetadata(data[key]);
+            cleanUpMetadata(data[key]);
         }
     }
 }
