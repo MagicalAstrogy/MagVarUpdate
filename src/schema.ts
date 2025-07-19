@@ -135,3 +135,39 @@ export function reconcileAndApplySchema(variables: any) {
 
     console.log("Schema reconciliation complete.");
 }
+
+
+function isMetaCarrier(value: unknown): value is Record<string, unknown> & { $meta?: unknown } {
+    return _.isObject(value) && !_.isDate(value);
+}
+
+/**
+ * 递归清理数据中的元数据标记
+ * - 从数组中移除 EXTENSIBLE_MARKER
+ * - 从对象中删除 $meta 属性
+ * @param data 需要清理的数据
+ */
+export function cleanupMetadata(data: any): void {
+    // 如果是数组，移除魔法字符串并递归
+    if (Array.isArray(data)) {
+        let i = data.length;
+        while (i--) {
+            if (data[i] === EXTENSIBLE_MARKER) {
+                data.splice(i, 1);
+            } else {
+                // 对数组中的其他元素（可能是对象或数组）进行递归清理
+                cleanupMetadata(data[i]);
+            }
+        }
+    }
+    // 如果是对象，移除 $meta 并递归
+    else if (isMetaCarrier(data)) {
+        // 清除自身 $meta
+        delete data.$meta;
+
+        // 递归
+        for (const key in data) {
+            cleanupMetadata(data[key]);
+        }
+    }
+}

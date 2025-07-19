@@ -1,7 +1,7 @@
 // 整体游戏数据类型
 import { updateVariables } from '@/function';
 import { GameData } from "@/variable_def";
-import { EXTENSIBLE_MARKER, generateSchema } from "@/schema";
+import {cleanupMetadata, EXTENSIBLE_MARKER, generateSchema} from "@/schema";
 import * as JSON5 from 'json5';
 import * as TOML from 'toml';
 
@@ -83,31 +83,7 @@ export async function initCheck() {
         // 2. generateSchema 会读取并移除克隆体中的标记，生成正确的 schema
         variables.schema = generateSchema(dataForSchema);
         // 3. 现在，清理真实的 stat_data，让它在后续操作中保持干净
-        (function cleanUpMetaData(data) {
-            // 如果是数组，移除魔法字符串并递归
-            if (Array.isArray(data)) {
-                let i = data.length;
-                while (i--) {
-                    if (data[i] === EXTENSIBLE_MARKER) {
-                        data.splice(i, 1);
-                    } else {
-                        // 对数组中的其他元素（可能是对象或数组）进行递归清理
-                        cleanUpMetaData(data[i]);
-                    }
-                }
-            }
-            // 如果是对象，移除 $meta 并递归
-            else if (_.isObject(data) && !_.isDate(data)) {
-                // 如果当前对象有 $meta，删除它
-                if (data.$meta) {
-                    delete data.$meta;
-                }
-                // 递归清理对象的所有属性值
-                for (const key in data) {
-                    cleanUpMetaData(data[key]);
-                }
-            }
-        })(variables.stat_data);
+        cleanupMetadata(variables.stat_data);
     }
 
     if (!is_updated) {
