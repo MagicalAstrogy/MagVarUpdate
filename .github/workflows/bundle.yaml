@@ -16,12 +16,9 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Set up SSH (Deploy Key)
-        uses: webfactory/ssh-agent@v0.9.0
-        with:
-          ssh-private-key: ${{ secrets.CI_DEPLOY_KEY }}  -
       - uses: actions/checkout@v4
         with:
+          ssh-key: ${{ secrets.CI_DEPLOY_KEY }}
           persist-credentials: false    # 禁用默认 GITHUB_TOKEN 认证
           fetch-depth: 0                 # ← 必须
 
