@@ -19,7 +19,6 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ssh-key: ${{ secrets.CI_DEPLOY_KEY }}
-          persist-credentials: false    # 禁用默认 GITHUB_TOKEN 认证
           fetch-depth: 0                 # ← 必须
 
       - name: Use Node.js
