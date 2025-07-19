@@ -2,7 +2,7 @@ name: bundle
 
 on:
   push:
-    branches: [ master, beta ] 
+    branches: [ master, beta ]
     paths-ignore:
       - artifact/**
   workflow_dispatch:
@@ -18,7 +18,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
+          token: ${{ secrets.CI_DEPLOY_KEY }}
           fetch-depth: 0                 # ← 必须
 
       - name: Use Node.js
@@ -46,6 +46,6 @@ jobs:
         uses: anothrNick/github-tag-action@1.73.0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAG_PREFIX: v                 
+          TAG_PREFIX: v
           RELEASE_BRANCHES: master      # 仅 master 产正式版
           PRERELEASE_SUFFIX: beta       # beta 分支自动变成 vX.Y.Z-beta.N
