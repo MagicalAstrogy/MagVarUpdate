@@ -1,5 +1,5 @@
 // 定义魔法字符串为常量，便于管理和引用
-export const EXTENSIBLE_MARKER = "$__META_EXTENSIBLE__$";
+export const EXTENSIBLE_MARKER = '$__META_EXTENSIBLE__$';
 
 // 模式生成函数
 /**
@@ -26,7 +26,8 @@ export function generateSchema(data: any, oldSchemaNode?: any): any {
         return {
             type: 'array',
             extensible: isExtensible, // 应用最终的 extensible 状态
-            elementType: data.length > 0 ? generateSchema(data[0], oldElementType) : {type: 'any'},
+            elementType:
+                data.length > 0 ? generateSchema(data[0], oldElementType) : { type: 'any' },
         };
     }
     if (_.isObject(data) && !_.isDate(data)) {
@@ -77,7 +78,7 @@ export function generateSchema(data: any, oldSchemaNode?: any): any {
         return schemaNode;
     }
     // 处理原始类型
-    return {type: typeof data};
+    return { type: typeof data };
 }
 
 /**
@@ -105,8 +106,8 @@ export function getSchemaForPath(schema: any, path: string): any {
             } else {
                 return null; // 路径试图索引一个非数组或无 elementType 的 schema
             }
-        } else if (currentSchema.properties && currentSchema.properties[segment]) {// 否则，作为对象属性访问
-
+        } else if (currentSchema.properties && currentSchema.properties[segment]) {
+            // 否则，作为对象属性访问
 
             currentSchema = currentSchema.properties[segment];
         } else {
@@ -121,7 +122,7 @@ export function getSchemaForPath(schema: any, path: string): any {
  * @param variables - 包含 stat_data 和旧 schema 的变量对象。
  */
 export function reconcileAndApplySchema(variables: any) {
-    console.log("Reconciling schema with current data state...");
+    console.log('Reconciling schema with current data state...');
 
     // 1. 深拷贝数据，以防 generateSchema 修改原始数据（例如删除 $meta）
     const currentDataClone = _.cloneDeep(variables.stat_data);
@@ -133,9 +134,8 @@ export function reconcileAndApplySchema(variables: any) {
     // 3. 直接用新 Schema 替换旧 Schema
     variables.schema = newSchema;
 
-    console.log("Schema reconciliation complete.");
+    console.log('Schema reconciliation complete.');
 }
-
 
 function isMetaCarrier(value: unknown): value is Record<string, unknown> & { $meta?: unknown } {
     return _.isObject(value) && !_.isDate(value);

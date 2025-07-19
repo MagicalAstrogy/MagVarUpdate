@@ -1,7 +1,7 @@
 // 整体游戏数据类型
 import { updateVariables } from '@/function';
-import { GameData } from "@/variable_def";
-import {cleanUpMetadata, EXTENSIBLE_MARKER, generateSchema} from "@/schema";
+import { GameData } from '@/variable_def';
+import { cleanUpMetadata, EXTENSIBLE_MARKER, generateSchema } from '@/schema';
 import * as JSON5 from 'json5';
 import * as TOML from 'toml';
 
@@ -31,7 +31,9 @@ export async function initCheck() {
         variables.initialized_lorebooks = {};
     }
     if (Array.isArray(variables.initialized_lorebooks)) {
-        console.warn('Old "initialized_lorebooks" array format detected. Migrating to the new object format.');
+        console.warn(
+            'Old "initialized_lorebooks" array format detected. Migrating to the new object format.'
+        );
         const oldArray = variables.initialized_lorebooks as string[];
         const newObject: Record<string, any[]> = {};
         for (const lorebookName of oldArray) {
@@ -171,7 +173,9 @@ export async function loadInitVarData(
                 }
 
                 if (parseError) {
-                    console.error(`Failed to parse lorebook entry[${entry.comment}]: ${parseError}`);
+                    console.error(
+                        `Failed to parse lorebook entry[${entry.comment}]: ${parseError}`
+                    );
                     // @ts-ignore
                     toastr.error(parseError.message, 'Failed to parse lorebook entry', {
                         timeOut: 5000,
@@ -242,8 +246,8 @@ export async function getLastMessageVariables(): Promise<{
  */
 export async function updateLorebookSettings(): Promise<void> {
     /*Ref:https://github.com/lolo-desu/lolocard/blob/master/src/%E6%97%A5%E8%AE%B0%E7%BB%9C%E7%BB%9C/%E8%84%9A%E6%9C%AC/%E8%B0%83%E6%95%B4%E4%B8%96%E7%95%8C%E4%B9%A6%E5%85%A8%E5%B1%80%E8%AE%BE%E7%BD%AE.ts
-    */
-    const dst_setting : Partial<LorebookSettings> = {
+     */
+    const dst_setting: Partial<LorebookSettings> = {
         scan_depth: 2,
         context_percentage: 100,
         budget_cap: 0,

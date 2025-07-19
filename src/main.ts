@@ -4,9 +4,9 @@ import {
     getLastValidVariable,
 } from '@/function';
 import { initCheck, createEmptyGameData, loadInitVarData } from '@/variable_init';
-import { variable_events } from "@/variable_def";
+import { variable_events } from '@/variable_def';
 import { updateDescriptions } from '@/update_descriptions';
-import {cleanUpMetadata, reconcileAndApplySchema} from "@/schema";
+import { cleanUpMetadata, reconcileAndApplySchema } from '@/schema';
 
 $(() => {
     eventOn(tavern_events.GENERATION_STARTED, initCheck);

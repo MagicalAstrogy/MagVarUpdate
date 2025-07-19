@@ -1,7 +1,7 @@
-import {variable_events, VariableData} from '@/variable_def';
+import { variable_events, VariableData } from '@/variable_def';
 import * as math from 'mathjs';
 
-import {getSchemaForPath, reconcileAndApplySchema} from "@/schema";
+import { getSchemaForPath, reconcileAndApplySchema } from '@/schema';
 
 export function trimQuotesAndBackslashes(str: string): string {
     if (!_.isString(str)) return str;
@@ -92,7 +92,9 @@ export function parseCommandValue(valStr: string): any {
     try {
         // 尝试 YAML.parse
         return YAML.parse(trimmed);
-    } catch (e) { /* empty */ }
+    } catch (e) {
+        /* empty */
+    }
 
     // 最终，返回这个去除了首尾引号的字符串
     return trimQuotesAndBackslashes(valStr);
@@ -202,7 +204,7 @@ export function extractCommands(inputText: string): Command[] {
             isValid = true; // _.insert 支持两种参数格式
         else if (commandType === 'remove' && params.length >= 1)
             isValid = true; // _.remove 至少需要路径
-        else if (commandType === 'add' && (/*params.length === 1 || */params.length === 2))
+        else if (commandType === 'add' && /*params.length === 1 || */ params.length === 2)
             isValid = true; // _.add 需要1个或2个参数
 
         if (isValid) {
@@ -441,11 +443,13 @@ export async function updateVariables(
                     // 处理 ValueWithDescription<T> 类型，更新数组第一个元素
                     // 仅当旧值为数字且新值不为 null 时，才强制转换为数字
                     // 这允许将数字字段设置为 null (例如角色死亡后好感度变为 null)
-                    oldValue[0] = typeof oldValue[0] === 'number' && newValue !== null ? Number(newValue) : newValue;
+                    oldValue[0] =
+                        typeof oldValue[0] === 'number' && newValue !== null
+                            ? Number(newValue)
+                            : newValue;
                 } else if (typeof oldValue === 'number' && newValue !== null) {
                     _.set(variables.stat_data, path, Number(newValue));
-                }
-                else {
+                } else {
                     // 其他情况直接设置新值，支持任意类型
                     _.set(variables.stat_data, path, newValue);
                 }
@@ -454,9 +458,7 @@ export async function updateVariables(
                 const finalNewValue = _.get(variables.stat_data, path);
 
                 // 检查是否为 ValueWithDescription 类型，以优化显示
-                const isValueWithDescription =
-                    Array.isArray(oldValue) &&
-                    oldValue.length === 2;
+                const isValueWithDescription = Array.isArray(oldValue) && oldValue.length === 2;
 
                 if (isValueWithDescription && Array.isArray(finalNewValue)) {
                     // 如果是 ValueWithDescription，只显示值的变化
@@ -487,7 +489,10 @@ export async function updateVariables(
                 // 如果路径已存在且其值为原始类型（字符串、数字等），则跳过此命令，以防止结构污染
                 const targetPath = path;
                 // 统一获取目标值和目标Schema，优雅地处理根路径
-                const existingValue = targetPath === '' ? variables.stat_data : _.get(variables.stat_data, targetPath);
+                const existingValue =
+                    targetPath === ''
+                        ? variables.stat_data
+                        : _.get(variables.stat_data, targetPath);
                 const targetSchema = getSchemaForPath(schema, targetPath);
 
                 // 验证1：目标是否为原始类型？如果是，则无法插入。
@@ -563,7 +568,8 @@ export async function updateVariables(
                     }
 
                     // 获取目标集合，可能为数组或对象
-                    let collection = targetPath === '' ? variables.stat_data : _.get(variables.stat_data, path);
+                    let collection =
+                        targetPath === '' ? variables.stat_data : _.get(variables.stat_data, path);
 
                     // 如果目标不存在，初始化为空数组或对象
                     if (!Array.isArray(collection) && !_.isObject(collection)) {
@@ -612,7 +618,8 @@ export async function updateVariables(
                         );
                     }
 
-                    let collection = targetPath === '' ? variables.stat_data : _.get(variables.stat_data, path);
+                    let collection =
+                        targetPath === '' ? variables.stat_data : _.get(variables.stat_data, path);
 
                     if (Array.isArray(collection) && typeof keyOrIndex === 'number') {
                         // 目标是数组且索引是数字，插入到指定位置
@@ -852,7 +859,7 @@ export async function updateVariables(
                     }
                 }
 
-/*                if (command.args.length === 1) {
+                /*                if (command.args.length === 1) {
                     // 单参数：切换布尔值
                     if (typeof valueToAdd !== 'boolean') {
                         console.warn(
@@ -884,7 +891,7 @@ export async function updateVariables(
                         initialValue,
                         finalNewValue
                     );
-                } else */if (command.args.length === 2) {
+                } else */ if (command.args.length === 2) {
                     // 双参数：调整数值或日期
                     const delta = parseCommandValue(command.args[1]);
 
@@ -1030,11 +1037,11 @@ export async function handleVariablesInMessage(message_id: number) {
     }
 }
 
-
-
-export async function handleVariablesInCallback(message_content: string, variable_info : VariableData) {
-    if (variable_info.old_variables === undefined)
-    {
+export async function handleVariablesInCallback(
+    message_content: string,
+    variable_info: VariableData
+) {
+    if (variable_info.old_variables === undefined) {
         return;
     }
     variable_info.new_variables = _.cloneDeep(variable_info.old_variables);
@@ -1042,6 +1049,5 @@ export async function handleVariablesInCallback(message_content: string, variabl
 
     const modified = await updateVariables(message_content, variables);
     //如果没有修改，则不产生 newVariable
-    if (!modified)
-        delete variable_info.new_variables;
+    if (!modified) delete variable_info.new_variables;
 }
