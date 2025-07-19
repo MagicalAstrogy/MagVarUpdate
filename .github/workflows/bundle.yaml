@@ -18,7 +18,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          token: ${{ secrets.CI_DEPLOY_KEY }}
+          ssh-key: ${{ secrets.CI_DEPLOY_KEY }}
+          persist-credentials: false    # 禁用默认 GITHUB_TOKEN 认证
           fetch-depth: 0                 # ← 必须
 
       - name: Use Node.js
@@ -49,4 +50,3 @@ jobs:
           TAG_PREFIX: v
           RELEASE_BRANCHES: master      # 仅 master 产正式版
           PRERELEASE_SUFFIX: beta       # beta 分支自动变成 vX.Y.Z-beta.N
-          PRERELEASE: true
