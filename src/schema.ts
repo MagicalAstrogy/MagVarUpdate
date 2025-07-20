@@ -4,7 +4,9 @@ import {
     isArraySchema,
     isObjectSchema,
     ObjectSchemaNode,
-    GameData,
+    GameData, 
+    ArraySchemaNode,
+    TemplateType,
 } from '@/variable_def';
 
 // 定义魔法字符串为常量，便于管理和引用
@@ -21,17 +23,49 @@ export function generateSchema(data: any, oldSchemaNode?: SchemaNode): SchemaNod
     if (Array.isArray(data)) {
         let isExtensible = false;
         let oldElementType: SchemaNode | undefined;
+        let template: TemplateType | undefined;
 
         // 使用类型守卫检查 oldSchemaNode 是否为 ArraySchemaNode
         if (oldSchemaNode) {
             if (isArraySchema(oldSchemaNode)) {
                 isExtensible = oldSchemaNode.extensible === true;
                 oldElementType = oldSchemaNode.elementType;
+                template = oldSchemaNode.template;
             } else {
                 console.error(
                     `Type mismatch: expected array schema but got ${oldSchemaNode.type} at path`
                 );
             }
+        }
+
+        // 检查是否有只包含 $meta 的元素
+        const metaElementIndex = data.findIndex(item =>
+            _.isObject(item) &&
+            !_.isDate(item) &&
+            Object.keys(item).length === 1 &&
+            '$meta' in item
+        );
+
+        if (metaElementIndex !== -1) {
+            const metaElement = data[metaElementIndex] as { $meta: any };
+            // 从 $meta 中提取数组的元数据
+            if (metaElement.$meta.extensible !== undefined) {
+                isExtensible = metaElement.$meta.extensible;
+            }
+            if (metaElement.$meta.template !== undefined) {
+                // 对于数组，template 不应该是数组类型
+                if (Array.isArray(metaElement.$meta.template)) {
+                    const errorMsg = 'Invalid template type for array: template cannot be an array type (StatData[] or any[])';
+                    console.error(errorMsg);
+                    // @ts-ignore
+                    toastr.error(errorMsg, 'Template Error', { timeOut: 5000 });
+                } else {
+                    template = metaElement.$meta.template;
+                }
+            }
+            // 从数组中移除这个元数据元素
+            data.splice(metaElementIndex, 1);
+            console.log(`Array metadata element found and processed.`);
         }
 
         // 检查并处理魔法字符串
@@ -43,12 +77,18 @@ export function generateSchema(data: any, oldSchemaNode?: SchemaNode): SchemaNod
             console.log(`Extensible marker found and removed from an array.`);
         }
 
-        return {
+        const schemaNode: ArraySchemaNode = {
             type: 'array',
             extensible: isExtensible, // 应用最终的 extensible 状态
             elementType:
                 data.length > 0 ? generateSchema(data[0], oldElementType) : { type: 'any' },
         };
+
+        if (template !== undefined) {
+            schemaNode.template = template;
+        }
+
+        return schemaNode;
     }
     if (_.isObject(data) && !_.isDate(data)) {
         const typedData = data as StatData; // 类型断言
@@ -74,6 +114,13 @@ export function generateSchema(data: any, oldSchemaNode?: SchemaNode): SchemaNod
             // 默认不可扩展，但如果旧 schema 或 $meta 定义了，则可扩展
             extensible: oldExtensible || typedData.$meta?.extensible === true,
         };
+
+        // 处理 template
+        if (typedData.$meta?.template !== undefined) {
+            schemaNode.template = typedData.$meta.template;
+        } else if (oldSchemaNode && isObjectSchema(oldSchemaNode) && oldSchemaNode.template) {
+            schemaNode.template = oldSchemaNode.template;
+        }
 
         // 暂存父节点的 $meta，以便在循环中使用
         const parentMeta = typedData.$meta;
@@ -200,11 +247,19 @@ function isMetaCarrier(value: unknown): value is Record<string, unknown> & { $me
  * @param data 需要清理的数据
  */
 export function cleanUpMetadata(data: any): void {
-    // 如果是数组，移除魔法字符串并递归
+    // 如果是数组，移除魔法字符串和只包含 $meta 的元素，并递归
     if (Array.isArray(data)) {
         let i = data.length;
         while (i--) {
             if (data[i] === EXTENSIBLE_MARKER) {
+                data.splice(i, 1);
+            } else if (
+                _.isObject(data[i]) && 
+                !_.isDate(data[i]) && 
+                Object.keys(data[i]).length === 1 && 
+                '$meta' in data[i]
+            ) {
+                // 移除只包含 $meta 的元素
                 data.splice(i, 1);
             } else {
                 // 对数组中的其他元素（可能是对象或数组）进行递归清理
