@@ -15,17 +15,20 @@ export const EXTENSIBLE_MARKER = '$__META_EXTENSIBLE__$';
  * 递归地为数据对象生成一个模式。
  * @param data - 要为其生成模式的数据对象 (stat_data)。
  * @param oldSchemaNode - (可选) 来自旧 Schema 的对应节点，用于继承元数据。
+ * @param parentRecursiveExtensible - (可选) 父节点的 recursiveExtensible 状态，默认为 false。
  * @returns - 生成的模式对象。
  */
-export function generateSchema(data: any, oldSchemaNode?: SchemaNode): SchemaNode {
+export function generateSchema(data: any, oldSchemaNode?: SchemaNode, parentRecursiveExtensible: boolean = false): SchemaNode {
     if (Array.isArray(data)) {
         let isExtensible = false;
+        let isRecursiveExtensible = parentRecursiveExtensible;
         let oldElementType: SchemaNode | undefined;
 
         // 使用类型守卫检查 oldSchemaNode 是否为 ArraySchemaNode
         if (oldSchemaNode) {
             if (isArraySchema(oldSchemaNode)) {
                 isExtensible = oldSchemaNode.extensible === true;
+                isRecursiveExtensible = oldSchemaNode.recursiveExtensible === true || parentRecursiveExtensible;
                 oldElementType = oldSchemaNode.elementType;
             } else {
                 console.error(
@@ -45,9 +48,10 @@ export function generateSchema(data: any, oldSchemaNode?: SchemaNode): SchemaNod
 
         return {
             type: 'array',
-            extensible: isExtensible, // 应用最终的 extensible 状态
+            extensible: isExtensible || parentRecursiveExtensible,
+            recursiveExtensible: isRecursiveExtensible,
             elementType:
-                data.length > 0 ? generateSchema(data[0], oldElementType) : { type: 'any' },
+                data.length > 0 ? generateSchema(data[0], oldElementType, isRecursiveExtensible) : { type: 'any' },
         };
     }
     if (_.isObject(data) && !_.isDate(data)) {
@@ -55,11 +59,13 @@ export function generateSchema(data: any, oldSchemaNode?: SchemaNode): SchemaNod
 
         // 使用类型守卫检查 oldSchemaNode 是否为 ObjectSchemaNode
         let oldExtensible = false;
+        let oldRecursiveExtensible = parentRecursiveExtensible;
         let oldProperties: ObjectSchemaNode['properties'] | undefined;
 
         if (oldSchemaNode) {
             if (isObjectSchema(oldSchemaNode)) {
                 oldExtensible = oldSchemaNode.extensible === true;
+                oldRecursiveExtensible = oldSchemaNode.recursiveExtensible === true || parentRecursiveExtensible;
                 oldProperties = oldSchemaNode.properties;
             } else {
                 console.error(
@@ -71,8 +77,9 @@ export function generateSchema(data: any, oldSchemaNode?: SchemaNode): SchemaNod
         const schemaNode: ObjectSchemaNode = {
             type: 'object',
             properties: {},
-            // 默认不可扩展，但如果旧 schema 或 $meta 定义了，则可扩展
-            extensible: oldExtensible || typedData.$meta?.extensible === true,
+            // 默认不可扩展，但检查旧 schema、$meta.extensible 或 parentRecursiveExtensible
+            extensible: oldExtensible || typedData.$meta?.extensible === true || parentRecursiveExtensible,
+            recursiveExtensible: oldRecursiveExtensible || typedData.$meta?.recursiveExtensible === true,
         };
 
         // 暂存父节点的 $meta，以便在循环中使用
@@ -85,10 +92,13 @@ export function generateSchema(data: any, oldSchemaNode?: SchemaNode): SchemaNod
 
         for (const key in data) {
             const oldChildNode = oldProperties?.[key];
-            const childSchema = generateSchema(typedData[key], oldChildNode);
+            // 传递当前节点的 recursiveExtensible（如果存在）或父节点的 recursiveExtensible
+            // 但如果当前节点明确设置 extensible: false, 则停止递归扩展
+            const childRecursiveExtensible = schemaNode.extensible !== false && schemaNode.recursiveExtensible;
+            const childSchema = generateSchema(typedData[key], oldChildNode, childRecursiveExtensible);
 
             // 一个属性是否必需？
-
+            
             // 1. 默认值: 如果父节点可扩展，子节点默认为可选；否则为必需。
             let isRequired = !schemaNode.extensible;
 

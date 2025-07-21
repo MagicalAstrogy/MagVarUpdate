@@ -1,6 +1,7 @@
 // StatData 的元数据类型定义
 export type StatDataMeta = {
     extensible?: boolean;
+    recursiveExtensible?: boolean;
     required?: string[];
     [key: string]: unknown;
 };
@@ -22,6 +23,7 @@ export type ObjectSchemaNode = {
         [key: string]: SchemaNode & { required?: boolean };
     };
     extensible?: boolean;
+    recursiveExtensible?: boolean;
 };
 
 // 数组类型的 Schema 节点
@@ -29,6 +31,7 @@ export type ArraySchemaNode = {
     type: 'array';
     elementType: SchemaNode;
     extensible?: boolean;
+    recursiveExtensible?: boolean;
 };
 
 // 原始类型的 Schema 节点
