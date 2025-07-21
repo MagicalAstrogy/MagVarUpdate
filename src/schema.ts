@@ -78,7 +78,7 @@ export function generateSchema(data: any, oldSchemaNode?: SchemaNode, parentRecu
             type: 'object',
             properties: {},
             // 默认不可扩展，但检查旧 schema、$meta.extensible 或 parentRecursiveExtensible
-            extensible: oldExtensible || typedData.$meta?.extensible === true || parentRecursiveExtensible,
+            extensible: oldExtensible || typedData.$meta?.extensible === true || typedData.$meta?.recursiveExtensible === true || parentRecursiveExtensible,
             recursiveExtensible: oldRecursiveExtensible || typedData.$meta?.recursiveExtensible === true,
         };
 

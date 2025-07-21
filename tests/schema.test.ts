@@ -30,6 +30,7 @@ describe('generateSchema', () => {
             expect(result).toEqual({
                 type: 'array',
                 extensible: false,
+                recursiveExtensible: false,
                 elementType: { type: 'number' },
             });
         });
@@ -40,6 +41,7 @@ describe('generateSchema', () => {
             expect(result).toEqual({
                 type: 'array',
                 extensible: true,
+                recursiveExtensible: false,
                 elementType: { type: 'string' },
             });
         });
@@ -54,6 +56,45 @@ describe('generateSchema', () => {
             expect(result).toEqual({
                 type: 'array',
                 extensible: true,
+                recursiveExtensible: false,
+                elementType: { type: 'string' },
+            });
+        });
+
+        test('继承旧 schema 的 recursiveExtensible 属性', () => {
+            const oldSchema: SchemaNode = {
+                type: 'array',
+                extensible: true,
+                recursiveExtensible: true,
+                elementType: { type: 'string' },
+            };
+            const result = generateSchema(['new', 'items'], oldSchema);
+            expect(result).toEqual({
+                type: 'array',
+                extensible: true,
+                recursiveExtensible: true,
+                elementType: { type: 'string' },
+            });
+        });
+
+        test('父节点的 recursiveExtensible 影响数组子节点', () => {
+            const data = [
+                ['child1', 'child2'],
+                EXTENSIBLE_MARKER
+            ];
+            const oldSchema: SchemaNode = {
+                type: 'array',
+                extensible: false,
+                recursiveExtensible: true,
+                elementType: { type: 'any' },
+            };
+            const result = generateSchema(data, oldSchema) as ArraySchemaNode;
+            expect(result.extensible).toBe(true); // From EXTENSIBLE_MARKER
+            expect(result.recursiveExtensible).toBe(true); // From oldSchema
+            expect(result.elementType).toEqual({
+                type: 'array',
+                extensible: true, // Inherited from parent recursiveExtensible
+                recursiveExtensible: true, // Inherited from parent
                 elementType: { type: 'string' },
             });
         });
@@ -69,6 +110,7 @@ describe('generateSchema', () => {
             expect(result).toEqual({
                 type: 'object',
                 extensible: false,
+                recursiveExtensible: false,
                 properties: {
                     name: { type: 'string', required: true },
                     age: { type: 'number', required: true },
@@ -142,6 +184,97 @@ describe('generateSchema', () => {
             expect(result.properties.requiredField?.required).toBe(true);  // 被 $meta.required 覆盖
             expect(result.properties.optionalField?.required).toBe(false); // 遵循默认规则
         });
+
+        test('处理 $meta.recursiveExtensible 的对象', () => {
+            const data: StatData = {
+                root: {
+                    child: {
+                        grandChild: {
+                            field: 'value'
+                        },
+                        field: 'value'
+                    },
+                    $meta: { recursiveExtensible: true }
+                }
+            };
+            const result = generateSchema(data) as ObjectSchemaNode;
+            const rootSchema = result.properties.root as ObjectSchemaNode;
+            const childSchema = rootSchema.properties.child as ObjectSchemaNode;
+            const grandChildSchema = childSchema.properties.grandChild as ObjectSchemaNode;
+            expect(rootSchema.extensible).toBe(true);
+            expect(rootSchema.recursiveExtensible).toBe(true);
+            expect(childSchema.extensible).toBe(true); // Inherited from parent recursiveExtensible
+            expect(childSchema.recursiveExtensible).toBe(true); // Inherited from parent
+            expect(childSchema.properties.field.required).toBe(false); // Extensible, so not required
+            expect(grandChildSchema.extensible).toBe(true); // Inherited from parent recursiveExtensible
+            expect(grandChildSchema.recursiveExtensible).toBe(true); // Inherited from parent
+            expect(grandChildSchema.properties.field.required).toBe(false); // Extensible, so not required
+        });
+
+        test('继承旧 schema 的 recursiveExtensible 属性', () => {
+            const data: StatData = {
+                root: {
+                    child: { field: 'value' }
+                }
+            };
+            const oldSchema: SchemaNode = {
+                type: 'object',
+                extensible: true,
+                recursiveExtensible: true,
+                properties: {
+                    root: {
+                        type: 'object',
+                        extensible: true,
+                        recursiveExtensible: true,
+                        properties: {}
+                    }
+                }
+            };
+            const result = generateSchema(data, oldSchema) as ObjectSchemaNode;
+            const rootSchema = result.properties.root as ObjectSchemaNode;
+            const childSchema = rootSchema.properties.child as ObjectSchemaNode;
+            expect(result.recursiveExtensible).toBe(true);
+            expect(rootSchema.recursiveExtensible).toBe(true);
+            expect(childSchema.extensible).toBe(true); // Inherited from parent recursiveExtensible
+            expect(childSchema.recursiveExtensible).toBe(true);
+        });
+
+        test('extensible: false 阻断 recursiveExtensible 传播', () => {
+            const data: StatData = {
+                root: {
+                    child: {
+                        grandchild: { field: 'value' }
+                    }
+                }
+            };
+            const oldSchema: SchemaNode = {
+                type: 'object',
+                recursiveExtensible: true,
+                properties: {
+                    root: {
+                        type: 'object',
+                        extensible: false,
+                        properties: {
+                            child: {
+                                type: 'object',
+                                properties: {}
+                            }
+                        }
+                    }
+                }
+            };
+            const result = generateSchema(data, oldSchema) as ObjectSchemaNode;
+            const rootSchema = result.properties.root as ObjectSchemaNode;
+            const childSchema = rootSchema.properties.child as ObjectSchemaNode;
+            const grandchildSchema = childSchema.properties.grandchild as ObjectSchemaNode;
+            expect(result.recursiveExtensible).toBe(true);
+            expect(rootSchema.extensible).toBe(false);
+            expect(rootSchema.recursiveExtensible).toBe(false);
+            expect(childSchema.extensible).toBe(false);
+            expect(childSchema.recursiveExtensible).toBe(false);
+            expect(grandchildSchema.extensible).toBe(false); // Blocked by child.extensible: false
+            expect(grandchildSchema.recursiveExtensible).toBe(false); // Blocked by child.extensible: false
+        });
     });
 
     describe('ValueWithDescription 处理', () => {
@@ -156,6 +289,7 @@ describe('generateSchema', () => {
             expect(result.properties.日期).toEqual({
                 type: 'array',
                 extensible: false,
+                recursiveExtensible: false,
                 elementType: { type: 'string' },
                 required: true,
             });
@@ -172,6 +306,7 @@ describe('generateSchema', () => {
             expect(result.properties.好感度).toEqual({
                 type: 'array',
                 extensible: false,
+                recursiveExtensible: false,
                 elementType: { type: 'number' },
                 required: true,
             });
@@ -190,6 +325,7 @@ describe('generateSchema', () => {
             expect(result.properties.isActive).toEqual({
                 type: 'array',
                 extensible: false,
+                recursiveExtensible: false,
                 elementType: { type: 'boolean' },
                 required: true,
             });
@@ -205,6 +341,7 @@ describe('generateSchema', () => {
             expect(result.properties.重要记忆).toEqual({
                 type: 'array',
                 extensible: false,
+                recursiveExtensible: false,
                 elementType: { type: 'any' },
                 required: true,
             });
@@ -253,6 +390,7 @@ describe('generateSchema', () => {
             expect(result.properties.invalidFormat1).toEqual({
                 type: 'array',
                 extensible: false,
+                recursiveExtensible: false,
                 elementType: { type: 'string' },
                 required: true,
             });
@@ -275,6 +413,7 @@ describe('generateSchema', () => {
             expect(charSchema.properties.name).toEqual({
                 type: 'array',
                 extensible: false,
+                recursiveExtensible: false,
                 elementType: { type: 'string' },
                 required: true,
             });
@@ -475,6 +614,97 @@ describe('reconcileAndApplySchema', () => {
         expect(level2Schema?.extensible).toBe(true);
         expect(level2Schema?.properties.field?.required).toBe(true); // 在 $meta.required 中
         expect(level2Schema?.properties.otherField?.required).toBe(false); // 遵循默认规则
+    });
+
+    test('保留旧 schema 的 recursiveExtensible 属性', () => {
+        const variables: GameData = {
+            initialized_lorebooks: {},
+            stat_data: {
+                root: {
+                    child: { field: 'value' }
+                }
+            },
+            display_data: {},
+            delta_data: {},
+            schema: {
+                type: 'object',
+                extensible: true,
+                recursiveExtensible: true,
+                properties: {
+                    root: {
+                        type: 'object',
+                        extensible: true,
+                        recursiveExtensible: true,
+                        properties: {}
+                    }
+                }
+            }
+        };
+
+        reconcileAndApplySchema(variables);
+
+        const rootSchema = variables.schema?.properties.root as ObjectSchemaNode;
+        const childSchema = rootSchema?.properties.child as ObjectSchemaNode;
+        expect(variables.schema?.recursiveExtensible).toBe(true);
+        expect(rootSchema.recursiveExtensible).toBe(true);
+        expect(childSchema.extensible).toBe(true); // Inherited from parent recursiveExtensible
+        expect(childSchema.recursiveExtensible).toBe(true);
+    });
+
+    test('处理新节点继承 recursiveExtensible', () => {
+        const variables: GameData = {
+            initialized_lorebooks: {},
+            stat_data: {
+                "/": {
+                    home: {
+                        alice: { "notes.txt": "document" },
+                        bob: {} // New node
+                    }
+                }
+            },
+            display_data: {},
+            delta_data: {},
+            schema: {
+                type: 'object',
+                extensible: false,
+                recursiveExtensible: true,
+                properties: {
+                    "/": {
+                        type: 'object',
+                        extensible: true,
+                        recursiveExtensible: true,
+                        properties: {
+                            home: {
+                                type: 'object',
+                                extensible: true,
+                                recursiveExtensible: true,
+                                properties: {
+                                    alice: {
+                                        type: 'object',
+                                        extensible: true,
+                                        recursiveExtensible: true,
+                                        properties: {
+                                            "notes.txt": { type: 'string', required: false }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        };
+
+        reconcileAndApplySchema(variables);
+
+        const rootSchema = variables.schema?.properties['/'] as ObjectSchemaNode;
+        const homeSchema = rootSchema.properties.home as ObjectSchemaNode;
+        const bobSchema = homeSchema.properties.bob as ObjectSchemaNode;
+        expect(rootSchema.recursiveExtensible).toBe(true);
+        expect(homeSchema.recursiveExtensible).toBe(true);
+        expect(bobSchema.extensible).toBe(true); // Inherited from home.recursiveExtensible
+        expect(bobSchema.recursiveExtensible).toBe(true);
+        expect(bobSchema.properties).toEqual({});
     });
 });
 
