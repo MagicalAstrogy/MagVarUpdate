@@ -4,6 +4,7 @@ export type TemplateType = StatData | StatData[] | any[];
 // StatData 的元数据类型定义
 export type StatDataMeta = {
     extensible?: boolean;
+    recursiveExtensible?: boolean;
     required?: string[];
     template?: TemplateType;  // 模板定义，用于自动填充新元素
     [key: string]: unknown;
@@ -27,6 +28,7 @@ export type ObjectSchemaNode = {
     };
     extensible?: boolean;
     template?: TemplateType;  // 新增属性的模板
+    recursiveExtensible?: boolean;
 };
 
 // 数组类型的 Schema 节点
@@ -35,6 +37,7 @@ export type ArraySchemaNode = {
     elementType: SchemaNode;
     extensible?: boolean;
     template?: TemplateType;  // 新增元素的模板
+    recursiveExtensible?: boolean;
 };
 
 // 原始类型的 Schema 节点
