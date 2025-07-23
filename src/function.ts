@@ -577,7 +577,6 @@ export async function updateVariables(
 
                     if (Array.isArray(collection)) {
                         // 目标是数组，追加元素
-                        if (Array.isArray(valueToAssign)) {
                         collection.push(valueToAssign);
                         display_str = `ASSIGNED ${JSON.stringify(valueToAssign)} into array '${path}' ${reason_str}`;
                         successful = true;
