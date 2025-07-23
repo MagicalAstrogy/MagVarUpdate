@@ -578,14 +578,8 @@ export async function updateVariables(
                     if (Array.isArray(collection)) {
                         // 目标是数组，追加元素
                         if (Array.isArray(valueToAssign)) {
-                            // 插入数组元素，逐个追加
-                            collection.push(...valueToAssign);
-                            display_str = `ASSIGNED array ${JSON.stringify(valueToAssign)} into array '${path}' ${reason_str}`;
-                        } else {
-                            // 插入单个值
-                            collection.push(valueToAssign);
-                            display_str = `ASSIGNED ${JSON.stringify(valueToAssign)} into array '${path}' ${reason_str}`;
-                        }
+                        collection.push(valueToAssign);
+                        display_str = `ASSIGNED ${JSON.stringify(valueToAssign)} into array '${path}' ${reason_str}`;
                         successful = true;
                     } else if (_.isObject(collection)) {
                         // 目标是对象，合并属性
