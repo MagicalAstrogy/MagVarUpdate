@@ -621,13 +621,8 @@ export async function updateVariables(
 
                     if (Array.isArray(collection) && typeof keyOrIndex === 'number') {
                         // 目标是数组且索引是数字，插入到指定位置
-                        if (Array.isArray(valueToAssign)) {
-                            collection.splice(keyOrIndex, 0, ...valueToAssign);
-                            display_str = `ASSIGNED array ${JSON.stringify(valueToAssign)} into '${path}' at index ${keyOrIndex} ${reason_str}`;
-                        } else {
-                            collection.splice(keyOrIndex, 0, valueToAssign);
-                            display_str = `ASSIGNED ${JSON.stringify(valueToAssign)} into '${path}' at index ${keyOrIndex} ${reason_str}`;
-                        }
+                        collection.splice(keyOrIndex, 0, valueToAssign);
+                        display_str = `ASSIGNED ${JSON.stringify(valueToAssign)} into '${path}' at index ${keyOrIndex} ${reason_str}`;
                         successful = true;
                     } else if (_.isObject(collection)) {
                         // 目标是对象，设置指定键
