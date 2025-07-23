@@ -45,7 +45,7 @@ export async function initCheck() {
         variables.stat_data = {};
     }
     if (!variables.schema) {
-        variables.schema = {};
+        variables.schema = { extensible: false, properties: {}, type: 'object' };
     }
 
     // 加载 InitVar 数据
@@ -203,7 +203,10 @@ export function createEmptyGameData(): GameData {
         initialized_lorebooks: {}, // 适配 beta 分支的对象结构
         stat_data: {},
         delta_data: {},
-        schema: {}, // beta 分支新增的 schema 字段
+        schema: {
+            type: 'object',
+            properties: {},
+        }, // beta 分支新增的 schema 字段
     };
 }
 

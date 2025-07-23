@@ -34,9 +34,14 @@ export function applyTemplate(value: any, template: TemplateType | undefined): a
     } else if (valueIsArray && templateIsArray) {
         // 都是数组，进行合并
         return _.merge([], template, value);
-    } else if ((valueIsObject || valueIsArray) && (templateIsArray !== valueIsArray)) {
+    } else if (
+        ((valueIsObject || valueIsArray) && templateIsArray !== valueIsArray) ||
+        (!valueIsObject && !valueIsArray && _.isObject(template) && !Array.isArray(template))
+    ) {
         // 类型不匹配
-        console.error(`Template type mismatch: template is ${templateIsArray ? 'array' : 'object'}, but value is ${valueIsArray ? 'array' : 'object'}. Skipping template merge.`);
+        console.error(
+            `Template type mismatch: template is ${templateIsArray ? 'array' : 'object'}, but value is ${valueIsArray ? 'array' : 'object'}. Skipping template merge.`
+        );
         return value;
     } else if (!valueIsObject && !valueIsArray && templateIsArray) {
         // 特殊情况：值是原始类型（字面量），模板是数组
@@ -619,11 +624,16 @@ export async function updateVariables(
                     if (Array.isArray(collection)) {
                         // 目标是数组，追加元素
                         // 检查是否有模板并应用
-                        const template = targetSchema && isArraySchema(targetSchema) ? targetSchema.template : undefined;
+                        const template =
+                            targetSchema && isArraySchema(targetSchema)
+                                ? targetSchema.template
+                                : undefined;
 
                         if (Array.isArray(valueToAssign)) {
                             // 对每个元素应用模板
-                            valueToAssign = valueToAssign.map(item => applyTemplate(item, template));
+                            valueToAssign = valueToAssign.map(item =>
+                                applyTemplate(item, template)
+                            );
                             // 插入数组元素，逐个追加
                             collection.push(...valueToAssign);
                             display_str = `ASSIGNED array ${JSON.stringify(valueToAssign)} into array '${path}' ${reason_str}`;
@@ -670,15 +680,19 @@ export async function updateVariables(
                         targetPath === '' ? variables.stat_data : _.get(variables.stat_data, path);
 
                     // 获取模板
-                    const template = targetSchema && (isArraySchema(targetSchema) || isObjectSchema(targetSchema))
-                        ? targetSchema.template
-                        : undefined;
+                    const template =
+                        targetSchema &&
+                        (isArraySchema(targetSchema) || isObjectSchema(targetSchema))
+                            ? targetSchema.template
+                            : undefined;
 
                     if (Array.isArray(collection) && typeof keyOrIndex === 'number') {
                         // 目标是数组且索引是数字，插入到指定位置
                         if (Array.isArray(valueToAssign)) {
                             // 对每个元素应用模板
-                            valueToAssign = valueToAssign.map(item => applyTemplate(item, template));
+                            valueToAssign = valueToAssign.map(item =>
+                                applyTemplate(item, template)
+                            );
                             collection.splice(keyOrIndex, 0, ...valueToAssign);
                             display_str = `ASSIGNED array ${JSON.stringify(valueToAssign)} into '${path}' at index ${keyOrIndex} ${reason_str}`;
                         } else {

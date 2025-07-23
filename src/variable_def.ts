@@ -6,7 +6,7 @@ export type StatDataMeta = {
     extensible?: boolean;
     recursiveExtensible?: boolean;
     required?: string[];
-    template?: TemplateType;  // 模板定义，用于自动填充新元素
+    template?: TemplateType; // 模板定义，用于自动填充新元素
     [key: string]: unknown;
 };
 
@@ -27,7 +27,7 @@ export type ObjectSchemaNode = {
         [key: string]: SchemaNode & { required?: boolean };
     };
     extensible?: boolean;
-    template?: TemplateType;  // 新增属性的模板
+    template?: TemplateType; // 新增属性的模板
     recursiveExtensible?: boolean;
 };
 
@@ -36,7 +36,7 @@ export type ArraySchemaNode = {
     type: 'array';
     elementType: SchemaNode;
     extensible?: boolean;
-    template?: TemplateType;  // 新增元素的模板
+    template?: TemplateType; // 新增元素的模板
     recursiveExtensible?: boolean;
 };
 

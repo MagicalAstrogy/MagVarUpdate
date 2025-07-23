@@ -4,7 +4,7 @@ import {
     isArraySchema,
     isObjectSchema,
     ObjectSchemaNode,
-    GameData, 
+    GameData,
     ArraySchemaNode,
     TemplateType,
 } from '@/variable_def';
@@ -20,7 +20,11 @@ export const EXTENSIBLE_MARKER = '$__META_EXTENSIBLE__$';
  * @param parentRecursiveExtensible - (可选) 父节点的 recursiveExtensible 状态，默认为 false。
  * @returns - 生成的模式对象。
  */
-export function generateSchema(data: any, oldSchemaNode?: SchemaNode, parentRecursiveExtensible: boolean = false): SchemaNode {
+export function generateSchema(
+    data: any,
+    oldSchemaNode?: SchemaNode,
+    parentRecursiveExtensible: boolean = false
+): SchemaNode {
     if (Array.isArray(data)) {
         let isExtensible = false;
         let isRecursiveExtensible = parentRecursiveExtensible;
@@ -31,7 +35,8 @@ export function generateSchema(data: any, oldSchemaNode?: SchemaNode, parentRecu
         if (oldSchemaNode) {
             if (isArraySchema(oldSchemaNode)) {
                 isExtensible = oldSchemaNode.extensible === true;
-                isRecursiveExtensible = oldSchemaNode.recursiveExtensible === true || parentRecursiveExtensible;
+                isRecursiveExtensible =
+                    oldSchemaNode.recursiveExtensible === true || parentRecursiveExtensible;
                 oldElementType = oldSchemaNode.elementType;
                 template = oldSchemaNode.template;
             } else {
@@ -42,11 +47,12 @@ export function generateSchema(data: any, oldSchemaNode?: SchemaNode, parentRecu
         }
 
         // 检查是否有只包含 $meta 的元素
-        const metaElementIndex = data.findIndex(item =>
-            _.isObject(item) &&
-            !_.isDate(item) &&
-            Object.keys(item).length === 1 &&
-            '$meta' in item
+        const metaElementIndex = data.findIndex(
+            item =>
+                _.isObject(item) &&
+                !_.isDate(item) &&
+                Object.keys(item).length === 1 &&
+                '$meta' in item
         );
 
         if (metaElementIndex !== -1) {
@@ -56,15 +62,7 @@ export function generateSchema(data: any, oldSchemaNode?: SchemaNode, parentRecu
                 isExtensible = metaElement.$meta.extensible;
             }
             if (metaElement.$meta.template !== undefined) {
-                // 对于数组，template 不应该是数组类型
-                if (Array.isArray(metaElement.$meta.template)) {
-                    const errorMsg = 'Invalid template type for array: template cannot be an array type (StatData[] or any[])';
-                    console.error(errorMsg);
-                    // @ts-ignore
-                    toastr.error(errorMsg, 'Template Error', { timeOut: 5000 });
-                } else {
-                    template = metaElement.$meta.template;
-                }
+                template = metaElement.$meta.template;
             }
             // 从数组中移除这个元数据元素
             data.splice(metaElementIndex, 1);
@@ -85,7 +83,9 @@ export function generateSchema(data: any, oldSchemaNode?: SchemaNode, parentRecu
             extensible: isExtensible || parentRecursiveExtensible,
             recursiveExtensible: isRecursiveExtensible,
             elementType:
-                data.length > 0 ? generateSchema(data[0], oldElementType, isRecursiveExtensible) : { type: 'any' },
+                data.length > 0
+                    ? generateSchema(data[0], oldElementType, isRecursiveExtensible)
+                    : { type: 'any' },
         };
 
         if (template !== undefined) {
@@ -105,7 +105,8 @@ export function generateSchema(data: any, oldSchemaNode?: SchemaNode, parentRecu
         if (oldSchemaNode) {
             if (isObjectSchema(oldSchemaNode)) {
                 oldExtensible = oldSchemaNode.extensible === true;
-                oldRecursiveExtensible = oldSchemaNode.recursiveExtensible === true || parentRecursiveExtensible;
+                oldRecursiveExtensible =
+                    oldSchemaNode.recursiveExtensible === true || parentRecursiveExtensible;
                 oldProperties = oldSchemaNode.properties;
             } else {
                 console.error(
@@ -118,8 +119,13 @@ export function generateSchema(data: any, oldSchemaNode?: SchemaNode, parentRecu
             type: 'object',
             properties: {},
             // 默认不可扩展，但检查旧 schema、$meta.extensible 或 parentRecursiveExtensible
-            extensible: oldExtensible || typedData.$meta?.extensible === true || typedData.$meta?.recursiveExtensible === true || parentRecursiveExtensible,
-            recursiveExtensible: oldRecursiveExtensible || typedData.$meta?.recursiveExtensible === true,
+            extensible:
+                oldExtensible ||
+                typedData.$meta?.extensible === true ||
+                typedData.$meta?.recursiveExtensible === true ||
+                parentRecursiveExtensible,
+            recursiveExtensible:
+                oldRecursiveExtensible || typedData.$meta?.recursiveExtensible === true,
         };
 
         // 处理 template
@@ -141,11 +147,16 @@ export function generateSchema(data: any, oldSchemaNode?: SchemaNode, parentRecu
             const oldChildNode = oldProperties?.[key];
             // 传递当前节点的 recursiveExtensible（如果存在）或父节点的 recursiveExtensible
             // 但如果当前节点明确设置 extensible: false, 则停止递归扩展
-            const childRecursiveExtensible = schemaNode.extensible !== false && schemaNode.recursiveExtensible;
-            const childSchema = generateSchema(typedData[key], oldChildNode, childRecursiveExtensible);
+            const childRecursiveExtensible =
+                schemaNode.extensible !== false && schemaNode.recursiveExtensible;
+            const childSchema = generateSchema(
+                typedData[key],
+                oldChildNode,
+                childRecursiveExtensible
+            );
 
             // 一个属性是否必需？
-            
+
             // 1. 默认值: 如果父节点可扩展，子节点默认为可选；否则为必需。
             let isRequired = !schemaNode.extensible;
 
@@ -264,9 +275,9 @@ export function cleanUpMetadata(data: any): void {
             if (data[i] === EXTENSIBLE_MARKER) {
                 data.splice(i, 1);
             } else if (
-                _.isObject(data[i]) && 
-                !_.isDate(data[i]) && 
-                Object.keys(data[i]).length === 1 && 
+                _.isObject(data[i]) &&
+                !_.isDate(data[i]) &&
+                Object.keys(data[i]).length === 1 &&
                 '$meta' in data[i]
             ) {
                 // 移除只包含 $meta 的元素

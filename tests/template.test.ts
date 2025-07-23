@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from '@jest/globals';
 import { applyTemplate, updateVariables } from '../src/function';
-import { generateSchema, cleanUpMetadata, reconcileAndApplySchema } from '../src/schema';
+import {generateSchema, cleanUpMetadata, reconcileAndApplySchema, EXTENSIBLE_MARKER} from '../src/schema';
 import { StatData, GameData } from '../src/variable_def';
 
 describe('Template Feature', () => {
@@ -100,7 +100,7 @@ describe('Template Feature', () => {
                     id: null
                 }
             };
-            
+
             // 创建数据，其中 template 是对上面对象的引用
             const data: StatData = {
                 $meta: {
@@ -108,13 +108,13 @@ describe('Template Feature', () => {
                 },
                 existingProp: 'value'
             };
-            
+
             // 生成 schema
             const schema = generateSchema(data);
-            
+
             // 现在清理元数据
             cleanUpMetadata(data);
-            
+
             // 验证 schema 中的 template 仍然包含 $meta
             expect(schema.type).toBe('object');
             if (schema.type === 'object' && schema.template && !Array.isArray(schema.template)) {
@@ -173,11 +173,12 @@ describe('Template Feature', () => {
             variables.stat_data = {
                 items: [
                     { name: 'existing' },
-                    { $meta: { template: { type: 'default', rarity: 'common' } } }
+                    { $meta: { template: { type: 'default', rarity: 'common' }, extensible: true } }
                 ]
             };
             // 生成 schema
             reconcileAndApplySchema(variables);
+            cleanUpMetadata(variables.stat_data);
 
             // 执行 assign 操作
             await updateVariables(
@@ -194,7 +195,7 @@ describe('Template Feature', () => {
 
         it('should apply template when assigning to array with index (3 args)', async () => {
             variables.stat_data = {
-                items: []
+                items: [{ memori: "nothing" }]
             };
             variables.schema = {
                 type: 'object',
@@ -214,7 +215,8 @@ describe('Template Feature', () => {
             );
 
             expect(variables.stat_data.items).toEqual([
-                { name: 'dagger', type: 'weapon', damage: 10 }
+                { name: 'dagger', type: 'weapon', damage: 10 },
+                { memori: "nothing" }
             ]);
         });
 
@@ -296,7 +298,7 @@ describe('Template Feature', () => {
             );
 
             expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('Template type mismatch'));
-            expect(variables.stat_data.items).toEqual([['array value']]); // 未应用模板
+            expect(variables.stat_data.items).toEqual(['array value']); // 未应用模板
 
             consoleSpy.mockRestore();
         });
@@ -328,7 +330,7 @@ describe('Template Feature', () => {
             ]);
         });
 
-        it('should create object and apply template when target does not exist', async () => {
+        it('should not create object and apply template when target does not exist', async () => {
             variables.schema = {
                 type: 'object',
                 properties: {},
@@ -350,8 +352,12 @@ describe('Template Feature', () => {
                 variables
             );
 
-            expect((variables.stat_data.game as any).settings).toEqual({
-                difficulty: { level: 'hard', initialized: true, version: '1.0' }
+            expect(variables.stat_data).toEqual({
+                game: {
+                    $meta: {
+                        template: { initialized: true, version: '1.0' }
+                    }
+                }
             });
         });
     });
@@ -404,43 +410,6 @@ describe('Template Feature', () => {
             expect(clonedData.existingData).toBe('test');
         });
 
-        it('should reject array template for array type in $meta and show toastr error', () => {
-            const data = [
-                { name: 'item1' },
-                { $meta: { template: ['invalid', 'array', 'template'] } }
-            ];
-
-            const consoleSpy = jest.spyOn(console, 'error').mockImplementation();
-            // Mock toastr
-            const toastrSpy = jest.fn();
-            // @ts-ignore
-            global.toastr = { error: toastrSpy };
-
-            const schema = generateSchema(data);
-
-            // 验证 console.error 被调用
-            expect(consoleSpy).toHaveBeenCalledWith(
-                'Invalid template type for array: template cannot be an array type (StatData[] or any[])'
-            );
-
-            // 验证 toastr.error 被调用
-            expect(toastrSpy).toHaveBeenCalledWith(
-                'Invalid template type for array: template cannot be an array type (StatData[] or any[])',
-                'Template Error',
-                { timeOut: 5000 }
-            );
-
-            // 模板不应该被设置
-            expect(schema.type).toBe('array');
-            if (schema.type === 'array') {
-                expect(schema.template).toBeUndefined();
-            }
-
-            consoleSpy.mockRestore();
-            // @ts-ignore
-            delete global.toastr;
-        });
-
         it('should handle empty arrays and objects in templates', () => {
             const objectTemplate: StatData = {};
             const arrayTemplate: StatData[] = [];
@@ -489,6 +458,38 @@ describe('Template Feature', () => {
             await updateVariables(
                 `_.assign('attributes', ["strength"]);`,
                 variables
+            );
+
+            expect(variables.stat_data.attributes).toEqual([
+                ['strength', 'default', 'This is a default attribute']
+            ]);
+        });
+
+        it('should apply any[] template in array assign operation', async () => {
+            const variables: GameData = {
+                initialized_lorebooks: {},
+                stat_data: {
+                    attributes: []
+                },
+                display_data: {},
+                delta_data: {}
+            };
+
+            variables.schema = {
+                type: 'object',
+                properties: {
+                    attributes: {
+                        type: 'array',
+                        elementType: { type: 'any' },
+                        extensible: true,
+                        template: ['default', 'This is a default attribute'] // ValueWithDescription 风格
+                    }
+                }
+            };
+
+            await updateVariables(
+                    `_.assign('attributes', [["strength"]]);`,
+                    variables
             );
 
             expect(variables.stat_data.attributes).toEqual([
@@ -711,17 +712,18 @@ describe('Template Feature', () => {
             consoleSpy.mockRestore();
         });
 
-        it('should handle template inheritance across nested structures', async () => {
+        it('should not handle template inheritance across nested structures', async () => {
             // 测试嵌套结构中的模板继承
             variables.stat_data = {
                 characters: {
                     $meta: {
                         template: { hp: 100, mp: 50 }
                     },
-                    players: []
+                    players: [EXTENSIBLE_MARKER]
                 }
-            };
+            };//{$meta: {extensible: true}}
             reconcileAndApplySchema(variables);
+            cleanUpMetadata(variables.stat_data);
 
             await updateVariables(
                 `_.assign('characters.players', {"name": "hero"});`,
@@ -730,7 +732,7 @@ describe('Template Feature', () => {
 
             // 应该应用父级的模板
             expect((variables.stat_data.characters as any).players).toEqual([
-                { name: 'hero', hp: 100, mp: 50 }
+                { name: 'hero' }
             ]);
         });
 
@@ -815,27 +817,6 @@ describe('Template Feature', () => {
             ]);
         });
 
-        it('should validate that array templates cannot be array types', () => {
-            // 根据 issue #22：数组的模板不能是数组类型
-            const data = [
-                { item: 'test' },
-                { $meta: { template: [{ invalid: 'template' }] } } // StatData[] 类型
-            ];
-
-            const consoleSpy = jest.spyOn(console, 'error').mockImplementation();
-            const schema = generateSchema(data);
-
-            expect(consoleSpy).toHaveBeenCalledWith(
-                'Invalid template type for array: template cannot be an array type (StatData[] or any[])'
-            );
-
-            if (schema.type === 'array') {
-                expect(schema.template).toBeUndefined();
-            }
-
-            consoleSpy.mockRestore();
-        });
-
         it('should handle complex nested template application', async () => {
             // 复杂嵌套场景
             variables.stat_data = {
@@ -881,6 +862,169 @@ describe('Template Feature', () => {
 
             expect((variables.stat_data.game as any).levels[0].rooms).toEqual([
                 { name: 'entrance', enemies: 0, treasure: false }
+            ]);
+        });
+    });
+
+    describe('3-parameter array template scenarios', () => {
+        let variables: GameData;
+
+        beforeEach(() => {
+            variables = {
+                initialized_lorebooks: {},
+                stat_data: {
+                    items: []
+                },
+                display_data: {},
+                delta_data: {}
+            };
+        });
+
+        it('should handle type mismatch when assigning object to array with template (3 params)', async () => {
+            // 数组模板 + 3参数 + 对象值 -> 类型不匹配错误
+            variables.schema = {
+                type: 'object',
+                properties: {
+                    items: {
+                        type: 'array',
+                        elementType: { type: 'any' },
+                        extensible: true,
+                        template: ['default-tag', 'description'] // any[] 模板
+                    }
+                }
+            };
+
+            const consoleSpy = jest.spyOn(console, 'error').mockImplementation();
+
+            await updateVariables(
+                `_.assign('items', 0, {"name": "object-value"});`, // 3参数，对象值
+                variables
+            );
+
+            expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('Template type mismatch'));
+            expect(variables.stat_data.items).toEqual([{"name": "object-value"}]); // 未应用模板
+
+            consoleSpy.mockRestore();
+        });
+
+        it('should merge array template with array value (3 params)', async () => {
+            // 数组模板 + 3参数 + 数组值 -> 合并模板与入参数组
+            variables.schema = {
+                type: 'object',
+                properties: {
+                    items: {
+                        type: 'array',
+                        elementType: { type: 'any' },
+                        extensible: true,
+                        template: ['default', 'template-description']
+                    }
+                }
+            };
+
+            await updateVariables(
+                `_.assign('items', 0, [["user-value", "user-description"]]);`, // 3参数，数组值
+                variables
+            );
+
+            expect(variables.stat_data.items).toEqual([
+                ['user-value', 'user-description'] // 合并结果
+            ]);
+        });
+
+        it('should merge array of literal value with array value (3 params)', async () => {
+            // 数组模板 + 3参数 + 数组值 -> 合并模板与入参数组
+            variables.schema = {
+                type: 'object',
+                properties: {
+                    items: {
+                        type: 'array',
+                        elementType: { type: 'any' },
+                        extensible: true,
+                        template: ['default', 'template-description']
+                    }
+                }
+            };
+
+            await updateVariables(
+                    `_.assign('items', 0, ["user-value", "user-description"]);`, // 3参数，数组值
+                    variables
+            );
+
+            expect(variables.stat_data.items).toEqual([
+                ['user-value', 'default', 'template-description'],
+                ['user-description', 'default', 'template-description'],
+            ]);
+        });
+
+        it('should create new array with literal value prepended to template (3 params)', async () => {
+            // 数组模板 + 3参数 + 字面量值 -> 创建新数组[字面量, ...模板内容]
+            variables.schema = {
+                type: 'object',
+                properties: {
+                    items: {
+                        type: 'array',
+                        elementType: { type: 'any' },
+                        extensible: true,
+                        template: ['description', { metadata: true }]
+                    }
+                }
+            };
+
+            // 测试字符串字面量
+            await updateVariables(
+                `_.assign('items', 0, "string-literal");`, // 3参数，字符串字面量
+                variables
+            );
+
+            expect(variables.stat_data.items).toEqual([
+                ['string-literal', 'description', { metadata: true }]
+            ]);
+
+            // 测试数字字面量
+            await updateVariables(
+                `_.assign('items', 1, 42);`, // 3参数，数字字面量
+                variables
+            );
+
+            expect(variables.stat_data.items).toEqual([
+                ['string-literal', 'description', { metadata: true }],
+                [42, 'description', { metadata: true }]
+            ]);
+
+            // 测试布尔字面量
+            await updateVariables(
+                `_.assign('items', 2, true);`, // 3参数，布尔字面量
+                variables
+            );
+
+            expect(variables.stat_data.items).toEqual([
+                ['string-literal', 'description', { metadata: true }],
+                [42, 'description', { metadata: true }],
+                [true, 'description', { metadata: true }]
+            ]);
+        });
+
+        it('should handle 3-param assignment with object template correctly', async () => {
+            // 对象模板的3参数场景（作为对比）
+            variables.schema = {
+                type: 'object',
+                properties: {
+                    items: {
+                        type: 'array',
+                        elementType: { type: 'object', properties: {} },
+                        extensible: true,
+                        template: { type: 'default', active: true } // 对象模板
+                    }
+                }
+            };
+
+            await updateVariables(
+                `_.assign('items', 0, {"name": "item1"});`,
+                variables
+            );
+
+            expect(variables.stat_data.items).toEqual([
+                { name: 'item1', type: 'default', active: true }
             ]);
         });
     });
