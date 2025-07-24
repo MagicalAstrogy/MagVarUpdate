@@ -625,25 +625,15 @@ export async function updateVariables(
                         // 目标是数组，追加元素
                         // 检查是否有模板并应用
                         const template =
-                            targetSchema && isArraySchema(targetSchema)
-                                ? targetSchema.template
-                                : undefined;
-
-                        if (Array.isArray(valueToAssign)) {
-                            // 对每个元素应用模板
-                            valueToAssign = valueToAssign.map(item =>
-                                applyTemplate(item, template)
-                            );
-                            // 插入数组元素，逐个追加
-                            collection.push(...valueToAssign);
-                            display_str = `ASSIGNED array ${JSON.stringify(valueToAssign)} into array '${path}' ${reason_str}`;
-                        } else {
-                            // 单个值应用模板
+                                targetSchema && isArraySchema(targetSchema)
+                                        ? targetSchema.template
+                                        : undefined;
+                        if (template)
+                        {
                             valueToAssign = applyTemplate(valueToAssign, template);
-                            // 插入单个值
-                            collection.push(valueToAssign);
-                            display_str = `ASSIGNED ${JSON.stringify(valueToAssign)} into array '${path}' ${reason_str}`;
                         }
+                        collection.push(valueToAssign);
+                        display_str = `ASSIGNED ${JSON.stringify(valueToAssign)} into array '${path}' ${reason_str}`;
                         successful = true;
                     } else if (_.isObject(collection)) {
                         // 目标是对象，合并属性
@@ -688,19 +678,9 @@ export async function updateVariables(
 
                     if (Array.isArray(collection) && typeof keyOrIndex === 'number') {
                         // 目标是数组且索引是数字，插入到指定位置
-                        if (Array.isArray(valueToAssign)) {
-                            // 对每个元素应用模板
-                            valueToAssign = valueToAssign.map(item =>
-                                applyTemplate(item, template)
-                            );
-                            collection.splice(keyOrIndex, 0, ...valueToAssign);
-                            display_str = `ASSIGNED array ${JSON.stringify(valueToAssign)} into '${path}' at index ${keyOrIndex} ${reason_str}`;
-                        } else {
-                            // 单个值应用模板
-                            valueToAssign = applyTemplate(valueToAssign, template);
-                            collection.splice(keyOrIndex, 0, valueToAssign);
-                            display_str = `ASSIGNED ${JSON.stringify(valueToAssign)} into '${path}' at index ${keyOrIndex} ${reason_str}`;
-                        }
+                        valueToAssign = applyTemplate(valueToAssign, template);
+                        collection.splice(keyOrIndex, 0, valueToAssign);
+                        display_str = `ASSIGNED ${JSON.stringify(valueToAssign)} into '${path}' at index ${keyOrIndex} ${reason_str}`;
                         successful = true;
                     } else if (_.isObject(collection)) {
                         // 目标是对象，设置指定键

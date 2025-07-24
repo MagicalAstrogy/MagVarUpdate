@@ -1,10 +1,10 @@
-# MVU 新功能补充教程
+# MVU Beta 使用教程
 
-本文档是为已经熟悉 MVU 基础用法的用户准备的，旨在帮助你快速了解和掌握本次更新带来的**一系列强大的新功能**。原有的教程依然完全适用，这里只讲解新增和被增强的部分。
+本文档是为已经熟悉 MVU 基础用法的用户准备的，旨在帮助你快速了解和掌握 MVU Beta 带来的**一系列强大的新功能**。原有的 MVU 基础教程依然完全适用，这里只讲解新增和被增强的部分。
 
 本次更新的核心目标是：**赋予你（和LLM）更强大、更灵活、更直观的变量操作能力，同时保证整个过程的绝对安全。**
 
-如果你需要一张示例卡，可以参考[此仓库](https://gitgud.io/KazePsi/file-storage/-/tree/master/mobius/example)中的内容，或者直接来[这里](https://discord.com/channels/1134557553011998840/1380780338539663360)。
+如果你需要一张示例卡，可以参考[此仓库](https://gitgud.io/KazePsi/file-storage/-/tree/master/Reina/Card)中的内容，或者直接来[这里](https://discord.com/channels/1134557553011998840/1392106810374225921)。
 
 ## 1. 新增的变量操作命令
 
@@ -80,10 +80,12 @@ LLM可能会误用 `assign` 或 `remove` 命令，破坏你精心设计的数据
 
 ### 如何使用 `"$meta"` 和 `"$__META_EXTENSIBLE__$"`
 
-`"$meta"` 对象目前接受两个属性：`"extensible"` (可扩展的)、`"required"` (必需的)。这两个属性可以帮助你控制数据结构的灵活性和安全性。
+`"$meta"` 对象目前接受四个属性：`"extensible"`(可扩展的)、`"required"`(必需的)、`"recursiveExtensible"`(递归扩展)、`"template"`(模板)。这几个属性可以帮助你控制数据结构的灵活性和安全性。
 *   `"extensible": false` (默认)：意味着这个对象是**锁定的**。LLM不能向其添加新的键，也不能删除已有的键。
 *   `"extensible": true`：意味着这个对象是**开放的**。LLM可以用 `_.assign` 添加新键，或用 `_.remove` 删除键。这同时会导致该层下的所有子元素的required属性都被设置为 `false`，除非你在required数组中另行指定。
 *   `"required": []`：一个数组，在其中填入需要被保护的子对象的键名，表示这个对象是**必需的**。不允许被 `_.remove` 删除，如果不写这个数组，那所有子对象是否必需则根据extensible而定。
+*   `"recursiveExtensible"`：如果设置为 `true`，则表示这个对象的所有子孙对象都为可扩展，这是穿透性的，除非被一个特别设置的 `"extensible": false` 截断才会停止向下递归，默认为 `false`。在当前层，`"recursiveExtensible": true` 等效于 `"extensible": true`。
+*   `"template"`：可以是对象或数组，表示这个结构的结构模板。LLM在使用 `_.assign` 添加新结构时会自动合并这个模板来生成新的子结构，默认为空。
 *   你可以偷懒，整个 `"$meta"` 键都可以不写，系统会采用默认值。
 *   这个键在初始化完成后会被移除，不会出现在后续的 `stat_data` 里面，所以不用担心它占用token和模型注意力。
 *   如果你要定义一个数组为可扩展，你只需要在里面放一个 `"$__META_EXTENSIBLE__$"` 就可以了，在世界书初始化完成后，它也会被移除，不用担心它占用token和模型注意力。
@@ -327,6 +329,121 @@ _.assign('', '新角色', {
 
 通过这种规则，你可以精确控制数据结构的每一部分，既保证了核心数据的安全，又赋予了必要部分的灵活性。
 
+### 递归扩展
+
+如果你需要一个对象的所有子孙对象都可以扩展，你可以在 `$meta` 中设置 `"recursiveExtensible": true`。这会使得这个对象的所有子孙对象都继承这个可扩展性。
+以下示例是一个类Unix文件系统的目录树，在根目录设置一个 `"recursiveExtensible": true`，就可以使得这个高度自由的目录树完全不受schema约束。
+
+```json5
+{
+    "/": {
+        "$meta": {
+            "recursiveExtensible": true
+        },
+        "home": {
+            "alice": {
+                "notes.txt": "document",
+                "photos": {}
+            }
+        },
+        "etc": {
+            "passwd": "file"
+        },
+        "var": {}
+    }
+}
+```
+
+### 模板
+
+如果你需要在添加新元素时自动填充一些默认值，可以在 `$meta` 中设置 `"template"`。这会在使用 `_.assign` 添加新元素时，将模板中的内容合并到新元素中。
+依然拿上面的类Unix文件系统目录树为例，如果你希望每个新添加的用户目录都包含一个默认的 `notes.txt` 文件和一个空的 `photos` 目录，你可以这样设置：
+
+```json5
+{
+    "/": {
+        "$meta": {
+            "recursiveExtensible": true
+        },
+        "home": {
+            "$meta": {
+                "template": {
+                    "notes.txt": "document",
+                    "photos": {}
+                }
+            },
+            "alice": {
+                "notes.txt": "document",
+                "photos": {}
+            }
+        },
+        "etc": {
+            "passwd": "file"
+        },
+        "var": {}
+    }
+}
+```
+
+这样，当使用 `_.assign('/.home', 'bob', {})` 添加新用户时，`bob` 的目录会自动包含 `notes.txt` 和 `photos`。
+
+template可以为对象，也可以为数组。如果是数组，则会将数组模板与新加入的数组合并。
+
+```
+{
+    "道具": {
+        "$meta": {
+            "extensible": true,
+            "template": [
+                "ルビーちゃん", "何が好き", "チョコミント"
+            ]
+        }
+    }
+}
+```
+在这个用例下，如果进行了这种输入：
+`_.assign('道具', '万用表', ["ゆちゃん"]);`
+那么结果就会是：
+```
+{
+    "道具": {
+        "万用表": [
+            "ゆちゃん", "ルビーちゃん", "何が好き", "チョコミント"
+        ]
+    }
+}
+```
+
+关于template的具体行为，可以参考以下表格：
+<details>
+<summary>template行为表</summary>
+| 对象类型 | template类型            | assign版本 | 待插入入参类型 | 具体覆盖行为                       |
+  |------|-----------------------|----------|---------|------------------------------|
+  | 数组   | 对象 (StatData)         | 2参数      | 对象      | 合并模板与入参对象，入参优先               |
+  | 数组   | 对象 (StatData)         | 2参数      | 数组      | 直接插入数组，无模板应用             |
+  | 数组   | 对象 (StatData)         | 2参数      | 字面量     | 将字面量直接插入，不应用模板               |
+  | 数组   | 数组 (StatData[]/any[]) | 2参数      | 对象      | 直接插入对象，无模板应用             |
+  | 数组   | 数组 (StatData[]/any[]) | 2参数      | 数组      | 创建新数组，并合并模板与入参数组                  |
+  | 数组   | 数组 (StatData[]/any[]) | 2参数      | 字面量     | 直接插入，无模板应用         |
+  | 数组   | 无                     | 2参数      | 任意      | 直接插入，无模板应用                   |
+  | 对象   | 任意                    | 2参数      | 对象      | 不应用模板（无法确定新增元素）              |
+  | 对象   | 任意                    | 2参数      | 非对象     | 报错，不支持合并                     |
+  | 数组   | 对象 (StatData)         | 3参数      | 对象      | 合并模板与入参对象，入参优先               |
+  | 数组   | 对象 (StatData)         | 3参数      | 数组      | 直接在指定位置插入数组，无模板应用             |
+  | 数组   | 对象 (StatData)         | 3参数      | 字面量     | 将字面量直接插入指定位置，不应用模板           |
+  | 数组   | 数组 (StatData[]/any[]) | 3参数      | 对象      | 直接在指定位置插入对象，无模板应用             |
+  | 数组   | 数组 (StatData[]/any[]) | 3参数      | 数组      | 在指定key创建新数组，并合并模板与入参数组                  |
+  | 数组   | 数组 (StatData[]/any[]) | 3参数      | 字面量     | 直接在指定位置插入，无模板应用       |
+  | 数组   | 无                     | 3参数      | 任意      | 直接在指定位置插入，无模板应用              |
+  | 对象   | 对象 (StatData)         | 3参数      | 对象      | 合并模板与入参对象，设置到指定key           |
+  | 对象   | 对象 (StatData)         | 3参数      | 数组      | 将数组直接设置到指定key，不应用模板             |
+  | 对象   | 对象 (StatData)         | 3参数      | 字面量     | 将字面量直接设置到指定key，不应用模板         |
+  | 对象   | 数组 (StatData[]/any[]) | 3参数      | 对象      | 将对象直接设置到指定key，不应用模板             |
+  | 对象   | 数组 (StatData[]/any[]) | 3参数      | 数组      | 合并模板与入参数组，设置到指定key           |
+  | 对象   | 数组 (StatData[]/any[]) | 3参数      | 字面量     | 将字面量直接设置到指定key，不应用模板 |
+  | 对象   | 无                     | 3参数      | 任意      | 直接设置到指定key，无模板应用             |
+</details>
+
 ## 3. 数学运算
 
 现在脚本中有 `math.js` 库。这意味着现在可以安全地执行复杂的计算，这个功能在遇到某些LLM更新变量时飙出一句表达式的时候很有用。
@@ -417,7 +534,7 @@ _.set('经历天数[0]', 1);
 <%_ setLocalVar('initialized_lorebooks.-SnowYuki[0]', true); _%>
 {{// 这个值是用来判别世界书是否初始化的，在世界书加载一次之后就永久为true，可以在某些变量需要屏蔽来自LLM的更新时使用，避免将初始化设置也屏蔽掉}}
 {{// 不要使用setvar，会插入到用户消息变量中导致消息swipe出错}}
-【变量更新】
+**变量更新**
 在所有文本的最后，进行变量更新。
 以下是故事中需要追踪的关键变量，当前状态以这些变量的值为准。
 <status_current_variables>
@@ -428,13 +545,12 @@ rule:
   description:
     - You should output the update analysis in the end of the next response, following the variables list defined in <status_current_variables> section which will be provided by the previous turn.
     - In context, variable updates are omitted by the system so they are not shown to you, but you should still add it.
-    - There are 4 commands can be used to adjust the data: `_.set`, `_.assign`, `_.remove` and `_.add`.
-    - to set a certain value, use `_.set`, it supports 2 or 3 input args.
-    - to insert something into an array or object, use `_.assign`, it supports 2 or 3 input args.
-    - to delete something from an object/array, use `_.remove`, it supports 1 or 2 input args.
+    - There are 4 commands can be used to adjust the data.
+    - _.set: Used to set a certain simple value (strings, numbers, booleans). It only supports 2 input args, and it doesn't support arrays or objects as inputs.
+      _.assign: Used to insert something into an array or object. It supports 2 or 3 input args.
+      _.remove: Used to delete something from an array or object. It supports 1 or 2 input args.
+      _.add: Used to add a delta to a number. It only supports 2 input args, and only supports modifications to numbers.
     - If you need to assign or remove multiple values, use `_.assign` or `_.remove` multiple times, not in a single command.
-    - to add a delta to a number, use `_.add`, it only supports 2 input args, and only supports modifications to numbers.
-    - It is allowed to use math expressions for number inputs.
   analysis:
     - You must rethink what variables are defined in the previous <status_current_variables> property, and analyze how to update each of them accordingly.
     - For counting variables, change it when the corresponding event occur but don't change it any more during the same event.
