@@ -6,7 +6,7 @@ import {
     ObjectSchemaNode,
     GameData,
     ArraySchemaNode,
-    TemplateType,
+    TemplateType, RootAdditionalProps,
 } from '@/variable_def';
 
 // 定义魔法字符串为常量，便于管理和引用
@@ -252,7 +252,17 @@ export function reconcileAndApplySchema(variables: GameData) {
         );
         return;
     }
-    variables.schema = newSchema;
+    
+    // 保留 RootAdditionalProps
+    const newSchemaWithProps = newSchema as ObjectSchemaNode & RootAdditionalProps;
+    if (variables.schema?.strictTemplate !== undefined) {
+        newSchemaWithProps.strictTemplate = variables.schema.strictTemplate;
+    }
+    if (variables.schema?.concatTemplateArray !== undefined) {
+        newSchemaWithProps.concatTemplateArray = variables.schema.concatTemplateArray;
+    }
+    
+    variables.schema = newSchemaWithProps;
 
     console.log('Schema reconciliation complete.');
 }

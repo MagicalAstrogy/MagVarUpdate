@@ -1031,4 +1031,232 @@ describe('Template Feature', () => {
             ]);
         });
     });
+
+    describe('Feature Switches - Non-default Combinations', () => {
+        describe('strictTemplate=true, concatTemplateArray=true', () => {
+            it('should prevent primitive to array conversion with concat behavior', async () => {
+                const variables: GameData = {
+                    initialized_lorebooks: {},
+                    stat_data: {
+                        items: []
+                    },
+                    display_data: {},
+                    delta_data: {},
+                    schema: {
+                        type: 'object',
+                        strictTemplate: true,
+                        concatTemplateArray: true,
+                        properties: {
+                            items: {
+                                type: 'array',
+                                extensible: true,
+                                elementType: { type: 'any' },
+                                template: ['default1', 'default2']
+                            }
+                        }
+                    }
+                };
+
+                await updateVariables(
+                    `_.assign('items', 'primitive-value');`,
+                    variables
+                );
+
+                // strictTemplate=true prevents primitive->array conversion
+                expect(variables.stat_data.items).toEqual(['primitive-value']);
+
+                // Array assignment with concat behavior
+                await updateVariables(
+                    `_.assign('items', ['user1', 'user2']);`,
+                    variables
+                );
+
+                expect(variables.stat_data.items).toEqual(["primitive-value", ['user1', 'user2', 'default1', 'default2']]);
+            });
+
+            it('should handle 3-param assignment with strict mode', async () => {
+                const variables: GameData = {
+                    initialized_lorebooks: {},
+                    stat_data: { items: [] },
+                    display_data: {},
+                    delta_data: {},
+                    schema: {
+                        type: 'object',
+                        strictTemplate: true,
+                        concatTemplateArray: true,
+                        properties: {
+                            items: {
+                                type: 'array',
+                                extensible: true,
+                                elementType: { type: 'any' },
+                                template: ['template-item']
+                            }
+                        }
+                    }
+                };
+
+                await updateVariables(
+                    `_.assign('items', 0, 'primitive-value');`,
+                    variables
+                );
+
+                // No conversion happens in strict mode
+                expect(variables.stat_data.items).toEqual(['primitive-value']);
+            });
+        });
+
+        describe('strictTemplate=false, concatTemplateArray=false', () => {
+            it('should allow primitive conversion with merge behavior', async () => {
+                const variables: GameData = {
+                    initialized_lorebooks: {},
+                    stat_data: { items: [] },
+                    display_data: {},
+                    delta_data: {},
+                    schema: {
+                        type: 'object',
+                        strictTemplate: false,
+                        concatTemplateArray: false,
+                        properties: {
+                            items: {
+                                type: 'array',
+                                extensible: true,
+                                elementType: { type: 'any' },
+                                template: ['default1', 'default2', 'default3']
+                            }
+                        }
+                    }
+                };
+
+                await updateVariables(
+                    `_.assign('items', 'primitive-value');`,
+                    variables
+                );
+
+                // Primitive converted to array and merged
+                expect(variables.stat_data.items).toEqual([['primitive-value', 'default2', 'default3']]);
+            });
+
+            it('should merge arrays by position', async () => {
+                const variables: GameData = {
+                    initialized_lorebooks: {},
+                    stat_data: { data: [] },
+                    display_data: {},
+                    delta_data: {},
+                    schema: {
+                        type: 'object',
+                        strictTemplate: false,
+                        concatTemplateArray: false,
+                        properties: {
+                            data: {
+                                type: 'array',
+                                extensible: true,
+                                elementType: { type: 'any' },
+                                template: [
+                                    { id: 1, value: 'default1' },
+                                    { id: 2, value: 'default2' },
+                                    { id: 3, value: 'default3' }
+                                ]
+                            }
+                        }
+                    }
+                };
+
+                await updateVariables(
+                    `_.assign('data', [{ id: 1, value: 'user1' }, { id: 2, value: 'user2' }]);`,
+                    variables
+                );
+
+                expect(variables.stat_data.data).toEqual([[
+                    { id: 1, value: 'user1' },
+                    { id: 2, value: 'user2' },
+                    { id: 3, value: 'default3' }
+                ]]);
+            });
+        });
+
+        describe('strictTemplate=true, concatTemplateArray=false', () => {
+            it('should prevent conversion and use merge for arrays', async () => {
+                const variables: GameData = {
+                    initialized_lorebooks: {},
+                    stat_data: { items: [] },
+                    display_data: {},
+                    delta_data: {},
+                    schema: {
+                        type: 'object',
+                        strictTemplate: true,
+                        concatTemplateArray: false,
+                        properties: {
+                            items: {
+                                type: 'array',
+                                extensible: true,
+                                elementType: { type: 'any' },
+                                template: ['t1', 't2', 't3', 't4']
+                            }
+                        }
+                    }
+                };
+
+                // First try primitive assignment
+                await updateVariables(
+                    `_.assign('items', 'no-conversion');`,
+                    variables
+                );
+
+                expect(variables.stat_data.items).toEqual(['no-conversion']);
+
+                // Then array assignment with merge
+                await updateVariables(
+                    `_.assign('items', ['a', 'b']);`,
+                    variables
+                );
+
+                expect(variables.stat_data.items).toEqual(['no-conversion', ['a', 'b', 't3', 't4']]);
+            });
+
+            it('should handle nested operations with both switches', async () => {
+                const variables: GameData = {
+                    initialized_lorebooks: {},
+                    stat_data: { container: { list: [] } },
+                    display_data: {},
+                    delta_data: {},
+                    schema: {
+                        type: 'object',
+                        strictTemplate: true,
+                        concatTemplateArray: false,
+                        properties: {
+                            container: {
+                                type: 'object',
+                                properties: {
+                                    list: {
+                                        type: 'array',
+                                        extensible: true,
+                                        elementType: { type: 'any' },
+                                        template: ['x', 'y', 'z']
+                                    }
+                                }
+                            }
+                        }
+                    }
+                };
+
+                // 3-param with primitive
+                await updateVariables(
+                    `_.assign('container.list', 0, 'item');`,
+                    variables
+                );
+
+                expect((variables.stat_data.container as any).list).toEqual(['item']);
+
+                // Reset and test array merge
+                (variables.stat_data.container as any).list = [];
+
+                await updateVariables(
+                    `_.assign('container.list', 0, ['nested']);`,
+                    variables
+                );
+
+                expect((variables.stat_data.container as any).list).toEqual([['nested', 'y', 'z']]);
+            });
+        });
+    });
 });
