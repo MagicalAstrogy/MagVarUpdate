@@ -66,6 +66,11 @@ export function isPrimitiveSchema(value: SchemaNode): value is PrimitiveSchemaNo
     );
 }
 
+export type RootAdditionalProps = {
+    strictTemplate? : boolean;
+    concatTemplateArray? : boolean;
+}
+
 export type GameData = {
     // initialized_lorebooks 从字符串列表变为记录对象
     // 这样可以为每个知识库存储元数据，例如初始化的标记变量
@@ -74,7 +79,7 @@ export type GameData = {
     display_data: Record<string, any>;
     delta_data: Record<string, any>;
     // 用于存储数据结构的模式
-    schema?: ObjectSchemaNode;
+    schema?: ObjectSchemaNode & RootAdditionalProps;
 };
 
 export interface VariableData {

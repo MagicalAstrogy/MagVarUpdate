@@ -1,4 +1,5 @@
-import { extractCommands, parseCommandValue } from '../src/function';
+import {extractCommands, parseCommandValue, updateVariables} from '../src/function';
+import {GameData} from "@/variable_def";
 
 describe('extractCommands', () => {
     describe('基本功能测试', () => {
@@ -486,6 +487,64 @@ describe('高等数学与高级运算测试', () => {
         expect(result).toHaveLength(1);
         // std([2, 4, 6, 8]) ≈ 2.5819...
         expect(parseCommandValue(result[0].args[2])).toBeCloseTo(2.581988897);
+    });
+
+    test('alt', async () => {
+        const variables: GameData = {
+            initialized_lorebooks: {},
+            stat_data: {items: []},
+            display_data: {},
+            delta_data: {}
+        };
+        // 数组模板 + 3参数 + 数组值 -> 合并模板与入参数组
+        variables.schema = {
+            type: 'object',
+            properties: {
+                items: {
+                    type: 'array',
+                    elementType: { type: 'any' },
+                    extensible: true
+                }
+            }
+        };
+
+        await updateVariables(
+                `_.assign('items', 0, ["user-value", "user-description"]);`, // 3参数，数组值
+                variables
+        );
+
+        expect(variables.stat_data.items).toEqual([
+            'user-value', 'user-description'
+        ]);
+    });
+
+    test('alt2', async () => {
+        const variables: GameData = {
+            initialized_lorebooks: {},
+            stat_data: {items: []},
+            display_data: {},
+            delta_data: {}
+        };
+        // 数组模板 + 3参数 + 数组值 -> 合并模板与入参数组
+        variables.schema = {
+            type: 'object',
+            properties: {
+                items: {
+                    type: 'array',
+                    elementType: { type: 'any' },
+                    extensible: true
+                }
+            }
+        };
+
+        await updateVariables(
+                `_.assign('items', 0, "user-description"); _.assign('items', 0, "user-value"); `, // 3参数，数组值
+                variables
+        );
+
+        expect(variables.stat_data.items).toEqual([
+            'user-value', 'user-description'
+        ]);
     });
 });
 /* 实验性功能，暂不启用

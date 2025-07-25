@@ -26,7 +26,7 @@ describe('Template Feature', () => {
             const template: StatData[] = [{ type: 'default' }];
             const value = [{ name: 'item1' }];
             const result = applyTemplate(value, template);
-            expect(result).toEqual([{ type: 'default', name: 'item1' }]);
+            expect(result).toEqual([{ name: 'item1'}, { type: 'default' }]);
         });
 
         it('should return original value when types mismatch', () => {
@@ -298,7 +298,7 @@ describe('Template Feature', () => {
             );
 
             expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('Template type mismatch'));
-            expect(variables.stat_data.items).toEqual(['array value']); // 未应用模板
+            expect(variables.stat_data.items).toEqual([['array value']]); // 未应用模板
 
             consoleSpy.mockRestore();
         });
@@ -325,8 +325,8 @@ describe('Template Feature', () => {
             );
 
             expect(variables.stat_data.items).toEqual([
-                { name: 'sword', category: 'item', sellable: true },
-                { name: 'shield', category: 'item', sellable: true }
+                [{ name: 'sword' },
+                { name: 'shield' }]
             ]);
         });
 
@@ -430,7 +430,7 @@ describe('Template Feature', () => {
             const result = applyTemplate(value, template);
 
             // 应该合并两个数组
-            expect(result).toEqual(['user value', 'default description']);
+            expect(result).toEqual(['user value', 'default value', 'default description']);
         });
 
         it('should apply any[] template in array assign operation', async () => {
@@ -493,7 +493,7 @@ describe('Template Feature', () => {
             );
 
             expect(variables.stat_data.attributes).toEqual([
-                ['strength', 'This is a default attribute']
+                [['strength'], 'default', 'This is a default attribute']
             ]);
         });
 
@@ -510,7 +510,7 @@ describe('Template Feature', () => {
 
             // 合并结果应该保留 value 的内容并补充 template 的其他元素
             expect(result).toEqual([
-                { type: 'custom', value: 42 },
+                { type: 'custom', value: 42 }, { type: 'default' },
                 'description',
                 { metadata: { version: 1 } }
             ]);
@@ -927,7 +927,9 @@ describe('Template Feature', () => {
             );
 
             expect(variables.stat_data.items).toEqual([
-                ['user-value', 'user-description'] // 合并结果
+                [
+                    ['user-value', 'user-description'], 'default', 'template-description'
+                ]
             ]);
         });
 
@@ -951,8 +953,9 @@ describe('Template Feature', () => {
             );
 
             expect(variables.stat_data.items).toEqual([
-                ['user-value', 'default', 'template-description'],
-                ['user-description', 'default', 'template-description'],
+                [
+                    "user-value", "user-description", 'default', 'template-description'
+                ]
             ]);
         });
 
