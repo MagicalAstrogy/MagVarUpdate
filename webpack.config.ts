@@ -112,7 +112,7 @@ function config(_env: any, argv: any) {
             },
         },
         externals: [
-            ({ context, request }, callback) => {
+            ({ context, request }: { context: string; request: string }, callback: (err?: Error | null, result?: string) => void) => {
                 if (
                     !context ||
                     !request ||
@@ -124,6 +124,10 @@ function config(_env: any, argv: any) {
                 }
 
                 if (fs.existsSync(path.join(context, request))) {
+                    return callback();
+                }
+
+                if (fs.existsSync(request)) {
                     return callback();
                 }
 
