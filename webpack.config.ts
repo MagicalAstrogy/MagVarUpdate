@@ -1,5 +1,6 @@
 import path from 'node:path';
 import url from 'node:url';
+import fs from 'node:fs';
 import { Server } from 'socket.io';
 import TerserPlugin from 'terser-webpack-plugin';
 import TsconfigPathsPlugin from 'tsconfig-paths-webpack-plugin';
@@ -32,7 +33,7 @@ function watch_it(compiler: webpack.Compiler) {
 }
 
 function config(_env: any, argv: any) {
-    const isProd = argv.mode === 'production';
+    const is_production = argv.mode === 'production';
     return {
         experiments: {
             outputModule: true,
@@ -78,8 +79,8 @@ function config(_env: any, argv: any) {
         optimization: {
             minimize: true,
             minimizer: [
-                isProd
-                    ? new TerserPlugin()
+                is_production
+                    ? new TerserPlugin({ terserOptions: { format: { quote_style: 1 } } })
                     : new TerserPlugin({
                           extractComments: false,
                           terserOptions: {
@@ -110,8 +111,38 @@ function config(_env: any, argv: any) {
                 },
             },
         },
-        externalsType: 'var',
-        externals: [/^_$/i, /^(jquery|\$)$/i, /^jqueryui$/i, /^toastr$/i, /^yaml$/i],
+        externals: [
+            ({ context, request }: { context: string; request: string }, callback: (err?: Error | null, result?: string) => void) => {
+                if (
+                    !context ||
+                    !request ||
+                    request.startsWith('@') ||
+                    request.startsWith('.') ||
+                    request.startsWith('/')
+                ) {
+                    return callback();
+                }
+
+                if (fs.existsSync(path.join(context, request))) {
+                    return callback();
+                }
+
+                if (fs.existsSync(request)) {
+                    return callback();
+                }
+
+                const builtin = {
+                    lodash: '_',
+                    toastr: 'toastr',
+                    yaml: 'YAML',
+                    jquery: '$',
+                };
+                if (request in builtin) {
+                    return callback(null, 'var ' + builtin[request as keyof typeof builtin]);
+                }
+                return callback(null, 'module-import https://fastly.jsdelivr.net/npm/' + request);
+            },
+        ],
     };
 }
 
