@@ -619,18 +619,22 @@ export async function updateVariables(
                         successful = true;
                     } else if (_.isObject(collection)) {
                         // 目标是对象，设置指定键
-                        _.set(collection, String(keyOrIndex), valueToAssign);
+                        // _.set(collection, String(keyOrIndex), valueToAssign);
+                        (collection as Record<string, unknown>)[String(keyOrIndex)] = valueToAssign;
                         display_str = `ASSIGNED key '${keyOrIndex}' with value ${JSON.stringify(valueToAssign)} into object '${path}' ${reason_str}`;
                         successful = true;
                     } else {
                         // 目标不存在，创建新对象并插入
                         collection = {};
                         _.set(variables.stat_data, path, collection);
+                        /*
                         _.set(
                             collection as Record<string, unknown>,
                             String(keyOrIndex),
                             valueToAssign
                         );
+                        */
+                        (collection as Record<string, unknown>)[String(keyOrIndex)] = valueToAssign;
                         display_str = `CREATED object at '${path}' and ASSIGNED key '${keyOrIndex}' ${reason_str}`;
                         successful = true;
                     }
@@ -795,7 +799,8 @@ export async function updateVariables(
                             // 目标是对象，按键名删除
                             const keyToRemove = String(targetToRemove);
                             if (_.has(collection, keyToRemove)) {
-                                _.unset(collection, keyToRemove);
+                                // _.unset(collection, keyToRemove);
+                                delete (collection as Record<string, unknown>)[keyToRemove];
                                 itemRemoved = true;
                                 display_str = `REMOVED key '${keyToRemove}' from object '${path}' ${reason_str}`;
                             }
