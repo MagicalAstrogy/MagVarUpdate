@@ -614,7 +614,12 @@ describe('Template Feature', () => {
                 properties: {
                     items: {
                         type: 'array',
-                        elementType: { type: 'object', properties: {} },
+                        elementType: {
+                            type: 'object',
+                            extensible: true,
+                            properties: {},
+                            template: { rarity: 'common', level: 1 }
+                        },
                         extensible: true,
                         template: { rarity: 'common', level: 1 }
                     }
@@ -730,7 +735,7 @@ describe('Template Feature', () => {
                 variables
             );
 
-            // 应该应用父级的模板
+            // 不应该应用父级的模板
             expect((variables.stat_data.characters as any).players).toEqual([
                 { name: 'hero' }
             ]);
