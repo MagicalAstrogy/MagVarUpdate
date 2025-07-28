@@ -1,6 +1,6 @@
 // 整体游戏数据类型
 import { updateVariables } from '@/function';
-import { GameData } from '@/variable_def';
+import {GameData, isObjectSchema, RootAdditionalProps, SchemaNode} from '@/variable_def';
 import { cleanUpMetadata, EXTENSIBLE_MARKER, generateSchema } from '@/schema';
 import * as JSON5 from 'json5';
 import * as TOML from 'toml';
@@ -83,7 +83,23 @@ export async function initCheck() {
         // 1. 克隆数据用于 Schema 生成
         const dataForSchema = _.cloneDeep(variables.stat_data);
         // 2. generateSchema 会读取并移除克隆体中的标记，生成正确的 schema
-        variables.schema = generateSchema(dataForSchema);
+        const generatedSchema : SchemaNode & RootAdditionalProps = generateSchema(dataForSchema);
+
+
+
+
+        // 使用类型守卫确保生成的 schema 是 ObjectSchemaNode
+        if (isObjectSchema(generatedSchema)) {
+            if(_.has(variables.stat_data, '$meta.strictTemplate'))
+                generatedSchema.strictTemplate = variables.stat_data["$meta"]?.strictTemplate as boolean;
+            if(_.has(variables.stat_data, '$meta.concatTemplateArray'))
+                generatedSchema.concatTemplateArray = variables.stat_data["$meta"]?.concatTemplateArray as boolean;
+            variables.schema = generatedSchema;
+        } else {
+            console.error('Generated schema is not an object schema, which is unexpected for stat_data root');
+        }
+
+
         // 3. 现在，清理真实的 stat_data，让它在后续操作中保持干净
         cleanUpMetadata(variables.stat_data);
     }

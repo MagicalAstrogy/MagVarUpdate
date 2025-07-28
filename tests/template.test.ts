@@ -1082,23 +1082,29 @@ describe('Template Feature', () => {
             it('should handle 3-param assignment with strict mode', async () => {
                 const variables: GameData = {
                     initialized_lorebooks: {},
-                    stat_data: { items: [] },
+                    stat_data: {
+                        "$meta": {
+                            strictTemplate: true,
+                            concatTemplateArray: true
+                        }, items: []
+                    },
                     display_data: {},
                     delta_data: {},
                     schema: {
                         type: 'object',
-                        strictTemplate: true,
-                        concatTemplateArray: true,
                         properties: {
                             items: {
                                 type: 'array',
                                 extensible: true,
-                                elementType: { type: 'any' },
+                                elementType: {type: 'any'},
                                 template: ['template-item']
                             }
                         }
                     }
                 };
+
+                reconcileAndApplySchema(variables);
+                cleanUpMetadata(variables.stat_data);
 
                 await updateVariables(
                     `_.assign('items', 0, 'primitive-value');`,
@@ -1218,16 +1224,58 @@ describe('Template Feature', () => {
                 expect(variables.stat_data.items).toEqual(['no-conversion', ['a', 'b', 't3', 't4']]);
             });
 
+            it('should prevent conversion and use merge for arrays(from $meta)', async () => {
+                const variables: GameData = {
+                    initialized_lorebooks: {},
+                    stat_data: {
+                        "$meta": {
+                            strictTemplate: true,
+                            concatTemplateArray: false
+                        },
+                        items: [
+                            {"$meta": {
+                                    extensible: true,
+                                    template: ['t1', 't2', 't3', 't4']
+                                }}
+                        ] },
+                    display_data: {},
+                    delta_data: {}
+                };
+                reconcileAndApplySchema(variables);
+                cleanUpMetadata(variables.stat_data);
+
+
+
+                // First try primitive assignment
+                await updateVariables(
+                        `_.assign('items', 'no-conversion');`,
+                        variables
+                );
+
+                expect(variables.stat_data.items).toEqual(['no-conversion']);
+
+                // Then array assignment with merge
+                await updateVariables(
+                        `_.assign('items', ['a', 'b']);`,
+                        variables
+                );
+
+                expect(variables.stat_data.items).toEqual(['no-conversion', ['a', 'b', 't3', 't4']]);
+            });
+
             it('should handle nested operations with both switches', async () => {
                 const variables: GameData = {
                     initialized_lorebooks: {},
-                    stat_data: { container: { list: [] } },
+                    stat_data: {
+                        "$meta": {
+                            strictTemplate: true,
+                            concatTemplateArray: false
+                        }, container: {list: []}
+                    },
                     display_data: {},
                     delta_data: {},
                     schema: {
                         type: 'object',
-                        strictTemplate: true,
-                        concatTemplateArray: false,
                         properties: {
                             container: {
                                 type: 'object',
@@ -1235,7 +1283,7 @@ describe('Template Feature', () => {
                                     list: {
                                         type: 'array',
                                         extensible: true,
-                                        elementType: { type: 'any' },
+                                        elementType: {type: 'any'},
                                         template: ['x', 'y', 'z']
                                     }
                                 }
@@ -1244,10 +1292,13 @@ describe('Template Feature', () => {
                     }
                 };
 
+                reconcileAndApplySchema(variables);
+                cleanUpMetadata(variables.stat_data);
+
                 // 3-param with primitive
                 await updateVariables(
-                    `_.assign('container.list', 0, 'item');`,
-                    variables
+                        `_.assign('container.list', 0, 'item');`,
+                        variables
                 );
 
                 expect((variables.stat_data.container as any).list).toEqual(['item']);
@@ -1256,8 +1307,8 @@ describe('Template Feature', () => {
                 (variables.stat_data.container as any).list = [];
 
                 await updateVariables(
-                    `_.assign('container.list', 0, ['nested']);`,
-                    variables
+                        `_.assign('container.list', 0, ['nested']);`,
+                        variables
                 );
 
                 expect((variables.stat_data.container as any).list).toEqual([['nested', 'y', 'z']]);

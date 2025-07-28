@@ -252,7 +252,7 @@ export function reconcileAndApplySchema(variables: GameData) {
         );
         return;
     }
-    
+
     // 保留 RootAdditionalProps
     const newSchemaWithProps = newSchema as ObjectSchemaNode & RootAdditionalProps;
     if (variables.schema?.strictTemplate !== undefined) {
@@ -261,7 +261,11 @@ export function reconcileAndApplySchema(variables: GameData) {
     if (variables.schema?.concatTemplateArray !== undefined) {
         newSchemaWithProps.concatTemplateArray = variables.schema.concatTemplateArray;
     }
-    
+    if(_.has(variables.stat_data, '$meta.strictTemplate'))
+        newSchemaWithProps.strictTemplate = variables.stat_data["$meta"]?.strictTemplate as boolean;
+    if(_.has(variables.stat_data, '$meta.concatTemplateArray'))
+        newSchemaWithProps.concatTemplateArray = variables.stat_data["$meta"]?.concatTemplateArray as boolean;
+
     variables.schema = newSchemaWithProps;
 
     console.log('Schema reconciliation complete.');
