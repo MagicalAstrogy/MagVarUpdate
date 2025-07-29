@@ -5,10 +5,25 @@ import { Server } from 'socket.io';
 import TerserPlugin from 'terser-webpack-plugin';
 import TsconfigPathsPlugin from 'tsconfig-paths-webpack-plugin';
 import webpack from 'webpack';
+import semver from 'semver';
 //const require = createRequire(import.meta.url);
 
 const __filename = url.fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+
+// 1. 读取整个项目 package.json
+const projectPkg = JSON.parse(
+        fs.readFileSync(path.resolve(__dirname, 'package.json'), 'utf-8')
+);
+
+// 拿到 range，比如 '^12.4.1'、'~11.8.0'、'>=12.0.0 <13.0.0' 等
+const rawJson5 = projectPkg.dependencies?.json5 || projectPkg.devDependencies?.json5 || '';
+//const rawMathjs = projectPkg.dependencies?.mathjs || projectPkg.devDependencies?.mathjs || '';
+
+// semver.minVersion 返回一个 SemVer 对象，取 .version 属性就是最小满足版本
+const JSON5_VERSION = semver.minVersion(rawJson5)?.version || rawJson5.replace(/^[^\d]*/, '');
+//const MATHJS_VERSION = semver.minVersion(rawMathjs)?.version || rawMathjs.replace(/^[^\d]*/, '');
+
 
 let io: Server;
 function watch_it(compiler: webpack.Compiler) {
@@ -139,6 +154,17 @@ function config(_env: any, argv: any) {
                 };
                 if (request in builtin) {
                     return callback(null, 'var ' + builtin[request as keyof typeof builtin]);
+                }
+                // 4. 对 json5 专门处理
+                if (request === 'json5') {
+                    const url = `https://fastly.jsdelivr.net/npm/json5@${JSON5_VERSION}/dist/index.min.mjs`;
+                    return callback(null, `module-import ${url}`);
+                }
+                if (request === 'mathjs') {
+                    // 使用 ESM 入口，让浏览器当作 Module 加载
+                    //const url = `https://fastly.jsdelivr.net/npm/mathjs@${MATHJS_VERSION}/lib/esm/index.js`;
+                    //return callback(null, `module-import ${url}`);
+                    return callback();
                 }
                 return callback(null, 'module-import https://fastly.jsdelivr.net/npm/' + request);
             },
