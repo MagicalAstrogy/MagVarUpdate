@@ -67,13 +67,13 @@ export function isPrimitiveSchema(value: SchemaNode): value is PrimitiveSchemaNo
 }
 
 export type RootAdditionalProps = {
-    strictTemplate? : boolean;
-    concatTemplateArray? : boolean;
-}
+    strictTemplate?: boolean;
+    concatTemplateArray?: boolean;
+};
 
 export type RootAdditionalMetaProps = {
     $meta?: StatDataMeta & RootAdditionalProps;
-}
+};
 
 export type GameData = {
     // initialized_lorebooks 从字符串列表变为记录对象

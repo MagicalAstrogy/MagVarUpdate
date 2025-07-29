@@ -18,43 +18,46 @@ export function trimQuotesAndBackslashes(str: string): string {
  * @param array_merge_concat 指明数组的 合并 行为是指 覆盖 还是 拼接，默认拼接。
  * @returns 合并后的值
  */
-export function applyTemplate(value: any, template: TemplateType | undefined, strict_array_cast : boolean = false, array_merge_concat : boolean = true): any {
+export function applyTemplate(
+    value: any,
+    template: TemplateType | undefined,
+    strict_array_cast: boolean = false,
+    array_merge_concat: boolean = true
+): any {
     // 如果没有模板，直接返回原值
     if (!template) {
         return value;
     }
 
     // 检查类型是否匹配
-    const valueIsObject = _.isObject(value) && !Array.isArray(value) && !_.isDate(value);
-    const valueIsArray = Array.isArray(value);
-    const templateIsArray = Array.isArray(template);
+    const value_is_object = _.isObject(value) && !Array.isArray(value) && !_.isDate(value);
+    const value_is_array = Array.isArray(value);
+    const template_is_array = Array.isArray(template);
 
-    if (valueIsObject && !templateIsArray) {
+    if (value_is_object && !template_is_array) {
         // value 是对象，template 是 StatData（对象）
         // 先应用模板，再应用值，确保值的优先级更高
         return _.merge({}, template, value);
-    } else if (valueIsArray && templateIsArray) {
+    } else if (value_is_array && template_is_array) {
         // 都是数组，进行合并
-        if (array_merge_concat)
-            return _.concat(value, template);
+        if (array_merge_concat) return _.concat(value, template);
         return _.merge([], template, value);
     } else if (
-        ((valueIsObject || valueIsArray) && templateIsArray !== valueIsArray) ||
-        (!valueIsObject && !valueIsArray && _.isObject(template) && !Array.isArray(template))
+        ((value_is_object || value_is_array) && template_is_array !== value_is_array) ||
+        (!value_is_object && !value_is_array && _.isObject(template) && !Array.isArray(template))
     ) {
         // 类型不匹配
         console.error(
-            `Template type mismatch: template is ${templateIsArray ? 'array' : 'object'}, but value is ${valueIsArray ? 'array' : 'object'}. Skipping template merge.`
+            `Template type mismatch: template is ${template_is_array ? 'array' : 'object'}, but value is ${value_is_array ? 'array' : 'object'}. Skipping template merge.`
         );
         return value;
-    } else if (!valueIsObject && !valueIsArray && templateIsArray) {
+    } else if (!value_is_object && !value_is_array && template_is_array) {
         // 特殊情况：值是原始类型（字面量），模板是数组
         // 当作 [value] 进行数组的合并
         if (strict_array_cast)
             //严格模式不提供 primitive type -> [primitive type] 的转换
             return value;
-        if (array_merge_concat)
-            return _.concat([value], template);
+        if (array_merge_concat) return _.concat([value], template);
         return _.merge([], template, [value]);
     } else {
         // 其他情况：值是原始类型，模板不是数组，不应用模板
@@ -452,8 +455,8 @@ export async function updateVariables(
     let variable_modified = false;
 
     const schema = variables.schema; // 获取 schema，可能为 undefined
-    const strict_template = schema?.strictTemplate??false;
-    const concat_template_array = schema?.concatTemplateArray??true;
+    const strict_template = schema?.strictTemplate ?? false;
+    const concat_template_array = schema?.concatTemplateArray ?? true;
 
     for (const command of commands) {
         // 遍历所有命令，逐一处理
@@ -634,10 +637,15 @@ export async function updateVariables(
                         // 目标是数组，追加元素
                         // 检查是否有模板并应用
                         const template =
-                                targetSchema && isArraySchema(targetSchema)
-                                        ? targetSchema.template
-                                        : undefined;
-                        valueToAssign = applyTemplate(valueToAssign, template, strict_template, concat_template_array);
+                            targetSchema && isArraySchema(targetSchema)
+                                ? targetSchema.template
+                                : undefined;
+                        valueToAssign = applyTemplate(
+                            valueToAssign,
+                            template,
+                            strict_template,
+                            concat_template_array
+                        );
                         collection.push(valueToAssign);
                         display_str = `ASSIGNED ${JSON.stringify(valueToAssign)} into array '${path}' ${reason_str}`;
                         successful = true;
@@ -684,14 +692,24 @@ export async function updateVariables(
 
                     if (Array.isArray(collection) && typeof keyOrIndex === 'number') {
                         // 目标是数组且索引是数字，插入到指定位置
-                        valueToAssign = applyTemplate(valueToAssign, template, strict_template, concat_template_array);
+                        valueToAssign = applyTemplate(
+                            valueToAssign,
+                            template,
+                            strict_template,
+                            concat_template_array
+                        );
                         collection.splice(keyOrIndex, 0, valueToAssign);
                         display_str = `ASSIGNED ${JSON.stringify(valueToAssign)} into '${path}' at index ${keyOrIndex} ${reason_str}`;
                         successful = true;
                     } else if (_.isObject(collection)) {
                         // 目标是对象，设置指定键
                         // 对单个属性值应用模板
-                        valueToAssign = applyTemplate(valueToAssign, template, strict_template, concat_template_array);
+                        valueToAssign = applyTemplate(
+                            valueToAssign,
+                            template,
+                            strict_template,
+                            concat_template_array
+                        );
                         _.set(collection, String(keyOrIndex), valueToAssign);
                         display_str = `ASSIGNED key '${keyOrIndex}' with value ${JSON.stringify(valueToAssign)} into object '${path}' ${reason_str}`;
                         successful = true;
@@ -700,7 +718,12 @@ export async function updateVariables(
                         collection = {};
                         _.set(variables.stat_data, path, collection);
                         // 对新属性值应用模板
-                        valueToAssign = applyTemplate(valueToAssign, template, strict_template, concat_template_array);
+                        valueToAssign = applyTemplate(
+                            valueToAssign,
+                            template,
+                            strict_template,
+                            concat_template_array
+                        );
                         _.set(
                             collection as Record<string, unknown>,
                             String(keyOrIndex),

@@ -6,7 +6,8 @@ import {
     ObjectSchemaNode,
     GameData,
     ArraySchemaNode,
-    TemplateType, RootAdditionalProps,
+    TemplateType,
+    RootAdditionalProps,
 } from '@/variable_def';
 
 // 定义魔法字符串为常量，便于管理和引用
@@ -78,7 +79,7 @@ export function generateSchema(
             console.log(`Extensible marker found and removed from an array.`);
         }
 
-        const schemaNode: ArraySchemaNode = {
+        const schema_node: ArraySchemaNode = {
             type: 'array',
             extensible: isExtensible || parentRecursiveExtensible,
             recursiveExtensible: isRecursiveExtensible,
@@ -89,10 +90,10 @@ export function generateSchema(
         };
 
         if (template !== undefined) {
-            schemaNode.template = template;
+            schema_node.template = template;
         }
 
-        return schemaNode;
+        return schema_node;
     }
     if (_.isObject(data) && !_.isDate(data)) {
         const typedData = data as StatData; // 类型断言
@@ -261,10 +262,11 @@ export function reconcileAndApplySchema(variables: GameData) {
     if (variables.schema?.concatTemplateArray !== undefined) {
         newSchemaWithProps.concatTemplateArray = variables.schema.concatTemplateArray;
     }
-    if(_.has(variables.stat_data, '$meta.strictTemplate'))
-        newSchemaWithProps.strictTemplate = variables.stat_data["$meta"]?.strictTemplate as boolean;
-    if(_.has(variables.stat_data, '$meta.concatTemplateArray'))
-        newSchemaWithProps.concatTemplateArray = variables.stat_data["$meta"]?.concatTemplateArray as boolean;
+    if (_.has(variables.stat_data, '$meta.strictTemplate'))
+        newSchemaWithProps.strictTemplate = variables.stat_data['$meta']?.strictTemplate as boolean;
+    if (_.has(variables.stat_data, '$meta.concatTemplateArray'))
+        newSchemaWithProps.concatTemplateArray = variables.stat_data['$meta']
+            ?.concatTemplateArray as boolean;
 
     variables.schema = newSchemaWithProps;
 
