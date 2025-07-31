@@ -1,6 +1,6 @@
 // 整体游戏数据类型
 import { updateVariables } from '@/function';
-import { GameData } from '@/variable_def';
+import { GameData, isObjectSchema, RootAdditionalProps, SchemaNode } from '@/variable_def';
 import { cleanUpMetadata, EXTENSIBLE_MARKER, generateSchema } from '@/schema';
 import * as JSON5 from 'json5';
 import * as TOML from 'toml';
@@ -45,7 +45,7 @@ export async function initCheck() {
         variables.stat_data = {};
     }
     if (!variables.schema) {
-        variables.schema = {};
+        variables.schema = { extensible: false, properties: {}, type: 'object' };
     }
 
     // 加载 InitVar 数据
@@ -83,7 +83,23 @@ export async function initCheck() {
         // 1. 克隆数据用于 Schema 生成
         const dataForSchema = _.cloneDeep(variables.stat_data);
         // 2. generateSchema 会读取并移除克隆体中的标记，生成正确的 schema
-        variables.schema = generateSchema(dataForSchema);
+        const generated_schema: SchemaNode & RootAdditionalProps = generateSchema(dataForSchema);
+
+        // 使用类型守卫确保生成的 schema 是 ObjectSchemaNode
+        if (isObjectSchema(generated_schema)) {
+            if (_.has(variables.stat_data, '$meta.strictTemplate'))
+                generated_schema.strictTemplate = variables.stat_data['$meta']
+                    ?.strictTemplate as boolean;
+            if (_.has(variables.stat_data, '$meta.concatTemplateArray'))
+                generated_schema.concatTemplateArray = variables.stat_data['$meta']
+                    ?.concatTemplateArray as boolean;
+            variables.schema = generated_schema;
+        } else {
+            console.error(
+                'Generated schema is not an object schema, which is unexpected for stat_data root'
+            );
+        }
+
         // 3. 现在，清理真实的 stat_data，让它在后续操作中保持干净
         cleanUpMetadata(variables.stat_data);
     }
@@ -203,7 +219,10 @@ export function createEmptyGameData(): GameData {
         initialized_lorebooks: {}, // 适配 beta 分支的对象结构
         stat_data: {},
         delta_data: {},
-        schema: {}, // beta 分支新增的 schema 字段
+        schema: {
+            type: 'object',
+            properties: {},
+        }, // beta 分支新增的 schema 字段
     };
 }
 

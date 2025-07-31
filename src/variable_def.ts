@@ -1,8 +1,12 @@
+// 模板类型定义
+export type TemplateType = StatData | StatData[] | any[];
+
 // StatData 的元数据类型定义
 export type StatDataMeta = {
     extensible?: boolean;
     recursiveExtensible?: boolean;
     required?: string[];
+    template?: TemplateType; // 模板定义，用于自动填充新元素
     [key: string]: unknown;
 };
 
@@ -11,6 +15,7 @@ export type StatData = {
     [key: string]: StatData | unknown | StatData[];
 } & {
     $meta?: StatDataMeta;
+    $$arrayMeta?: boolean;
 };
 
 // Schema 节点类型定义
@@ -23,6 +28,7 @@ export type ObjectSchemaNode = {
         [key: string]: SchemaNode & { required?: boolean };
     };
     extensible?: boolean;
+    template?: TemplateType; // 新增属性的模板
     recursiveExtensible?: boolean;
 };
 
@@ -31,6 +37,7 @@ export type ArraySchemaNode = {
     type: 'array';
     elementType: SchemaNode;
     extensible?: boolean;
+    template?: TemplateType; // 新增元素的模板
     recursiveExtensible?: boolean;
 };
 
@@ -60,15 +67,24 @@ export function isPrimitiveSchema(value: SchemaNode): value is PrimitiveSchemaNo
     );
 }
 
+export type RootAdditionalProps = {
+    strictTemplate?: boolean;
+    concatTemplateArray?: boolean;
+};
+
+export type RootAdditionalMetaProps = {
+    $meta?: StatDataMeta & RootAdditionalProps;
+};
+
 export type GameData = {
     // initialized_lorebooks 从字符串列表变为记录对象
     // 这样可以为每个知识库存储元数据，例如初始化的标记变量
     initialized_lorebooks: Record<string, any[]>;
-    stat_data: StatData;
+    stat_data: StatData & RootAdditionalMetaProps;
     display_data: Record<string, any>;
     delta_data: Record<string, any>;
     // 用于存储数据结构的模式
-    schema?: ObjectSchemaNode;
+    schema?: ObjectSchemaNode & Partial<RootAdditionalProps>;
 };
 
 export interface VariableData {
