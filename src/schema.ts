@@ -52,8 +52,8 @@ export function generateSchema(
             item =>
                 _.isObject(item) &&
                 !_.isDate(item) &&
-                Object.keys(item).length === 1 &&
-                '$meta' in item
+                '$arrayMeta' in item &&
+                '$meta' in item && item['$arrayMeta'] === true
         );
 
         if (metaElementIndex !== -1) {
@@ -293,10 +293,10 @@ export function cleanUpMetadata(data: any): void {
             } else if (
                 _.isObject(data[i]) &&
                 !_.isDate(data[i]) &&
-                Object.keys(data[i]).length === 1 &&
-                '$meta' in data[i]
+                '$arrayMeta' in data[i] &&
+                '$meta' in data[i] && data[i]['$arrayMeta'] === true
             ) {
-                // 移除只包含 $meta 的元素
+                // 移除只包含 $meta & $arrayMeta 的元素
                 data.splice(i, 1);
             } else {
                 // 对数组中的其他元素（可能是对象或数组）进行递归清理

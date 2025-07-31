@@ -513,9 +513,9 @@ describe('高等数学与高级运算测试', () => {
                 variables
         );
 
-        expect(variables.stat_data.items).toEqual([
+        expect(variables.stat_data.items).toEqual([[
             'user-value', 'user-description'
-        ]);
+        ]]);
     });
 
     test('alt2', async () => {

@@ -15,6 +15,7 @@ export type StatData = {
     [key: string]: StatData | unknown | StatData[];
 } & {
     $meta?: StatDataMeta;
+    $$arrayMeta?: boolean;
 };
 
 // Schema 节点类型定义

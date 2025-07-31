@@ -62,7 +62,7 @@ describe('Template Feature', () => {
         it('should preserve template in array schema from metadata element', () => {
             const data = [
                 { name: 'item1' },
-                { $meta: { template: { defaultType: 'default' } } }
+                { $meta: { template: { defaultType: 'default' } }, "$arrayMeta": true }
             ];
             const schema = generateSchema(data);
             expect(data.length).toBe(1);// Removed meta element after
@@ -127,7 +127,7 @@ describe('Template Feature', () => {
         it('should remove metadata element from arrays', () => {
             const data = [
                 { name: 'item1' },
-                { $meta: { template: { defaultType: 'default' } } },
+                { $meta: { template: { defaultType: 'default' } }, $arrayMeta: true },
                 { name: 'item2' }
             ];
             cleanUpMetadata(data);
@@ -173,7 +173,8 @@ describe('Template Feature', () => {
             variables.stat_data = {
                 items: [
                     { name: 'existing' },
-                    { $meta: { template: { type: 'default', rarity: 'common' }, extensible: true } }
+                    { $meta: { template: { type: 'default', rarity: 'common' }, extensible: true }, 
+                      "$arrayMeta": true }
                 ]
             };
             // 生成 schema
@@ -1236,7 +1237,7 @@ describe('Template Feature', () => {
                             {"$meta": {
                                     extensible: true,
                                     template: ['t1', 't2', 't3', 't4']
-                                }}
+                                }, "$arrayMeta": true}
                         ] },
                     display_data: {},
                     delta_data: {}
