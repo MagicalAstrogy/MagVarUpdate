@@ -53,7 +53,8 @@ export function generateSchema(
                 _.isObject(item) &&
                 !_.isDate(item) &&
                 '$arrayMeta' in item &&
-                '$meta' in item && item['$arrayMeta'] === true
+                '$meta' in item &&
+                item['$arrayMeta'] === true
         );
 
         if (metaElementIndex !== -1) {
@@ -294,7 +295,8 @@ export function cleanUpMetadata(data: any): void {
                 _.isObject(data[i]) &&
                 !_.isDate(data[i]) &&
                 '$arrayMeta' in data[i] &&
-                '$meta' in data[i] && data[i]['$arrayMeta'] === true
+                '$meta' in data[i] &&
+                data[i]['$arrayMeta'] === true
             ) {
                 // 移除只包含 $meta & $arrayMeta 的元素
                 data.splice(i, 1);
