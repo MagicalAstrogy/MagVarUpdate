@@ -1,6 +1,7 @@
 import { getLastValidVariable, handleVariablesInMessage } from '@/function';
 import { updateDescriptions } from '@/update_descriptions';
 import { createEmptyGameData, loadInitVarData } from '@/variable_init';
+import { cleanUpMetadata, reconcileAndApplySchema } from '@/schema';
 
 const buttons = ['重新处理变量', '重新读取初始变量'];
 
@@ -70,8 +71,15 @@ export function registerButtons() {
             merged_data.stat_data
         );
 
+        //应用
+        await reconcileAndApplySchema(merged_data);
+
+        cleanUpMetadata(merged_data.stat_data);
+
         // 6. 更新变量到最新消息
         await replaceVariables(merged_data, { type: 'message', message_id: message_id });
+
+        await replaceVariables(merged_data, { type: 'chat' });
 
         console.info('InitVar更新完成');
         toastr.success('InitVar描述已更新', '', { timeOut: 3000 });
