@@ -15,6 +15,7 @@
         "test:watch": "jest --watch",
         "test:coverage": "jest --coverage"
     },
+    "packageManager": "yarn@3.4.1",
     "repository": {
         "type": "git",
         "url": "https://github.com/MagicalAstrogy/MagVarUpdate"
