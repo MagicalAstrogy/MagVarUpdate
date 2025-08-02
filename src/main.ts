@@ -1,10 +1,7 @@
 import { registerButtons } from '@/button';
 import { handleVariablesInCallback, handleVariablesInMessage } from '@/function';
 import { variable_events } from '@/variable_def';
-import { updateDescriptions } from '@/update_descriptions';
-import { cleanUpMetadata, reconcileAndApplySchema } from '@/schema';
-import { initCheck, createEmptyGameData, loadInitVarData } from '@/variable_init';
-import { getLastValidVariable } from '@/function';
+import { initCheck } from '@/variable_init';
 
 $(() => {
     registerButtons();
