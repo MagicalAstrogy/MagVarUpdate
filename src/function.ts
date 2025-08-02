@@ -267,15 +267,83 @@ function pathFix(path: string): string {
     return segments.join('.');
 }
 
+/**
+ * MVU 风格的变量更新操作，同时会更新 display_data/delta_data
+ * @param stat_data 当前的变量状态，来源应当是 mag_variable_updated 回调中提供的 stat_data。其他来源则不会修改display_data 等。
+ * @param path 要更改的变量路径
+ * @param newValue 新值
+ * @param reason 修改原因（可选，默认为空）
+ * @param isRecursive 此次修改是否允许触发 mag_variable_updated 回调（默认不允许）
+ */
+export async function updateVariable(
+    stat_data: Record<string, any>,
+    path: string,
+    newValue: any,
+    reason: string = '',
+    isRecursive: boolean = false
+): Promise<boolean> {
+    const display_data = stat_data.$internal?.display_data;
+    const delta_data = stat_data.$internal?.delta_data;
+    if (_.has(stat_data, path)) {
+        const currentValue = _.get(stat_data, path);
+        if (Array.isArray(currentValue) && currentValue.length === 2) {
+            //VWD 处理
+            const oldValue = _.cloneDeep(currentValue[0]);
+            currentValue[0] = newValue;
+            _.set(stat_data, path, currentValue);
+            const reason_str = reason ? `(${reason})` : '';
+            const display_str = `${trimQuotesAndBackslashes(JSON.stringify(oldValue))}->${trimQuotesAndBackslashes(JSON.stringify(newValue))} ${reason_str}`;
+            if (display_data) _.set(display_data, path, display_str);
+            if (delta_data) _.set(delta_data, path, display_str);
+            console.info(
+                `Set '${path}' to '${trimQuotesAndBackslashes(JSON.stringify(newValue))}' ${reason_str}`
+            );
+            if (isRecursive)
+                await eventEmit(
+                    variable_events.SINGLE_VARIABLE_UPDATED,
+                    stat_data,
+                    path,
+                    oldValue,
+                    newValue
+                );
+            return true;
+        } else {
+            const oldValue = _.cloneDeep(currentValue);
+            _.set(stat_data, path, newValue);
+            const reason_str = reason ? `(${reason})` : '';
+            const stringNewValue = trimQuotesAndBackslashes(JSON.stringify(newValue));
+            const display_str = `${trimQuotesAndBackslashes(JSON.stringify(oldValue))}->${stringNewValue} ${reason_str}`;
+            if (display_data) _.set(display_data, path, display_str);
+            if (delta_data) _.set(delta_data, path, display_str);
+            console.info(`Set '${path}' to '${stringNewValue}' ${reason_str}`);
+            if (isRecursive)
+                await eventEmit(
+                    variable_events.SINGLE_VARIABLE_UPDATED,
+                    stat_data,
+                    path,
+                    oldValue,
+                    newValue
+                );
+            return true;
+        }
+    }
+    return false;
+}
+
 export async function updateVariables(
     current_message_content: string,
     variables: any
 ): Promise<boolean> {
     const out_is_modifed = false;
-    await eventEmit(variable_events.VARIABLE_UPDATE_STARTED, variables, out_is_modifed);
     const out_status: Record<string, any> = _.cloneDeep(variables);
     const delta_status: Record<string, any> = { stat_data: {} };
     const matched_set = extractSetCommands(current_message_content);
+    variables.stat_data.$internal = {
+        stat_data: variables.stat_data,
+        display_data: out_status.stat_data,
+        delta_data: delta_status.stat_data,
+    };
+    await eventEmit(variable_events.VARIABLE_UPDATE_STARTED, variables, out_is_modifed);
     let variable_modified = false;
     for (const setCommand of matched_set) {
         let { path, newValue, reason } = setCommand;
@@ -371,6 +439,9 @@ export async function updateVariables(
     variables.display_data = out_status.stat_data;
     variables.delta_data = delta_status.stat_data;
     await eventEmit(variable_events.VARIABLE_UPDATE_ENDED, variables, out_is_modifed);
+
+    //在结束事件中也可能设置变量
+    delete variables.stat_data.$internal;
     return variable_modified || out_is_modifed;
 }
 

@@ -1,6 +1,6 @@
 export type GameData = {
     initialized_lorebooks: string[];
-    stat_data: Record<string, any>;
+    stat_data: Record<string, any> & { $internal?: InternalData };
     display_data: Record<string, any>;
     delta_data: Record<string, any>;
 };
@@ -18,7 +18,14 @@ export const variable_events = {
     VARIABLE_UPDATE_ENDED: 'mag_variable_update_ended',
     VARIABLE_UPDATE_STARTED: 'mag_variable_update_started',
     INVOKE_MVU_PROCESS: 'mag_invoke_mvu',
+    UPDATE_VARIABLE: 'mag_update_variable'
 } as const;
+
+export type InternalData = {
+    stat_data: Record<string, any>;
+    display_data: Record<string, any>;
+    delta_data: Record<string, any>;
+};
 
 export type ExtendedListenerType = {
     [variable_events.SINGLE_VARIABLE_UPDATED]: (
@@ -35,5 +42,12 @@ export type ExtendedListenerType = {
     [variable_events.INVOKE_MVU_PROCESS]: (
         message_content: string,
         variable_info: VariableData
+    ) => void;
+    [variable_events.UPDATE_VARIABLE]: (
+            stat_data: Record<string, any>,
+            path: string,
+            newValue: any,
+            reason: string,
+            isRecursive: boolean
     ) => void;
 };
