@@ -41,6 +41,26 @@ function variableUpdateStarted(variables : Record<string, any>, out_is_updated: 
 {
     last_date = variables.stat_data.日期[0];
     is_day_passed = false;
+    if (!_.has(variables,'stat_data.终'))
+    {
+        variables.stat_data.终 = variables.stat_data.理;
+        delete variables.stat_data.理;
+    }
+    if (_.has(variables,'stat_data.终.重要物品'))
+    {
+        const val : string = variables.stat_data.终.重要物品[0];
+        if (val.indexOf('小匣') !== -1)
+        {
+            if (variables.stat_data.终.余命[1].indexOf("开始模糊") !== -1)
+            {
+                variables.stat_data.终.余命[1] = "获得了 星鎖の小匣 后，终的存在之力稳定下来了，不会因为时间而减少。终感受到了源自宝具的生命的实感，就算是原本悲伤的愿望，现在也被赋予了希望的诠释。";
+                variables.stat_data.终.愿望["16"].description = "【细节动作】她仍陪你走完最后 300 米；行至钟塔阴影尽头，她在你耳边轻声：“爱是火，而你是我的余烬。”——这一回，她的声线坚定而带笑。钟声 09:00 刚敲响，阳光掠过树梢照进小巷，她的身影没有再淡去，反而在光里凝成清晰轮廓；银链裂纹瞬间愈合，像熔金重新焊接。她抬起指尖按在你胸口，仿佛要让那句低语永远烙进心跳。 【目的&情绪】存在稳定 & 永恒誓言：终确认自己不会再消散，告白升级为携手未来的宣言——“火焰因你而持续，余烬是守护而非终结。”她笑着说：‘如果爱是火，那余烬就是不灭的心室；谢谢你，让我在这里继续燃烧。’ "
+                variables.stat_data.终.愿望["15"].description = "【细节动作】万圣装饰刚被店员收进纸箱，你点了两杯黑咖啡，这次店员如常递来两只杯碟；她坐在对面，身影在晨光里清晰可见，指尖轻触杯沿的蒸汽。啜饮之际，她依旧对你微笑——“请记得今天的苦味。”语调温柔，却带着与昨夜截然不同的踏实：那苦味不再预示遗忘，而是提醒你们经历过的恐惧与重生。她把糖包推到你面前，却把自己的咖啡保持原味，示意要把这份纯粹的苦留下来，当作幸存的印记。她低声补充：‘苦味会在记忆里慢慢回甘，就像我们的火焰，再也不会熄灭。’"
+
+                out_is_updated = true;
+            }
+        }
+    }
     out_is_updated = out_is_updated || false;
 }
 
@@ -107,7 +127,7 @@ function variableUpdateEnded(variables: Record<string, any>, out_is_updated: boo
     if (variables.stat_data.日期[0] == last_date) {
         // 日期字符串必须包含"日"字作为后缀，例如"1月1日"
         //llm 没有自动推进日期，通过代码辅助他推进
-        var new_date = nextDate(last_date);
+        const new_date = nextDate(last_date);
         variables.stat_data.日期[0] = new_date;
         const display_str = `${last_date}->${new_date}(日期推进)`;
         variables.display_data.日期 = display_str;
