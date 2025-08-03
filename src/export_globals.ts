@@ -1,5 +1,5 @@
 import { handleVariablesInCallback, updateVariable } from '@/function';
-import { isValueWithDescription, MvuData, variable_events, VariableData } from '@/variable_def';
+import {extractRecord, isValueWithDescription, MvuData, variable_events, VariableData} from '@/variable_def';
 import { loadInitVarData } from '@/variable_init';
 
 export function exportGlobals() {
@@ -79,6 +79,10 @@ export function exportGlobals() {
             /* 否则直接返回值本身 */
             return value;
         },
+        getRecordFromGameData: function (game_data: MvuData, category: 'stat' | 'display' | 'delta'): Record<string, any> {
+            /* 一般来说只有 llm 准备 foreach 数据时需要用 */
+            return extractRecord(category, game_data);
+        }
     };
     _.set(window.parent, 'Mvu', mvu);
 }

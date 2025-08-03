@@ -59,3 +59,22 @@ export type ExtendedListenerType = {
         isRecursive: boolean
     ) => void;
 };
+
+export type DataCategory = 'stat' | 'display' | 'delta';
+
+export function extractRecord(category: "stat" | "display" | "delta", game_data: MvuData) {
+    let data: Record<string, any> | undefined = undefined;
+    switch (category) {
+        case 'stat':
+            data = game_data.stat_data;
+            break;
+        case 'display':
+            data = game_data.display_data;
+            break;
+        case "delta":
+            data = game_data.delta_data;
+            break;
+
+    }
+    return data;
+}
