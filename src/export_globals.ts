@@ -2,28 +2,29 @@ import { handleVariablesInCallback, updateVariable } from '@/function';
 import { isValueWithDescription, MvuData, variable_events, VariableData } from '@/variable_def';
 import { loadInitVarData } from '@/variable_init';
 
-export type DataCategory = 'stat' | 'display' | 'delta';
-
-export function exportFunctions() {
+export function exportGlobals() {
     const mvu = {
         events: variable_events,
-        processVariables: async function (
-            message_content: string,
-            mvu_data: MvuData
+
+        parseMessage: async function (
+            message: string,
+            old_data: MvuData
         ): Promise<MvuData | undefined> {
             const variableData: VariableData = {
-                old_variables: mvu_data,
+                old_variables: old_data,
             };
-            await handleVariablesInCallback(message_content, variableData);
+            await handleVariablesInCallback(message, variableData);
             return variableData.new_variables;
         },
+
         getMvuData: function (options: VariableOption): MvuData {
             const result = getVariables(options);
             return result as MvuData;
         },
-        replaceMvuData: async function (options: VariableOption, mvu_data: MvuData): Promise<void> {
+        replaceMvuData: async function (mvu_data: MvuData, options: VariableOption): Promise<void> {
             await replaceVariables(mvu_data, options);
         },
+
         getCurrentMvuData: function (): MvuData {
             const variables = getVariables({ type: 'message', message_id: getCurrentMessageId() });
             return variables as MvuData;
@@ -34,25 +35,28 @@ export function exportFunctions() {
                 message_id: getCurrentMessageId(),
             });
         },
-        loadInitVarData: async function (mvu_data: MvuData): Promise<boolean> {
+
+        reloadInitVar: async function (mvu_data: MvuData): Promise<boolean> {
             return await loadInitVarData(mvu_data);
         },
-        mvuSetVariable: async function (
+
+        setMvuVariable: async function (
             mvu_data: MvuData,
             path: string,
-            newValue: any,
-            reason: string,
-            is_recursive: boolean
+            new_value: any,
+            { reason = '', is_recursive = false }: { reason?: string; is_recursive?: boolean } = {}
         ): Promise<boolean> {
-            return await updateVariable(mvu_data.stat_data, path, newValue, reason, is_recursive);
+            return await updateVariable(mvu_data.stat_data, path, new_value, reason, is_recursive);
         },
-        mvuGetVariable: function (
+        getMvuVariable: function (
             mvu_data: MvuData,
-            category: DataCategory,
             path: string,
-            default_value: any
+            {
+                category = 'stat',
+                default_value = undefined,
+            }: { category?: 'stat' | 'display' | 'delta'; default_value?: any } = {}
         ): any {
-            let data: Record<string, any> | undefined = undefined;
+            let data: Record<string, any>;
             switch (category) {
                 case 'stat':
                     data = mvu_data.stat_data;
@@ -64,21 +68,17 @@ export function exportFunctions() {
                     data = mvu_data.delta_data;
                     break;
             }
-            const value = _.get(data, path);
-            /* 如果值不存在，返回默认值*/
-            if (value === undefined || value === null) {
-                return default_value;
-            }
 
-            /* 如果是VWD，取第一个元素*/
+            const value = _.get(data, path, default_value);
+
+            /* 如果是 VWD，取第一个元素 */
             if (isValueWithDescription<any>(value)) {
                 return value[0];
             }
 
-            /* 否则直接返回值本身*/
+            /* 否则直接返回值本身 */
             return value;
         },
     };
-
     _.set(window.parent, 'Mvu', mvu);
 }

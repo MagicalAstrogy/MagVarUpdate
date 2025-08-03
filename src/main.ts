@@ -1,12 +1,12 @@
 import { registerButtons } from '@/button';
-import { exportFunctions } from '@/export_function';
+import { exportGlobals } from '@/export_globals';
 import { handleVariablesInCallback, handleVariablesInMessage, updateVariable } from '@/function';
 import { exported_events } from '@/variable_def';
 import { initCheck } from '@/variable_init';
 
 $(() => {
     registerButtons();
-    exportFunctions();
+    exportGlobals();
     eventOn(tavern_events.GENERATION_STARTED, initCheck);
     eventOn(tavern_events.MESSAGE_SENT, initCheck);
     eventOn(tavern_events.MESSAGE_SENT, handleVariablesInMessage);
