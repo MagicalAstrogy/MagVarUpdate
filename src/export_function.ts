@@ -1,12 +1,11 @@
 import { variable_events } from '@/variable_def';
 import { handleVariablesInCallback, updateVariable } from '@/function';
-import { createEmptyGameData, loadInitVarData } from '@/variable_init';
+import { loadInitVarData } from '@/variable_init';
 
 export function exportFunctions() {
     let mvu = {
         events: variable_events,
-        asyncProcessVariables: handleVariablesInCallback,
-        createEmptyGameData: createEmptyGameData,
+        processVariables: handleVariablesInCallback,
         loadInitVarData: loadInitVarData,
         mvuUpdateVariable: updateVariable,
     };

@@ -269,18 +269,18 @@ function pathFix(path: string): string {
 
 /**
  * MVU 风格的变量更新操作，同时会更新 display_data/delta_data
- * @param stat_data 当前的变量状态，来源应当是 mag_variable_updated 回调中提供的 stat_data。其他来源则不会修改display_data 等。
+ * @param stat_data 当前的变量状态，来源应当是 mag_variable_updated 回调中提供的 stat_data。其他来源则不会修改 display_data 等。
  * @param path 要更改的变量路径
- * @param newValue 新值
+ * @param new_value 新值
  * @param reason 修改原因（可选，默认为空）
- * @param isRecursive 此次修改是否允许触发 mag_variable_updated 回调（默认不允许）
+ * @param is_recursive 此次修改是否允许触发 mag_variable_updated 回调（默认不允许）
  */
 export async function updateVariable(
     stat_data: Record<string, any>,
     path: string,
-    newValue: any,
+    new_value: any,
     reason: string = '',
-    isRecursive: boolean = false
+    is_recursive: boolean = false
 ): Promise<boolean> {
     const display_data = stat_data.$internal?.display_data;
     const delta_data = stat_data.$internal?.delta_data;
@@ -289,40 +289,40 @@ export async function updateVariable(
         if (Array.isArray(currentValue) && currentValue.length === 2) {
             //VWD 处理
             const oldValue = _.cloneDeep(currentValue[0]);
-            currentValue[0] = newValue;
+            currentValue[0] = new_value;
             _.set(stat_data, path, currentValue);
             const reason_str = reason ? `(${reason})` : '';
-            const display_str = `${trimQuotesAndBackslashes(JSON.stringify(oldValue))}->${trimQuotesAndBackslashes(JSON.stringify(newValue))} ${reason_str}`;
+            const display_str = `${trimQuotesAndBackslashes(JSON.stringify(oldValue))}->${trimQuotesAndBackslashes(JSON.stringify(new_value))} ${reason_str}`;
             if (display_data) _.set(display_data, path, display_str);
             if (delta_data) _.set(delta_data, path, display_str);
             console.info(
-                `Set '${path}' to '${trimQuotesAndBackslashes(JSON.stringify(newValue))}' ${reason_str}`
+                `Set '${path}' to '${trimQuotesAndBackslashes(JSON.stringify(new_value))}' ${reason_str}`
             );
-            if (isRecursive)
+            if (is_recursive)
                 await eventEmit(
                     variable_events.SINGLE_VARIABLE_UPDATED,
                     stat_data,
                     path,
                     oldValue,
-                    newValue
+                    new_value
                 );
             return true;
         } else {
             const oldValue = _.cloneDeep(currentValue);
-            _.set(stat_data, path, newValue);
+            _.set(stat_data, path, new_value);
             const reason_str = reason ? `(${reason})` : '';
-            const stringNewValue = trimQuotesAndBackslashes(JSON.stringify(newValue));
+            const stringNewValue = trimQuotesAndBackslashes(JSON.stringify(new_value));
             const display_str = `${trimQuotesAndBackslashes(JSON.stringify(oldValue))}->${stringNewValue} ${reason_str}`;
             if (display_data) _.set(display_data, path, display_str);
             if (delta_data) _.set(delta_data, path, display_str);
             console.info(`Set '${path}' to '${stringNewValue}' ${reason_str}`);
-            if (isRecursive)
+            if (is_recursive)
                 await eventEmit(
                     variable_events.SINGLE_VARIABLE_UPDATED,
                     stat_data,
                     path,
                     oldValue,
-                    newValue
+                    new_value
                 );
             return true;
         }
@@ -481,15 +481,16 @@ export async function handleVariablesInMessage(message_id: number) {
 
 export async function handleVariablesInCallback(
     message_content: string,
-    variable_info: VariableData
+    in_out_variable_info: VariableData
 ) {
-    if (variable_info.old_variables === undefined) {
+    if (in_out_variable_info.old_variables === undefined) {
         return;
     }
-    variable_info.new_variables = _.cloneDeep(variable_info.old_variables);
-    const variables = variable_info.new_variables;
+    in_out_variable_info.new_variables = _.cloneDeep(in_out_variable_info.old_variables);
+    const variables = in_out_variable_info.new_variables;
 
     const modified = await updateVariables(message_content, variables);
     //如果没有修改，则不产生 newVariable
-    if (!modified) delete variable_info.new_variables;
+    if (!modified) delete in_out_variable_info.new_variables;
+    return ;
 }

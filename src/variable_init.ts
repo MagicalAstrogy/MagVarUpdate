@@ -26,15 +26,15 @@ export async function getEnabledLorebookList(): Promise<string[]> {
  * 从 lorebook 中加载所有 InitVar 数据并合并到提供的 GameData 中
  */
 export async function loadInitVarData(
-    gameData: GameData,
-    lorebookList?: string[]
+    game_data: GameData,
+    lorebook_list?: string[]
 ): Promise<boolean> {
-    const enabled_lorebook_list = lorebookList || (await getEnabledLorebookList());
+    const enabled_lorebook_list = lorebook_list || (await getEnabledLorebookList());
     let is_updated = false;
 
     for (const current_lorebook of enabled_lorebook_list) {
-        if (gameData.initialized_lorebooks.includes(current_lorebook)) continue;
-        gameData.initialized_lorebooks.push(current_lorebook);
+        if (game_data.initialized_lorebooks.includes(current_lorebook)) continue;
+        game_data.initialized_lorebooks.push(current_lorebook);
         const init_entries = (await getLorebookEntries(current_lorebook)) as LorebookEntry[];
 
         for (const entry of init_entries) {
@@ -72,7 +72,7 @@ export async function loadInitVarData(
                 }
 
                 if (parsedData) {
-                    gameData.stat_data = _.merge(gameData.stat_data, parsedData);
+                    game_data.stat_data = _.merge(game_data.stat_data, parsedData);
                 }
             }
         }

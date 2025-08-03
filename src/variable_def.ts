@@ -16,10 +16,12 @@ export interface VariableData {
 export const variable_events = {
     SINGLE_VARIABLE_UPDATED: 'mag_variable_updated',
     VARIABLE_UPDATE_ENDED: 'mag_variable_update_ended',
-    VARIABLE_UPDATE_STARTED: 'mag_variable_update_started',
+    VARIABLE_UPDATE_STARTED: 'mag_variable_update_started'
+} as const;
+export const exported_events = {
     INVOKE_MVU_PROCESS: 'mag_invoke_mvu',
     UPDATE_VARIABLE: 'mag_update_variable'
-} as const;
+};
 
 export type InternalData = {
     stat_data: Record<string, any>;
@@ -39,11 +41,11 @@ export type ExtendedListenerType = {
         out_is_updated: boolean
     ) => void;
     [variable_events.VARIABLE_UPDATE_ENDED]: (variables: GameData, out_is_updated: boolean) => void;
-    [variable_events.INVOKE_MVU_PROCESS]: (
+    [exported_events.INVOKE_MVU_PROCESS]: (
         message_content: string,
         variable_info: VariableData
     ) => void;
-    [variable_events.UPDATE_VARIABLE]: (
+    [exported_events.UPDATE_VARIABLE]: (
             stat_data: Record<string, any>,
             path: string,
             newValue: any,
