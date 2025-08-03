@@ -62,7 +62,7 @@ export type ExtendedListenerType = {
 
 export type DataCategory = 'stat' | 'display' | 'delta';
 
-export function extractRecord(category: "stat" | "display" | "delta", game_data: MvuData) {
+export function extractRecord(category: 'stat' | 'display' | 'delta', game_data: MvuData) {
     let data: Record<string, any> | undefined = undefined;
     switch (category) {
         case 'stat':
@@ -71,10 +71,9 @@ export function extractRecord(category: "stat" | "display" | "delta", game_data:
         case 'display':
             data = game_data.display_data;
             break;
-        case "delta":
+        case 'delta':
             data = game_data.delta_data;
             break;
-
     }
     return data;
 }
