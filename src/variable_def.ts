@@ -1,3 +1,11 @@
+
+export type ValueWithDescription<T> = [T, string];
+
+export function isValueWithDescription<T>(value: unknown): value is ValueWithDescription<T> {
+    return Array.isArray(value) && value.length === 2 && typeof value[1] === 'string';
+}
+
+
 export type GameData = {
     initialized_lorebooks: string[];
     stat_data: Record<string, any> & { $internal?: InternalData };
