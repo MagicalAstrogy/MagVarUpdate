@@ -1,6 +1,6 @@
 // 整体游戏数据类型
 import { updateVariables } from '@/function';
-import { GameData } from '@/variable_def';
+import { MvuData } from '@/variable_def';
 import * as JSON5 from 'json5';
 import * as TOML from 'toml';
 
@@ -26,15 +26,15 @@ export async function getEnabledLorebookList(): Promise<string[]> {
  * 从 lorebook 中加载所有 InitVar 数据并合并到提供的 GameData 中
  */
 export async function loadInitVarData(
-    game_data: GameData,
+    mvu_data: MvuData,
     lorebook_list?: string[]
 ): Promise<boolean> {
     const enabled_lorebook_list = lorebook_list || (await getEnabledLorebookList());
     let is_updated = false;
 
     for (const current_lorebook of enabled_lorebook_list) {
-        if (game_data.initialized_lorebooks.includes(current_lorebook)) continue;
-        game_data.initialized_lorebooks.push(current_lorebook);
+        if (mvu_data.initialized_lorebooks.includes(current_lorebook)) continue;
+        mvu_data.initialized_lorebooks.push(current_lorebook);
         const init_entries = (await getLorebookEntries(current_lorebook)) as LorebookEntry[];
 
         for (const entry of init_entries) {
@@ -72,7 +72,7 @@ export async function loadInitVarData(
                 }
 
                 if (parsedData) {
-                    game_data.stat_data = _.merge(game_data.stat_data, parsedData);
+                    mvu_data.stat_data = _.merge(mvu_data.stat_data, parsedData);
                 }
             }
         }
@@ -85,7 +85,7 @@ export async function loadInitVarData(
 /**
  * 创建一个新的空 GameData 对象
  */
-export function createEmptyGameData(): GameData {
+export function createEmptyGameData(): MvuData {
     return {
         display_data: {},
         initialized_lorebooks: [],
@@ -99,7 +99,7 @@ export function createEmptyGameData(): GameData {
  */
 export async function getLastMessageVariables(): Promise<{
     message: ChatMessageSwiped;
-    variables: GameData | undefined;
+    variables: MvuData | undefined;
 }> {
     let last_chat_msg: ChatMessageSwiped[] = [];
     try {
@@ -123,7 +123,7 @@ export async function getLastMessageVariables(): Promise<{
     }
 
     const last_msg = last_chat_msg[0];
-    const variables = last_msg.swipes_data[last_msg.swipe_id] as GameData & Record<string, any>;
+    const variables = last_msg.swipes_data[last_msg.swipe_id] as MvuData & Record<string, any>;
 
     return { message: last_msg, variables };
 }
@@ -159,7 +159,7 @@ export async function updateLorebookSettings(): Promise<void> {
 
 export async function initCheck() {
     let last_msg: ChatMessageSwiped;
-    let variables: GameData & Record<string, any>;
+    let variables: MvuData & Record<string, any>;
 
     try {
         const result = await getLastMessageVariables();

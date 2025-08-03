@@ -4,7 +4,7 @@ export function isValueWithDescription<T>(value: unknown): value is ValueWithDes
     return Array.isArray(value) && value.length === 2 && typeof value[1] === 'string';
 }
 
-export type GameData = {
+export type MvuData = {
     initialized_lorebooks: string[];
     stat_data: Record<string, any> & { $internal?: InternalData };
     display_data: Record<string, any>;
@@ -12,11 +12,11 @@ export type GameData = {
 };
 
 export interface VariableData {
-    old_variables: GameData;
+    old_variables: MvuData;
     /**
      * 输出变量，仅当实际产生了变量变更的场合，会产生 newVariables
      */
-    new_variables?: GameData;
+    new_variables?: MvuData;
 }
 
 export const variable_events = {
@@ -43,10 +43,10 @@ export type ExtendedListenerType = {
         _newValue: any
     ) => void;
     [variable_events.VARIABLE_UPDATE_STARTED]: (
-        variables: GameData,
+        variables: MvuData,
         out_is_updated: boolean
     ) => void;
-    [variable_events.VARIABLE_UPDATE_ENDED]: (variables: GameData, out_is_updated: boolean) => void;
+    [variable_events.VARIABLE_UPDATE_ENDED]: (variables: MvuData, out_is_updated: boolean) => void;
     [exported_events.INVOKE_MVU_PROCESS]: (
         message_content: string,
         variable_info: VariableData

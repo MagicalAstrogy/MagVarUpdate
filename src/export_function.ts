@@ -1,5 +1,5 @@
 import { handleVariablesInCallback, updateVariable } from '@/function';
-import { GameData, isValueWithDescription, variable_events, VariableData } from '@/variable_def';
+import { isValueWithDescription, MvuData, variable_events, VariableData } from '@/variable_def';
 import { loadInitVarData } from '@/variable_init';
 
 export type DataCategory = 'stat' | 'display' | 'delta';
@@ -9,48 +9,45 @@ export function exportFunctions() {
         events: variable_events,
         processVariables: async function (
             message_content: string,
-            game_data: GameData
-        ): Promise<GameData | undefined> {
+            mvu_data: MvuData
+        ): Promise<MvuData | undefined> {
             const variableData: VariableData = {
-                old_variables: game_data,
+                old_variables: mvu_data,
             };
             await handleVariablesInCallback(message_content, variableData);
             return variableData.new_variables;
         },
-        getGameDataFromMessage: function (options: VariableOption): GameData {
+        getMvuData: function (options: VariableOption): MvuData {
             const result = getVariables(options);
-            return result as GameData;
+            return result as MvuData;
         },
-        setGameDataToMessage: async function (
-            options: VariableOption,
-            game_data: GameData
-        ): Promise<void> {
-            await replaceVariables(game_data, options);
+        replaceMvuData: async function (options: VariableOption, mvu_data: MvuData): Promise<void> {
+            await replaceVariables(mvu_data, options);
         },
-        getCurrentGameDataFromMessage: function (): GameData {
+        getCurrentMvuData: function (): MvuData {
             const variables = getVariables({ type: 'message', message_id: getCurrentMessageId() });
-            return variables as GameData;
+            return variables as MvuData;
         },
-        setCurrentGameDataToMessage: async function (game_data: GameData): Promise<void> {
-            await replaceVariables(game_data, {
+        replaceCurrentMvuData: async function (mvu_data: MvuData): Promise<void> {
+            await replaceVariables(mvu_data, {
                 type: 'message',
                 message_id: getCurrentMessageId(),
             });
         },
-        loadInitVarData: async function (game_data: GameData): Promise<boolean> {
-            return await loadInitVarData(game_data);
+        loadInitVarData: async function (mvu_data: MvuData): Promise<boolean> {
+            return await loadInitVarData(mvu_data);
         },
         mvuSetVariable: async function (
-            game_data: GameData,
+            mvu_data: MvuData,
             path: string,
             newValue: any,
             reason: string,
             is_recursive: boolean
         ): Promise<boolean> {
-            return await updateVariable(game_data.stat_data, path, newValue, reason, is_recursive);
+            return await updateVariable(mvu_data.stat_data, path, newValue, reason, is_recursive);
         },
         mvuGetVariable: function (
-            game_data: GameData,
+            mvu_data: MvuData,
             category: DataCategory,
             path: string,
             default_value: any
@@ -58,13 +55,13 @@ export function exportFunctions() {
             let data: Record<string, any> | undefined = undefined;
             switch (category) {
                 case 'stat':
-                    data = game_data.stat_data;
+                    data = mvu_data.stat_data;
                     break;
                 case 'display':
-                    data = game_data.display_data;
+                    data = mvu_data.display_data;
                     break;
                 case 'delta':
-                    data = game_data.delta_data;
+                    data = mvu_data.delta_data;
                     break;
             }
             const value = _.get(data, path);
@@ -83,5 +80,5 @@ export function exportFunctions() {
         },
     };
 
-    _.set(window.parent, 'MVU', mvu);
+    _.set(window.parent, 'Mvu', mvu);
 }
