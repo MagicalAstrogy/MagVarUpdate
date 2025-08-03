@@ -1,10 +1,8 @@
-
 export type ValueWithDescription<T> = [T, string];
 
 export function isValueWithDescription<T>(value: unknown): value is ValueWithDescription<T> {
     return Array.isArray(value) && value.length === 2 && typeof value[1] === 'string';
 }
-
 
 export type GameData = {
     initialized_lorebooks: string[];
@@ -24,11 +22,11 @@ export interface VariableData {
 export const variable_events = {
     SINGLE_VARIABLE_UPDATED: 'mag_variable_updated',
     VARIABLE_UPDATE_ENDED: 'mag_variable_update_ended',
-    VARIABLE_UPDATE_STARTED: 'mag_variable_update_started'
+    VARIABLE_UPDATE_STARTED: 'mag_variable_update_started',
 } as const;
 export const exported_events = {
     INVOKE_MVU_PROCESS: 'mag_invoke_mvu',
-    UPDATE_VARIABLE: 'mag_update_variable'
+    UPDATE_VARIABLE: 'mag_update_variable',
 };
 
 export type InternalData = {
@@ -54,10 +52,10 @@ export type ExtendedListenerType = {
         variable_info: VariableData
     ) => void;
     [exported_events.UPDATE_VARIABLE]: (
-            stat_data: Record<string, any>,
-            path: string,
-            newValue: any,
-            reason: string,
-            isRecursive: boolean
+        stat_data: Record<string, any>,
+        path: string,
+        newValue: any,
+        reason: string,
+        isRecursive: boolean
     ) => void;
 };

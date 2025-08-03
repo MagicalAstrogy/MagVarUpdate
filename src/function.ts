@@ -492,5 +492,5 @@ export async function handleVariablesInCallback(
     const modified = await updateVariables(message_content, variables);
     //如果没有修改，则不产生 newVariable
     if (!modified) delete in_out_variable_info.new_variables;
-    return ;
+    return;
 }

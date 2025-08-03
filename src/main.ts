@@ -1,8 +1,8 @@
 import { registerButtons } from '@/button';
-import {handleVariablesInCallback, handleVariablesInMessage, updateVariable} from '@/function';
-import {exported_events} from '@/variable_def';
-import { initCheck } from '@/variable_init';
 import { exportFunctions } from '@/export_function';
+import { handleVariablesInCallback, handleVariablesInMessage, updateVariable } from '@/function';
+import { exported_events } from '@/variable_def';
+import { initCheck } from '@/variable_init';
 
 $(() => {
     registerButtons();
