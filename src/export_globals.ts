@@ -93,5 +93,6 @@ export function exportGlobals() {
             return extractRecord(category, mvu_data);
         },
     };
+    _.set(window, 'Mvu', mvu);
     _.set(window.parent, 'Mvu', mvu);
 }
