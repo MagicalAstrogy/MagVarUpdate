@@ -107,7 +107,7 @@ function variableUpdateEnded(variables: Record<string, any>, out_is_updated: boo
     if (variables.stat_data.日期[0] == last_date) {
         // 日期字符串必须包含"日"字作为后缀，例如"1月1日"
         //llm 没有自动推进日期，通过代码辅助他推进
-        const new_date = nextDate(last_date);
+        var new_date = nextDate(last_date);
         variables.stat_data.日期[0] = new_date;
         const display_str = `${last_date}->${new_date}(日期推进)`;
         variables.display_data.日期 = display_str;
