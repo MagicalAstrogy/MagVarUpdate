@@ -389,7 +389,7 @@ export async function handleVariablesInMessage(message_id: number) {
 
     const has_variable_modified = await updateVariables(message_content, variables);
     if (has_variable_modified) {
-        const chat_variables = getVariables({type: 'chat'});
+        const chat_variables = getVariables({ type: 'chat' });
         // _.merge 可能使变量无法被正常移除，因此使用赋值的方式
         chat_variables.stat_data = variables.stat_data;
         chat_variables.display_data = variables.display_data;
