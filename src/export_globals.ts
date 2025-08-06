@@ -8,7 +8,7 @@ import {
 } from '@/variable_def';
 import { loadInitVarData } from '@/variable_init';
 
-export function exportGlobals() {
+function createMVU() {
     const mvu = {
         events: variable_events,
 
@@ -93,6 +93,16 @@ export function exportGlobals() {
             return extractRecord(category, mvu_data);
         },
     };
+    return mvu;
+}
+
+
+export type MVU = ReturnType<typeof createMVU>;
+
+export type Mvu = MVU;
+
+export function exportGlobals() {
+    const mvu = createMVU();
     _.set(window, 'Mvu', mvu);
     _.set(window.parent, 'Mvu', mvu);
 }

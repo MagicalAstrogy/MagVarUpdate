@@ -6,7 +6,8 @@
     "scripts": {
         "build:webpack-example": "webpack -c ./example_src/webpack.config.js",
         "build:dev": "webpack --mode development",
-        "build": "webpack --mode production",
+        "build:dts": "tsc -p tsconfig.dts.json",
+        "build": "webpack --mode production && yarn build:dts",
         "watch": "webpack --mode development --watch --progress",
         "lint": "eslint . --ext .ts,.tsx,.js,.jsx",
         "lint:fix": "eslint . --ext .ts,.tsx,.js,.jsx --fix",
