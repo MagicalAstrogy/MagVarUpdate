@@ -1,5 +1,7 @@
-import {handleVariablesInCallback, parseParameters, trimQuotesAndBackslashes} from '@/function';
+import {handleVariablesInCallback, parseParameters, trimQuotesAndBackslashes, getLastValidVariable, updateVariables, handleVariablesInMessage} from '@/function';
 import {VariableData} from "@/variable_def";
+import {variable_events} from '@/variable_def';
+import _ from 'lodash';
 
 describe('parseParameters', () => {
     describe('基本参数解析', () => {
@@ -197,6 +199,251 @@ describe('trimQuotesAndBackslashes', () => {
 
     test('处理仅空格', () => {
         expect(trimQuotesAndBackslashes('   ')).toBe('');
+    });
+});
+
+describe('getLastValidVariable', () => {
+    beforeEach(() => {
+        jest.clearAllMocks();
+        (globalThis as any)._ = _;
+    });
+
+    test('应该返回最后一个有效的变量（包含stat_data）', async () => {
+        const mockChat = [
+            {
+                swipe_id: 0,
+                variables: [{
+                    stat_data: { health: 100 },
+                    display_data: {},
+                    delta_data: {}
+                }]
+            },
+            {
+                swipe_id: 0,
+                variables: [{
+                    display_data: {},
+                    delta_data: {}
+                }]
+            },
+            {
+                swipe_id: 0,
+                variables: [{
+                    stat_data: { health: 80 },
+                    display_data: {},
+                    delta_data: {}
+                }]
+            }
+        ];
+
+        (globalThis as any).SillyTavern = { chat: mockChat };
+        (globalThis as any).getVariables = jest.fn();
+
+        const result = await getLastValidVariable(2);
+
+        expect(result).toEqual({
+            stat_data: { health: 80 },
+            display_data: {},
+            delta_data: {}
+        });
+    });
+
+    test('对于带有swipe_id的消息，需要检查对应的swipe并酌情跳过', async () => {
+        const mockChat = [
+            {
+                swipe_id: 0,
+                variables: [{
+                    stat_data: { health: 100 },
+                    display_data: {}
+                }]
+            },
+            {// 第一个 swipe 没有数据
+                swipe_id: 1,
+                variables: [
+                    { stat_data: { mana: 50 }, display_data: {} },
+                    { display_data: {} }
+                ]
+            }
+        ];
+
+        (globalThis as any).SillyTavern = { chat: mockChat };
+        (globalThis as any).getVariables = jest.fn();
+
+        const result = await getLastValidVariable(1);
+
+        expect(result).toEqual({
+            stat_data: { health: 100 },
+            display_data: {}
+        });
+    });
+
+    test('对于带有swipe_id的消息，需要用到正确swipe 的数据', async () => {
+        const mockChat = [
+            {
+                swipe_id: 0,
+                variables: [{
+                    stat_data: { health: 100 },
+                    display_data: {}
+                }]
+            },
+            {// 第一个 swipe 没有数据
+                swipe_id: 1,
+                variables: [
+                    { display_data: {} },
+                    { stat_data: { mana: 50 }, display_data: {} }
+                ]
+            }
+        ];
+
+        (globalThis as any).SillyTavern = { chat: mockChat };
+        (globalThis as any).getVariables = jest.fn();
+
+        const result = await getLastValidVariable(1);
+
+        expect(result).toEqual({
+            stat_data: { mana: 50 },
+            display_data: {}
+        });
+    });
+
+    test('当没有找到有效变量时应该调用getVariables', async () => {
+        const mockChat = [
+            {
+                swipe_id: 0,
+                variables: [{
+                    display_data: {},
+                    delta_data: {}
+                }]
+            },
+            {
+                swipe_id: 0,
+                variables: [{
+                    display_data: {}
+                }]
+            }
+        ];
+
+        const mockGetVariables = {
+            stat_data: { default: true },
+            display_data: {},
+            delta_data: {}
+        };
+
+        (globalThis as any).SillyTavern = { chat: mockChat };
+        (globalThis as any).getVariables = jest.fn().mockReturnValue(mockGetVariables);
+
+        const result = await getLastValidVariable(1);
+
+        expect(result).toEqual(mockGetVariables);
+        expect((globalThis as any).getVariables).toHaveBeenCalled();
+    });
+
+    test('应该正确处理message_id边界', async () => {
+        const mockChat = [
+            {
+                swipe_id: 0,
+                variables: [{
+                    stat_data: { level: 1 },
+                    display_data: {}
+                }]
+            },
+            {
+                swipe_id: 0,
+                variables: [{
+                    stat_data: { level: 2 },
+                    display_data: {}
+                }]
+            },
+            {
+                swipe_id: 0,
+                variables: [{
+                    stat_data: { level: 3 },
+                    display_data: {}
+                }]
+            }
+        ];
+
+        (globalThis as any).SillyTavern = { chat: mockChat };
+        (globalThis as any).getVariables = jest.fn();
+
+        // 测试 message_id = 1，应该只检查前两个消息
+        const result = await getLastValidVariable(1);
+
+        expect(result).toEqual({
+            stat_data: { level: 2 },
+            display_data: {}
+        });
+    });
+
+    test('应该处理空聊天记录', async () => {
+        const mockGetVariables = {
+            stat_data: { initialized: true },
+            display_data: {},
+            delta_data: {}
+        };
+
+        (globalThis as any).SillyTavern = { chat: [] };
+        (globalThis as any).getVariables = jest.fn().mockReturnValue(mockGetVariables);
+
+        const result = await getLastValidVariable(0);
+
+        expect(result).toEqual(mockGetVariables);
+        expect((globalThis as any).getVariables).toHaveBeenCalled();
+    });
+
+    test('应该正确处理undefined和null的variables', async () => {
+        const mockChat = [
+            {
+                swipe_id: 0,
+                variables: [{
+                    stat_data: { valid: true },
+                    display_data: {}
+                }]
+            },
+            {
+                swipe_id: 0,
+                variables: undefined
+            },
+            {
+                swipe_id: 0,
+                variables: null
+            }
+        ];
+
+        (globalThis as any).SillyTavern = { chat: mockChat };
+        (globalThis as any).getVariables = jest.fn();
+
+        const result = await getLastValidVariable(2);
+
+        expect(result).toEqual({
+            stat_data: { valid: true },
+            display_data: {}
+        });
+    });
+
+    test('应该使用structuredClone深拷贝结果', async () => {
+        const originalVariable = {
+            stat_data: { health: 100, items: ['sword', 'shield'] },
+            display_data: {},
+            delta_data: {}
+        };
+
+        const mockChat = [
+            {
+                swipe_id: 0,
+                variables: [originalVariable]
+            }
+        ];
+
+        (globalThis as any).SillyTavern = { chat: mockChat };
+        (globalThis as any).getVariables = jest.fn();
+
+        const result = await getLastValidVariable(0);
+
+        // 验证是深拷贝
+        expect(result).toEqual(originalVariable);
+        expect(result).not.toBe(originalVariable);
+        expect(result.stat_data).not.toBe(originalVariable.stat_data);
+        expect(result.stat_data.items).not.toBe(originalVariable.stat_data.items);
     });
 });
 
