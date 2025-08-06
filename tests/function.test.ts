@@ -1,6 +1,5 @@
 import {handleVariablesInCallback, parseParameters, trimQuotesAndBackslashes, getLastValidVariable, updateVariables, handleVariablesInMessage} from '@/function';
 import {VariableData} from "@/variable_def";
-import {variable_events} from '@/variable_def';
 import _ from 'lodash';
 
 describe('parseParameters', () => {
@@ -444,6 +443,171 @@ describe('getLastValidVariable', () => {
         expect(result).not.toBe(originalVariable);
         expect(result.stat_data).not.toBe(originalVariable.stat_data);
         expect(result.stat_data.items).not.toBe(originalVariable.stat_data.items);
+    });
+});
+
+describe('updateVariables', () => {
+    beforeEach(() => {
+        jest.clearAllMocks();
+        (globalThis as any)._ = _;
+        (globalThis as any).YAML = { parse: JSON.parse };
+        (globalThis as any).eventEmit = jest.fn().mockResolvedValue(undefined);
+    });
+
+    test('应该更新变量并保留原始变量结构', async () => {
+        const variables = {
+            stat_data: {
+                health: 100,
+                mana: 50,
+                level: 5
+            },
+            display_data: {},
+            delta_data: {},
+            initialized_lorebooks: ['book1', 'book2']
+        };
+
+        const messageContent = "_.set('health', 100, 80);//受到伤害";
+
+        const result = await updateVariables(messageContent, variables);
+
+        expect(result).toBe(true);
+        expect(variables.stat_data.health).toBe(80);
+        expect(variables.stat_data.mana).toBe(50);
+        expect(variables.stat_data.level).toBe(5);
+        expect((variables.display_data as any)['health']).toBe('100->80 (受到伤害)');
+        expect((variables.delta_data as any)['health']).toBe('100->80 (受到伤害)');
+    });
+
+    test('应该处理多个变量更新', async () => {
+        const variables = {
+            stat_data: {
+                health: 100,
+                mana: 50
+            },
+            display_data: {},
+            delta_data: {}
+        };
+
+        const messageContent = `
+            _.set('health', 100, 90);//战斗伤害
+            _.set('mana', 50, 30);//施法消耗
+        `;
+
+        const result = await updateVariables(messageContent, variables);
+
+        expect(result).toBe(true);
+        expect(variables.stat_data.health).toBe(90);
+        expect(variables.stat_data.mana).toBe(30);
+    });
+});
+
+describe('handleVariablesInMessage', () => {
+    beforeEach(() => {
+        jest.clearAllMocks();
+        (globalThis as any)._ = _;
+        (globalThis as any).YAML = { parse: JSON.parse };
+        (globalThis as any).eventEmit = jest.fn().mockResolvedValue(undefined);
+        (globalThis as any).replaceVariables = jest.fn().mockResolvedValue(undefined);
+        (globalThis as any).setChatMessages = jest.fn().mockResolvedValue(undefined);
+    });
+
+    test('应该保留chat级别变量的其他属性，只更新必要的字段', async () => {
+        const mockChatVariables = {
+            stat_data: { health: 100, mana: 50 },
+            display_data: {},
+            delta_data: {},
+            initialized_lorebooks: ['book1'],
+            custom_field: 'should_be_preserved',
+            another_field: { nested: 'data' }
+        };
+
+        const mockMessageVariables = {
+            stat_data: { health: 100, mana: 50 },
+            display_data: { health: '100->80 (受到伤害)' },
+            delta_data: { stat_data: { health: '100->80 (受到伤害)' } },
+            initialized_lorebooks: ['book1', 'book2']
+        };
+
+        (globalThis as any).getChatMessages = jest.fn().mockReturnValue([{
+            message: "_.set('health', 100, 80);//受到伤害",
+            role: 'assistant'
+        }]);
+
+        (globalThis as any).SillyTavern = {
+            chat: [{
+                swipe_id: 0,
+                variables: [mockMessageVariables]
+            }]
+        };
+
+        (globalThis as any).getVariables = jest.fn().mockImplementation((options) => {
+            if (options?.type === 'chat') {
+                return _.cloneDeep(mockChatVariables);
+            }
+            return _.cloneDeep(mockMessageVariables);
+        });
+
+        await handleVariablesInMessage(0);
+
+        // 验证 replaceVariables 被调用
+        expect((globalThis as any).replaceVariables).toHaveBeenCalledTimes(2);
+
+        // 验证 chat 级别的变量更新
+        const chatUpdateCall = (globalThis as any).replaceVariables.mock.calls[0];
+        const updatedChatVariables = chatUpdateCall[0];
+        const chatUpdateOptions = chatUpdateCall[1];
+
+        expect(chatUpdateOptions).toEqual({ type: 'chat' });
+
+        // 验证只更新了必要的字段
+        expect(updatedChatVariables.stat_data).toEqual({ health: 80, mana: 50 });
+        expect(updatedChatVariables.display_data).toEqual({ health: '100->80 (受到伤害)', mana: 50 });
+        expect(updatedChatVariables.delta_data).toEqual({ health: '100->80 (受到伤害)' });
+        expect(updatedChatVariables.initialized_lorebooks).toEqual(['book1', 'book2']);
+
+        // 验证保留了其他自定义字段
+        expect(updatedChatVariables.custom_field).toBe('should_be_preserved');
+        expect(updatedChatVariables.another_field).toEqual({ nested: 'data' });
+
+        // 验证 message 级别的变量更新
+        const messageUpdateCall = (globalThis as any).replaceVariables.mock.calls[1];
+        const messageUpdateOptions = messageUpdateCall[1];
+        expect(messageUpdateOptions).toEqual({ type: 'message', message_id: 0 });
+    });
+
+    test('当没有变量修改时不应该更新chat级别变量', async () => {
+        (globalThis as any).getChatMessages = jest.fn().mockReturnValue([{
+            message: "这是一段没有变量更新的文本",
+            role: 'assistant'
+        }]);
+
+        (globalThis as any).SillyTavern = {
+            chat: [{
+                swipe_id: 0,
+                variables: [{
+                    stat_data: { health: 100 },
+                    display_data: {},
+                    delta_data: {}
+                }]
+            }]
+        };
+
+        (globalThis as any).getVariables = jest.fn().mockReturnValue({
+            stat_data: { health: 100 },
+            display_data: {},
+            delta_data: {}
+        });
+
+        await handleVariablesInMessage(0);
+
+        // 验证只调用了一次 replaceVariables (仅 message 级别)
+        expect((globalThis as any).replaceVariables).toHaveBeenCalledTimes(1);
+
+        const call = (globalThis as any).replaceVariables.mock.calls[0];
+        expect(call[1]).toEqual({ type: 'message', message_id: 0 });
+
+        // 验证没有调用 getVariables 获取 chat 级别变量
+        expect((globalThis as any).getVariables).not.toHaveBeenCalledWith({ type: 'chat' });
     });
 });
 
