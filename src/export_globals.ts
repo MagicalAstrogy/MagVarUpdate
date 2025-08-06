@@ -54,6 +54,13 @@ function createMVU() {
         ): Promise<boolean> {
             return await updateVariable(mvu_data.stat_data, path, new_value, reason, is_recursive);
         },
+        /**
+         * 摸摸喵喵
+         * @param mvu_data
+         * @param path
+         * @param param2
+         * @returns
+         */
         getMvuVariable: function (
             mvu_data: MvuData,
             path: string,
@@ -95,7 +102,6 @@ function createMVU() {
     };
     return mvu;
 }
-
 
 export type MVU = ReturnType<typeof createMVU>;
 
