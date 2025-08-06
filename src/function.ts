@@ -397,7 +397,15 @@ export async function handleVariablesInMessage(message_id: number) {
         chat_variables.initialized_lorebooks = variables.initialized_lorebooks;
         await replaceVariables(chat_variables, { type: 'chat' });
     }
-    await replaceVariables(variables, { type: 'message', message_id: message_id });
+    await insertOrAssignVariables(
+        {
+            stat_data: variables.stat_data,
+            display_data: variables.display_data,
+            delta_data: variables.delta_data,
+            initialized_lorebooks: variables.initialized_lorebooks,
+        },
+        { type: 'message', message_id: message_id }
+    );
 
     if (chat_message.role !== 'user' && !message_content.includes('<StatusPlaceHolderImpl/>')) {
         await setChatMessages(
