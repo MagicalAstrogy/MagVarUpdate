@@ -393,7 +393,7 @@ export function parseParameters(paramsString: string): string[] {
 
 export async function getLastValidVariable(message_id: number): Promise<GameData> {
     return (structuredClone(
-        SillyTavern.chat
+        _(SillyTavern.chat)
             .slice(0, message_id + 1)
             .map(chat_message => _.get(chat_message, ['variables', chat_message.swipe_id ?? 0]))
             .findLast(variables => _.has(variables, 'stat_data'))
@@ -1111,9 +1111,25 @@ export async function handleVariablesInMessage(message_id: number) {
 
     const has_variable_modified = await updateVariables(message_content, variables);
     if (has_variable_modified) {
-        await replaceVariables(variables, { type: 'chat' });
+        const chat_variables = getVariables({ type: 'chat' });
+        // _.merge 可能使变量无法被正常移除，因此使用赋值的方式
+        chat_variables.stat_data = variables.stat_data;
+        chat_variables.display_data = variables.display_data;
+        chat_variables.delta_data = variables.delta_data;
+        chat_variables.schema = variables.schema;
+        chat_variables.initialized_lorebooks = variables.initialized_lorebooks;
+        await replaceVariables(chat_variables, { type: 'chat' });
     }
-    await replaceVariables(variables, { type: 'message', message_id: message_id });
+    await insertOrAssignVariables(
+        {
+            stat_data: variables.stat_data,
+            display_data: variables.display_data,
+            delta_data: variables.delta_data,
+            schema: variables.schema,
+            initialized_lorebooks: variables.initialized_lorebooks,
+        },
+        { type: 'message', message_id: message_id }
+    );
 
     if (chat_message.role !== 'user' && !message_content.includes('<StatusPlaceHolderImpl/>')) {
         await setChatMessages(

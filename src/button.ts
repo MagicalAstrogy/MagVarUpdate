@@ -22,6 +22,9 @@ export function registerButtons() {
         if (last_msg < 1) return;
         if (SillyTavern.chat.length === 0) return;
         await deleteVariable('stat_data', { type: 'message', message_id: last_msg });
+        await deleteVariable('delta_data', { type: 'message', message_id: last_msg });
+        await deleteVariable('display_data', { type: 'message', message_id: last_msg });
+        await deleteVariable('schema', { type: 'message', message_id: last_msg });
         //重新处理变量
         await handleVariablesInMessage(getLastMessageId());
     });
