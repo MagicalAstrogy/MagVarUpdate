@@ -181,7 +181,6 @@ _.set('悠纪.当前所想[0]', "", "……狐狸？嗯…她的用词很精准�
 
         // 准备内部数据结构以支持 display_data 和 delta_data 更新
         testData.stat_data.$internal = {
-            stat_data: testData.stat_data,
             display_data: testData.display_data,
             delta_data: testData.delta_data
         };
@@ -391,7 +390,6 @@ _.set('stats.gold', 500, "750");//获得金币
 
         // 准备内部数据结构
         testData.stat_data.$internal = {
-            stat_data: testData.stat_data,
             display_data: testData.display_data,
             delta_data: testData.delta_data
         };
@@ -477,7 +475,6 @@ _.set('stats.gold', 500, "750");//获得金币
         };
 
         testData.stat_data.$internal = {
-            stat_data: testData.stat_data,
             display_data: testData.display_data,
             delta_data: testData.delta_data
         };
@@ -572,7 +569,6 @@ _.set('game.player.position', "start", "checkpoint1");//到达检查点
 
         // 3. 使用 setMvuVariable 进行单个更新
         afterBatch.stat_data.$internal = {
-            stat_data: afterBatch.stat_data,
             display_data: afterBatch.display_data,
             delta_data: afterBatch.delta_data
         };
