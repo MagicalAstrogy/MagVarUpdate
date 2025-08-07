@@ -64,7 +64,8 @@ export const exported_events = {
 };
 
 export type InternalData = {
-    stat_data: Record<string, any>;
+    //不存自己，会导致环形引用
+    //stat_data: Record<string, any>;
     display_data: Record<string, any>;
     delta_data: Record<string, any>;
 };

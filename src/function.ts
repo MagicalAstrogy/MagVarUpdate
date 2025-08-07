@@ -339,7 +339,6 @@ export async function updateVariables(
     const delta_status: Record<string, any> = { stat_data: {} };
     const matched_set = extractSetCommands(current_message_content);
     variables.stat_data.$internal = {
-        stat_data: variables.stat_data,
         display_data: out_status.stat_data,
         delta_data: delta_status.stat_data,
     };
