@@ -1,5 +1,5 @@
 import {extractCommands, parseCommandValue, updateVariables} from '../src/function';
-import {GameData} from "@/variable_def";
+import {MvuData} from "@/variable_def";
 
 describe('extractCommands', () => {
     describe('基本功能测试', () => {
@@ -490,7 +490,7 @@ describe('高等数学与高级运算测试', () => {
     });
 
     test('alt', async () => {
-        const variables: GameData = {
+        const variables: MvuData = {
             initialized_lorebooks: {},
             stat_data: {items: []},
             display_data: {},
@@ -519,7 +519,7 @@ describe('高等数学与高级运算测试', () => {
     });
 
     test('alt2', async () => {
-        const variables: GameData = {
+        const variables: MvuData = {
             initialized_lorebooks: {},
             stat_data: {items: []},
             display_data: {},

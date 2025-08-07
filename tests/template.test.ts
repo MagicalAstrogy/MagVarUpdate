@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach } from '@jest/globals';
 import { applyTemplate, updateVariables } from '../src/function';
 import {generateSchema, cleanUpMetadata, reconcileAndApplySchema, EXTENSIBLE_MARKER} from '../src/schema';
-import { StatData, GameData } from '../src/variable_def';
+import { StatData, MvuData } from '../src/variable_def';
 
 describe('Template Feature', () => {
     describe('applyTemplate function', () => {
@@ -157,7 +157,7 @@ describe('Template Feature', () => {
     });
 
     describe('Integration with assign/insert operations', () => {
-        let variables: GameData;
+        let variables: MvuData;
 
         beforeEach(() => {
             variables = {
@@ -173,7 +173,7 @@ describe('Template Feature', () => {
             variables.stat_data = {
                 items: [
                     { name: 'existing' },
-                    { $meta: { template: { type: 'default', rarity: 'common' }, extensible: true }, 
+                    { $meta: { template: { type: 'default', rarity: 'common' }, extensible: true },
                       "$arrayMeta": true }
                 ]
             };
@@ -435,7 +435,7 @@ describe('Template Feature', () => {
         });
 
         it('should apply any[] template in array assign operation', async () => {
-            const variables: GameData = {
+            const variables: MvuData = {
                 initialized_lorebooks: {},
                 stat_data: {
                     attributes: []
@@ -467,7 +467,7 @@ describe('Template Feature', () => {
         });
 
         it('should apply any[] template in array assign operation', async () => {
-            const variables: GameData = {
+            const variables: MvuData = {
                 initialized_lorebooks: {},
                 stat_data: {
                     attributes: []
@@ -535,7 +535,7 @@ describe('Template Feature', () => {
         });
 
         it('should apply literal-to-array-template in assign operation', async () => {
-            const variables: GameData = {
+            const variables: MvuData = {
                 initialized_lorebooks: {},
                 stat_data: {
                     skills: []
@@ -591,7 +591,7 @@ describe('Template Feature', () => {
     });
 
     describe('Missing test cases from issue #22', () => {
-        let variables: GameData;
+        let variables: MvuData;
 
         beforeEach(() => {
             variables = {
@@ -873,7 +873,7 @@ describe('Template Feature', () => {
     });
 
     describe('3-parameter array template scenarios', () => {
-        let variables: GameData;
+        let variables: MvuData;
 
         beforeEach(() => {
             variables = {
@@ -1041,7 +1041,7 @@ describe('Template Feature', () => {
     describe('Feature Switches - Non-default Combinations', () => {
         describe('strictTemplate=true, concatTemplateArray=true', () => {
             it('should prevent primitive to array conversion with concat behavior', async () => {
-                const variables: GameData = {
+                const variables: MvuData = {
                     initialized_lorebooks: {},
                     stat_data: {
                         items: []
@@ -1081,7 +1081,7 @@ describe('Template Feature', () => {
             });
 
             it('should handle 3-param assignment with strict mode', async () => {
-                const variables: GameData = {
+                const variables: MvuData = {
                     initialized_lorebooks: {},
                     stat_data: {
                         "$meta": {
@@ -1119,7 +1119,7 @@ describe('Template Feature', () => {
 
         describe('strictTemplate=false, concatTemplateArray=false', () => {
             it('should allow primitive conversion with merge behavior', async () => {
-                const variables: GameData = {
+                const variables: MvuData = {
                     initialized_lorebooks: {},
                     stat_data: { items: [] },
                     display_data: {},
@@ -1149,7 +1149,7 @@ describe('Template Feature', () => {
             });
 
             it('should merge arrays by position', async () => {
-                const variables: GameData = {
+                const variables: MvuData = {
                     initialized_lorebooks: {},
                     stat_data: { data: [] },
                     display_data: {},
@@ -1188,7 +1188,7 @@ describe('Template Feature', () => {
 
         describe('strictTemplate=true, concatTemplateArray=false', () => {
             it('should prevent conversion and use merge for arrays', async () => {
-                const variables: GameData = {
+                const variables: MvuData = {
                     initialized_lorebooks: {},
                     stat_data: { items: [] },
                     display_data: {},
@@ -1226,7 +1226,7 @@ describe('Template Feature', () => {
             });
 
             it('should prevent conversion and use merge for arrays(from $meta)', async () => {
-                const variables: GameData = {
+                const variables: MvuData = {
                     initialized_lorebooks: {},
                     stat_data: {
                         "$meta": {
@@ -1265,7 +1265,7 @@ describe('Template Feature', () => {
             });
 
             it('should handle nested operations with both switches', async () => {
-                const variables: GameData = {
+                const variables: MvuData = {
                     initialized_lorebooks: {},
                     stat_data: {
                         "$meta": {

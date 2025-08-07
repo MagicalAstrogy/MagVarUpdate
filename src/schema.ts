@@ -4,7 +4,7 @@ import {
     isArraySchema,
     isObjectSchema,
     ObjectSchemaNode,
-    GameData,
+    MvuData,
     ArraySchemaNode,
     TemplateType,
     RootAdditionalProps,
@@ -236,7 +236,7 @@ export function getSchemaForPath(
  * 调和函数：比较数据和旧 Schema，生成并应用一个与当前数据状态完全同步的新 Schema。
  * @param variables - 包含 stat_data 和旧 schema 的变量对象。
  */
-export function reconcileAndApplySchema(variables: GameData) {
+export function reconcileAndApplySchema(variables: MvuData) {
     console.log('Reconciling schema with current data state...');
 
     // 1. 深拷贝数据，以防 generateSchema 修改原始数据（例如删除 $meta）

@@ -1,4 +1,4 @@
-import { variable_events, VariableData, GameData, TemplateType } from '@/variable_def';
+import { variable_events, VariableData, MvuData, TemplateType } from '@/variable_def';
 import * as math from 'mathjs';
 
 import { getSchemaForPath, reconcileAndApplySchema } from '@/schema';
@@ -391,13 +391,13 @@ export function parseParameters(paramsString: string): string[] {
     return params;
 }
 
-export async function getLastValidVariable(message_id: number): Promise<GameData> {
+export async function getLastValidVariable(message_id: number): Promise<MvuData> {
     return (structuredClone(
         _(SillyTavern.chat)
             .slice(0, message_id + 1)
             .map(chat_message => _.get(chat_message, ['variables', chat_message.swipe_id ?? 0]))
             .findLast(variables => _.has(variables, 'stat_data'))
-    ) ?? getVariables()) as GameData;
+    ) ?? getVariables()) as MvuData;
 }
 
 function pathFix(path: string): string {
@@ -434,24 +434,91 @@ function pathFix(path: string): string {
     return segments.join('.');
 }
 
+/**
+ * MVU 风格的变量更新操作，同时会更新 display_data/delta_data
+ * @param stat_data 当前的变量状态，来源应当是 mag_variable_updated 回调中提供的 stat_data。其他来源则不会修改 display_data 等。
+ * @param path 要更改的变量路径
+ * @param new_value 新值
+ * @param reason 修改原因（可选，默认为空）
+ * @param is_recursive 此次修改是否允许触发 mag_variable_updated 回调（默认不允许）
+ */
+export async function updateVariable(
+    stat_data: Record<string, any>,
+    path: string,
+    new_value: any,
+    reason: string = '',
+    is_recursive: boolean = false
+): Promise<boolean> {
+    const display_data = stat_data.$internal?.display_data;
+    const delta_data = stat_data.$internal?.delta_data;
+    if (_.has(stat_data, path)) {
+        const currentValue = _.get(stat_data, path);
+        if (Array.isArray(currentValue) && currentValue.length === 2) {
+            //VWD 处理
+            const oldValue = _.cloneDeep(currentValue[0]);
+            currentValue[0] = new_value;
+            _.set(stat_data, path, currentValue);
+            const reason_str = reason ? `(${reason})` : '';
+            const display_str = `${trimQuotesAndBackslashes(JSON.stringify(oldValue))}->${trimQuotesAndBackslashes(JSON.stringify(new_value))} ${reason_str}`;
+            if (display_data) _.set(display_data, path, display_str);
+            if (delta_data) _.set(delta_data, path, display_str);
+            console.info(
+                `Set '${path}' to '${trimQuotesAndBackslashes(JSON.stringify(new_value))}' ${reason_str}`
+            );
+            if (is_recursive)
+                await eventEmit(
+                    variable_events.SINGLE_VARIABLE_UPDATED,
+                    stat_data,
+                    path,
+                    oldValue,
+                    new_value
+                );
+            return true;
+        } else {
+            const oldValue = _.cloneDeep(currentValue);
+            _.set(stat_data, path, new_value);
+            const reason_str = reason ? `(${reason})` : '';
+            const stringNewValue = trimQuotesAndBackslashes(JSON.stringify(new_value));
+            const display_str = `${trimQuotesAndBackslashes(JSON.stringify(oldValue))}->${stringNewValue} ${reason_str}`;
+            if (display_data) _.set(display_data, path, display_str);
+            if (delta_data) _.set(delta_data, path, display_str);
+            console.info(`Set '${path}' to '${stringNewValue}' ${reason_str}`);
+            if (is_recursive)
+                await eventEmit(
+                    variable_events.SINGLE_VARIABLE_UPDATED,
+                    stat_data,
+                    path,
+                    oldValue,
+                    new_value
+                );
+            return true;
+        }
+    }
+    return false;
+}
+
 // 重构 updateVariables 以处理更多命令
 export async function updateVariables(
     current_message_content: string,
-    variables: GameData
+    variables: MvuData
 ): Promise<boolean> {
     const out_is_modifed = false;
-    // 触发变量更新开始事件，通知外部系统
-    await eventEmit(variable_events.VARIABLE_UPDATE_STARTED, variables, out_is_modifed);
     // 深拷贝变量对象，生成状态快照，用于记录显示数据
-    const out_status: GameData = _.cloneDeep(variables);
+    const out_status: MvuData = _.cloneDeep(variables);
     // 初始化增量状态对象，记录变化详情
-    const delta_status: Partial<GameData> = { stat_data: {} };
+    const delta_status: Partial<MvuData> = { stat_data: {} };
 
     // 重构新增：统一处理宏替换，确保命令中的宏（如 ${variable}）被替换，提升一致性
     const processed_message_content = substitudeMacros(current_message_content);
 
     // 使用重构后的 extractCommands 提取所有命令
     const commands = extractCommands(processed_message_content);
+    // 触发变量更新开始事件，通知外部系统
+    variables.stat_data.$internal = {
+        display_data: out_status.stat_data,
+        delta_data: delta_status.stat_data || {},
+    };
+    await eventEmit(variable_events.VARIABLE_UPDATE_STARTED, variables, out_is_modifed);
     let variable_modified = false;
 
     const schema = variables.schema; // 获取 schema，可能为 undefined
@@ -518,10 +585,10 @@ export async function updateVariables(
 
                 if (isValueWithDescription && Array.isArray(finalNewValue)) {
                     // 如果是 ValueWithDescription，只显示值的变化
-                    display_str = `${JSON.stringify(oldValue[0])}->${JSON.stringify(finalNewValue[0])} ${reason_str}`;
+                    display_str = `${trimQuotesAndBackslashes(JSON.stringify(oldValue[0]))}->${trimQuotesAndBackslashes(JSON.stringify(finalNewValue[0]))} ${reason_str}`;
                 } else {
                     // 否则，按常规显示
-                    display_str = `${JSON.stringify(oldValue)}->${JSON.stringify(finalNewValue)} ${reason_str}`;
+                    display_str = `${trimQuotesAndBackslashes(JSON.stringify(oldValue))}->${trimQuotesAndBackslashes(JSON.stringify(finalNewValue))} ${reason_str}`;
                 }
 
                 variable_modified = true; // 标记变量已修改
@@ -1092,6 +1159,9 @@ export async function updateVariables(
     variables.delta_data = delta_status.stat_data!;
     // 触发变量更新结束事件
     await eventEmit(variable_events.VARIABLE_UPDATE_ENDED, variables, out_is_modifed);
+    //在结束事件中也可能设置变量
+    delete variables.stat_data.$internal;
+
     // 返回是否修改了变量
     return variable_modified || out_is_modifed;
 }
@@ -1148,15 +1218,16 @@ export async function handleVariablesInMessage(message_id: number) {
 
 export async function handleVariablesInCallback(
     message_content: string,
-    variable_info: VariableData
+    in_out_variable_info: VariableData
 ) {
-    if (variable_info.old_variables === undefined) {
+    if (in_out_variable_info.old_variables === undefined) {
         return;
     }
-    variable_info.new_variables = _.cloneDeep(variable_info.old_variables);
-    const variables = variable_info.new_variables;
+    in_out_variable_info.new_variables = _.cloneDeep(in_out_variable_info.old_variables);
+    const variables = in_out_variable_info.new_variables;
 
     const modified = await updateVariables(message_content, variables);
     //如果没有修改，则不产生 newVariable
-    if (!modified) delete variable_info.new_variables;
+    if (!modified) delete in_out_variable_info.new_variables;
+    return;
 }
