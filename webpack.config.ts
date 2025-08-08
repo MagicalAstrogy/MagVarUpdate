@@ -1,3 +1,4 @@
+import fs from 'node:fs';
 import path from 'node:path';
 import url from 'node:url';
 import { Server } from 'socket.io';
@@ -114,8 +115,43 @@ function config(_env: any, argv: any) {
                 },
             },
         },
-        externalsType: 'var',
-        externals: [/^_$/i, /^(jquery|\$)$/i, /^jqueryui$/i, /^toastr$/i, /^yaml$/i],
+        externals: [
+            (
+                { context, request }: { context: string; request: string },
+                callback: (err?: Error | null, result?: string) => void
+            ) => {
+                if (!context || !request) {
+                    return callback();
+                }
+
+                if (
+                    request.startsWith('http') ||
+                    request.startsWith('@') ||
+                    request.startsWith('.') ||
+                    request.startsWith('/') ||
+                    path.isAbsolute(request) ||
+                    fs.existsSync(path.join(context, request)) ||
+                    fs.existsSync(request)
+                ) {
+                    return callback();
+                }
+
+                const builtin = {
+                    jquery: '$',
+                    lodash: '_',
+                    toastr: 'toastr',
+                    yaml: 'YAML',
+                    zod: 'z',
+                };
+                if (request in builtin) {
+                    return callback(null, 'var ' + builtin[request as keyof typeof builtin]);
+                }
+                return callback(
+                    null,
+                    'module-import https://testingcf.jsdelivr.net/npm/' + request + '/+esm'
+                );
+            },
+        ],
     };
 }
 
