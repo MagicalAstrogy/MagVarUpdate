@@ -1,5 +1,5 @@
 import { generateSchema, getSchemaForPath, reconcileAndApplySchema, EXTENSIBLE_MARKER } from '@/schema';
-import {GameData, StatData, SchemaNode, ObjectSchemaNode, isArraySchema, ArraySchemaNode} from '@/variable_def';
+import {MvuData, StatData, SchemaNode, ObjectSchemaNode, isArraySchema, ArraySchemaNode} from '@/variable_def';
 
 describe('generateSchema', () => {
     describe('基本类型生成', () => {
@@ -506,7 +506,7 @@ describe('getSchemaForPath', () => {
 
 describe('reconcileAndApplySchema', () => {
     test('基本 schema 调和', () => {
-        const variables: GameData = {
+        const variables: MvuData = {
             initialized_lorebooks: {},
             stat_data: {
                 user: { name: 'John', age: 30 },
@@ -525,7 +525,7 @@ describe('reconcileAndApplySchema', () => {
     });
 
     test('保留旧 schema 的 extensible 属性', () => {
-        const variables: GameData = {
+        const variables: MvuData = {
             initialized_lorebooks: {},
             stat_data: {
                 flexibleArray: ['a', 'b'],
@@ -554,7 +554,7 @@ describe('reconcileAndApplySchema', () => {
     });
 
     test('处理 $meta 在调和过程中的移除', () => {
-        const variables: GameData = {
+        const variables: MvuData = {
             initialized_lorebooks: {},
             stat_data: {
                 field1: 'value1',
@@ -576,7 +576,7 @@ describe('reconcileAndApplySchema', () => {
     });
 
     test('$meta.required 在多层嵌套中的处理', () => {
-        const variables: GameData = {
+        const variables: MvuData = {
             initialized_lorebooks: {},
             stat_data: {
                 level1: {
@@ -617,7 +617,7 @@ describe('reconcileAndApplySchema', () => {
     });
 
     test('保留旧 schema 的 recursiveExtensible 属性', () => {
-        const variables: GameData = {
+        const variables: MvuData = {
             initialized_lorebooks: {},
             stat_data: {
                 root: {
@@ -652,7 +652,7 @@ describe('reconcileAndApplySchema', () => {
     });
 
     test('处理新节点继承 recursiveExtensible', () => {
-        const variables: GameData = {
+        const variables: MvuData = {
             initialized_lorebooks: {},
             stat_data: {
                 "/": {

@@ -1,5 +1,5 @@
 import {handleVariablesInCallback, parseParameters, trimQuotesAndBackslashes, getLastValidVariable, updateVariables, handleVariablesInMessage} from '@/function';
-import {GameData, VariableData} from "@/variable_def";
+import {MvuData, VariableData} from "@/variable_def";
 import _ from 'lodash';
 
 describe('parseParameters', () => {
@@ -455,7 +455,7 @@ describe('updateVariables', () => {
     });
 
     test('应该更新变量并保留原始变量结构', async () => {
-        const variables: GameData = {
+        const variables: MvuData = {
             stat_data: {
                 health: 100,
                 mana: 50,
@@ -479,7 +479,7 @@ describe('updateVariables', () => {
     });
 
     test('应该处理多个变量更新', async () => {
-        const variables: GameData = {
+        const variables: MvuData = {
             stat_data: {
                 health: 100,
                 mana: 50
