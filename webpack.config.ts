@@ -32,7 +32,6 @@ function watch_it(compiler: webpack.Compiler) {
 }
 
 function config(_env: any, argv: any) {
-    const isProd = argv.mode === 'production';
     return {
         experiments: {
             outputModule: true,
@@ -78,14 +77,19 @@ function config(_env: any, argv: any) {
         optimization: {
             minimize: true,
             minimizer: [
-                isProd
-                    ? new TerserPlugin()
+                argv.mode === 'production'
+                    ? new TerserPlugin({
+                          terserOptions: {
+                              format: { quote_style: 1 },
+                              mangle: { reserved: ['_', 'toastr', 'YAML', '$', 'z'] },
+                          },
+                      })
                     : new TerserPlugin({
                           extractComments: false,
                           terserOptions: {
                               format: { beautify: true, indent_level: 2 },
                               compress: false,
-                              mangle: false, // 如需保留变量名，也可关掉混淆
+                              mangle: false,
                           },
                       }),
             ],
