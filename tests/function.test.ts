@@ -549,14 +549,18 @@ describe('handleVariablesInMessage', () => {
             return _.cloneDeep(mockMessageVariables);
         });
 
+        expect((globalThis as any).replaceVariables).toHaveBeenCalledTimes(0);
+
         await handleVariablesInMessage(0);
 
+        // 其中包含 1 次是 Settings 的更新。
         // 验证 insertOrAssignVariables 被调用
-        expect((globalThis as any).replaceVariables).toHaveBeenCalledTimes(1);
+        expect((globalThis as any).replaceVariables).toHaveBeenCalledTimes(2);
         expect((globalThis as any).insertOrAssignVariables).toHaveBeenCalledTimes(1);
 
         // 验证 chat 级别的变量更新
-        const chatUpdateCall = (globalThis as any).replaceVariables.mock.calls[0];
+        //calls[0] 是 Setting 的更新。
+        const chatUpdateCall = (globalThis as any).replaceVariables.mock.calls[1];
         const updatedChatVariables = chatUpdateCall[0];
         const chatUpdateOptions = chatUpdateCall[1];
 
