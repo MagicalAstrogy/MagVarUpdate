@@ -1,5 +1,5 @@
-import {extractCommands, parseCommandValue, updateVariables} from '../src/function';
-import {MvuData} from "@/variable_def";
+import { extractCommands, parseCommandValue, updateVariables } from '../src/function';
+import { MvuData } from '@/variable_def';
 
 // 命令别名定义
 const ASSIGN_ALIASES = ['assign', 'insert'] as const;
@@ -76,7 +76,7 @@ describe('extractCommands', () => {
             expect(cmd.command).toBe('set');
             expect(parseCommandValue(cmd.args[0])).toBe('data');
             expect(cmd.reason).toBe('更新数据');
-            expect(parseCommandValue(cmd.args[1])).toEqual({ arr: [1, 2, { nested: "value)}" }] });
+            expect(parseCommandValue(cmd.args[1])).toEqual({ arr: [1, 2, { nested: 'value)}' }] });
             expect(parseCommandValue(cmd.args[2])).toEqual({ arr: [3, 4] });
         });
 
@@ -200,7 +200,7 @@ describe('extractCommands', () => {
             expect(parseCommandValue(result[0].args[0])).toBe('status');
             expect(parseCommandValue(result[1].args[0])).toBe('count');
             expect(parseCommandValue(result[2].args[0])).toBe('data');
-            expect(parseCommandValue(result[2].args[1])).toStrictEqual(["item with ); inside"]);
+            expect(parseCommandValue(result[2].args[1])).toStrictEqual(['item with ); inside']);
         });
 
         test('处理实际的复杂案例', () => {
@@ -221,7 +221,7 @@ describe('extractCommands', () => {
 });
 
 describe('Assign/Insert 命令及别名测试', () => {
-    test.each(ASSIGN_ALIASES)('简单的 %s 调用（向数组追加）', (command) => {
+    test.each(ASSIGN_ALIASES)('简单的 %s 调用（向数组追加）', command => {
         const input = `_.${command}('inventory', 'healing potion');//获得治疗药水`;
         const result = extractCommands(input);
 
@@ -233,7 +233,7 @@ describe('Assign/Insert 命令及别名测试', () => {
         expect(parseCommandValue(cmd.args[1])).toBe('healing potion');
     });
 
-    test.each(ASSIGN_ALIASES)('带索引的 %s 调用（向数组特定位置插入）', (command) => {
+    test.each(ASSIGN_ALIASES)('带索引的 %s 调用（向数组特定位置插入）', command => {
         const input = `_.${command}('quest_log', 0, '主线任务：寻找古代遗物');`;
         const result = extractCommands(input);
 
@@ -245,7 +245,7 @@ describe('Assign/Insert 命令及别名测试', () => {
         expect(parseCommandValue(cmd.args[2])).toBe('主线任务：寻找古代遗物');
     });
 
-    test.each(ASSIGN_ALIASES)('复杂的 %s 调用（向对象添加键值对）', (command) => {
+    test.each(ASSIGN_ALIASES)('复杂的 %s 调用（向对象添加键值对）', command => {
         const input = `_.${command}('悠纪.金手指系统', "体育生系统", {"功能": "让人体能飞升，变身体育生！", "是否激活": false});//添加金手指`;
         const result = extractCommands(input);
 
@@ -255,10 +255,13 @@ describe('Assign/Insert 命令及别名测试', () => {
         expect(cmd.reason).toBe('添加金手指');
         expect(parseCommandValue(cmd.args[0])).toBe('悠纪.金手指系统');
         expect(parseCommandValue(cmd.args[1])).toBe('体育生系统');
-        expect(parseCommandValue(cmd.args[2])).toStrictEqual({ "功能": "让人体能飞升，变身体育生！", "是否激活": false });
+        expect(parseCommandValue(cmd.args[2])).toStrictEqual({
+            功能: '让人体能飞升，变身体育生！',
+            是否激活: false,
+        });
     });
 
-    test.each(ASSIGN_ALIASES)('对根路径的 %s 调用', (command) => {
+    test.each(ASSIGN_ALIASES)('对根路径的 %s 调用', command => {
         const input = `_.${command}('', '新角色', {});`;
         const result = extractCommands(input);
 
@@ -272,7 +275,7 @@ describe('Assign/Insert 命令及别名测试', () => {
 });
 
 describe('Remove/Unset/Delete 命令及别名测试', () => {
-    test.each(REMOVE_ALIASES)('简单的 %s 调用（删除属性）', (command) => {
+    test.each(REMOVE_ALIASES)('简单的 %s 调用（删除属性）', command => {
         const input = `_.${command}('user.status.is_tired');//不再疲劳`;
         const result = extractCommands(input);
 
@@ -284,7 +287,7 @@ describe('Remove/Unset/Delete 命令及别名测试', () => {
         expect(parseCommandValue(cmd.args[0])).toBe('user.status.is_tired');
     });
 
-    test.each(REMOVE_ALIASES)('带索引的 %s 调用（从数组删除）', (command) => {
+    test.each(REMOVE_ALIASES)('带索引的 %s 调用（从数组删除）', command => {
         const input = `_.${command}('tasks', 2);//完成第三个任务`;
         const result = extractCommands(input);
 
@@ -296,7 +299,7 @@ describe('Remove/Unset/Delete 命令及别名测试', () => {
         expect(parseCommandValue(cmd.args[1])).toBe(2);
     });
 
-    test.each(REMOVE_ALIASES)('带值的 %s 调用（从数组删除特定项）', (command) => {
+    test.each(REMOVE_ALIASES)('带值的 %s 调用（从数组删除特定项）', command => {
         const input = `_.${command}('debuffs', 'poison_effect');//中毒效果已解除`;
         const result = extractCommands(input);
 
@@ -310,7 +313,7 @@ describe('Remove/Unset/Delete 命令及别名测试', () => {
 });
 
 describe('Add 命令测试', () => {
-/*    test('简单的 add 调用（切换布尔值）', () => {
+    /*    test('简单的 add 调用（切换布尔值）', () => {
         const input = `_.add('user.is_active');//切换活跃状态`;
         const result = extractCommands(input);
 
@@ -379,7 +382,6 @@ describe('Add 命令测试', () => {
 });
 
 describe('数学和表达式测试', () => {
-
     test('处理基本的四则运算', () => {
         const input = "_.set('悠纪.好感度', 10, 10 + 2 * 5 - 3 / 3);//羁绊加深";
         const result = extractCommands(input);
@@ -421,23 +423,30 @@ describe('数学和表达式测试', () => {
     });
 
     test('参数是包含字符串的JSON结构，不应错误地执行运算（以日期为例）', () => {
-        const input = "_.set('日期', ['2015-01-01', '当前日期 YYYY - MM - DD']);";//设置日期";
+        const input = "_.set('日期', ['2015-01-01', '当前日期 YYYY - MM - DD']);"; //设置日期";
         const result = extractCommands(input);
 
         expect(result).toHaveLength(1);
-        expect(parseCommandValue(result[0].args[1])).toStrictEqual(['2015-01-01', '当前日期 YYYY - MM - DD']);
+        expect(parseCommandValue(result[0].args[1])).toStrictEqual([
+            '2015-01-01',
+            '当前日期 YYYY - MM - DD',
+        ]);
     });
 
     test('不应将普通的字符串误判为微积分（例如包含derivative）', () => {
-        const input = "_.set('笔记.内容', 'old', 'derivative('x^3', 'x').evaluate({x: 2})');//记录算式";
+        const input =
+            "_.set('笔记.内容', 'old', 'derivative('x^3', 'x').evaluate({x: 2})');//记录算式";
         const result = extractCommands(input);
 
         expect(result).toHaveLength(1);
-        expect(parseCommandValue(result[0].args[2])).toBe('derivative(\'x^3\', \'x\').evaluate({x: 2})');
+        expect(parseCommandValue(result[0].args[2])).toBe(
+            "derivative('x^3', 'x').evaluate({x: 2})"
+        );
     });
 
     test('处理 cmath + JS Math + mathjs 混合运算', () => {
-        const input = "_.set('悠纪.余额', 10, Math.floor(( Math.PI * 100 ) / 3 + math.pow(5, 3)) + derivative('x^3', 'x').evaluate({x: 2}));//获得奖励";
+        const input =
+            "_.set('悠纪.余额', 10, Math.floor(( Math.PI * 100 ) / 3 + math.pow(5, 3)) + derivative('x^3', 'x').evaluate({x: 2}));//获得奖励";
         const result = extractCommands(input);
 
         expect(result).toHaveLength(1);
@@ -446,10 +455,10 @@ describe('数学和表达式测试', () => {
 });
 
 describe('高等数学与高级运算测试', () => {
-
     test('处理微积分（求导）运算', () => {
         // 求函数 f(x) = x^3 在 x = 2 时的导数值 (f'(x) = 3x^2, f'(2) = 3 * 2^2 = 12)
-        const input = "_.set('函数.斜率', 0, derivative('x^3', 'x').evaluate({x: 2}));//计算瞬时变化率";
+        const input =
+            "_.set('函数.斜率', 0, derivative('x^3', 'x').evaluate({x: 2}));//计算瞬时变化率";
         const result = extractCommands(input);
 
         expect(result).toHaveLength(1);
@@ -495,12 +504,12 @@ describe('高等数学与高级运算测试', () => {
         expect(parseCommandValue(result[0].args[2])).toBeCloseTo(2.581988897);
     });
 
-    test.each(ASSIGN_ALIASES)('使用 %s 向数组特定位置插入数组值', async (command) => {
+    test.each(ASSIGN_ALIASES)('使用 %s 向数组特定位置插入数组值', async command => {
         const variables: MvuData = {
             initialized_lorebooks: {},
-            stat_data: {items: []},
+            stat_data: { items: [] },
             display_data: {},
-            delta_data: {}
+            delta_data: {},
         };
         // 数组模板 + 3参数 + 数组值 -> 合并模板与入参数组
         variables.schema = {
@@ -509,27 +518,25 @@ describe('高等数学与高级运算测试', () => {
                 items: {
                     type: 'array',
                     elementType: { type: 'any' },
-                    extensible: true
-                }
-            }
+                    extensible: true,
+                },
+            },
         };
 
         await updateVariables(
-                `_.${command}('items', 0, ["user-value", "user-description"]);`, // 3参数，数组值
-                variables
+            `_.${command}('items', 0, ["user-value", "user-description"]);`, // 3参数，数组值
+            variables
         );
 
-        expect(variables.stat_data.items).toEqual([[
-            'user-value', 'user-description'
-        ]]);
+        expect(variables.stat_data.items).toEqual([['user-value', 'user-description']]);
     });
 
-    test.each(ASSIGN_ALIASES)('使用 %s 连续插入多个元素', async (command) => {
+    test.each(ASSIGN_ALIASES)('使用 %s 连续插入多个元素', async command => {
         const variables: MvuData = {
             initialized_lorebooks: {},
-            stat_data: {items: []},
+            stat_data: { items: [] },
             display_data: {},
-            delta_data: {}
+            delta_data: {},
         };
         // 数组模板 + 3参数 + 数组值 -> 合并模板与入参数组
         variables.schema = {
@@ -538,19 +545,250 @@ describe('高等数学与高级运算测试', () => {
                 items: {
                     type: 'array',
                     elementType: { type: 'any' },
-                    extensible: true
-                }
-            }
+                    extensible: true,
+                },
+            },
         };
 
         await updateVariables(
-                `_.${command}('items', 0, "user-description"); _.${command}('items', 0, "user-value"); `, // 3参数，数组值
-                variables
+            `_.${command}('items', 0, "user-description"); _.${command}('items', 0, "user-value"); `, // 3参数，数组值
+            variables
         );
 
-        expect(variables.stat_data.items).toEqual([
-            'user-value', 'user-description'
-        ]);
+        expect(variables.stat_data.items).toEqual(['user-value', 'user-description']);
+    });
+
+    describe('插入元素后使用不同别名删除', () => {
+        test.each(REMOVE_ALIASES)(
+            '使用 assign 插入多个元素后用 %s 按索引删除',
+            async removeCommand => {
+                const variables: MvuData = {
+                    initialized_lorebooks: {},
+                    stat_data: { items: [] },
+                    display_data: {},
+                    delta_data: {},
+                    schema: {
+                        type: 'object',
+                        properties: {
+                            items: {
+                                type: 'array',
+                                elementType: { type: 'any' },
+                                extensible: true,
+                            },
+                        },
+                    },
+                };
+
+                // 先插入多个元素
+                await updateVariables(
+                    `_.assign('items', 'sword');//添加剑
+                 _.assign('items', 'shield');//添加盾牌
+                 _.assign('items', 'potion');//添加药水
+                 _.assign('items', 'key');//添加钥匙`,
+                    variables
+                );
+
+                expect(variables.stat_data.items).toEqual(['sword', 'shield', 'potion', 'key']);
+
+                // 使用不同的删除别名删除中间的元素
+                await updateVariables(
+                    `_.${removeCommand}('items', 1);//丢弃盾牌
+                 _.${removeCommand}('items', 1);//丢弃药水`,
+                    variables
+                );
+
+                expect(variables.stat_data.items).toEqual(['sword', 'key']);
+            }
+        );
+
+        test.each(REMOVE_ALIASES)(
+            '使用 insert 插入多个元素后用 %s 按值删除',
+            async removeCommand => {
+                const variables: MvuData = {
+                    initialized_lorebooks: {},
+                    stat_data: { inventory: [] },
+                    display_data: {},
+                    delta_data: {},
+                    schema: {
+                        type: 'object',
+                        properties: {
+                            inventory: {
+                                type: 'array',
+                                elementType: { type: 'any' },
+                                extensible: true,
+                            },
+                        },
+                    },
+                };
+
+                // 使用 insert 别名插入元素
+                await updateVariables(
+                    `_.insert('inventory', 'healing_potion');//添加治疗药水
+                 _.insert('inventory', 'mana_potion');//添加魔法药水
+                 _.insert('inventory', 'poison');//添加毒药
+                 _.insert('inventory', 'antidote');//添加解毒剂`,
+                    variables
+                );
+
+                expect(variables.stat_data.inventory).toEqual([
+                    'healing_potion',
+                    'mana_potion',
+                    'poison',
+                    'antidote',
+                ]);
+
+                // 使用不同的删除别名按值删除特定元素
+                await updateVariables(
+                    `_.${removeCommand}('inventory', 'poison');//丢弃毒药
+                 _.${removeCommand}('inventory', 'mana_potion');//用掉魔法药水`,
+                    variables
+                );
+
+                expect(variables.stat_data.inventory).toEqual(['healing_potion', 'antidote']);
+            }
+        );
+
+        // 测试所有 assign 别名与所有 remove 别名的组合
+        const allCombinations: Array<[string, string]> = [];
+        ASSIGN_ALIASES.forEach(assignAlias => {
+            REMOVE_ALIASES.forEach(removeAlias => {
+                allCombinations.push([assignAlias, removeAlias]);
+            });
+        });
+
+        test.each(allCombinations)(
+            '使用 %s 插入后用 %s 删除（综合测试）',
+            async (assignCommand, removeCommand) => {
+                const variables: MvuData = {
+                    initialized_lorebooks: {},
+                    stat_data: {
+                        player: {
+                            buffs: [],
+                            skills: [],
+                        },
+                    },
+                    display_data: {},
+                    delta_data: {},
+                    schema: {
+                        type: 'object',
+                        properties: {
+                            player: {
+                                type: 'object',
+                                properties: {
+                                    buffs: {
+                                        type: 'array',
+                                        elementType: { type: 'any' },
+                                        extensible: true,
+                                    },
+                                    skills: {
+                                        type: 'array',
+                                        elementType: { type: 'any' },
+                                        extensible: true,
+                                    },
+                                },
+                            },
+                        },
+                    },
+                };
+
+                // 使用不同的 assign 别名添加多个元素
+                await updateVariables(
+                    `_.${assignCommand}('player.buffs', 'strength');//获得力量加成
+                 _.${assignCommand}('player.buffs', 'speed');//获得速度加成
+                 _.${assignCommand}('player.buffs', 'defense');//获得防御加成
+                 _.${assignCommand}('player.skills', 'slash');//学会斩击
+                 _.${assignCommand}('player.skills', 'block');//学会格挡`,
+                    variables
+                );
+
+                expect(variables.stat_data.player.buffs).toEqual(['strength', 'speed', 'defense']);
+                expect(variables.stat_data.player.skills).toEqual(['slash', 'block']);
+
+                // 使用不同的 remove 别名删除部分元素
+                await updateVariables(
+                    `_.${removeCommand}('player.buffs', 1);//速度加成结束
+                 _.${removeCommand}('player.skills', 'slash');//遗忘斩击技能`,
+                    variables
+                );
+
+                expect(variables.stat_data.player.buffs).toEqual(['strength', 'defense']);
+                expect(variables.stat_data.player.skills).toEqual(['block']);
+            }
+        );
+
+        test('混合使用所有别名进行复杂操作', async () => {
+            const variables: MvuData = {
+                initialized_lorebooks: {},
+                stat_data: {
+                    game: {
+                        inventory: [],
+                        enemies: [],
+                        quests: [],
+                    },
+                },
+                display_data: {},
+                delta_data: {},
+                schema: {
+                    type: 'object',
+                    properties: {
+                        game: {
+                            type: 'object',
+                            properties: {
+                                inventory: {
+                                    type: 'array',
+                                    elementType: { type: 'any' },
+                                    extensible: true,
+                                },
+                                enemies: {
+                                    type: 'array',
+                                    elementType: { type: 'any' },
+                                    extensible: true,
+                                },
+                                quests: {
+                                    type: 'array',
+                                    elementType: { type: 'any' },
+                                    extensible: true,
+                                },
+                            },
+                        },
+                    },
+                },
+            };
+
+            // 使用各种 assign 别名添加元素
+            await updateVariables(
+                `_.assign('game.inventory', 'sword');//获得武器
+                 _.insert('game.inventory', 'shield');//获得防具
+                 _.assign('game.enemies', 'goblin');//遭遇哥布林
+                 _.insert('game.enemies', 'orc');//遭遇兽人
+                 _.insert('game.enemies', 'dragon');//遭遇龙
+                 _.assign('game.quests', 'main_quest');//接受主线任务
+                 _.insert('game.quests', 'side_quest_1');//接受支线任务1
+                 _.insert('game.quests', 'side_quest_2');//接受支线任务2`,
+                variables
+            );
+
+            expect(variables.stat_data.game.inventory).toEqual(['sword', 'shield']);
+            expect(variables.stat_data.game.enemies).toEqual(['goblin', 'orc', 'dragon']);
+            expect(variables.stat_data.game.quests).toEqual([
+                'main_quest',
+                'side_quest_1',
+                'side_quest_2',
+            ]);
+
+            // 使用各种 remove 别名删除元素
+            await updateVariables(
+                `_.remove('game.enemies', 'goblin');//击败哥布林
+                 _.unset('game.enemies', 0);//击败兽人
+                 _.delete('game.quests', 1);//完成支线任务1
+                 _.unset('game.inventory', 'shield');//盾牌损坏`,
+                variables
+            );
+
+            expect(variables.stat_data.game.inventory).toEqual(['sword']);
+            expect(variables.stat_data.game.enemies).toEqual(['dragon']);
+            expect(variables.stat_data.game.quests).toEqual(['main_quest', 'side_quest_2']);
+        });
     });
 });
 /* 实验性功能，暂不启用
