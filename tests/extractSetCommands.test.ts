@@ -1,6 +1,10 @@
 import {extractCommands, parseCommandValue, updateVariables} from '../src/function';
 import {MvuData} from "@/variable_def";
 
+// 命令别名定义
+const ASSIGN_ALIASES = ['assign', 'insert'] as const;
+const REMOVE_ALIASES = ['remove', 'unset', 'delete'] as const;
+
 describe('extractCommands', () => {
     describe('基本功能测试', () => {
         test('提取简单的 _.set 调用', () => {
@@ -216,87 +220,89 @@ describe('extractCommands', () => {
     });
 });
 
-describe('Assign 和 Remove 命令测试', () => {
-    test('简单的 assign 调用（向数组追加）', () => {
-        const input = `_.assign('inventory', 'healing potion');//获得治疗药水`;
+describe('Assign/Insert 命令及别名测试', () => {
+    test.each(ASSIGN_ALIASES)('简单的 %s 调用（向数组追加）', (command) => {
+        const input = `_.${command}('inventory', 'healing potion');//获得治疗药水`;
         const result = extractCommands(input);
 
         expect(result).toHaveLength(1);
         const cmd = result[0];
-        expect(cmd.command).toBe('assign');
+        expect(cmd.command).toBe(command);
         expect(cmd.reason).toBe('获得治疗药水');
         expect(parseCommandValue(cmd.args[0])).toBe('inventory');
         expect(parseCommandValue(cmd.args[1])).toBe('healing potion');
     });
 
-    test('带索引的 assign 调用（向数组特定位置插入）', () => {
-        const input = `_.assign('quest_log', 0, '主线任务：寻找古代遗物');`;
+    test.each(ASSIGN_ALIASES)('带索引的 %s 调用（向数组特定位置插入）', (command) => {
+        const input = `_.${command}('quest_log', 0, '主线任务：寻找古代遗物');`;
         const result = extractCommands(input);
 
         expect(result).toHaveLength(1);
         const cmd = result[0];
-        expect(cmd.command).toBe('assign');
+        expect(cmd.command).toBe(command);
         expect(parseCommandValue(cmd.args[0])).toBe('quest_log');
         expect(parseCommandValue(cmd.args[1])).toBe(0);
         expect(parseCommandValue(cmd.args[2])).toBe('主线任务：寻找古代遗物');
     });
 
-    test('复杂的 assign 调用（向对象添加键值对）', () => {
-        const input = `_.assign('悠纪.金手指系统', "体育生系统", {"功能": "让人体能飞升，变身体育生！", "是否激活": false});//添加金手指`;
+    test.each(ASSIGN_ALIASES)('复杂的 %s 调用（向对象添加键值对）', (command) => {
+        const input = `_.${command}('悠纪.金手指系统', "体育生系统", {"功能": "让人体能飞升，变身体育生！", "是否激活": false});//添加金手指`;
         const result = extractCommands(input);
 
         expect(result).toHaveLength(1);
         const cmd = result[0];
-        expect(cmd.command).toBe('assign');
+        expect(cmd.command).toBe(command);
         expect(cmd.reason).toBe('添加金手指');
         expect(parseCommandValue(cmd.args[0])).toBe('悠纪.金手指系统');
         expect(parseCommandValue(cmd.args[1])).toBe('体育生系统');
         expect(parseCommandValue(cmd.args[2])).toStrictEqual({ "功能": "让人体能飞升，变身体育生！", "是否激活": false });
     });
 
-    test('对根路径的 assign 调用', () => {
-        const input = `_.assign('', '新角色', {});`;
+    test.each(ASSIGN_ALIASES)('对根路径的 %s 调用', (command) => {
+        const input = `_.${command}('', '新角色', {});`;
         const result = extractCommands(input);
 
         expect(result).toHaveLength(1);
         const cmd = result[0];
-        expect(cmd.command).toBe('assign');
+        expect(cmd.command).toBe(command);
         expect(parseCommandValue(cmd.args[0])).toBe('');
         expect(parseCommandValue(cmd.args[1])).toBe('新角色');
         expect(parseCommandValue(cmd.args[2])).toStrictEqual({});
     });
+});
 
-    test('简单的 remove 调用（删除属性）', () => {
-        const input = `_.remove('user.status.is_tired');//不再疲劳`;
+describe('Remove/Unset/Delete 命令及别名测试', () => {
+    test.each(REMOVE_ALIASES)('简单的 %s 调用（删除属性）', (command) => {
+        const input = `_.${command}('user.status.is_tired');//不再疲劳`;
         const result = extractCommands(input);
 
         expect(result).toHaveLength(1);
         const cmd = result[0];
-        expect(cmd.command).toBe('remove');
+        expect(cmd.command).toBe(command);
         expect(cmd.reason).toBe('不再疲劳');
         expect(cmd.args).toHaveLength(1);
         expect(parseCommandValue(cmd.args[0])).toBe('user.status.is_tired');
     });
 
-    test('带索引的 remove 调用（从数组删除）', () => {
-        const input = `_.remove('tasks', 2);//完成第三个任务`;
+    test.each(REMOVE_ALIASES)('带索引的 %s 调用（从数组删除）', (command) => {
+        const input = `_.${command}('tasks', 2);//完成第三个任务`;
         const result = extractCommands(input);
 
         expect(result).toHaveLength(1);
         const cmd = result[0];
-        expect(cmd.command).toBe('remove');
+        expect(cmd.command).toBe(command);
         expect(cmd.reason).toBe('完成第三个任务');
         expect(parseCommandValue(cmd.args[0])).toBe('tasks');
         expect(parseCommandValue(cmd.args[1])).toBe(2);
     });
 
-    test('带值的 remove 调用（从数组删除特定项）', () => {
-        const input = `_.remove('debuffs', 'poison_effect');//中毒效果已解除`;
+    test.each(REMOVE_ALIASES)('带值的 %s 调用（从数组删除特定项）', (command) => {
+        const input = `_.${command}('debuffs', 'poison_effect');//中毒效果已解除`;
         const result = extractCommands(input);
 
         expect(result).toHaveLength(1);
         const cmd = result[0];
-        expect(cmd.command).toBe('remove');
+        expect(cmd.command).toBe(command);
         expect(cmd.reason).toBe('中毒效果已解除');
         expect(parseCommandValue(cmd.args[0])).toBe('debuffs');
         expect(parseCommandValue(cmd.args[1])).toBe('poison_effect');
@@ -489,7 +495,7 @@ describe('高等数学与高级运算测试', () => {
         expect(parseCommandValue(result[0].args[2])).toBeCloseTo(2.581988897);
     });
 
-    test('alt', async () => {
+    test.each(ASSIGN_ALIASES)('使用 %s 向数组特定位置插入数组值', async (command) => {
         const variables: MvuData = {
             initialized_lorebooks: {},
             stat_data: {items: []},
@@ -509,7 +515,7 @@ describe('高等数学与高级运算测试', () => {
         };
 
         await updateVariables(
-                `_.assign('items', 0, ["user-value", "user-description"]);`, // 3参数，数组值
+                `_.${command}('items', 0, ["user-value", "user-description"]);`, // 3参数，数组值
                 variables
         );
 
@@ -518,7 +524,7 @@ describe('高等数学与高级运算测试', () => {
         ]]);
     });
 
-    test('alt2', async () => {
+    test.each(ASSIGN_ALIASES)('使用 %s 连续插入多个元素', async (command) => {
         const variables: MvuData = {
             initialized_lorebooks: {},
             stat_data: {items: []},
@@ -538,7 +544,7 @@ describe('高等数学与高级运算测试', () => {
         };
 
         await updateVariables(
-                `_.assign('items', 0, "user-description"); _.assign('items', 0, "user-value"); `, // 3参数，数组值
+                `_.${command}('items', 0, "user-description"); _.${command}('items', 0, "user-value"); `, // 3参数，数组值
                 variables
         );
 
