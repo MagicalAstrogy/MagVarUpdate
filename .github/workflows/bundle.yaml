@@ -37,6 +37,8 @@ jobs:
                       echo "⚠️  Lockfile missing, generating..."
                       yarn install
                     fi
+            - name: format Code
+              run: yarn format
             - run: yarn build
             - name: Commit changes
               uses: EndBug/add-and-commit@v9.1.3
