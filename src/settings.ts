@@ -16,7 +16,10 @@ const DefaultSetting: MvuSettings = {
     是否显示变量更新错误: '是',
 };
 
-const variable_option = { type: 'script', script_id: getScriptId() } as const;
+const variable_option = {
+    type: 'script',
+    script_id: typeof getScriptId === 'function' ? getScriptId() : 'default-script-id',
+} as const;
 
 export function VerifySettings(settings: any): settings is MvuSettings {
     // 检查settings是否是对象

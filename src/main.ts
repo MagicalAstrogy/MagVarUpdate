@@ -27,7 +27,9 @@ $(async () => {
     try {
         const version = await getTavernHelperVersion();
         if (compare(version, '3.2.13', '<')) {
-            toastr.warning('酒馆助手版本过低, 可能无法正常处理, 请更新至 3.2.13 或更高版本（建议保持酒馆助手最新）');
+            toastr.warning(
+                '酒馆助手版本过低, 可能无法正常处理, 请更新至 3.2.13 或更高版本（建议保持酒馆助手最新）'
+            );
         }
     } catch (_e) {
         /* empty */

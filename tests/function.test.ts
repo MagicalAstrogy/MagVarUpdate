@@ -551,11 +551,13 @@ describe('handleVariablesInMessage', () => {
         await handleVariablesInMessage(0);
 
         // 验证 insertOrAssignVariables 被调用
-        expect((globalThis as any).replaceVariables).toHaveBeenCalledTimes(1);
+        // 因为 setting 引入，现在会被设置2次
+        expect((globalThis as any).replaceVariables).toHaveBeenCalledTimes(2);
         expect((globalThis as any).insertOrAssignVariables).toHaveBeenCalledTimes(1);
 
         // 验证 chat 级别的变量更新
-        const chatUpdateCall = (globalThis as any).replaceVariables.mock.calls[0];
+        // 第一次是 setting的。
+        const chatUpdateCall = (globalThis as any).replaceVariables.mock.calls[1];
         const updatedChatVariables = chatUpdateCall[0];
         const chatUpdateOptions = chatUpdateCall[1];
 
