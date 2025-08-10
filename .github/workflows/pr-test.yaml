@@ -90,7 +90,10 @@ jobs:
                     echo "" >> $GITHUB_STEP_SUMMARY
                     if [ -f coverage/coverage-summary.json ]; then
                       echo '```' >> $GITHUB_STEP_SUMMARY
-                      yarn test:coverage --coverageReporters=text-summary 2>/dev/null | tail -n +2 >> $GITHUB_STEP_SUMMARY
+                      echo "File      | % Stmts | % Branch | % Funcs | % Lines | Uncovered Line #s" >> $GITHUB_STEP_SUMMARY
+                      echo "----------|---------|----------|---------|---------|-------------------" >> $GITHUB_STEP_SUMMARY
+                      COVERAGE=$(jq -r '.total | "All files | \(.statements.pct)% | \(.branches.pct)% | \(.functions.pct)% | \(.lines.pct)% |"' coverage/coverage-summary.json)
+                      echo "$COVERAGE" >> $GITHUB_STEP_SUMMARY
                       echo '```' >> $GITHUB_STEP_SUMMARY
                     else
                       echo "Coverage report not found" >> $GITHUB_STEP_SUMMARY
