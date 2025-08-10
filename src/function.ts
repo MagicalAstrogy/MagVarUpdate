@@ -1140,7 +1140,6 @@ export async function updateVariables(
             _.set(delta_status.stat_data!, path, display_str);
         }
     }
-
     // 在所有命令执行完毕后，如果数据有任何变动，则执行一次 Schema 调和
     if (variable_modified) {
         reconcileAndApplySchema(variables);
