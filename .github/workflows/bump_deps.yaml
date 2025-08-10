@@ -25,6 +25,7 @@ jobs:
           rm -rf node_modules
           corepack enable
           corepack prepare yarn@3.4.1 --activate
+          yarn up '*'
           yarn install --mode=update-lockfile
 
       - run: git submodule update --init --recursive && cd slash-runner && git fetch && git reset --hard origin/main
