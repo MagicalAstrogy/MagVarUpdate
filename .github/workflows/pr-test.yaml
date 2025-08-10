@@ -1,0 +1,199 @@
+name: PR Test and Coverage
+
+on:
+  pull_request:
+    branches: [ master, main, beta ]
+    types: [ opened, synchronize, reopened ]
+
+jobs:
+  test:
+    name: Run Tests with Coverage
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'yarn'
+      -   name: Corepack & Yarn
+          run: |
+              corepack enable
+              corepack prepare yarn@3.4.1 --activate
+              if [ -f yarn.lock ]; then
+                echo "🔒 Lockfile exists, using immutable install"
+                yarn install --immutable
+              else
+                echo "⚠️  Lockfile missing, generating..."
+                yarn install
+              fi
+
+      - name: Run tests with coverage
+        run: yarn test:coverage --json --outputFile=test-results.json
+        continue-on-error: true
+
+      - name: Parse test results
+        id: test-results
+        run: |
+          if [ -f test-results.json ]; then
+            PASSED=$(jq '.numPassedTests' test-results.json)
+            FAILED=$(jq '.numFailedTests' test-results.json)
+            TOTAL=$(jq '.numTotalTests' test-results.json)
+            SUITES_PASSED=$(jq '.numPassedTestSuites' test-results.json)
+            SUITES_FAILED=$(jq '.numFailedTestSuites' test-results.json)
+            SUITES_TOTAL=$(jq '.numTotalTestSuites' test-results.json)
+            SUCCESS=$(jq '.success' test-results.json)
+
+            echo "passed=$PASSED" >> $GITHUB_OUTPUT
+            echo "failed=$FAILED" >> $GITHUB_OUTPUT
+            echo "total=$TOTAL" >> $GITHUB_OUTPUT
+            echo "suites_passed=$SUITES_PASSED" >> $GITHUB_OUTPUT
+            echo "suites_failed=$SUITES_FAILED" >> $GITHUB_OUTPUT
+            echo "suites_total=$SUITES_TOTAL" >> $GITHUB_OUTPUT
+            echo "success=$SUCCESS" >> $GITHUB_OUTPUT
+          else
+            echo "Test results file not found"
+            exit 1
+          fi
+
+      - name: Upload coverage reports
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: coverage/
+          retention-days: 7
+
+      - name: Upload test results
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: test-results.json
+          retention-days: 7
+
+      - name: Generate test summary
+        run: |
+          echo "## 🧪 Test Results Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Test Suites" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ Passed: ${{ steps.test-results.outputs.suites_passed }}/${{ steps.test-results.outputs.suites_total }}" >> $GITHUB_STEP_SUMMARY
+          echo "- ❌ Failed: ${{ steps.test-results.outputs.suites_failed }}/${{ steps.test-results.outputs.suites_total }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Individual Tests" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ Passed: ${{ steps.test-results.outputs.passed }}/${{ steps.test-results.outputs.total }}" >> $GITHUB_STEP_SUMMARY
+          echo "- ❌ Failed: ${{ steps.test-results.outputs.failed }}/${{ steps.test-results.outputs.total }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "## 📊 Coverage Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          if [ -f coverage/coverage-summary.json ]; then
+            echo '```' >> $GITHUB_STEP_SUMMARY
+            yarn test:coverage --coverageReporters=text-summary 2>/dev/null | tail -n +2 >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+          else
+            echo "Coverage report not found" >> $GITHUB_STEP_SUMMARY
+          fi
+
+      - name: Comment PR with results
+        uses: actions/github-script@v7
+        if: github.event_name == 'pull_request'
+        with:
+          script: |
+            const fs = require('fs');
+            const path = require('path');
+
+            let comment = '# 🔍 PR Test Report\n\n';
+
+            // Add test results
+            comment += '## 🧪 Test Results\n\n';
+
+            const passed = '${{ steps.test-results.outputs.passed }}';
+            const failed = '${{ steps.test-results.outputs.failed }}';
+            const total = '${{ steps.test-results.outputs.total }}';
+            const suitesPassed = '${{ steps.test-results.outputs.suites_passed }}';
+            const suitesFailed = '${{ steps.test-results.outputs.suites_failed }}';
+            const suitesTotal = '${{ steps.test-results.outputs.suites_total }}';
+            const success = '${{ steps.test-results.outputs.success }}' === 'true';
+
+            // Test status badge
+            if (success) {
+              comment += '### ✅ All tests passed!\n\n';
+            } else {
+              comment += '### ❌ Some tests failed\n\n';
+            }
+
+            // Test statistics table
+            comment += '| Type | Passed | Failed | Total |\n';
+            comment += '|------|--------|--------|-------|\n';
+            comment += `| **Test Suites** | ${suitesPassed} | ${suitesFailed} | ${suitesTotal} |\n`;
+            comment += `| **Tests** | ${passed} | ${failed} | ${total} |\n\n`;
+
+            // Add coverage results
+            comment += '## 📊 Coverage Report\n\n';
+
+            try {
+              const coveragePath = path.join(process.env.GITHUB_WORKSPACE, 'coverage', 'coverage-summary.json');
+              if (fs.existsSync(coveragePath)) {
+                const coverage = JSON.parse(fs.readFileSync(coveragePath, 'utf8'));
+                const total = coverage.total;
+
+                comment += '| Metric | Coverage | Details |\n';
+                comment += '|--------|----------|----------|\n';
+                comment += `| **Lines** | ${total.lines.pct}% | ${total.lines.covered}/${total.lines.total} |\n`;
+                comment += `| **Statements** | ${total.statements.pct}% | ${total.statements.covered}/${total.statements.total} |\n`;
+                comment += `| **Functions** | ${total.functions.pct}% | ${total.functions.covered}/${total.functions.total} |\n`;
+                comment += `| **Branches** | ${total.branches.pct}% | ${total.branches.covered}/${total.branches.total} |\n`;
+
+                // Add coverage thresholds indicator
+                comment += '\n### Coverage Thresholds\n';
+                const thresholds = { lines: 80, statements: 80, functions: 80, branches: 80 };
+                for (const [key, threshold] of Object.entries(thresholds)) {
+                  const pct = total[key].pct;
+                  const emoji = pct >= threshold ? '✅' : '⚠️';
+                  const status = pct >= threshold ? 'Passed' : 'Below threshold';
+                  comment += `- ${emoji} ${key.charAt(0).toUpperCase() + key.slice(1)}: ${pct}% (${status}, threshold: ${threshold}%)\n`;
+                }
+              } else {
+                comment += '⚠️ Coverage report not found.\n';
+              }
+            } catch (error) {
+              comment += `⚠️ Could not parse coverage report: ${error.message}\n`;
+            }
+
+            comment += '\n---\n';
+            comment += `*Generated at ${new Date().toISOString()}*\n`;
+
+            // Find existing comment
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+            });
+
+            const botComment = comments.find(comment =>
+              comment.user.type === 'Bot' && comment.body.includes('PR Test Report')
+            );
+
+            // Update or create comment
+            if (botComment) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: botComment.id,
+                body: comment
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body: comment
+              });
+            }
+
+      - name: Fail if tests failed
+        if: steps.test-results.outputs.success != 'true'
+        run: |
+          echo "Tests failed. See details above."
+          exit 1
