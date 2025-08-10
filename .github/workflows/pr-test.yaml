@@ -33,7 +33,7 @@ jobs:
                     fi
 
             -   name: Run tests with coverage
-                run: yarn test:coverage --json --outputFile=test-results.json
+                run: yarn test:coverage
                 continue-on-error: true
 
             -   name: Parse test results
