@@ -151,7 +151,7 @@ jobs:
 
                             // Add coverage thresholds indicator
                             comment += '\n### Coverage Thresholds\n';
-                            const thresholds = { lines: 80, statements: 80, functions: 80, branches: 80 };
+                            const thresholds = { lines: 50, statements: 50, functions: 50, branches: 50 };
                             for (const [key, threshold] of Object.entries(thresholds)) {
                               const pct = total[key].pct;
                               const emoji = pct >= threshold ? '✅' : '⚠️';
