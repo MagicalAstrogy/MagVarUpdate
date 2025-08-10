@@ -2253,6 +2253,13 @@ __metadata:
   languageName: node
   linkType: hard
 
+"compare-versions@npm:^6.1.1":
+  version: 6.1.1
+  resolution: "compare-versions@npm:6.1.1"
+  checksum: 73fe6c4f52d22efe28f0a3be10df2afd704e10b3593360cd963e86b33a7a263c263b41a1361b69c30a0fe68bfa70fef90860c1cf2ef41502629d4402890fcd57
+  languageName: node
+  linkType: hard
+
 "concat-map@npm:0.0.1":
   version: 0.0.1
   resolution: "concat-map@npm:0.0.1"
@@ -4306,6 +4313,7 @@ __metadata:
     "@types/toastr": ^2.1.43
     "@types/webpack": ^5.28.5
     "@typescript-eslint/parser": ^8.32.1
+    compare-versions: ^6.1.1
     eslint: ^9.27.0
     eslint-config-prettier: ^10.1.5
     eslint-import-resolver-typescript: ^4.4.3

@@ -1,5 +1,5 @@
 import { variable_events, VariableData } from '@/variable_def';
-import {GetSettings} from "@/settings";
+import { GetSettings } from '@/settings';
 
 export function trimQuotesAndBackslashes(str: string): string {
     if (!_.isString(str)) return str;
@@ -442,7 +442,9 @@ export async function updateVariables(
         }
     }
     if (error_occured && settings.是否显示变量更新错误 === '是') {
-        toastr.warning(`最近错误: ${error_last}`, '发生变量更新错误，可能需要重Roll', {timeOut: 6000});
+        toastr.warning(`最近错误: ${error_last}`, '发生变量更新错误，可能需要重Roll', {
+            timeOut: 6000,
+        });
     }
 
     variables.display_data = out_status.stat_data;

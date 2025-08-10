@@ -1,4 +1,3 @@
-
 export type LocalizedBooleanTrue = '是';
 export type LocalizedBooleanFalse = '否';
 
@@ -10,17 +9,16 @@ export type StringBoolean = string | LocalizedBooleanTrue | LocalizedBooleanFals
 
 export type MvuSettings = {
     是否显示变量更新错误: StringBoolean;
-}
+};
 
 //存储所有变量的默认值，需要设置默认值的时候可以 _.merge({}, DefaultSetting, 原始内容)
 const DefaultSetting: MvuSettings = {
-    是否显示变量更新错误: '是'
+    是否显示变量更新错误: '是',
 };
 
 const variable_option = { type: 'script', script_id: getScriptId() } as const;
 
-
-export function VerifySettings(settings: any) : settings is MvuSettings {
+export function VerifySettings(settings: any): settings is MvuSettings {
     // 检查settings是否是对象
     if (!settings || typeof settings !== 'object') {
         return false;
@@ -93,4 +91,3 @@ export async function GetSettings(): Promise<MvuSettings> {
 
     return mergedSettings;
 }
-
