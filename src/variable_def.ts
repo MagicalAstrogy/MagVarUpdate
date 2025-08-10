@@ -96,7 +96,7 @@ export type MvuData = {
      * 2. ValueWithDescription 类型：更新数组的第一个元素（实际值），保留第二个元素（描述）
      * 3. 数字类型：自动将字符串新值转换为数字
      */
-    stat_data: StatData & RootAdditionalMetaProps  & { $internal?: InternalData };
+    stat_data: StatData & RootAdditionalMetaProps & { $internal?: InternalData };
 
     /**
      * 显示数据 - 存储变量变化的可视化表示

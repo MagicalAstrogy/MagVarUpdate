@@ -3,7 +3,7 @@ import { exportGlobals } from '@/export_globals';
 import { handleVariablesInCallback, handleVariablesInMessage, updateVariable } from '@/function';
 import { exported_events } from '@/variable_def';
 import { initCheck } from '@/variable_init';
-import {GetSettings} from "@/settings";
+import { GetSettings } from '@/settings';
 
 $(async () => {
     registerButtons();
@@ -19,8 +19,9 @@ $(async () => {
     // 导出到窗口，便于调试
     try {
         _.set(parent.window, 'handleVariablesInMessage', handleVariablesInMessage);
+    } catch (_e) {
+        /* empty */
     }
-    catch (_e) { /* empty */ }
 });
 
 $(window).on('unload', () => {

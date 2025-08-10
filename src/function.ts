@@ -3,7 +3,7 @@ import * as math from 'mathjs';
 
 import { getSchemaForPath, reconcileAndApplySchema } from '@/schema';
 import { isArraySchema, isObjectSchema } from '@/variable_def';
-import {GetSettings} from "@/settings";
+import { GetSettings } from '@/settings';
 
 export function trimQuotesAndBackslashes(str: string): string {
     if (!_.isString(str)) return str;
@@ -170,7 +170,7 @@ export function parseCommandValue(valStr: string): any {
  * - 'remove': Represents a command to remove an item or data.
  * - 'add': Represents a command to add an item or data.
  */
-type CommandNames = 'set' | 'insert' | 'assign' | 'remove' | 'unset' | 'add';
+type CommandNames = 'set' | 'insert' | 'assign' | 'remove' | 'unset' | 'delete' | 'add';
 
 /**
  * 从大字符串中提取所有 .set(${path}, ${new_value});//${reason} 格式的模式
@@ -263,6 +263,8 @@ export function extractCommands(inputText: string): Command[] {
             isValid = true; // _.remove 至少需要路径
         else if (commandType === 'unset' && params.length >= 1)
             isValid = true; // _.unset 至少需要路径
+        else if (commandType === 'delete' && params.length >= 1)
+            isValid = true; // _.delete 至少需要路径
         else if (commandType === 'add' && /*params.length === 1 || */ params.length === 2)
             isValid = true; // _.add 需要1个或2个参数
 
@@ -503,7 +505,7 @@ export async function updateVariable(
 type ErrorInfo = {
     error_last: string;
     error_command: Command;
-}
+};
 
 // 重构 updateVariables 以处理更多命令
 export async function updateVariables(
@@ -536,7 +538,7 @@ export async function updateVariables(
         console.warn(message);
         error_info = {
             error_last: message,
-            error_command: current_command!
+            error_command: current_command!,
         };
     };
 
@@ -846,6 +848,7 @@ export async function updateVariables(
             }
 
             case 'unset':
+            case 'delete':
             case 'remove': {
                 // 验证路径存在，防止无效删除
                 if (!_.has(variables.stat_data, path)) {
@@ -1145,7 +1148,11 @@ export async function updateVariables(
     if (error_info && settings.是否显示变量更新错误 === '是') {
         const base_command: string = error_info.error_command.fullMatch;
         if (typeof toastr !== 'undefined')
-          toastr.warning(`最近错误: ${error_info.error_last}`, `发生变量更新错误，可能需要重Roll:${base_command}`, {timeOut: 6000});
+            toastr.warning(
+                `最近错误: ${error_info.error_last}`,
+                `发生变量更新错误，可能需要重Roll:${base_command}`,
+                { timeOut: 6000 }
+            );
     }
 
     // 更新变量的显示和增量数据
