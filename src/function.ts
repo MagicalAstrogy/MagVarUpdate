@@ -205,7 +205,9 @@ export function extractCommands(inputText: string): Command[] {
     while (i < inputText.length) {
         // 循环处理整个输入文本，直到找不到更多命令
         // 使用正则匹配 _.set(、_.assign(、_.remove( 或 _.add(，重构后支持多种命令
-        const setMatch = inputText.substring(i).match(/_\.(set|assign|remove|add)\(/);
+        const setMatch = inputText
+            .substring(i)
+            .match(/_\.(set|insert|assign|remove|unset|delete|add)\(/);
         if (!setMatch || setMatch.index === undefined) {
             // 没有找到匹配的命令，退出循环，防止无限循环
             break;
