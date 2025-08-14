@@ -2,7 +2,7 @@ name: bump_deps
 
 on:
   schedule:
-    - cron: '0 0 */3 * *'
+    - cron: '0 0 * * *'
   workflow_dispatch:
 
 jobs:
@@ -28,7 +28,13 @@ jobs:
           yarn up '*'
           yarn install --mode=update-lockfile
 
-      - run: git submodule update --init --recursive && cd slash-runner && git fetch && git reset --hard origin/main
+      - run: |-
+          rm -rf @types
+          mkdir -p @types
+          wget https://gitlab.com/novi028/JS-Slash-Runner/-/raw/main/dist/@types.zip -O @types.zip
+          tar -xf @types.zip -C @types
+          rm -f @types.zip
+        shell: bash
 
       - name: Commit changes
         uses: EndBug/add-and-commit@v9.1.3

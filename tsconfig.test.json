@@ -14,9 +14,9 @@
         "allowSyntheticDefaultImports": true
     },
     "include": [
-        "src/**/*",
-        "tests/**/*",
-        "slash-runner/@types",
+        "src",
+        "tests",
+        "@types",
         "global.d.ts"
     ]
 }
