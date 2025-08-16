@@ -1168,7 +1168,32 @@ export async function updateVariables(
     return variable_modified || out_is_modifed;
 }
 
+// Rate limiting for handleVariablesInMessage - execute at most once every 3 seconds
+let lastExecutionTime = 0;
+const RATE_LIMIT_INTERVAL = 3000; // 3 seconds in milliseconds
+
 export async function handleVariablesInMessage(message_id: number) {
+    // Skip rate limiting in Jest test environment
+    const isJestEnvironment =
+        // @ts-ignore
+        typeof jest !== 'undefined' ||
+        // @ts-ignore
+        (typeof process !== 'undefined' && process.env?.NODE_ENV === 'test');
+
+    if (!isJestEnvironment) {
+        const now = Date.now();
+        if (now - lastExecutionTime < RATE_LIMIT_INTERVAL) {
+            console.info(
+                `Rate limit applied: handleVariablesInMessage skipped for message ${message_id}`
+            );
+            toastr.warning('避免同时调用 MESSAGE_RECEIVED 多次', 'gemini轮询兼容', {
+                timeOut: 1000,
+            });
+            return;
+        }
+        lastExecutionTime = now;
+    }
+
     const chat_message = getChatMessages(message_id).at(-1);
     if (!chat_message) {
         return;

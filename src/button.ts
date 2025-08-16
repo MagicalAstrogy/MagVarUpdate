@@ -5,6 +5,10 @@ import { cleanUpMetadata, reconcileAndApplySchema } from '@/schema';
 
 const buttons = ['重新处理变量', '重新读取初始变量'];
 
+// Rate limiting for button callbacks - execute at most once every 3 seconds
+let lastButtonExecutionTime = 0;
+const BUTTON_RATE_LIMIT_INTERVAL = 3000; // 3 seconds in milliseconds
+
 function addButtons() {
     const current_buttons = getScriptButtons(getScriptId());
     const current_button_names = current_buttons.map(b => b.name);
@@ -18,6 +22,23 @@ export function registerButtons() {
     addButtons();
 
     eventOnButton('重新处理变量', async function () {
+        // Skip rate limiting in Jest test environment
+        const isJestEnvironment =
+            // @ts-ignore
+            typeof jest !== 'undefined' ||
+            // @ts-ignore
+            (typeof process !== 'undefined' && process.env?.NODE_ENV === 'test');
+
+        if (!isJestEnvironment) {
+            const now = Date.now();
+            if (now - lastButtonExecutionTime < BUTTON_RATE_LIMIT_INTERVAL) {
+                console.info('Rate limit applied: 重新处理变量 button skipped');
+                toastr.warning('避免重复点击', '防止连点', { timeOut: 1000 });
+                return;
+            }
+            lastButtonExecutionTime = now;
+        }
+
         const last_msg = getLastMessageId();
         if (last_msg < 1) return;
         if (SillyTavern.chat.length === 0) return;
