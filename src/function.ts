@@ -1142,6 +1142,14 @@ export async function updateVariables(
             _.set(delta_status.stat_data!, path, display_str);
         }
     }
+    // 更新变量的显示和增量数据
+    variables.display_data = out_status.stat_data;
+    variables.delta_data = delta_status.stat_data!;
+    // 触发变量更新结束事件
+    await eventEmit(variable_events.VARIABLE_UPDATE_ENDED, variables, out_is_modifed);
+    //在结束事件中也可能设置变量
+    delete variables.stat_data.$internal;
+
     // 在所有命令执行完毕后，如果数据有任何变动，则执行一次 Schema 调和
     if (variable_modified) {
         reconcileAndApplySchema(variables);
@@ -1155,14 +1163,6 @@ export async function updateVariables(
                 { timeOut: 6000 }
             );
     }
-
-    // 更新变量的显示和增量数据
-    variables.display_data = out_status.stat_data;
-    variables.delta_data = delta_status.stat_data!;
-    // 触发变量更新结束事件
-    await eventEmit(variable_events.VARIABLE_UPDATE_ENDED, variables, out_is_modifed);
-    //在结束事件中也可能设置变量
-    delete variables.stat_data.$internal;
 
     // 返回是否修改了变量
     return variable_modified || out_is_modifed;
