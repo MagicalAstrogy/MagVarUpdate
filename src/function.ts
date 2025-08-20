@@ -547,6 +547,7 @@ export async function updateVariables(
     const schema = variables.schema; // 获取 schema，可能为 undefined
     const strict_template = schema?.strictTemplate ?? false;
     const concat_template_array = schema?.concatTemplateArray ?? true;
+    const strict_set = schema?.strictSet ?? false;
 
     for (const command of commands) {
         // 遍历所有命令，逐一处理
@@ -570,7 +571,7 @@ export async function updateVariables(
                 }
 
                 // 获取路径上的旧值，可能为 undefined（路径不存在）
-                const oldValue = _.get(variables.stat_data, path);
+                let oldValue = _.get(variables.stat_data, path);
                 // 支持两种格式：_.set(path, newValue) 或 _.set(path, oldValue, newValue)
                 const newValueStr = command.args.length >= 3 ? command.args[2] : command.args[1];
                 // 解析新值，支持字符串、数字、布尔值、JSON 对象等
@@ -580,8 +581,10 @@ export async function updateVariables(
                 if (newValue instanceof Date) {
                     newValue = newValue.toISOString();
                 }
+                let isPathVWD = false;
 
                 if (
+                    !strict_set &&
                     Array.isArray(oldValue) &&
                     oldValue.length === 2 &&
                     typeof oldValue[1] === 'string' &&
@@ -590,10 +593,13 @@ export async function updateVariables(
                     // 处理 ValueWithDescription<T> 类型，更新数组第一个元素
                     // 仅当旧值为数字且新值不为 null 时，才强制转换为数字
                     // 这允许将数字字段设置为 null (例如角色死亡后好感度变为 null)
+                    const oldValueCopy = _.cloneDeep(oldValue[0]);
                     oldValue[0] =
                         typeof oldValue[0] === 'number' && newValue !== null
                             ? Number(newValue)
                             : newValue;
+                    oldValue = oldValueCopy;
+                    isPathVWD = true;
                 } else if (typeof oldValue === 'number' && newValue !== null) {
                     _.set(variables.stat_data, path, Number(newValue));
                 } else {
@@ -602,10 +608,14 @@ export async function updateVariables(
                 }
 
                 // 获取最终设置的新值，用于日志和事件
-                const finalNewValue = _.get(variables.stat_data, path);
+                let finalNewValue = _.get(variables.stat_data, path);
+                if (isPathVWD) {
+                    finalNewValue = finalNewValue[0];
+                }
 
                 // 检查是否为 ValueWithDescription 类型，以优化显示
-                const isValueWithDescription = Array.isArray(oldValue) && oldValue.length === 2;
+                const isValueWithDescription =
+                    !strict_set && Array.isArray(oldValue) && oldValue.length === 2;
 
                 if (isValueWithDescription && Array.isArray(finalNewValue)) {
                     // 如果是 ValueWithDescription，只显示值的变化

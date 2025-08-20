@@ -93,6 +93,8 @@ export async function initCheck() {
             if (_.has(variables.stat_data, '$meta.concatTemplateArray'))
                 generated_schema.concatTemplateArray = variables.stat_data['$meta']
                     ?.concatTemplateArray as boolean;
+            if (_.has(variables.stat_data, '$meta.strictSet'))
+                generated_schema.strictSet = variables.stat_data['$meta']?.strictSet as boolean;
             variables.schema = generated_schema;
         } else {
             console.error(

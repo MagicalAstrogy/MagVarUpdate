@@ -260,11 +260,16 @@ export function reconcileAndApplySchema(variables: MvuData) {
     if (variables.schema?.strictTemplate !== undefined) {
         newSchemaWithProps.strictTemplate = variables.schema.strictTemplate;
     }
+    if (variables.schema?.strictSet !== undefined) {
+        newSchemaWithProps.strictSet = variables.schema.strictSet;
+    }
     if (variables.schema?.concatTemplateArray !== undefined) {
         newSchemaWithProps.concatTemplateArray = variables.schema.concatTemplateArray;
     }
     if (_.has(variables.stat_data, '$meta.strictTemplate'))
         newSchemaWithProps.strictTemplate = variables.stat_data['$meta']?.strictTemplate as boolean;
+    if (_.has(variables.stat_data, '$meta.strictSet'))
+        newSchemaWithProps.strictSet = variables.stat_data['$meta']?.strictSet as boolean;
     if (_.has(variables.stat_data, '$meta.concatTemplateArray'))
         newSchemaWithProps.concatTemplateArray = variables.stat_data['$meta']
             ?.concatTemplateArray as boolean;

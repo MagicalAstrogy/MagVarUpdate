@@ -74,6 +74,7 @@ export function isPrimitiveSchema(value: SchemaNode): value is PrimitiveSchemaNo
 export type RootAdditionalProps = {
     strictTemplate?: boolean;
     concatTemplateArray?: boolean;
+    strictSet?: boolean;
 };
 
 export type RootAdditionalMetaProps = {
