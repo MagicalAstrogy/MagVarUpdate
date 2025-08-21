@@ -1229,7 +1229,7 @@ export async function handleVariablesInMessage(message_id: number) {
     );
 
     if (chat_message.role !== 'user' && !message_content.includes('<StatusPlaceHolderImpl/>')) {
-        message_content += '<StatusPlaceHolderImpl/>';
+        message_content += '\n\n<StatusPlaceHolderImpl/>';
     }
     await setChatMessages(
         [
