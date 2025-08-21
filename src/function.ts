@@ -1199,7 +1199,7 @@ export async function handleVariablesInMessage(message_id: number) {
         return;
     }
 
-    const message_content = chat_message.message;
+    let message_content = chat_message.message;
     const variables = await getLastValidVariable(message_id);
     if (!_.has(variables, 'stat_data')) {
         console.error(`cannot found stat_data for ${message_id}`);
@@ -1229,18 +1229,19 @@ export async function handleVariablesInMessage(message_id: number) {
     );
 
     if (chat_message.role !== 'user' && !message_content.includes('<StatusPlaceHolderImpl/>')) {
-        await setChatMessages(
-            [
-                {
-                    message_id: message_id,
-                    message: message_content + '\n\n<StatusPlaceHolderImpl/>',
-                },
-            ],
-            {
-                refresh: 'affected',
-            }
-        );
+        message_content += '<StatusPlaceHolderImpl/>';
     }
+    await setChatMessages(
+        [
+            {
+                message_id: message_id,
+                message: message_content,
+            },
+        ],
+        {
+            refresh: 'affected',
+        }
+    );
 }
 
 export async function handleVariablesInCallback(
