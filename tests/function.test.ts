@@ -902,13 +902,21 @@ describe('strictSet feature', () => {
             delta_data: {},
             initialized_lorebooks: {},
         };
+        //因为从$schema 的移动是在 updateVariable 的结尾进行的，所以当次不会奏效
+        //对应于实际场景，就是 initVar。
+        {
+            const messageContent = "_.set('level[0]', 6);//升级";
+            const result = await updateVariables(messageContent, variables);
+            expect(result).toBe(true);
+        }
 
-        const messageContent = "_.set('level', [5, '等级描述'], 6);//升级";
-        const result = await updateVariables(messageContent, variables);
-
-        expect(result).toBe(true);
+        {
+            const messageContent = "_.set('level', [5, '等级描述'], 6);//升级";
+            const result = await updateVariables(messageContent, variables);
+            expect(result).toBe(true);
+        }
         // 从 $meta 读取的 strictSet=true，直接替换
-        expect(variables.stat_data.level).toEqual([6, '等级描述']);
+        expect(variables.stat_data.level).toEqual(6);
     });
 
     test('strictSet=false 保持数组描述不变', async () => {
