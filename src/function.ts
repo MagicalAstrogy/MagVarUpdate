@@ -1228,20 +1228,22 @@ export async function handleVariablesInMessage(message_id: number) {
         { type: 'message', message_id: message_id }
     );
 
-    if (chat_message.role !== 'user' && !message_content.includes('<StatusPlaceHolderImpl/>')) {
-        message_content += '\n\n<StatusPlaceHolderImpl/>';
-    }
-    await setChatMessages(
-        [
-            {
-                message_id: message_id,
-                message: message_content,
-            },
-        ],
-        {
-            refresh: 'affected',
+    if (chat_message.role !== 'user') {
+        if (!message_content.includes('<StatusPlaceHolderImpl/>')) {
+            message_content += '\n\n<StatusPlaceHolderImpl/>';
         }
-    );
+        await setChatMessages(
+            [
+                {
+                    message_id: message_id,
+                    message: message_content,
+                },
+            ],
+            {
+                refresh: 'affected',
+            }
+        );
+    }
 }
 
 export async function handleVariablesInCallback(
