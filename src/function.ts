@@ -1210,9 +1210,14 @@ export async function handleVariablesInMessage(message_id: number) {
     }
 
     let message_content = chat_message.message;
-    const variables = await getLastValidVariable(message_id);
+
+    if (message_content.length < 5)
+        //MESSAGE_RECEIVED会递交一个 "..." 的消息
+        return;
+    const request_message_id = message_id === 0 ? 0 : message_id - 1;
+    const variables = await getLastValidVariable(request_message_id);
     if (!_.has(variables, 'stat_data')) {
-        console.error(`cannot found stat_data for ${message_id}`);
+        console.error(`cannot found stat_data for ${request_message_id}`);
         return;
     }
 
