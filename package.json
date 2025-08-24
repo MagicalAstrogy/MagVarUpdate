@@ -7,7 +7,7 @@
         "build:webpack-example": "webpack -c ./example_src/webpack.config.js",
         "build:dev": "webpack --mode development",
         "build:dts": "tsc -p tsconfig.dts.json",
-        "build": "webpack --mode production && yarn build:dts",
+        "build": "webpack --mode production && yarn build:dts && npx typescript-json-schema src/variable_def.ts \"InitVarType\" --topRef --aliasRefs > dist/stat-data-schema.json",
         "watch": "webpack --mode development --watch --progress",
         "lint": "eslint . --ext .ts,.tsx,.js,.jsx",
         "lint:fix": "eslint . --ext .ts,.tsx,.js,.jsx --fix",
@@ -72,6 +72,7 @@
         "tsconfig-paths-webpack-plugin": "^4.2.0",
         "tslib": "^2.8.1",
         "typescript": "^5.8.3",
+        "typescript-json-schema": "^0.65.1",
         "webpack": "^5.99.8",
         "webpack-cli": "^5.1.4"
     }

@@ -1,8 +1,16 @@
-import { variable_events, VariableData, MvuData, TemplateType } from '@/variable_def';
+import {
+    variable_events,
+    VariableData,
+    MvuData,
+    TemplateType,
+    assertVWD,
+    isArraySchema,
+    isObjectSchema,
+    isValueWithDescriptionStatData,
+} from '@/variable_def';
 import * as math from 'mathjs';
 
 import { getSchemaForPath, reconcileAndApplySchema } from '@/schema';
-import { isArraySchema, isObjectSchema } from '@/variable_def';
 import { GetSettings } from '@/settings';
 
 export function trimQuotesAndBackslashes(str: string): string {
@@ -609,15 +617,21 @@ export async function updateVariables(
 
                 // 获取最终设置的新值，用于日志和事件
                 let finalNewValue = _.get(variables.stat_data, path);
+
+                assertVWD(isPathVWD, finalNewValue);
+
                 if (isPathVWD) {
                     finalNewValue = finalNewValue[0];
                 }
 
                 // 检查是否为 ValueWithDescription 类型，以优化显示
-                const isValueWithDescription =
-                    !strict_set && Array.isArray(oldValue) && oldValue.length === 2;
+                const isStrict = !strict_set;
 
-                if (isValueWithDescription && Array.isArray(finalNewValue)) {
+                if (
+                    isStrict &&
+                    isValueWithDescriptionStatData(oldValue) &&
+                    Array.isArray(finalNewValue)
+                ) {
                     // 如果是 ValueWithDescription，只显示值的变化
                     display_str = `${trimQuotesAndBackslashes(JSON.stringify(oldValue[0]))}->${trimQuotesAndBackslashes(JSON.stringify(finalNewValue[0]))} ${reason_str}`;
                 } else {
@@ -1033,12 +1047,11 @@ export async function updateVariables(
                 const initialValue = _.cloneDeep(_.get(variables.stat_data, path));
                 const oldValue = _.get(variables.stat_data, path);
                 let valueToAdd = oldValue;
-                const isValueWithDescription =
-                    Array.isArray(oldValue) &&
-                    oldValue.length === 2 &&
-                    typeof oldValue[0] !== 'object';
+                const isVWD =
+                    isValueWithDescriptionStatData(oldValue) && typeof oldValue[0] !== 'object';
 
-                if (isValueWithDescription) {
+                if (isVWD) {
+                    assertVWD(isVWD, oldValue);
                     valueToAdd = oldValue[0]; // 对 ValueWithDescription 类型，操作其第一个元素
                 }
                 // console.warn(valueToAdd);
@@ -1072,7 +1085,8 @@ export async function updateVariables(
                         // 总是将更新后的 Date 对象转换为 ISO 字符串再存回去
                         const finalValueToSet = newDate.toISOString();
 
-                        if (isValueWithDescription) {
+                        if (isVWD) {
+                            assertVWD(isVWD, oldValue);
                             oldValue[0] = finalValueToSet;
                             _.set(variables.stat_data, path, oldValue);
                         } else {
@@ -1080,7 +1094,7 @@ export async function updateVariables(
                         }
 
                         const finalNewValue = _.get(variables.stat_data, path);
-                        if (isValueWithDescription) {
+                        if (isVWD) {
                             display_str = `${JSON.stringify((initialValue as any[])[0])}->${JSON.stringify((finalNewValue as any[])[0])} ${reason_str}`;
                         } else {
                             display_str = `${JSON.stringify(initialValue)}->${JSON.stringify(finalNewValue)} ${reason_str}`;
@@ -1106,14 +1120,14 @@ export async function updateVariables(
                         }
                         let newValue = valueToAdd + delta;
                         newValue = parseFloat(newValue.toPrecision(12)); // 避免浮点数精度误差
-                        if (isValueWithDescription) {
+                        if (isVWD) {
                             oldValue[0] = newValue; // Update the first element
                             _.set(variables.stat_data, path, oldValue);
                         } else {
                             _.set(variables.stat_data, path, newValue);
                         }
                         const finalNewValue = _.get(variables.stat_data, path);
-                        if (isValueWithDescription) {
+                        if (isVWD) {
                             display_str = `${JSON.stringify((initialValue as any[])[0])}->${JSON.stringify((finalNewValue as any[])[0])} ${reason_str}`;
                         } else {
                             display_str = `${JSON.stringify(initialValue)}->${JSON.stringify(finalNewValue)} ${reason_str}`;

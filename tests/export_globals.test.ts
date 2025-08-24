@@ -13,7 +13,9 @@ jest.mock('@/variable_init', () => ({
     loadInitVarData: jest.fn(),
 }));
 
-const mockHandleVariablesInCallback = handleVariablesInCallback as jest.MockedFunction<typeof handleVariablesInCallback>;
+const mockHandleVariablesInCallback = handleVariablesInCallback as jest.MockedFunction<
+    typeof handleVariablesInCallback
+>;
 const mockUpdateVariable = updateVariable as jest.MockedFunction<typeof updateVariable>;
 const mockLoadInitVarData = loadInitVarData as jest.MockedFunction<typeof loadInitVarData>;
 
@@ -48,7 +50,7 @@ describe('exportGlobals', () => {
         (global as any).getCurrentMessageId = mockGetCurrentMessageId;
 
         mockMvuData = {
-            initialized_lorebooks: {lorebook1: [], lorebook2: []},
+            initialized_lorebooks: { lorebook1: [], lorebook2: [] },
             stat_data: {
                 health: 100,
                 mana: 50,
@@ -117,7 +119,10 @@ describe('exportGlobals', () => {
 
     describe('parseMessage', () => {
         test('should handle variables callback and return new variables', async () => {
-            const newMvuData = { ...mockMvuData, stat_data: { ...mockMvuData.stat_data, health: 90 } };
+            const newMvuData: MvuData = {
+                ...mockMvuData,
+                stat_data: { ...mockMvuData.stat_data, health: 90 } as MvuData['stat_data'],
+            };
 
             mockHandleVariablesInCallback.mockImplementation(async (_message, variableData) => {
                 variableData.new_variables = newMvuData;

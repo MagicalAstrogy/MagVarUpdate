@@ -659,7 +659,7 @@ describe('高等数学与高级运算测试', () => {
         test.each(allCombinations)(
             '使用 %s 插入后用 %s 删除（综合测试）',
             async (assignCommand, removeCommand) => {
-                const variables: MvuData = {
+                const variables = {
                     initialized_lorebooks: {},
                     stat_data: {
                         player: {
@@ -689,7 +689,7 @@ describe('高等数学与高级运算测试', () => {
                             },
                         },
                     },
-                };
+                } satisfies MvuData;
 
                 // 使用不同的 assign 别名添加多个元素
                 await updateVariables(
@@ -717,7 +717,7 @@ describe('高等数学与高级运算测试', () => {
         );
 
         test('混合使用所有别名进行复杂操作', async () => {
-            const variables: MvuData = {
+            const variables = {
                 initialized_lorebooks: {},
                 stat_data: {
                     game: {
@@ -753,7 +753,7 @@ describe('高等数学与高级运算测试', () => {
                         },
                     },
                 },
-            };
+            } satisfies MvuData;
 
             // 使用各种 assign 别名添加元素
             await updateVariables(

@@ -253,7 +253,7 @@ function createMVU() {
             const value = _.get(data, path, default_value);
 
             /* 如果是 VWD，取第一个元素 */
-            if (isValueWithDescription<any>(value)) {
+            if (isValueWithDescription(value)) {
                 return value[0];
             }
 

@@ -6,7 +6,7 @@ import {
     updateVariables,
     handleVariablesInMessage,
 } from '@/function';
-import { MvuData, VariableData } from '@/variable_def';
+import { assertVWD, MvuData, VariableData } from '@/variable_def';
 import _ from 'lodash';
 
 describe('parseParameters', () => {
@@ -859,6 +859,7 @@ describe('strictSet feature', () => {
 
         expect(result).toBe(true);
         // strictSet=true 时，直接替换整个值
+        assertVWD(true, variables.stat_data.health);
         expect(variables.stat_data.health[0]).toBe(140);
         expect(variables.stat_data.health[1]).toBe('生命值喵');
     });

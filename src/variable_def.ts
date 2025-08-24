@@ -10,12 +10,14 @@ export type StatDataMeta = {
     [key: string]: unknown;
 };
 
+export type JSONPrimitive = string | number | boolean | null;
+
 // StatData 类型定义 - 支持嵌套对象和数组，可以有 $meta 属性
 export type StatData = {
-    [key: string]: StatData | any | StatData[];
+    [key: string]: StatData | JSONPrimitive | (StatData | JSONPrimitive)[];
 } & {
     $meta?: StatDataMeta;
-    $$arrayMeta?: boolean;
+    $arrayMeta?: boolean;
 };
 
 // Schema 节点类型定义
@@ -49,7 +51,18 @@ export type PrimitiveSchemaNode = {
 // ValueWithDescription 类型 - 用于表示带描述的值
 export type ValueWithDescription<T> = [T, string];
 
-export function isValueWithDescription<T>(value: unknown): value is ValueWithDescription<T> {
+export function assertVWD(
+    _flag: boolean,
+    _v: StatData | JSONPrimitive | (StatData | JSONPrimitive)[]
+): asserts _v is ValueWithDescription<StatData | JSONPrimitive> {}
+
+export function isValueWithDescription(value: unknown): boolean {
+    return Array.isArray(value) && value.length === 2 && typeof value[1] === 'string';
+}
+
+export function isValueWithDescriptionStatData(
+    value: StatData | JSONPrimitive | (StatData | JSONPrimitive)[]
+): value is ValueWithDescription<StatData | JSONPrimitive> {
     return Array.isArray(value) && value.length === 2 && typeof value[1] === 'string';
 }
 
@@ -142,7 +155,7 @@ export const variable_events = {
 export const exported_events = {
     INVOKE_MVU_PROCESS: 'mag_invoke_mvu',
     UPDATE_VARIABLE: 'mag_update_variable',
-};
+} as const;
 
 export type InternalData = {
     display_data: Record<string, any>;
@@ -173,6 +186,8 @@ export type ExtendedListenerType = {
         isRecursive: boolean
     ) => void;
 };
+
+export type InitVarType = StatData & RootAdditionalMetaProps;
 
 export type DataCategory = 'stat' | 'display' | 'delta';
 
