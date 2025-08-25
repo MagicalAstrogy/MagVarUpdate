@@ -2,8 +2,8 @@
 import { updateVariables } from '@/function';
 import { MvuData, isObjectSchema, RootAdditionalProps, SchemaNode } from '@/variable_def';
 import { cleanUpMetadata, EXTENSIBLE_MARKER, generateSchema } from '@/schema';
-import * as JSON5 from 'json5';
-import * as TOML from 'toml';
+import JSON5 from 'json5';
+import TOML from 'toml';
 
 type LorebookEntry = {
     content: string;
