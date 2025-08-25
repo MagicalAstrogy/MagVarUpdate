@@ -1,8 +1,8 @@
 // 整体游戏数据类型
 import { updateVariables } from '@/function';
 import { MvuData } from '@/variable_def';
-import * as JSON5 from 'json5';
-import * as TOML from 'toml';
+import JSON5 from 'json5';
+import TOML from 'toml';
 
 type LorebookEntry = {
     content: string;
