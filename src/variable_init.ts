@@ -1,5 +1,5 @@
 // 整体游戏数据类型
-import { updateVariables } from '@/function';
+import { getLastValidVariable, updateVariables } from '@/function';
 import { MvuData, isObjectSchema, RootAdditionalProps, SchemaNode } from '@/variable_def';
 import { cleanUpMetadata, EXTENSIBLE_MARKER, generateSchema } from '@/schema';
 import JSON5 from 'json5';
@@ -17,7 +17,8 @@ export async function initCheck() {
     try {
         const result = await getLastMessageVariables();
         last_msg = result.message;
-        variables = result.variables ?? createEmptyGameData();
+        variables =
+            (await getLastValidVariable(result.message.message_id)) ?? createEmptyGameData();
     } catch (e) {
         console.error('不存在任何一条消息，退出');
         return;
@@ -125,6 +126,15 @@ export async function initCheck() {
             refresh: 'none',
             swipe_id: i,
         });
+    }
+    try {
+        // 输出构建信息
+        toastr.info(
+            `有新的世界书初始化变量被加载，当前使用世界书: ${JSON.stringify(variables.initialized_lorebooks)}`,
+            '变量初始化成功'
+        );
+    } catch (_e) {
+        /* empty */
     }
 
     // 更新 lorebook 设置

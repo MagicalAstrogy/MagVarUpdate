@@ -9,11 +9,13 @@ export type StringBoolean = string | LocalizedBooleanTrue | LocalizedBooleanFals
 
 export type MvuSettings = {
     是否显示变量更新错误: StringBoolean;
+    构建信息: string;
 };
 
 //存储所有变量的默认值，需要设置默认值的时候可以 _.merge({}, DefaultSetting, 原始内容)
 const DefaultSetting: MvuSettings = {
     是否显示变量更新错误: '是',
+    构建信息: '未知',
 };
 
 const variable_option = {
@@ -61,6 +63,14 @@ function FallbackStringBoolean(settings: Record<string, any>) {
     }
 }
 
+function updateVersionInfo(settings: MvuSettings) {
+    try {
+        settings.构建信息 = `${__BUILD_DATE__ ?? 'Unknown'} (${__COMMIT_ID__ ?? 'Unknown'})`;
+    } catch (e) {
+        /* empty */
+    }
+}
+
 /**
  * 获取变量配置，并进行检查。
  * 补齐缺失的变量，将已有的变量进行退化。
@@ -75,6 +85,7 @@ export async function GetSettings(): Promise<MvuSettings> {
 
         // 对StringBoolean类型进行退化处理
         FallbackStringBoolean(mergedSettings);
+        updateVersionInfo(mergedSettings);
 
         // 保存更新后的设置
         await replaceVariables(mergedSettings, variable_option);
@@ -86,6 +97,7 @@ export async function GetSettings(): Promise<MvuSettings> {
 
     // 对StringBoolean类型进行退化处理
     FallbackStringBoolean(mergedSettings);
+    updateVersionInfo(mergedSettings);
 
     // 如果有任何变化，保存设置
     if (!_.isEqual(settings, mergedSettings)) {

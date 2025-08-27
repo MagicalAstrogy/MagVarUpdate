@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import url from 'node:url';
+import { execSync } from 'node:child_process';
 import { Server } from 'socket.io';
 import TerserPlugin from 'terser-webpack-plugin';
 import TsconfigPathsPlugin from 'tsconfig-paths-webpack-plugin';
@@ -33,6 +34,15 @@ function watch_it(compiler: webpack.Compiler) {
 }
 
 function config(_env: any, argv: any) {
+    // 获取构建时常量
+    const buildDate = new Date().toISOString();
+    let commitId = 'unknown';
+    try {
+        commitId = execSync('git rev-parse --short HEAD', { encoding: 'utf-8' }).trim();
+    } catch (error) {
+        console.warn('无法获取 Git commit ID:', error);
+    }
+
     return {
         experiments: {
             outputModule: true,
@@ -74,7 +84,13 @@ function config(_env: any, argv: any) {
             ],
             alias: {},
         },
-        plugins: [{ apply: watch_it }],
+        plugins: [
+            { apply: watch_it },
+            new webpack.DefinePlugin({
+                __BUILD_DATE__: JSON.stringify(buildDate),
+                __COMMIT_ID__: JSON.stringify(commitId),
+            }),
+        ],
         optimization: {
             minimize: true,
             minimizer: [

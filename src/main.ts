@@ -25,6 +25,11 @@ $(async () => {
     }
 
     try {
+        // 输出构建信息
+        toastr.info(
+            `构建信息: ${__BUILD_DATE__ ?? 'Unknown'} (${__COMMIT_ID__ ?? 'Unknown'})`,
+            'MVU加载成功'
+        );
         const version = await getTavernHelperVersion();
         if (compare(version, '3.2.13', '<')) {
             toastr.warning(
