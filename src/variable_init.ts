@@ -130,7 +130,7 @@ export async function initCheck() {
     try {
         // 输出构建信息
         toastr.info(
-            `有新的世界书初始化变量被加载，当前使用世界书: ${JSON.stringify(variables.initialized_lorebooks)}`,
+            `有新的世界书初始化变量被加载，当前使用世界书: ${YAML.stringify(variables.initialized_lorebooks)}`,
             '变量初始化成功'
         );
     } catch (_e) {
