@@ -93,16 +93,12 @@ export function registerButtons() {
             toastr.error(`请输入有效的楼层数, 你输入的是 '${result}'`, '清理旧楼层变量失败');
             return;
         }
-        SillyTavern.chat
-            .slice(0, -depth)
-            .forEach(chat_message =>
-                _(chat_message)
-                    .unset('variables.stat_data')
-                    .unset('variables.display_data')
-                    .unset('variables.delta_data')
-                    .unset('variables.schema')
-                    .value()
-            );
+        SillyTavern.chat.slice(0, -depth).forEach(chat_message => {
+            _.unset(chat_message, `variables[${chat_message.swipe_id ?? 0}].stat_data`);
+            _.unset(chat_message, `variables[${chat_message.swipe_id ?? 0}].display_data`);
+            _.unset(chat_message, `variables[${chat_message.swipe_id ?? 0}].delta_data`);
+            _.unset(chat_message, `variables[${chat_message.swipe_id ?? 0}].schema`);
+        });
         SillyTavern.saveChat().then(() =>
             toastr.success(`已清理旧变量, 保留了最后 ${depth} 层的变量`, '清理旧楼层变量成功')
         );
