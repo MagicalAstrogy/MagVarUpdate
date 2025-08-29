@@ -94,10 +94,13 @@ export function registerButtons() {
             return;
         }
         SillyTavern.chat.slice(0, -depth).forEach(chat_message => {
-            _.unset(chat_message, `variables[${chat_message.swipe_id ?? 0}].stat_data`);
-            _.unset(chat_message, `variables[${chat_message.swipe_id ?? 0}].display_data`);
-            _.unset(chat_message, `variables[${chat_message.swipe_id ?? 0}].delta_data`);
-            _.unset(chat_message, `variables[${chat_message.swipe_id ?? 0}].schema`);
+            if (chat_message.variables === undefined) return;
+            chat_message.variables.forEach(variable => {
+                _.unset(variable, `stat_data`);
+                _.unset(variable, `display_data`);
+                _.unset(variable, `delta_data`);
+                _.unset(variable, `schema`);
+            });
         });
         SillyTavern.saveChat().then(() =>
             toastr.success(`已清理旧变量, 保留了最后 ${depth} 层的变量`, '清理旧楼层变量成功')
