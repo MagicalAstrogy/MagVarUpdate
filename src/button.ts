@@ -2,7 +2,7 @@ import { getLastValidVariable, handleVariablesInMessage } from '@/function';
 import { updateDescriptions } from '@/update_descriptions';
 import { createEmptyGameData, loadInitVarData } from '@/variable_init';
 
-const buttons = ['重新处理变量', '重新读取初始变量'];
+const buttons = ['重新处理变量', '重新读取初始变量', '清除旧楼层变量'];
 
 function addButtons() {
     const current_buttons = getScriptButtons(getScriptId());
@@ -77,5 +77,34 @@ export function registerButtons() {
 
         console.info('InitVar更新完成');
         toastr.success('InitVar描述已更新', '', { timeOut: 3000 });
+    });
+
+    eventOnButton('清除旧楼层变量', async function () {
+        const result = (await SillyTavern.callGenericPopup(
+            '<h4>清除旧楼层变量信息以减小聊天文件大小避免手机崩溃</h4>请填写要保留变量信息的楼层数 (如 10 为保留最后 10 层)<br><strong>注意: 你将不能正常回退游玩到没保留变量信息的楼层</strong>',
+            SillyTavern.POPUP_TYPE.INPUT,
+            '10'
+        )) as string | undefined;
+        if (!result) {
+            return;
+        }
+        const depth = parseInt(result);
+        if (isNaN(depth)) {
+            toastr.error(`请输入有效的楼层数, 你输入的是 '${result}'`, '清理旧楼层变量失败');
+            return;
+        }
+        SillyTavern.chat
+            .slice(0, -depth)
+            .forEach(chat_message =>
+                _(chat_message)
+                    .unset('variables.stat_data')
+                    .unset('variables.display_data')
+                    .unset('variables.delta_data')
+                    .unset('variables.schema')
+                    .value()
+            );
+        SillyTavern.saveChat().then(() =>
+            toastr.success(`已清理旧变量, 保留了最后 ${depth} 层的变量`, '清理旧楼层变量成功')
+        );
     });
 }
