@@ -243,10 +243,10 @@ function createMVU() {
                     data = mvu_data.stat_data;
                     break;
                 case 'display':
-                    data = mvu_data.display_data;
+                    data = mvu_data.display_data!;
                     break;
                 case 'delta':
-                    data = mvu_data.delta_data;
+                    data = mvu_data.delta_data!;
                     break;
             }
 

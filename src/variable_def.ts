@@ -198,10 +198,10 @@ export function extractRecord(category: 'stat' | 'display' | 'delta', game_data:
             data = game_data.stat_data;
             break;
         case 'display':
-            data = game_data.display_data;
+            data = game_data.display_data!;
             break;
         case 'delta':
-            data = game_data.delta_data;
+            data = game_data.delta_data!;
             break;
     }
     return data;
