@@ -67,6 +67,13 @@ async function reloadInit() {
     const merged_data: Record<string, any> = { stat_data: undefined, schema: undefined };
     merged_data.stat_data = _.merge({}, latest_init_data.stat_data, latest_msg_data.stat_data);
     merged_data.schema = _.merge({}, latest_msg_data.schema, latest_init_data.schema);
+    merged_data.initialized_lorebooks = _.merge(
+        {},
+        latest_init_data.initialized_lorebooks,
+        latest_msg_data.initialized_lorebooks
+    );
+    merged_data.display_data = structuredClone(merged_data.stat_data);
+    merged_data.delta_data = latest_msg_data.delta_data;
 
     // 4-5. 遍历并更新描述字段
     updateDescriptions(
