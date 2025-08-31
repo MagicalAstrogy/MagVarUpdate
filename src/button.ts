@@ -2,6 +2,7 @@ import { getLastValidVariable, handleVariablesInMessage } from '@/function';
 import { updateDescriptions } from '@/update_descriptions';
 import { createEmptyGameData, loadInitVarData } from '@/variable_init';
 import { cleanUpMetadata, reconcileAndApplySchema } from '@/schema';
+import { MvuData } from '@/variable_def';
 
 const buttons = ['重新处理变量', '重新读取初始变量', '清除旧楼层变量'];
 
@@ -65,6 +66,9 @@ export function registerButtons() {
             console.error('加载 InitVar 数据失败:', e);
             return;
         }
+        await reconcileAndApplySchema(latest_init_data);
+
+        cleanUpMetadata(latest_init_data.stat_data);
 
         // 2. 从最新楼层获取最新变量
         const message_id = getLastMessageId();
@@ -84,8 +88,9 @@ export function registerButtons() {
 
         // 3. 产生新变量，以 latest_init_data 为基础，合并入 latest_msg_data 的内容
         //此处 latest_init_data 内不存在复杂类型，因此可以采用 structuredClone
-        const merged_data = structuredClone(latest_init_data);
-        merged_data.stat_data = _.merge(merged_data.stat_data, latest_msg_data.stat_data);
+        const merged_data: Record<string, any> = { stat_data: undefined, schema: undefined };
+        merged_data.stat_data = _.merge({}, latest_init_data.stat_data, latest_msg_data.stat_data);
+        merged_data.schema = _.merge({}, latest_msg_data.schema, latest_init_data.schema);
 
         // 4-5. 遍历并更新描述字段
         updateDescriptions(
@@ -96,7 +101,7 @@ export function registerButtons() {
         );
 
         //应用
-        await reconcileAndApplySchema(merged_data);
+        await reconcileAndApplySchema(merged_data as MvuData);
 
         cleanUpMetadata(merged_data.stat_data);
 
