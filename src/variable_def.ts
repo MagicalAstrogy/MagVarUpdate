@@ -98,7 +98,7 @@ export type MvuData = {
     // initialized_lorebooks 从字符串列表变为记录对象
     // 这样可以为每个知识库存储元数据，例如初始化的标记变量
     /** 已初始化的 lorebook 列表 */
-    initialized_lorebooks: Record<string, any[]>;
+    initialized_lorebooks?: Record<string, any[]>;
 
     /**
      * 状态数据 - 存储实际的变量值
@@ -121,7 +121,7 @@ export type MvuData = {
      * 更新时机：每次 stat_data 中的值发生变化时同步更新
      * 用途：在UI中展示变量的变化历史，让用户了解数值是如何变化的
      */
-    display_data: Record<string, any>;
+    display_data?: Record<string, any>;
 
     /**
      * 增量数据 - 存储本次更新中发生变化的变量
@@ -134,7 +134,7 @@ export type MvuData = {
      *
      * 用途：仅显示当前消息/操作中实际发生变化的变量，而不是所有历史变化
      */
-    delta_data: Record<string, any>;
+    delta_data?: Record<string, any>;
     // 用于存储数据结构的模式
     schema?: ObjectSchemaNode & Partial<RootAdditionalProps>;
 };
