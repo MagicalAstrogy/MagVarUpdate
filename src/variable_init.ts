@@ -11,14 +11,15 @@ type LorebookEntry = {
 };
 
 export async function initCheck() {
-    let last_msg: ChatMessageSwiped;
     let variables: MvuData & Record<string, any>;
+    //这个函数需要处理 dryRun,因为0层。
 
     try {
-        const result = await getLastMessageVariables();
-        last_msg = result.message;
-        variables =
-            (await getLastValidVariable(result.message.message_id)) ?? createEmptyGameData();
+        if (SillyTavern.chat.length === 0) {
+            console.error('不存在任何一条消息，退出');
+            return;
+        }
+        variables = (await getLastValidVariable(getLastMessageId())) ?? createEmptyGameData();
     } catch (e) {
         console.error('不存在任何一条消息，退出');
         return;
@@ -82,9 +83,13 @@ export async function initCheck() {
     // 在所有 lorebook 初始化完成后，生成最终的模式
     if (is_updated || !variables.schema || _.isEmpty(variables.schema)) {
         // 1. 克隆数据用于 Schema 生成
-        const dataForSchema = _.cloneDeep(variables.stat_data);
+        const dataForSchema = structuredClone(variables.stat_data);
         // 2. generateSchema 会读取并移除克隆体中的标记，生成正确的 schema
-        const generated_schema: SchemaNode & RootAdditionalProps = generateSchema(dataForSchema);
+        // 对于增量场景，会以之前的 schema 为基础生成。
+        const generated_schema: SchemaNode & RootAdditionalProps = generateSchema(
+            dataForSchema,
+            variables.schema
+        );
 
         // 使用类型守卫确保生成的 schema 是 ObjectSchemaNode
         if (isObjectSchema(generated_schema)) {
@@ -114,17 +119,26 @@ export async function initCheck() {
     console.info(`Init chat variables.`);
     await insertOrAssignVariables(variables);
 
-    // 更新所有 swipes
-    for (let i = 0; i < last_msg.swipes.length; i++) {
-        const current_swipe_data = _.cloneDeep(variables);
-        // 此处调用的是新版 updateVariables，它将支持更多命令
-        // 不再需要手动调用 substitudeMacros，updateVariables 会处理
-        await updateVariables(last_msg.swipes[i], current_swipe_data);
-        //新版本这个接口给deprecated了，但是新版本的接口不好用，先这样
+    if (getLastMessageId() == 0) {
+        const last_msg = SillyTavern.chat[0];
+        // 更新所有 swipes
+        for (let i = 0; i < last_msg.swipes!.length; i++) {
+            const current_swipe_data = structuredClone(variables);
+            // 此处调用的是新版 updateVariables，它将支持更多命令
+            // 不再需要手动调用 substitudeMacros，updateVariables 会处理
+            await updateVariables(last_msg.swipes![i], current_swipe_data);
+            //新版本这个接口给deprecated了，但是新版本的接口不好用，先这样
+            //@ts-ignore
+            await setChatMessage({ data: current_swipe_data }, last_msg.message_id, {
+                refresh: 'none',
+                swipe_id: i,
+            });
+        }
+    } else {
+        //非开局直接更新到最后一条user即可，也并不需要重新结算当前的变量
         //@ts-ignore
-        await setChatMessage({ data: current_swipe_data }, last_msg.message_id, {
+        await setChatMessage({ data: variables }, getLastMessageId(), {
             refresh: 'none',
-            swipe_id: i,
         });
     }
     try {
