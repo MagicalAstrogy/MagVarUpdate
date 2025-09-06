@@ -135,7 +135,7 @@ export async function initCheck() {
             });
         }
     } else {
-        //非开局直接更新到最后一条user即可，也并不需要重新结算当前的变量
+        //非开局直接更新到最后一条即可，也并不需要重新结算当前的变量
         //@ts-ignore
         await setChatMessage({ data: variables }, getLastMessageId(), {
             refresh: 'none',
