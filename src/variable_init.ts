@@ -122,24 +122,26 @@ export async function initCheck() {
     if (getLastMessageId() == 0) {
         const last_msg = SillyTavern.chat[0];
         // 更新所有 swipes
-        for (let i = 0; i < last_msg.swipes!.length; i++) {
-            const current_swipe_data = structuredClone(variables);
-            // 此处调用的是新版 updateVariables，它将支持更多命令
-            // 不再需要手动调用 substitudeMacros，updateVariables 会处理
-            await updateVariables(last_msg.swipes![i], current_swipe_data);
-            //新版本这个接口给deprecated了，但是新版本的接口不好用，先这样
-            //@ts-ignore
-            await setChatMessage({ data: current_swipe_data }, last_msg.message_id, {
-                refresh: 'none',
-                swipe_id: i,
-            });
+        if (last_msg.swipes !== null) {
+            await setChatMessages([
+                {
+                    message_id: last_msg.message_id,
+                    swipes_data: await Promise.all(
+                        last_msg.swipes!.map(async swipe => {
+                            const current_data = structuredClone(variables);
+                            // 此处调用的是新版 updateVariables，它将支持更多命令
+                            // 不再需要手动调用 substitudeMacros，updateVariables 会处理
+                            await updateVariables(swipe, current_data);
+                            return current_data;
+                        })
+                    ),
+                },
+            ]);
         }
     } else {
         //非开局直接更新到最后一条即可，也并不需要重新结算当前的变量
         //@ts-ignore
-        await setChatMessage({ data: variables }, getLastMessageId(), {
-            refresh: 'none',
-        });
+        await setChatMessage({ data: variables }, getLastMessageId());
     }
     try {
         // 输出构建信息
