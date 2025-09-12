@@ -190,17 +190,19 @@ export async function initCheck() {
     console.info(`Init chat variables.`);
     await insertOrAssignVariables(variables);
 
-    // 更新所有 swipes
-    for (let i = 0; i < last_msg.swipes.length; i++) {
-        const current_swipe_data = _.cloneDeep(variables);
-        await updateVariables(substitudeMacros(last_msg.swipes[i]), current_swipe_data);
-        //新版本这个接口给deprecated了，但是新版本的接口不好用，先这样
-        //@ts-ignore
-        await setChatMessage({ data: current_swipe_data }, last_msg.message_id, {
-            refresh: 'none',
-            swipe_id: i,
-        });
-    }
+    // 哪里不好用了
+    await setChatMessages([
+        {
+            message_id: last_msg.message_id,
+            swipes_data: await Promise.all(
+                last_msg.swipes.map(async swipe => {
+                    const current_data = _.cloneDeep(variables);
+                    await updateVariables(substitudeMacros(swipe), current_data);
+                    return current_data;
+                })
+            ),
+        },
+    ]);
 
     // 更新 lorebook 设置
     await updateLorebookSettings();
