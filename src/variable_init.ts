@@ -125,7 +125,8 @@ export async function initCheck() {
         if (last_msg.swipes !== null) {
             await setChatMessages([
                 {
-                    message_id: last_msg.message_id,
+                    // last_msg 不一定存在 message_id
+                    message_id: 0,
                     swipes_data: await Promise.all(
                         last_msg.swipes!.map(async swipe => {
                             const current_data = structuredClone(variables);

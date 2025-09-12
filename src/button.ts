@@ -89,9 +89,10 @@ async function reloadInit() {
     cleanUpMetadata(merged_data.stat_data);
 
     // 6. 更新变量到最新消息
+    await replaceVariables(merged_data, { type: 'message', message_id: message_id });
 
     //@ts-ignore
-    await setChatMessage({ data: merged_data }, message_id);
+    await setChatMessage({}, message_id);
 
     await replaceVariables(merged_data, { type: 'chat' });
 
