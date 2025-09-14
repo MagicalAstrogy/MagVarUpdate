@@ -17,6 +17,7 @@ export async function initCheck() {
     try {
         if (SillyTavern.chat.length === 0) {
             console.error('不存在任何一条消息，退出');
+            toastr.error(`无开场白，无法进行初始化`, '变量初始化失败');
             return;
         }
         variables = (await getLastValidVariable(getLastMessageId())) ?? createEmptyGameData();
@@ -122,23 +123,21 @@ export async function initCheck() {
     if (getLastMessageId() == 0) {
         const last_msg = getChatMessages(0, { include_swipes: true })[0];
         // 更新所有 swipes
-        if (last_msg.swipes !== undefined) {
-            await setChatMessages([
-                {
-                    // last_msg 不一定存在 message_id
-                    message_id: 0,
-                    swipes_data: await Promise.all(
-                        last_msg.swipes!.map(async swipe => {
-                            const current_data = structuredClone(variables);
-                            // 此处调用的是新版 updateVariables，它将支持更多命令
-                            // 不再需要手动调用 substitudeMacros，updateVariables 会处理
-                            await updateVariables(swipe, current_data);
-                            return current_data;
-                        })
-                    ),
-                },
-            ]);
-        }
+        await setChatMessages([
+            {
+                // last_msg 不一定存在 message_id
+                message_id: 0,
+                swipes_data: await Promise.all(
+                    last_msg.swipes!.map(async swipe => {
+                        const current_data = structuredClone(variables);
+                        // 此处调用的是新版 updateVariables，它将支持更多命令
+                        // 不再需要手动调用 substitudeMacros，updateVariables 会处理
+                        await updateVariables(swipe, current_data);
+                        return current_data;
+                    })
+                ),
+            },
+        ]);
     } else {
         //非开局直接更新到最后一条即可，也并不需要重新结算当前的变量
         //@ts-ignore
