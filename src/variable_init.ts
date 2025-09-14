@@ -133,6 +133,7 @@ export async function initCheck() {
                         // 此处调用的是新版 updateVariables，它将支持更多命令
                         // 不再需要手动调用 substitudeMacros，updateVariables 会处理
                         await updateVariables(swipe, current_data);
+                        console.log(`变量初始化完成`);
                         return current_data;
                     })
                 ),
