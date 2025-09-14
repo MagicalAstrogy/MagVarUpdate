@@ -122,7 +122,7 @@ export async function initCheck() {
     if (getLastMessageId() == 0) {
         const last_msg = SillyTavern.chat[0];
         // 更新所有 swipes
-        if (last_msg.swipes !== null) {
+        if (last_msg.swipes !== undefined) {
             await setChatMessages([
                 {
                     // last_msg 不一定存在 message_id
@@ -138,6 +138,13 @@ export async function initCheck() {
                     ),
                 },
             ]);
+        } else {
+            const current_data = structuredClone(variables);
+            // 此处调用的是新版 updateVariables，它将支持更多命令
+            // 不再需要手动调用 substitudeMacros，updateVariables 会处理
+            await updateVariables(last_msg.mes, current_data);
+            //@ts-ignore
+            await setChatMessage({ data: current_data }, 0);
         }
     } else {
         //非开局直接更新到最后一条即可，也并不需要重新结算当前的变量
