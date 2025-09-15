@@ -296,4 +296,5 @@ export function exportGlobals() {
     const mvu = createMVU();
     _.set(window, 'Mvu', mvu);
     _.set(window.parent, 'Mvu', mvu);
+    eventEmit('global_Mvu_initialized');
 }
