@@ -188,9 +188,8 @@ export async function initCheck() {
     }
 
     console.info(`Init chat variables.`);
-    await insertOrAssignVariables(variables);
+    await updateVariablesWith(data => _.assign(data, variables));
 
-    // 哪里不好用了
     await setChatMessages([
         {
             message_id: last_msg.message_id,
