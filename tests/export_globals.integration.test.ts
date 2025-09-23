@@ -15,10 +15,10 @@ describe('export_globals integration test - Variable Update with display_data an
 
     beforeEach(() => {
         originalWindow = global.window;
-        //@ts-ignore
+        // @ts-expect-error window
         global.window = {
             parent: {} as any,
-            Mvu: undefined as MVU | undefined
+            Mvu: undefined as MVU | undefined,
         } as any;
 
         global._ = _;
@@ -28,14 +28,14 @@ describe('export_globals integration test - Variable Update with display_data an
 
         // Export globals to create Mvu object
         exportGlobals();
-        //@ts-ignore
+        // @ts-expect-error window
         mvu = global.window.Mvu;
 
         jest.clearAllMocks();
     });
 
     afterEach(() => {
-        //@ts-ignore
+        // @ts-expect-error window
         global.window = originalWindow;
         jest.restoreAllMocks();
     });

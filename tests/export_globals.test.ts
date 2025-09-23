@@ -32,7 +32,7 @@ describe('exportGlobals', () => {
 
     beforeEach(() => {
         originalWindow = global.window;
-        //@ts-ignore
+        //@ts-expect-error window
         global.window = {
             parent: {} as any,
         } as any;
@@ -72,7 +72,7 @@ describe('exportGlobals', () => {
     });
 
     afterEach(() => {
-        //@ts-ignore
+        //@ts-expect-error window
         global.window = originalWindow;
         jest.restoreAllMocks();
     });

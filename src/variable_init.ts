@@ -65,7 +65,6 @@ export async function loadInitVarData(
 
                 if (parseError) {
                     console.error(`Failed to parse lorebook entry: ${parseError}`);
-                    // @ts-ignore
                     toastr.error(parseError.message, 'Failed to parse lorebook entry', {
                         timeOut: 5000,
                     });
