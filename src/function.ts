@@ -1,5 +1,5 @@
-import { variable_events, VariableData } from '@/variable_def';
 import { GetSettings } from '@/settings';
+import { variable_events, VariableData } from '@/variable_def';
 
 export function trimQuotesAndBackslashes(str: string): string {
     if (!_.isString(str)) return str;
@@ -474,24 +474,17 @@ export async function handleVariablesInMessage(message_id: number) {
     }
 
     const has_variable_modified = await updateVariables(message_content, variables);
+    const updater = (data: Record<string, any>) => {
+        data.stat_data = variables.stat_data;
+        data.display_data = variables.display_data;
+        data.delta_data = variables.delta_data;
+        data.initialized_lorebooks = variables.initialized_lorebooks;
+        return data;
+    };
     if (has_variable_modified) {
-        const chat_variables = getVariables({ type: 'chat' });
-        // _.merge 可能使变量无法被正常移除，因此使用赋值的方式
-        chat_variables.stat_data = variables.stat_data;
-        chat_variables.display_data = variables.display_data;
-        chat_variables.delta_data = variables.delta_data;
-        chat_variables.initialized_lorebooks = variables.initialized_lorebooks;
-        await replaceVariables(chat_variables, { type: 'chat' });
+        await updateVariablesWith(updater, { type: 'chat' });
     }
-    await insertOrAssignVariables(
-        {
-            stat_data: variables.stat_data,
-            display_data: variables.display_data,
-            delta_data: variables.delta_data,
-            initialized_lorebooks: variables.initialized_lorebooks,
-        },
-        { type: 'message', message_id: message_id }
-    );
+    await updateVariablesWith(updater, { type: 'message', message_id: message_id });
 
     if (chat_message.role !== 'user') {
         if (!message_content.includes('<StatusPlaceHolderImpl/>')) {
