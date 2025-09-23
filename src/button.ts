@@ -5,11 +5,13 @@ import { createEmptyGameData, loadInitVarData } from '@/variable_init';
 const buttons = ['重新处理变量', '重新读取初始变量', '清除旧楼层变量'];
 
 function addButtons() {
+    // @ts-expect-error 向后兼容
     const current_buttons = getScriptButtons(getScriptId());
     const current_button_names = current_buttons.map(b => b.name);
     for (const button of buttons.filter(b => !current_button_names.includes(b))) {
         current_buttons.push({ name: button, visible: false });
     }
+    // @ts-expect-error 向后兼容
     replaceScriptButtons(getScriptId(), current_buttons);
 }
 

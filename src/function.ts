@@ -1,5 +1,5 @@
-import { variable_events, VariableData } from '@/variable_def';
 import { GetSettings } from '@/settings';
+import { variable_events, VariableData } from '@/variable_def';
 
 export function trimQuotesAndBackslashes(str: string): string {
     if (!_.isString(str)) return str;
@@ -345,12 +345,13 @@ export async function updateVariables(
         display_data: out_status.stat_data,
         delta_data: delta_status.stat_data,
     };
-    await eventEmit(variable_events.VARIABLE_UPDATE_STARTED, variables, out_is_modifed);
+    await eventEmit(variable_events.VARIABLE_UPDATE_STARTED, variables);
     let variable_modified = false;
     let error_occured = false;
     let error_last: string | undefined = undefined;
     for (const setCommand of matched_set) {
-        let { path, newValue, reason } = setCommand;
+        const { reason } = setCommand;
+        let { path, newValue } = setCommand;
         path = pathFix(path);
 
         if (_.has(variables.stat_data, path)) {
@@ -449,7 +450,7 @@ export async function updateVariables(
 
     variables.display_data = out_status.stat_data;
     variables.delta_data = delta_status.stat_data;
-    await eventEmit(variable_events.VARIABLE_UPDATE_ENDED, variables, out_is_modifed);
+    await eventEmit(variable_events.VARIABLE_UPDATE_ENDED, variables);
 
     //在结束事件中也可能设置变量
     delete variables.stat_data.$internal;

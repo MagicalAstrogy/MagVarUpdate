@@ -49,6 +49,7 @@ export async function loadInitVarData(
                 } catch (e) {
                     // Try JSON5
                     try {
+                        // eslint-disable-next-line
                         parsedData = JSON5.parse(content);
                     } catch (e2) {
                         // Try TOML
