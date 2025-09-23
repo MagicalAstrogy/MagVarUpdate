@@ -36,8 +36,6 @@
     "include": [
         "src",
         "slash-runner/@types",
-        "auto-imports.d.ts",
-        "auto-imports.zod.d.ts",
         "global.d.ts",
     ],
     "exclude": [

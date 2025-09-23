@@ -69,8 +69,6 @@
         "tslib": "^2.8.1",
         "typescript": "^5.8.3",
         "typescript-eslint": "^8.44.1",
-        "unplugin-auto-import": "^20.1.0",
-        "unplugin-vue-components": "^29.1.0",
         "vue-eslint-parser": "^10.2.0",
         "vue-loader": "^17.4.2",
         "webpack": "^5.101.3",

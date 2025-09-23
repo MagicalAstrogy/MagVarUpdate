@@ -186,20 +186,6 @@ function config(_env: any, argv: any): webpack.Configuration {
             new MiniCssExtractPlugin(),
             { apply: watch_it },
             new VueLoaderPlugin(),
-            unpluginAutoImport({
-                dts: true,
-                dtsMode: 'overwrite',
-                imports: [
-                    'vue',
-                    'pinia',
-                    '@vueuse/core',
-                    { from: 'dedent', imports: [['default', 'dedent']] },
-                    { from: 'zod', imports: ['z'] },
-                ],
-            }),
-            unpluginVueComponents({
-                dts: true,
-            }),
             new webpack.optimize.LimitChunkCountPlugin({ maxChunks: 1 }),
         ],
         optimization: {

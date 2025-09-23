@@ -15,7 +15,6 @@ describe('export_globals integration test - Variable Update with display_data an
 
     beforeEach(() => {
         originalWindow = global.window;
-        // @ts-expect-error window
         global.window = {
             parent: {} as any,
             Mvu: undefined as MVU | undefined,
@@ -35,7 +34,6 @@ describe('export_globals integration test - Variable Update with display_data an
     });
 
     afterEach(() => {
-        // @ts-expect-error window
         global.window = originalWindow;
         jest.restoreAllMocks();
     });
