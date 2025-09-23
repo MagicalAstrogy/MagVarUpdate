@@ -1,4 +1,4 @@
-import { getSettings } from '@/settings';
+import { useSettingsStore } from '@/settings';
 import { variable_events, VariableData } from '@/variable_def';
 
 export function trimQuotesAndBackslashes(str: string): string {
@@ -339,7 +339,6 @@ export async function updateVariables(
     const out_status: Record<string, any> = _.cloneDeep(variables);
     const delta_status: Record<string, any> = { stat_data: {} };
     const matched_set = extractSetCommands(current_message_content);
-    const settings = getSettings();
 
     variables.stat_data.$internal = {
         display_data: out_status.stat_data,
@@ -442,7 +441,7 @@ export async function updateVariables(
             error_last = display_str;
         }
     }
-    if (error_occured && settings.是否显示变量更新错误 === '是') {
+    if (error_occured && useSettingsStore().settings.通知.变量更新出错) {
         toastr.warning(`最近错误: ${error_last}`, '发生变量更新错误，可能需要重Roll', {
             timeOut: 6000,
         });
