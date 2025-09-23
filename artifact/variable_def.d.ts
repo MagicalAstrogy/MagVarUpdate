@@ -1,13 +1,8 @@
 export type ValueWithDescription<T> = [T, string];
-
-export function isValueWithDescription<T>(value: unknown): value is ValueWithDescription<T> {
-    return Array.isArray(value) && value.length === 2 && typeof value[1] === 'string';
-}
-
+export declare function isValueWithDescription<T>(value: unknown): value is ValueWithDescription<T>;
 export type MvuData = {
     /** 已初始化的 lorebook 列表 */
     initialized_lorebooks: string[];
-
     /**
      * 状态数据 - 存储实际的变量值
      * 支持嵌套对象结构，通过路径（如 "player.health"）访问
@@ -18,8 +13,9 @@ export type MvuData = {
      * 2. ValueWithDescription 类型：更新数组的第一个元素（实际值），保留第二个元素（描述）
      * 3. 数字类型：自动将字符串新值转换为数字
      */
-    stat_data: Record<string, any> & { $internal?: InternalData };
-
+    stat_data: Record<string, any> & {
+        $internal?: InternalData;
+    };
     /**
      * 显示数据 - 存储变量变化的可视化表示
      * 格式："{旧值}->{新值} ({原因})"
@@ -30,7 +26,6 @@ export type MvuData = {
      * 用途：在UI中展示变量的变化历史，让用户了解数值是如何变化的
      */
     display_data: Record<string, any>;
-
     /**
      * 增量数据 - 存储本次更新中发生变化的变量
      * 格式：与 display_data 相同，"{旧值}->{新值} (原因)"
@@ -44,7 +39,6 @@ export type MvuData = {
      */
     delta_data: Record<string, any>;
 };
-
 export interface VariableData {
     old_variables: MvuData;
     /**
@@ -52,63 +46,23 @@ export interface VariableData {
      */
     new_variables?: MvuData;
 }
-
-export const variable_events = {
-    SINGLE_VARIABLE_UPDATED: 'mag_variable_updated',
-    VARIABLE_UPDATE_ENDED: 'mag_variable_update_ended',
-    VARIABLE_UPDATE_STARTED: 'mag_variable_update_started',
-} as const;
-export const exported_events = {
-    INVOKE_MVU_PROCESS: 'mag_invoke_mvu',
-    UPDATE_VARIABLE: 'mag_update_variable',
+export declare const variable_events: {
+    readonly SINGLE_VARIABLE_UPDATED: "mag_variable_updated";
+    readonly VARIABLE_UPDATE_ENDED: "mag_variable_update_ended";
+    readonly VARIABLE_UPDATE_STARTED: "mag_variable_update_started";
 };
-
+export declare const exported_events: {
+    INVOKE_MVU_PROCESS: string;
+    UPDATE_VARIABLE: string;
+};
 export type InternalData = {
-    //不存自己，会导致环形引用
-    //stat_data: Record<string, any>;
     display_data: Record<string, any>;
     delta_data: Record<string, any>;
 };
-
 export type ExtendedListenerType = {
-    [variable_events.SINGLE_VARIABLE_UPDATED]: (
-        stat_data: Record<string, any>,
-        path: string,
-        _oldValue: any,
-        _newValue: any
-    ) => void;
-    [variable_events.VARIABLE_UPDATE_STARTED]: (
-        variables: MvuData,
-        out_is_updated: boolean
-    ) => void;
+    [variable_events.SINGLE_VARIABLE_UPDATED]: (stat_data: Record<string, any>, path: string, _oldValue: any, _newValue: any) => void;
+    [variable_events.VARIABLE_UPDATE_STARTED]: (variables: MvuData, out_is_updated: boolean) => void;
     [variable_events.VARIABLE_UPDATE_ENDED]: (variables: MvuData, out_is_updated: boolean) => void;
-    [exported_events.INVOKE_MVU_PROCESS]: (
-        message_content: string,
-        variable_info: VariableData
-    ) => void;
-    [exported_events.UPDATE_VARIABLE]: (
-        stat_data: Record<string, any>,
-        path: string,
-        newValue: any,
-        reason: string,
-        isRecursive: boolean
-    ) => void;
 };
-
 export type DataCategory = 'stat' | 'display' | 'delta';
-
-export function extractRecord(category: 'stat' | 'display' | 'delta', game_data: MvuData) {
-    let data: Record<string, any> | undefined = undefined;
-    switch (category) {
-        case 'stat':
-            data = game_data.stat_data;
-            break;
-        case 'display':
-            data = game_data.display_data;
-            break;
-        case 'delta':
-            data = game_data.delta_data;
-            break;
-    }
-    return data;
-}
+export declare function extractRecord(category: 'stat' | 'display' | 'delta', game_data: MvuData): Record<string, any>;

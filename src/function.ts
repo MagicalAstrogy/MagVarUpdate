@@ -1,4 +1,5 @@
 import { variable_events, VariableData } from '@/variable_def';
+import { GetSettings } from '@/settings';
 
 export function trimQuotesAndBackslashes(str: string): string {
     if (!_.isString(str)) return str;
@@ -225,7 +226,7 @@ export function parseParameters(paramsString: string): string[] {
 export async function getLastValidVariable(message_id: number): Promise<Record<string, any>> {
     return (
         structuredClone(
-            SillyTavern.chat
+            _(SillyTavern.chat)
                 .slice(0, message_id + 1)
                 .map(chat_message => _.get(chat_message, ['variables', chat_message.swipe_id ?? 0]))
                 .findLast(variables => _.has(variables, 'stat_data'))
@@ -267,16 +268,87 @@ function pathFix(path: string): string {
     return segments.join('.');
 }
 
+/**
+ * MVU 风格的变量更新操作，同时会更新 display_data/delta_data
+ * @param stat_data 当前的变量状态，来源应当是 mag_variable_updated 回调中提供的 stat_data。其他来源则不会修改 display_data 等。
+ * @param path 要更改的变量路径
+ * @param new_value 新值
+ * @param reason 修改原因（可选，默认为空）
+ * @param is_recursive 此次修改是否允许触发 mag_variable_updated 回调（默认不允许）
+ */
+export async function updateVariable(
+    stat_data: Record<string, any>,
+    path: string,
+    new_value: any,
+    reason: string = '',
+    is_recursive: boolean = false
+): Promise<boolean> {
+    const display_data = stat_data.$internal?.display_data;
+    const delta_data = stat_data.$internal?.delta_data;
+    if (_.has(stat_data, path)) {
+        const currentValue = _.get(stat_data, path);
+        if (Array.isArray(currentValue) && currentValue.length === 2) {
+            //VWD 处理
+            const oldValue = _.cloneDeep(currentValue[0]);
+            currentValue[0] = new_value;
+            _.set(stat_data, path, currentValue);
+            const reason_str = reason ? `(${reason})` : '';
+            const display_str = `${trimQuotesAndBackslashes(JSON.stringify(oldValue))}->${trimQuotesAndBackslashes(JSON.stringify(new_value))} ${reason_str}`;
+            if (display_data) _.set(display_data, path, display_str);
+            if (delta_data) _.set(delta_data, path, display_str);
+            console.info(
+                `Set '${path}' to '${trimQuotesAndBackslashes(JSON.stringify(new_value))}' ${reason_str}`
+            );
+            if (is_recursive)
+                await eventEmit(
+                    variable_events.SINGLE_VARIABLE_UPDATED,
+                    stat_data,
+                    path,
+                    oldValue,
+                    new_value
+                );
+            return true;
+        } else {
+            const oldValue = _.cloneDeep(currentValue);
+            _.set(stat_data, path, new_value);
+            const reason_str = reason ? `(${reason})` : '';
+            const stringNewValue = trimQuotesAndBackslashes(JSON.stringify(new_value));
+            const display_str = `${trimQuotesAndBackslashes(JSON.stringify(oldValue))}->${stringNewValue} ${reason_str}`;
+            if (display_data) _.set(display_data, path, display_str);
+            if (delta_data) _.set(delta_data, path, display_str);
+            console.info(`Set '${path}' to '${stringNewValue}' ${reason_str}`);
+            if (is_recursive)
+                await eventEmit(
+                    variable_events.SINGLE_VARIABLE_UPDATED,
+                    stat_data,
+                    path,
+                    oldValue,
+                    new_value
+                );
+            return true;
+        }
+    }
+    return false;
+}
+
 export async function updateVariables(
     current_message_content: string,
     variables: any
 ): Promise<boolean> {
     const out_is_modifed = false;
-    await eventEmit(variable_events.VARIABLE_UPDATE_STARTED, variables, out_is_modifed);
     const out_status: Record<string, any> = _.cloneDeep(variables);
     const delta_status: Record<string, any> = { stat_data: {} };
     const matched_set = extractSetCommands(current_message_content);
+    const settings = await GetSettings();
+
+    variables.stat_data.$internal = {
+        display_data: out_status.stat_data,
+        delta_data: delta_status.stat_data,
+    };
+    await eventEmit(variable_events.VARIABLE_UPDATE_STARTED, variables, out_is_modifed);
     let variable_modified = false;
+    let error_occured = false;
+    let error_last: string | undefined = undefined;
     for (const setCommand of matched_set) {
         let { path, newValue, reason } = setCommand;
         path = pathFix(path);
@@ -365,12 +437,22 @@ export async function updateVariables(
         } else {
             const display_str = `undefined Path: ${path}->${newValue} (${reason})`;
             console.error(display_str);
+            error_occured = true;
+            error_last = display_str;
         }
+    }
+    if (error_occured && settings.是否显示变量更新错误 === '是') {
+        toastr.warning(`最近错误: ${error_last}`, '发生变量更新错误，可能需要重Roll', {
+            timeOut: 6000,
+        });
     }
 
     variables.display_data = out_status.stat_data;
     variables.delta_data = delta_status.stat_data;
     await eventEmit(variable_events.VARIABLE_UPDATE_ENDED, variables, out_is_modifed);
+
+    //在结束事件中也可能设置变量
+    delete variables.stat_data.$internal;
     return variable_modified || out_is_modifed;
 }
 
@@ -380,25 +462,46 @@ export async function handleVariablesInMessage(message_id: number) {
         return;
     }
 
-    const message_content = chat_message.message;
-    const variables = await getLastValidVariable(message_id);
+    let message_content = chat_message.message;
+    if (message_content.length < 5)
+        //MESSAGE_RECEIVED会递交一个 "..." 的消息
+        return;
+    const request_message_id = message_id === 0 ? 0 : message_id - 1;
+    const variables = await getLastValidVariable(request_message_id);
     if (!_.has(variables, 'stat_data')) {
-        console.error(`cannot found stat_data for ${message_id}`);
+        console.error(`cannot found stat_data for ${request_message_id}`);
         return;
     }
 
     const has_variable_modified = await updateVariables(message_content, variables);
     if (has_variable_modified) {
-        await replaceVariables(variables, { type: 'chat' });
+        const chat_variables = getVariables({ type: 'chat' });
+        // _.merge 可能使变量无法被正常移除，因此使用赋值的方式
+        chat_variables.stat_data = variables.stat_data;
+        chat_variables.display_data = variables.display_data;
+        chat_variables.delta_data = variables.delta_data;
+        chat_variables.initialized_lorebooks = variables.initialized_lorebooks;
+        await replaceVariables(chat_variables, { type: 'chat' });
     }
-    await replaceVariables(variables, { type: 'message', message_id: message_id });
+    await insertOrAssignVariables(
+        {
+            stat_data: variables.stat_data,
+            display_data: variables.display_data,
+            delta_data: variables.delta_data,
+            initialized_lorebooks: variables.initialized_lorebooks,
+        },
+        { type: 'message', message_id: message_id }
+    );
 
-    if (chat_message.role !== 'user' && !message_content.includes('<StatusPlaceHolderImpl/>')) {
+    if (chat_message.role !== 'user') {
+        if (!message_content.includes('<StatusPlaceHolderImpl/>')) {
+            message_content += '\n\n<StatusPlaceHolderImpl/>';
+        }
         await setChatMessages(
             [
                 {
                     message_id: message_id,
-                    message: message_content + '\n\n<StatusPlaceHolderImpl/>',
+                    message: message_content,
                 },
             ],
             {
@@ -410,15 +513,16 @@ export async function handleVariablesInMessage(message_id: number) {
 
 export async function handleVariablesInCallback(
     message_content: string,
-    variable_info: VariableData
+    in_out_variable_info: VariableData
 ) {
-    if (variable_info.old_variables === undefined) {
+    if (in_out_variable_info.old_variables === undefined) {
         return;
     }
-    variable_info.new_variables = _.cloneDeep(variable_info.old_variables);
-    const variables = variable_info.new_variables;
+    in_out_variable_info.new_variables = _.cloneDeep(in_out_variable_info.old_variables);
+    const variables = in_out_variable_info.new_variables;
 
     const modified = await updateVariables(message_content, variables);
     //如果没有修改，则不产生 newVariable
-    if (!modified) delete variable_info.new_variables;
+    if (!modified) delete in_out_variable_info.new_variables;
+    return;
 }

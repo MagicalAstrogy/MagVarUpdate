@@ -20,6 +20,7 @@ jobs:
               with:
                   ssh-key: ${{ secrets.CI_DEPLOY_KEY }}
                   fetch-depth: 0                 # ← 必须
+                  submodules: 'recursive'
 
             - name: Use Node.js
               uses: actions/setup-node@v4
@@ -36,6 +37,8 @@ jobs:
                       echo "⚠️  Lockfile missing, generating..."
                       yarn install
                     fi
+            - name: format Code
+              run: yarn format
             - run: yarn build
             - name: Commit changes
               uses: EndBug/add-and-commit@v9.1.3

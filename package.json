@@ -6,14 +6,15 @@
     "scripts": {
         "build:webpack-example": "webpack -c ./example_src/webpack.config.js",
         "build:dev": "webpack --mode development",
-        "build": "webpack --mode production",
+        "build:dts": "tsc -p tsconfig.dts.json",
+        "build": "webpack --mode production && yarn build:dts",
         "watch": "webpack --mode development --watch --progress",
         "lint": "eslint . --ext .ts,.tsx,.js,.jsx",
         "lint:fix": "eslint . --ext .ts,.tsx,.js,.jsx --fix",
         "format": "prettier --write \"src/**/*.{ts,tsx,js,jsx,json,css,scss,md}\"",
         "test": "jest",
         "test:watch": "jest --watch",
-        "test:coverage": "jest --coverage"
+        "test:coverage": "jest --coverage --json --outputFile=test-results.json --coverageReporters=json-summary --coverageReporters=text --coverageReporters=lcov"
     },
     "packageManager": "yarn@3.4.1",
     "repository": {
@@ -49,12 +50,10 @@
         "eslint-webpack-plugin": "^5.0.2",
         "html-webpack-plugin": "^5.6.3",
         "jest": "^29.7.0",
-        "json5": "^2.2.3",
         "nodemon": "^3.1.10",
         "prettier": "^3.5.3",
         "socket.io": "^4.8.1",
         "terser-webpack-plugin": "^5.3.14",
-        "toml": "^3.0.0",
         "ts-jest": "^29.2.5",
         "ts-loader": "^9.5.2",
         "ts-node": "^10.9.2",
@@ -62,7 +61,12 @@
         "tslib": "^2.8.1",
         "typescript": "^5.8.3",
         "webpack": "^5.99.8",
-        "webpack-cli": "^5.1.4",
+        "webpack-cli": "^5.1.4"
+    },
+    "dependencies": {
+        "compare-versions": "^6.1.1",
+        "json5": "^2.2.3",
+        "toml": "^3.0.0",
         "yaml": "^2.8.0"
     }
 }

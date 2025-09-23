@@ -1,3 +1,4 @@
+import fs from 'node:fs';
 import path from 'node:path';
 import url from 'node:url';
 import { Server } from 'socket.io';
@@ -32,7 +33,6 @@ function watch_it(compiler: webpack.Compiler) {
 }
 
 function config(_env: any, argv: any) {
-    const isProd = argv.mode === 'production';
     return {
         experiments: {
             outputModule: true,
@@ -78,14 +78,19 @@ function config(_env: any, argv: any) {
         optimization: {
             minimize: true,
             minimizer: [
-                isProd
-                    ? new TerserPlugin()
+                argv.mode === 'production'
+                    ? new TerserPlugin({
+                          terserOptions: {
+                              format: { quote_style: 1 },
+                              mangle: { reserved: ['_', 'toastr', 'YAML', '$', 'z'] },
+                          },
+                      })
                     : new TerserPlugin({
                           extractComments: false,
                           terserOptions: {
                               format: { beautify: true, indent_level: 2 },
                               compress: false,
-                              mangle: false, // 如需保留变量名，也可关掉混淆
+                              mangle: false,
                           },
                       }),
             ],
@@ -110,8 +115,43 @@ function config(_env: any, argv: any) {
                 },
             },
         },
-        externalsType: 'var',
-        externals: [/^_$/i, /^(jquery|\$)$/i, /^jqueryui$/i, /^toastr$/i, /^yaml$/i],
+        externals: [
+            (
+                { context, request }: { context: string; request: string },
+                callback: (err?: Error | null, result?: string) => void
+            ) => {
+                if (!context || !request) {
+                    return callback();
+                }
+
+                if (
+                    request.startsWith('http') ||
+                    request.startsWith('@') ||
+                    request.startsWith('.') ||
+                    request.startsWith('/') ||
+                    path.isAbsolute(request) ||
+                    fs.existsSync(path.join(context, request)) ||
+                    fs.existsSync(request)
+                ) {
+                    return callback();
+                }
+
+                const builtin = {
+                    jquery: '$',
+                    lodash: '_',
+                    toastr: 'toastr',
+                    yaml: 'YAML',
+                    zod: 'z',
+                };
+                if (request in builtin) {
+                    return callback(null, 'var ' + builtin[request as keyof typeof builtin]);
+                }
+                return callback(
+                    null,
+                    'module-import https://testingcf.jsdelivr.net/npm/' + request + '/+esm'
+                );
+            },
+        ],
     };
 }
 
