@@ -62,11 +62,30 @@
                     </div>
                 </template>
             </div>
+
+            <hr />
+
+            <div class="flex-container flexFlowColumn">
+                <div><strong>修复按钮</strong></div>
+                <div class="flex-container flex">
+                    <div
+                        v-for="button in buttons"
+                        :key="button.name"
+                        class="menu_button menu_button_icon interactable"
+                        tabindex="0"
+                        role="button"
+                        @click="button.function"
+                    >
+                        {{ button.name }}
+                    </div>
+                </div>
+            </div>
         </div>
     </div>
 </template>
 
 <script setup lang="ts">
+import { buttons } from '@/button';
 import { useSettingsStore } from '@/settings';
 import { storeToRefs } from 'pinia';
 
