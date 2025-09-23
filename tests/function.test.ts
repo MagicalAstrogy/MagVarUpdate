@@ -1,5 +1,12 @@
-import {handleVariablesInCallback, parseParameters, trimQuotesAndBackslashes, getLastValidVariable, updateVariables, handleVariablesInMessage} from '@/function';
-import {VariableData} from "@/variable_def";
+import {
+    getLastValidVariable,
+    handleVariablesInCallback,
+    handleVariablesInMessage,
+    parseParameters,
+    trimQuotesAndBackslashes,
+    updateVariables,
+} from '@/function';
+import { VariableData } from '@/variable_def';
 import _ from 'lodash';
 
 describe('parseParameters', () => {
@@ -52,18 +59,36 @@ describe('parseParameters', () => {
         });
 
         test('处理对象参数', () => {
-            const result = parseParameters('"user", {name: "John", age: 30}, {name: "Jane", age: 25}');
-            expect(result).toEqual(['"user"', '{name: "John", age: 30}', '{name: "Jane", age: 25}']);
+            const result = parseParameters(
+                '"user", {name: "John", age: 30}, {name: "Jane", age: 25}'
+            );
+            expect(result).toEqual([
+                '"user"',
+                '{name: "John", age: 30}',
+                '{name: "Jane", age: 25}',
+            ]);
         });
 
         test('处理嵌套对象', () => {
-            const result = parseParameters('"config", {db: {host: "localhost"}}, {db: {host: "server"}}');
-            expect(result).toEqual(['"config"', '{db: {host: "localhost"}}', '{db: {host: "server"}}']);
+            const result = parseParameters(
+                '"config", {db: {host: "localhost"}}, {db: {host: "server"}}'
+            );
+            expect(result).toEqual([
+                '"config"',
+                '{db: {host: "localhost"}}',
+                '{db: {host: "server"}}',
+            ]);
         });
 
         test('处理对象数组混合', () => {
-            const result = parseParameters('"data", [{id: 1, values: [1, 2]}, {id: 2, values: [3, 4]}], "newData"');
-            expect(result).toEqual(['"data"', '[{id: 1, values: [1, 2]}, {id: 2, values: [3, 4]}]', '"newData"']);
+            const result = parseParameters(
+                '"data", [{id: 1, values: [1, 2]}, {id: 2, values: [3, 4]}], "newData"'
+            );
+            expect(result).toEqual([
+                '"data"',
+                '[{id: 1, values: [1, 2]}, {id: 2, values: [3, 4]}]',
+                '"newData"',
+            ]);
         });
     });
 
@@ -90,7 +115,14 @@ describe('parseParameters', () => {
 
         test('处理混合数据类型', () => {
             const result = parseParameters('"path", 123, true, null, [1, 2, 3], {key: "value"}');
-            expect(result).toEqual(['"path"', '123', 'true', 'null', '[1, 2, 3]', '{key: "value"}']);
+            expect(result).toEqual([
+                '"path"',
+                '123',
+                'true',
+                'null',
+                '[1, 2, 3]',
+                '{key: "value"}',
+            ]);
         });
 
         test('处理仅逗号分隔', () => {
@@ -106,12 +138,12 @@ describe('parseParameters', () => {
 
     describe('实际使用场景', () => {
         test('解析时间更新（两个参数）', () => {
-            const result = parseParameters("'时间', \"09:15\"");
+            const result = parseParameters('\'时间\', "09:15"');
             expect(result).toEqual(["'时间'", '"09:15"']);
         });
 
         test('解析地点更新（两个参数）', () => {
-            const result = parseParameters("'地点', \"朝槿咖啡店\"");
+            const result = parseParameters('\'地点\', "朝槿咖啡店"');
             expect(result).toEqual(["'地点'", '"朝槿咖啡店"']);
         });
 
@@ -131,8 +163,14 @@ describe('parseParameters', () => {
         });
 
         test('处理JSON字符串作为值', () => {
-            const result = parseParameters('"config", "{\\"theme\\":\\"dark\\",\\"lang\\":\\"zh\\"}", "{\\"theme\\":\\"light\\",\\"lang\\":\\"en\\"}"');
-            expect(result).toEqual(['"config"', '"{\\"theme\\":\\"dark\\",\\"lang\\":\\"zh\\"}"', '"{\\"theme\\":\\"light\\",\\"lang\\":\\"en\\"}"']);
+            const result = parseParameters(
+                '"config", "{\\"theme\\":\\"dark\\",\\"lang\\":\\"zh\\"}", "{\\"theme\\":\\"light\\",\\"lang\\":\\"en\\"}"'
+            );
+            expect(result).toEqual([
+                '"config"',
+                '"{\\"theme\\":\\"dark\\",\\"lang\\":\\"zh\\"}"',
+                '"{\\"theme\\":\\"light\\",\\"lang\\":\\"en\\"}"',
+            ]);
         });
         test('实际场景', () => {
             const input = `'悠纪.想对user说的事', ["与希雅 在一起时，会邀请希雅做一些事情，是 出去喝一杯咖啡，接下来设置变量\\"_.set('当前事件',null,'yuki_relation_level1');//邀请希雅\\"，然后断章。"], []`;
@@ -143,8 +181,14 @@ describe('parseParameters', () => {
 
     describe('特殊字符处理', () => {
         test('处理路径中的特殊字符', () => {
-            const result = parseParameters('"path/to/file", "value\\nwith\\nnewlines", "tab\\tcharacter"');
-            expect(result).toEqual(['"path/to/file"', '"value\\nwith\\nnewlines"', '"tab\\tcharacter"']);
+            const result = parseParameters(
+                '"path/to/file", "value\\nwith\\nnewlines", "tab\\tcharacter"'
+            );
+            expect(result).toEqual([
+                '"path/to/file"',
+                '"value\\nwith\\nnewlines"',
+                '"tab\\tcharacter"',
+            ]);
         });
 
         test('处理Unicode字符', () => {
@@ -211,27 +255,33 @@ describe('getLastValidVariable', () => {
         const mockChat = [
             {
                 swipe_id: 0,
-                variables: [{
-                    stat_data: { health: 100 },
-                    display_data: {},
-                    delta_data: {}
-                }]
+                variables: [
+                    {
+                        stat_data: { health: 100 },
+                        display_data: {},
+                        delta_data: {},
+                    },
+                ],
             },
             {
                 swipe_id: 0,
-                variables: [{
-                    display_data: {},
-                    delta_data: {}
-                }]
+                variables: [
+                    {
+                        display_data: {},
+                        delta_data: {},
+                    },
+                ],
             },
             {
                 swipe_id: 0,
-                variables: [{
-                    stat_data: { health: 80 },
-                    display_data: {},
-                    delta_data: {}
-                }]
-            }
+                variables: [
+                    {
+                        stat_data: { health: 80 },
+                        display_data: {},
+                        delta_data: {},
+                    },
+                ],
+            },
         ];
 
         (globalThis as any).SillyTavern = { chat: mockChat };
@@ -242,7 +292,7 @@ describe('getLastValidVariable', () => {
         expect(result).toEqual({
             stat_data: { health: 80 },
             display_data: {},
-            delta_data: {}
+            delta_data: {},
         });
     });
 
@@ -250,18 +300,18 @@ describe('getLastValidVariable', () => {
         const mockChat = [
             {
                 swipe_id: 0,
-                variables: [{
-                    stat_data: { health: 100 },
-                    display_data: {}
-                }]
-            },
-            {// 第一个 swipe 没有数据
-                swipe_id: 1,
                 variables: [
-                    { stat_data: { mana: 50 }, display_data: {} },
-                    { display_data: {} }
-                ]
-            }
+                    {
+                        stat_data: { health: 100 },
+                        display_data: {},
+                    },
+                ],
+            },
+            {
+                // 第一个 swipe 没有数据
+                swipe_id: 1,
+                variables: [{ stat_data: { mana: 50 }, display_data: {} }, { display_data: {} }],
+            },
         ];
 
         (globalThis as any).SillyTavern = { chat: mockChat };
@@ -271,7 +321,7 @@ describe('getLastValidVariable', () => {
 
         expect(result).toEqual({
             stat_data: { health: 100 },
-            display_data: {}
+            display_data: {},
         });
     });
 
@@ -279,18 +329,18 @@ describe('getLastValidVariable', () => {
         const mockChat = [
             {
                 swipe_id: 0,
-                variables: [{
-                    stat_data: { health: 100 },
-                    display_data: {}
-                }]
-            },
-            {// 第一个 swipe 没有数据
-                swipe_id: 1,
                 variables: [
-                    { display_data: {} },
-                    { stat_data: { mana: 50 }, display_data: {} }
-                ]
-            }
+                    {
+                        stat_data: { health: 100 },
+                        display_data: {},
+                    },
+                ],
+            },
+            {
+                // 第一个 swipe 没有数据
+                swipe_id: 1,
+                variables: [{ display_data: {} }, { stat_data: { mana: 50 }, display_data: {} }],
+            },
         ];
 
         (globalThis as any).SillyTavern = { chat: mockChat };
@@ -300,7 +350,7 @@ describe('getLastValidVariable', () => {
 
         expect(result).toEqual({
             stat_data: { mana: 50 },
-            display_data: {}
+            display_data: {},
         });
     });
 
@@ -308,23 +358,27 @@ describe('getLastValidVariable', () => {
         const mockChat = [
             {
                 swipe_id: 0,
-                variables: [{
-                    display_data: {},
-                    delta_data: {}
-                }]
+                variables: [
+                    {
+                        display_data: {},
+                        delta_data: {},
+                    },
+                ],
             },
             {
                 swipe_id: 0,
-                variables: [{
-                    display_data: {}
-                }]
-            }
+                variables: [
+                    {
+                        display_data: {},
+                    },
+                ],
+            },
         ];
 
         const mockGetVariables = {
             stat_data: { default: true },
             display_data: {},
-            delta_data: {}
+            delta_data: {},
         };
 
         (globalThis as any).SillyTavern = { chat: mockChat };
@@ -340,25 +394,31 @@ describe('getLastValidVariable', () => {
         const mockChat = [
             {
                 swipe_id: 0,
-                variables: [{
-                    stat_data: { level: 1 },
-                    display_data: {}
-                }]
+                variables: [
+                    {
+                        stat_data: { level: 1 },
+                        display_data: {},
+                    },
+                ],
             },
             {
                 swipe_id: 0,
-                variables: [{
-                    stat_data: { level: 2 },
-                    display_data: {}
-                }]
+                variables: [
+                    {
+                        stat_data: { level: 2 },
+                        display_data: {},
+                    },
+                ],
             },
             {
                 swipe_id: 0,
-                variables: [{
-                    stat_data: { level: 3 },
-                    display_data: {}
-                }]
-            }
+                variables: [
+                    {
+                        stat_data: { level: 3 },
+                        display_data: {},
+                    },
+                ],
+            },
         ];
 
         (globalThis as any).SillyTavern = { chat: mockChat };
@@ -369,7 +429,7 @@ describe('getLastValidVariable', () => {
 
         expect(result).toEqual({
             stat_data: { level: 2 },
-            display_data: {}
+            display_data: {},
         });
     });
 
@@ -377,7 +437,7 @@ describe('getLastValidVariable', () => {
         const mockGetVariables = {
             stat_data: { initialized: true },
             display_data: {},
-            delta_data: {}
+            delta_data: {},
         };
 
         (globalThis as any).SillyTavern = { chat: [] };
@@ -393,19 +453,21 @@ describe('getLastValidVariable', () => {
         const mockChat = [
             {
                 swipe_id: 0,
-                variables: [{
-                    stat_data: { valid: true },
-                    display_data: {}
-                }]
+                variables: [
+                    {
+                        stat_data: { valid: true },
+                        display_data: {},
+                    },
+                ],
             },
             {
                 swipe_id: 0,
-                variables: undefined
+                variables: undefined,
             },
             {
                 swipe_id: 0,
-                variables: null
-            }
+                variables: null,
+            },
         ];
 
         (globalThis as any).SillyTavern = { chat: mockChat };
@@ -415,7 +477,7 @@ describe('getLastValidVariable', () => {
 
         expect(result).toEqual({
             stat_data: { valid: true },
-            display_data: {}
+            display_data: {},
         });
     });
 
@@ -423,14 +485,14 @@ describe('getLastValidVariable', () => {
         const originalVariable = {
             stat_data: { health: 100, items: ['sword', 'shield'] },
             display_data: {},
-            delta_data: {}
+            delta_data: {},
         };
 
         const mockChat = [
             {
                 swipe_id: 0,
-                variables: [originalVariable]
-            }
+                variables: [originalVariable],
+            },
         ];
 
         (globalThis as any).SillyTavern = { chat: mockChat };
@@ -459,11 +521,11 @@ describe('updateVariables', () => {
             stat_data: {
                 health: 100,
                 mana: 50,
-                level: 5
+                level: 5,
             },
             display_data: {},
             delta_data: {},
-            initialized_lorebooks: ['book1', 'book2']
+            initialized_lorebooks: ['book1', 'book2'],
         };
 
         const messageContent = "_.set('health', 100, 80);//受到伤害";
@@ -482,10 +544,10 @@ describe('updateVariables', () => {
         const variables = {
             stat_data: {
                 health: 100,
-                mana: 50
+                mana: 50,
             },
             display_data: {},
-            delta_data: {}
+            delta_data: {},
         };
 
         const messageContent = `
@@ -519,29 +581,33 @@ describe('handleVariablesInMessage', () => {
             delta_data: {},
             initialized_lorebooks: ['book1'],
             custom_field: 'should_be_preserved',
-            another_field: { nested: 'data' }
+            another_field: { nested: 'data' },
         };
 
         const mockMessageVariables = {
             stat_data: { health: 100, mana: 50 },
             display_data: { health: '100->80 (受到伤害)' },
             delta_data: { stat_data: { health: '100->80 (受到伤害)' } },
-            initialized_lorebooks: ['book1', 'book2']
+            initialized_lorebooks: ['book1', 'book2'],
         };
 
-        (globalThis as any).getChatMessages = jest.fn().mockReturnValue([{
-            message: "_.set('health', 100, 80);//受到伤害",
-            role: 'assistant'
-        }]);
+        (globalThis as any).getChatMessages = jest.fn().mockReturnValue([
+            {
+                message: "_.set('health', 100, 80);//受到伤害",
+                role: 'assistant',
+            },
+        ]);
 
         (globalThis as any).SillyTavern = {
-            chat: [{
-                swipe_id: 0,
-                variables: [mockMessageVariables]
-            }]
+            chat: [
+                {
+                    swipe_id: 0,
+                    variables: [mockMessageVariables],
+                },
+            ],
         };
 
-        (globalThis as any).getVariables = jest.fn().mockImplementation((options) => {
+        (globalThis as any).getVariables = jest.fn().mockImplementation(options => {
             if (options?.type === 'chat') {
                 return _.cloneDeep(mockChatVariables);
             }
@@ -551,13 +617,12 @@ describe('handleVariablesInMessage', () => {
         await handleVariablesInMessage(0);
 
         // 验证 insertOrAssignVariables 被调用
-        // 因为 setting 引入，现在会被设置2次
-        expect((globalThis as any).replaceVariables).toHaveBeenCalledTimes(2);
+        expect((globalThis as any).replaceVariables).toHaveBeenCalledTimes(1);
         expect((globalThis as any).insertOrAssignVariables).toHaveBeenCalledTimes(1);
 
         // 验证 chat 级别的变量更新
         // 第一次是 setting的。
-        const chatUpdateCall = (globalThis as any).replaceVariables.mock.calls[1];
+        const chatUpdateCall = (globalThis as any).replaceVariables.mock.calls[0];
         const updatedChatVariables = chatUpdateCall[0];
         const chatUpdateOptions = chatUpdateCall[1];
 
@@ -565,7 +630,10 @@ describe('handleVariablesInMessage', () => {
 
         // 验证只更新了必要的字段
         expect(updatedChatVariables.stat_data).toEqual({ health: 80, mana: 50 });
-        expect(updatedChatVariables.display_data).toEqual({ health: '100->80 (受到伤害)', mana: 50 });
+        expect(updatedChatVariables.display_data).toEqual({
+            health: '100->80 (受到伤害)',
+            mana: 50,
+        });
         expect(updatedChatVariables.delta_data).toEqual({ health: '100->80 (受到伤害)' });
         expect(updatedChatVariables.initialized_lorebooks).toEqual(['book1', 'book2']);
 
@@ -585,19 +653,19 @@ describe('handleVariablesInMessage', () => {
             stat_data: {
                 health: 100,
                 mana: 50,
-                stamina: 30,  // 这个值应该被保留
-                level: 5      // 这个值应该被保留
+                stamina: 30, // 这个值应该被保留
+                level: 5, // 这个值应该被保留
             },
             display_data: {
-                stamina: '40->30 (之前的更新)',  // 应该被保留
-                level: '4->5 (升级)'              // 应该被保留
+                stamina: '40->30 (之前的更新)', // 应该被保留
+                level: '4->5 (升级)', // 应该被保留
             },
             delta_data: {
-                stamina: '40->30 (之前的更新)',  // 应该被保留
-                level: '4->5 (升级)'              // 应该被保留
+                stamina: '40->30 (之前的更新)', // 应该被保留
+                level: '4->5 (升级)', // 应该被保留
             },
             initialized_lorebooks: ['book1'],
-            custom_message_field: 'message_specific'  // 消息特有的字段，应该被保留
+            custom_message_field: 'message_specific', // 消息特有的字段，应该被保留
         };
 
         const mockChatVariables = {
@@ -605,22 +673,26 @@ describe('handleVariablesInMessage', () => {
             display_data: {},
             delta_data: {},
             initialized_lorebooks: ['book1'],
-            custom_field: 'should_be_preserved'
+            custom_field: 'should_be_preserved',
         };
 
-        (globalThis as any).getChatMessages = jest.fn().mockReturnValue([{
-            message: "_.set('health', 100, 80);//受到伤害\n_.set('mana', 50, 30);//施法消耗",
-            role: 'assistant'
-        }]);
+        (globalThis as any).getChatMessages = jest.fn().mockReturnValue([
+            {
+                message: "_.set('health', 100, 80);//受到伤害\n_.set('mana', 50, 30);//施法消耗",
+                role: 'assistant',
+            },
+        ]);
 
         (globalThis as any).SillyTavern = {
-            chat: [{
-                swipe_id: 0,
-                variables: [existingMessageVariables]
-            }]
+            chat: [
+                {
+                    swipe_id: 0,
+                    variables: [existingMessageVariables],
+                },
+            ],
         };
 
-        (globalThis as any).getVariables = jest.fn().mockImplementation((options) => {
+        (globalThis as any).getVariables = jest.fn().mockImplementation(options => {
             if (options?.type === 'chat') {
                 return _.cloneDeep(mockChatVariables);
             }
@@ -639,18 +711,18 @@ describe('handleVariablesInMessage', () => {
         expect(messageUpdateOptions).toEqual({ type: 'message', message_id: 0 });
 
         // 验证新的更新被应用
-        expect(updatedMessageVariables.stat_data.health).toBe(80);  // 新更新
-        expect(updatedMessageVariables.stat_data.mana).toBe(30);    // 新更新
+        expect(updatedMessageVariables.stat_data.health).toBe(80); // 新更新
+        expect(updatedMessageVariables.stat_data.mana).toBe(30); // 新更新
 
         // 验证原有的值被保留（这是合并的关键测试）
         expect(updatedMessageVariables.stat_data.stamina).toBe(30); // 保留原值
-        expect(updatedMessageVariables.stat_data.level).toBe(5);     // 保留原值
+        expect(updatedMessageVariables.stat_data.level).toBe(5); // 保留原值
 
         // 验证 display_data 包含新更新
-        expect(updatedMessageVariables.display_data.health).toBe('100->80 (受到伤害)');  // 新
-        expect(updatedMessageVariables.display_data.mana).toBe('50->30 (施法消耗)');     // 新
+        expect(updatedMessageVariables.display_data.health).toBe('100->80 (受到伤害)'); // 新
+        expect(updatedMessageVariables.display_data.mana).toBe('50->30 (施法消耗)'); // 新
         expect(updatedMessageVariables.display_data.stamina).toBe(30); // 保留
-        expect(updatedMessageVariables.display_data.level).toBe(5);          // 保留
+        expect(updatedMessageVariables.display_data.level).toBe(5); // 保留
 
         // 验证 delta_data 只包含本次更新
         expect(updatedMessageVariables.delta_data.health).toBe('100->80 (受到伤害)');
@@ -659,33 +731,39 @@ describe('handleVariablesInMessage', () => {
         expect(updatedMessageVariables.delta_data.stamina).toBeUndefined();
         expect(updatedMessageVariables.delta_data.level).toBeUndefined();
 
-        expect(updatedMessageVariables.initialized_lorebooks).toEqual(["book1"]); // 更新后的值
+        expect(updatedMessageVariables.initialized_lorebooks).toEqual(['book1']); // 更新后的值
 
         // 验证其他字段不包含
-        expect(updatedMessageVariables.custom_message_field).toBe(undefined);     // 消息特有字段不会被传入
+        expect(updatedMessageVariables.custom_message_field).toBe(undefined); // 消息特有字段不会被传入
     });
 
     test('当没有变量修改时不应该更新chat级别变量', async () => {
-        (globalThis as any).getChatMessages = jest.fn().mockReturnValue([{
-            message: "这是一段没有变量更新的文本",
-            role: 'assistant'
-        }]);
+        (globalThis as any).getChatMessages = jest.fn().mockReturnValue([
+            {
+                message: '这是一段没有变量更新的文本',
+                role: 'assistant',
+            },
+        ]);
 
         (globalThis as any).SillyTavern = {
-            chat: [{
-                swipe_id: 0,
-                variables: [{
-                    stat_data: { health: 100 },
-                    display_data: {},
-                    delta_data: {}
-                }]
-            }]
+            chat: [
+                {
+                    swipe_id: 0,
+                    variables: [
+                        {
+                            stat_data: { health: 100 },
+                            display_data: {},
+                            delta_data: {},
+                        },
+                    ],
+                },
+            ],
         };
 
         (globalThis as any).getVariables = jest.fn().mockReturnValue({
             stat_data: { health: 100 },
             display_data: {},
-            delta_data: {}
+            delta_data: {},
         });
 
         await handleVariablesInMessage(0);
@@ -703,13 +781,13 @@ describe('handleVariablesInMessage', () => {
 
 describe('invokeVariableTest', () => {
     test('should update variable value', async () => {
-        const inputData : VariableData = {
+        const inputData: VariableData = {
             old_variables: {
                 initialized_lorebooks: [],
-                stat_data: {"喵呜": 20},
+                stat_data: { 喵呜: 20 },
                 display_data: {},
-                delta_data: {}
-            }
+                delta_data: {},
+            },
         };
         await handleVariablesInCallback("_.set('喵呜', 114);//测试", inputData);
         expect(inputData.new_variables).not.toBeUndefined();
@@ -717,15 +795,15 @@ describe('invokeVariableTest', () => {
         expect(inputData.old_variables.stat_data.喵呜).toBe(20);
     });
     test('expect not updated', async () => {
-        const inputData : VariableData = {
+        const inputData: VariableData = {
             old_variables: {
                 initialized_lorebooks: [],
-                stat_data: {"喵呜": 20},
+                stat_data: { 喵呜: 20 },
                 display_data: {},
-                delta_data: {}
-            }
+                delta_data: {},
+            },
         };
-        await handleVariablesInCallback("这是一个没有更新的文本。明天见是最好的预言。", inputData);
+        await handleVariablesInCallback('这是一个没有更新的文本。明天见是最好的预言。', inputData);
         expect(inputData.new_variables).toBeUndefined();
     });
 });

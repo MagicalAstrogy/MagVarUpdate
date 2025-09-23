@@ -1,4 +1,4 @@
-import { GetSettings } from '@/settings';
+import { getSettings } from '@/settings';
 import { variable_events, VariableData } from '@/variable_def';
 
 export function trimQuotesAndBackslashes(str: string): string {
@@ -339,7 +339,7 @@ export async function updateVariables(
     const out_status: Record<string, any> = _.cloneDeep(variables);
     const delta_status: Record<string, any> = { stat_data: {} };
     const matched_set = extractSetCommands(current_message_content);
-    const settings = await GetSettings();
+    const settings = getSettings();
 
     variables.stat_data.$internal = {
         display_data: out_status.stat_data,
