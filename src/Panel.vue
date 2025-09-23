@@ -21,7 +21,14 @@
             <hr />
 
             <div class="flex-container flexFlowColumn">
-                <div><strong>变量更新方式</strong></div>
+                <div>
+                    <strong>变量更新方式</strong>
+                    <i
+                        class="fa-solid fa-circle-question fa-sm note-link-span"
+                        style="cursor: pointer"
+                        @click="showHelp"
+                    ></i>
+                </div>
                 <select id="mvu_update_method" v-model="settings.更新方式" class="text_pole">
                     <option value="随AI输出">随AI输出</option>
                     <option value="额外模型解析">额外模型解析</option>
@@ -90,4 +97,27 @@ import { useSettingsStore } from '@/settings';
 import { storeToRefs } from 'pinia';
 
 const { settings } = storeToRefs(useSettingsStore());
+
+function showHelp() {
+    SillyTavern.callGenericPopup(
+        `<p>为了让剧情模型更专注于剧情，你可以选择变量更新的方式：</p>
+        <ul>
+        <li><strong>随AI输出</strong>：名字中有 <code>[mvu_update]</code> 的条目将会正常发给 AI，因此 AI 将会在回复时输出变量更新分析及更新命令，进而更新变量。</li>
+        <li><strong>额外模型解析</strong>：名字中有 <code>[mvu_update]</code> 的条目不会发给 AI。在 AI 回复完成后，MVU 将会只使用名字中有 <code>[mvu_update]</code> 的条目调用额外模型专门解析变量更新。</li>
+        <li><strong>工具调用（待完成）</strong>：名字中有 <code>[mvu_update]</code> 的条目将作为工具调用的提示词发给 AI，因此 AI 将会通过工具调用来更新变量。</li>
+        </ul>
+        <hr/>
+        <p>如果要使用除<q>随AI输出</q>以外的方式，则需要作者适配世界书，添加带有 <code>[mvu_update]</code> 的条目。<br>
+        具体地，MVU 变量框架的提示词分为：</p>
+        <ul>
+        <li><strong>变量列表</strong>：让 AI 知道有什么变量，如 <code>null</code>、<code>&lt;%= getvar('stat_data') _%&gt;</code> 等。</li>
+        <li><strong>变量更新规则</strong>：让 AI 知道变量该如何更新，如<code>药物依赖度应该每分钟增加1点</code>等。</li>
+        <li><strong>输出规则</strong>：让 AI 知道该输出什么来表达变量发生变化，如提示词中要求输出的<code>&lt;UpdateVariable&gt;</code>块。</li>
+        </ul>
+        <p>作者需要做的，是给<q>变量更新规则</q>和<q>输出规则</q>条目的名字添加 <code>[mvu_update]</code>。</p>`,
+        SillyTavern.POPUP_TYPE.TEXT,
+        '',
+        { allowHorizontalScrolling: true, leftAlign: true }
+    );
+}
 </script>
