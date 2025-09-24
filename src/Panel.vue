@@ -35,38 +35,49 @@
                 </select>
 
                 <template v-if="settings.更新方式 === '额外模型解析'">
-                    <div class="flex-container flexFlowColumn">
-                        <label for="mvu_api_url">API 地址</label>
-                        <input
-                            id="mvu_api_url"
-                            v-model="settings.额外模型解析配置.api地址"
-                            type="text"
-                            class="text_pole"
-                            placeholder="http://localhost:1234/v1"
-                        />
-                    </div>
+                    <select
+                        id="mvu_extra_model_source"
+                        v-model="settings.额外模型解析配置.模型来源"
+                        class="text_pole"
+                    >
+                        <option value="与插头相同">与插头相同</option>
+                        <option value="自定义">自定义</option>
+                    </select>
 
-                    <div class="flex-container flexFlowColumn">
-                        <label for="mvu_api_key">API 密钥</label>
-                        <input
-                            id="mvu_api_key"
-                            v-model="settings.额外模型解析配置.密钥"
-                            type="password"
-                            class="text_pole"
-                            placeholder="留空表示无需密钥"
-                        />
-                    </div>
+                    <template v-if="settings.额外模型解析配置.模型来源 === '自定义'">
+                        <div class="flex-container flexFlowColumn">
+                            <label for="mvu_api_url">API 地址</label>
+                            <input
+                                id="mvu_api_url"
+                                v-model="settings.额外模型解析配置.api地址"
+                                type="text"
+                                class="text_pole"
+                                placeholder="http://localhost:1234/v1"
+                            />
+                        </div>
 
-                    <div class="flex-container flexFlowColumn">
-                        <label for="mvu_model_name">模型名称</label>
-                        <input
-                            id="mvu_model_name"
-                            v-model="settings.额外模型解析配置.模型名称"
-                            type="text"
-                            class="text_pole"
-                            placeholder="gemini-2.5-flash"
-                        />
-                    </div>
+                        <div class="flex-container flexFlowColumn">
+                            <label for="mvu_api_key">API 密钥</label>
+                            <input
+                                id="mvu_api_key"
+                                v-model="settings.额外模型解析配置.密钥"
+                                type="password"
+                                class="text_pole"
+                                placeholder="留空表示无需密钥"
+                            />
+                        </div>
+
+                        <div class="flex-container flexFlowColumn">
+                            <label for="mvu_model_name">模型名称</label>
+                            <input
+                                id="mvu_model_name"
+                                v-model="settings.额外模型解析配置.模型名称"
+                                type="text"
+                                class="text_pole"
+                                placeholder="gemini-2.5-flash"
+                            />
+                        </div>
+                    </template>
                 </template>
             </div>
 
@@ -107,7 +118,7 @@ function showHelp() {
         <li><strong>工具调用（待完成）</strong>：名字中有 <code>[mvu_update]</code> 的条目将作为工具调用的提示词发给 AI，因此 AI 将会通过工具调用来更新变量。</li>
         </ul>
         <hr/>
-        <p>如果要使用除<q>随AI输出</q>以外的方式，则需要作者适配世界书，添加带有 <code>[mvu_update]</code> 的条目。<br>
+        <p>如果要使用除<q>随AI输出</q>以外的方式，则需要作者适配世界书，添加带有 <code>[mvu_update]</code> 的条目；如果作者没有适配，则依旧会使用<q>随AI输出</q>的方式。<br>
         具体地，MVU 变量框架的提示词分为：</p>
         <ul>
         <li><strong>变量列表</strong>：让 AI 知道有什么变量，如 <code>null</code>、<code>&lt;%= getvar('stat_data') _%&gt;</code> 等。</li>
