@@ -7,6 +7,7 @@ const Settings = z
         更新方式: z.enum(['随AI输出', '额外模型解析']).prefault('随AI输出').catch('随AI输出'),
         额外模型解析配置: z
             .object({
+                模型来源: z.enum(['与插头相同', '自定义']).default('与插头相同'),
                 api地址: z.string().prefault('http://localhost:1234/v1'),
                 密钥: z.string().prefault(''),
                 模型名称: z.string().prefault('gemini-2.5-flash'),
@@ -21,20 +22,15 @@ const Settings = z
     .prefault({});
 
 export const useSettingsStore = defineStore('settings', () => {
-    const settings = ref(
-        Settings.parse(getVariables({ type: 'script', script_id: getScriptId() }))
-    );
-
+    const settings = ref(Settings.parse(_.get(SillyTavern.extensionSettings, 'mvu_settings', {})));
     watch(
         settings,
-        new_settings =>
-            insertOrAssignVariables(toRaw(new_settings), {
-                type: 'script',
-                script_id: getScriptId(),
-            }),
+        new_settings => {
+            _.set(SillyTavern.extensionSettings, 'mvu_settings', toRaw(new_settings));
+            SillyTavern.saveSettingsDebounced();
+        },
         { deep: true }
     );
-    return {
-        settings,
-    };
+
+    return { settings };
 });
