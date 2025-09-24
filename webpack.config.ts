@@ -5,8 +5,6 @@ import url from 'node:url';
 import { Server } from 'socket.io';
 import TerserPlugin from 'terser-webpack-plugin';
 import TsconfigPathsPlugin from 'tsconfig-paths-webpack-plugin';
-import unpluginAutoImport from 'unplugin-auto-import/webpack';
-import unpluginVueComponents from 'unplugin-vue-components/webpack';
 import { VueLoaderPlugin } from 'vue-loader';
 import webpack from 'webpack';
 
