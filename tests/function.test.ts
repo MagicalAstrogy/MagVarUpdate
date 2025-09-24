@@ -569,8 +569,7 @@ describe('handleVariablesInMessage', () => {
         (globalThis as any)._ = _;
         (globalThis as any).YAML = { parse: JSON.parse };
         (globalThis as any).eventEmit = jest.fn().mockResolvedValue(undefined);
-        (globalThis as any).replaceVariables = jest.fn().mockResolvedValue(undefined);
-        (globalThis as any).insertOrAssignVariables = jest.fn().mockResolvedValue(undefined);
+        (globalThis as any).updateVariablesWith = jest.fn().mockResolvedValue(undefined);
         (globalThis as any).setChatMessages = jest.fn().mockResolvedValue(undefined);
     });
 
@@ -616,14 +615,12 @@ describe('handleVariablesInMessage', () => {
 
         await handleVariablesInMessage(0);
 
-        // 验证 insertOrAssignVariables 被调用
-        expect((globalThis as any).replaceVariables).toHaveBeenCalledTimes(1);
-        expect((globalThis as any).insertOrAssignVariables).toHaveBeenCalledTimes(1);
+        expect((globalThis as any).updateVariablesWith).toHaveBeenCalledTimes(2);
 
         // 验证 chat 级别的变量更新
-        // 第一次是 setting的。
-        const chatUpdateCall = (globalThis as any).replaceVariables.mock.calls[0];
-        const updatedChatVariables = chatUpdateCall[0];
+        const chatUpdateCall = (globalThis as any).updateVariablesWith.mock.calls[0];
+        const updater = chatUpdateCall[0];
+        const updatedChatVariables = updater(mockChatVariables);
         const chatUpdateOptions = chatUpdateCall[1];
 
         expect(chatUpdateOptions).toEqual({ type: 'chat' });
@@ -642,12 +639,12 @@ describe('handleVariablesInMessage', () => {
         expect(updatedChatVariables.another_field).toEqual({ nested: 'data' });
 
         // 验证 message 级别的变量更新
-        const messageUpdateCall = (globalThis as any).insertOrAssignVariables.mock.calls[0];
+        const messageUpdateCall = (globalThis as any).updateVariablesWith.mock.calls[1];
         const messageUpdateOptions = messageUpdateCall[1];
         expect(messageUpdateOptions).toEqual({ type: 'message', message_id: 0 });
     });
 
-    test('使用insertOrAssignVariables时应该合并而不是覆盖消息级别的变量', async () => {
+    test('覆盖消息级别变量', async () => {
         // 模拟消息已有的变量（之前的状态）
         const existingMessageVariables = {
             stat_data: {
@@ -657,12 +654,12 @@ describe('handleVariablesInMessage', () => {
                 level: 5, // 这个值应该被保留
             },
             display_data: {
-                stamina: '40->30 (之前的更新)', // 应该被保留
-                level: '4->5 (升级)', // 应该被保留
+                stamina: '40->30 (之前的更新)',  // 应该被保留
+                level: '4->5 (升级)'            // 应该被保留
             },
             delta_data: {
-                stamina: '40->30 (之前的更新)', // 应该被保留
-                level: '4->5 (升级)', // 应该被保留
+                stamina: '40->30 (之前的更新)',  // 应该被保留
+                level: '4->5 (升级)'            // 应该被保留
             },
             initialized_lorebooks: ['book1'],
             custom_message_field: 'message_specific', // 消息特有的字段，应该被保留
@@ -701,11 +698,11 @@ describe('handleVariablesInMessage', () => {
 
         await handleVariablesInMessage(0);
 
-        // 验证 insertOrAssignVariables 被调用
-        expect((globalThis as any).insertOrAssignVariables).toHaveBeenCalledTimes(1);
+        expect((globalThis as any).updateVariablesWith).toHaveBeenCalledTimes(2);
 
-        const messageUpdateCall = (globalThis as any).insertOrAssignVariables.mock.calls[0];
-        const updatedMessageVariables = messageUpdateCall[0];
+        const messageUpdateCall = (globalThis as any).updateVariablesWith.mock.calls[1];
+        const updater = messageUpdateCall[0];
+        const updatedMessageVariables = updater(existingMessageVariables);
         const messageUpdateOptions = messageUpdateCall[1];
 
         expect(messageUpdateOptions).toEqual({ type: 'message', message_id: 0 });
@@ -719,10 +716,10 @@ describe('handleVariablesInMessage', () => {
         expect(updatedMessageVariables.stat_data.level).toBe(5); // 保留原值
 
         // 验证 display_data 包含新更新
-        expect(updatedMessageVariables.display_data.health).toBe('100->80 (受到伤害)'); // 新
-        expect(updatedMessageVariables.display_data.mana).toBe('50->30 (施法消耗)'); // 新
-        expect(updatedMessageVariables.display_data.stamina).toBe(30); // 保留
-        expect(updatedMessageVariables.display_data.level).toBe(5); // 保留
+        expect(updatedMessageVariables.display_data.health).toBe('100->80 (受到伤害)');  // 新
+        expect(updatedMessageVariables.display_data.mana).toBe('50->30 (施法消耗)');     // 新
+        expect(updatedMessageVariables.display_data.stamina).toBe(30);                 // 保留
+        expect(updatedMessageVariables.display_data.level).toBe(5);                    // 保留
 
         // 验证 delta_data 只包含本次更新
         expect(updatedMessageVariables.delta_data.health).toBe('100->80 (受到伤害)');
@@ -731,10 +728,7 @@ describe('handleVariablesInMessage', () => {
         expect(updatedMessageVariables.delta_data.stamina).toBeUndefined();
         expect(updatedMessageVariables.delta_data.level).toBeUndefined();
 
-        expect(updatedMessageVariables.initialized_lorebooks).toEqual(['book1']); // 更新后的值
-
-        // 验证其他字段不包含
-        expect(updatedMessageVariables.custom_message_field).toBe(undefined); // 消息特有字段不会被传入
+        expect(updatedMessageVariables.initialized_lorebooks).toEqual(["book1"]); // 更新后的值
     });
 
     test('当没有变量修改时不应该更新chat级别变量', async () => {
@@ -769,9 +763,9 @@ describe('handleVariablesInMessage', () => {
         await handleVariablesInMessage(0);
 
         // 验证只调用了一次 insertOrAssignVariables (仅 message 级别)
-        expect((globalThis as any).insertOrAssignVariables).toHaveBeenCalledTimes(1);
+        expect((globalThis as any).updateVariablesWith).toHaveBeenCalledTimes(1);
 
-        const call = (globalThis as any).insertOrAssignVariables.mock.calls[0];
+        const call = (globalThis as any).updateVariablesWith.mock.calls[0];
         expect(call[1]).toEqual({ type: 'message', message_id: 0 });
 
         // 验证没有调用 getVariables 获取 chat 级别变量
