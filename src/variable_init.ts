@@ -45,7 +45,7 @@ export async function loadInitVarData(
 
                 // Try YAML first (which also handles JSON)
                 try {
-                    parsedData = YAML.parse(content);
+                    parsedData = YAML.parse(content, { merge: true });
                 } catch (e) {
                     // Try JSON5
                     try {
