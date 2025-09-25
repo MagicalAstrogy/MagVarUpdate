@@ -49,6 +49,7 @@ export async function loadInitVarData(
                 } catch (e) {
                     // Try JSON5
                     try {
+                        // eslint-disable-next-line
                         parsedData = JSON5.parse(content);
                     } catch (e2) {
                         // Try TOML
@@ -64,7 +65,6 @@ export async function loadInitVarData(
 
                 if (parseError) {
                     console.error(`Failed to parse lorebook entry: ${parseError}`);
-                    // @ts-ignore
                     toastr.error(parseError.message, 'Failed to parse lorebook entry', {
                         timeOut: 5000,
                     });

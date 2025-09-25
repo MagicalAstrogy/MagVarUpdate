@@ -128,11 +128,11 @@ describe('updateDescriptions', () => {
             updateDescriptions('', initData, msgData, targetData);
 
             expect(targetData.复杂属性[1]).toBe('外层描述');
-            // @ts-ignore
+            // @ts-expect-error 忽略
             expect(targetData.复杂属性[0].description).toBe('对象内的描述');
-            // @ts-ignore
+            // @ts-expect-error 忽略
             expect(targetData.复杂属性[0].value).toBe(200);
-            // @ts-ignore
+            // @ts-expect-error 忽略
             expect(targetData.复杂属性[0].extra).toBe('new field'); // msgData 中新增的字段
         });
 

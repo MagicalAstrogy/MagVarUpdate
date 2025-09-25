@@ -1,5 +1,5 @@
+import { useSettingsStore } from '@/settings';
 import { variable_events, VariableData } from '@/variable_def';
-import { GetSettings } from '@/settings';
 
 export function trimQuotesAndBackslashes(str: string): string {
     if (!_.isString(str)) return str;
@@ -339,18 +339,18 @@ export async function updateVariables(
     const out_status: Record<string, any> = _.cloneDeep(variables);
     const delta_status: Record<string, any> = { stat_data: {} };
     const matched_set = extractSetCommands(current_message_content);
-    const settings = await GetSettings();
 
     variables.stat_data.$internal = {
         display_data: out_status.stat_data,
         delta_data: delta_status.stat_data,
     };
-    await eventEmit(variable_events.VARIABLE_UPDATE_STARTED, variables, out_is_modifed);
+    await eventEmit(variable_events.VARIABLE_UPDATE_STARTED, variables);
     let variable_modified = false;
     let error_occured = false;
     let error_last: string | undefined = undefined;
     for (const setCommand of matched_set) {
-        let { path, newValue, reason } = setCommand;
+        const { reason } = setCommand;
+        let { path, newValue } = setCommand;
         path = pathFix(path);
 
         if (_.has(variables.stat_data, path)) {
@@ -441,7 +441,7 @@ export async function updateVariables(
             error_last = display_str;
         }
     }
-    if (error_occured && settings.是否显示变量更新错误 === '是') {
+    if (error_occured && useSettingsStore().settings.通知.变量更新出错) {
         toastr.warning(`最近错误: ${error_last}`, '发生变量更新错误，可能需要重Roll', {
             timeOut: 6000,
         });
@@ -449,7 +449,7 @@ export async function updateVariables(
 
     variables.display_data = out_status.stat_data;
     variables.delta_data = delta_status.stat_data;
-    await eventEmit(variable_events.VARIABLE_UPDATE_ENDED, variables, out_is_modifed);
+    await eventEmit(variable_events.VARIABLE_UPDATE_ENDED, variables);
 
     //在结束事件中也可能设置变量
     delete variables.stat_data.$internal;
