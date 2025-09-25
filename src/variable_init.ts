@@ -118,7 +118,7 @@ export async function initCheck() {
     }
 
     console.info(`Init chat variables.`);
-    await insertOrAssignVariables(variables);
+    await updateVariablesWith(data => _.assign(data, variables));
 
     if (getLastMessageId() == 0) {
         const last_msg = getChatMessages(0, { include_swipes: true })[0];
