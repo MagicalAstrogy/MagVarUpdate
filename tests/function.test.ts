@@ -572,6 +572,7 @@ describe('handleVariablesInMessage', () => {
         (globalThis as any).eventEmit = jest.fn().mockResolvedValue(undefined);
         (globalThis as any).replaceVariables = jest.fn().mockResolvedValue(undefined);
         (globalThis as any).insertOrAssignVariables = jest.fn().mockResolvedValue(undefined);
+        (globalThis as any).updateVariablesWith = jest.fn().mockResolvedValue(undefined);
         (globalThis as any).setChatMessages = jest.fn().mockResolvedValue(undefined);
     });
 
@@ -614,20 +615,17 @@ describe('handleVariablesInMessage', () => {
             }
             return _.cloneDeep(mockMessageVariables);
         });
-
         expect((globalThis as any).replaceVariables).toHaveBeenCalledTimes(0);
 
         await handleVariablesInMessage(0);
 
-        // 其中包含 1 次是 Settings 的更新。
-        // 因为 setting 引入，现在会被设置2次
-        expect((globalThis as any).replaceVariables).toHaveBeenCalledTimes(2);
-        expect((globalThis as any).insertOrAssignVariables).toHaveBeenCalledTimes(1);
+        expect((globalThis as any).replaceVariables).toHaveBeenCalledTimes(1);
+        expect((globalThis as any).updateVariablesWith).toHaveBeenCalledTimes(2);
 
         // 验证 chat 级别的变量更新
-        // 第一次是 setting的。
-        const chatUpdateCall = (globalThis as any).replaceVariables.mock.calls[1];
-        const updatedChatVariables = chatUpdateCall[0];
+        const chatUpdateCall = (globalThis as any).updateVariablesWith.mock.calls[0];
+        const updater = chatUpdateCall[0];
+        const updatedChatVariables = updater(structuredClone(mockChatVariables));
         const chatUpdateOptions = chatUpdateCall[1];
 
         expect(chatUpdateOptions).toEqual({ type: 'chat' });
@@ -646,12 +644,12 @@ describe('handleVariablesInMessage', () => {
         expect(updatedChatVariables.another_field).toEqual({ nested: 'data' });
 
         // 验证 message 级别的变量更新
-        const messageUpdateCall = (globalThis as any).insertOrAssignVariables.mock.calls[0];
+        const messageUpdateCall = (globalThis as any).updateVariablesWith.mock.calls[1];
         const messageUpdateOptions = messageUpdateCall[1];
         expect(messageUpdateOptions).toEqual({ type: 'message', message_id: 0 });
     });
 
-    test('使用insertOrAssignVariables时应该合并而不是覆盖消息级别的变量', async () => {
+    test('覆盖消息级别变量', async () => {
         // 模拟消息已有的变量（之前的状态）
         const existingMessageVariables = {
             stat_data: {
@@ -705,11 +703,11 @@ describe('handleVariablesInMessage', () => {
 
         await handleVariablesInMessage(0);
 
-        // 验证 insertOrAssignVariables 被调用
-        expect((globalThis as any).insertOrAssignVariables).toHaveBeenCalledTimes(1);
+        expect((globalThis as any).updateVariablesWith).toHaveBeenCalledTimes(2);
 
-        const messageUpdateCall = (globalThis as any).insertOrAssignVariables.mock.calls[0];
-        const updatedMessageVariables = messageUpdateCall[0];
+        const messageUpdateCall = (globalThis as any).updateVariablesWith.mock.calls[1];
+        const updater = messageUpdateCall[0];
+        const updatedMessageVariables = updater(existingMessageVariables);
         const messageUpdateOptions = messageUpdateCall[1];
 
         expect(messageUpdateOptions).toEqual({ type: 'message', message_id: 0 });
@@ -736,9 +734,6 @@ describe('handleVariablesInMessage', () => {
         expect(updatedMessageVariables.delta_data.level).toBeUndefined();
 
         expect(updatedMessageVariables.initialized_lorebooks).toEqual(['book1']); // 更新后的值
-
-        // 验证其他字段不包含
-        expect(updatedMessageVariables.custom_message_field).toBe(undefined); // 消息特有字段不会被传入
     });
 
     test('当没有变量修改时不应该更新chat级别变量', async () => {
@@ -773,9 +768,9 @@ describe('handleVariablesInMessage', () => {
         await handleVariablesInMessage(0);
 
         // 验证只调用了一次 insertOrAssignVariables (仅 message 级别)
-        expect((globalThis as any).insertOrAssignVariables).toHaveBeenCalledTimes(1);
+        expect((globalThis as any).updateVariablesWith).toHaveBeenCalledTimes(1);
 
-        const call = (globalThis as any).insertOrAssignVariables.mock.calls[0];
+        const call = (globalThis as any).updateVariablesWith.mock.calls[0];
         expect(call[1]).toEqual({ type: 'message', message_id: 0 });
 
         // 验证没有调用 getVariables 获取 chat 级别变量
