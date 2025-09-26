@@ -570,6 +570,8 @@ describe('handleVariablesInMessage', () => {
         (globalThis as any)._ = _;
         (globalThis as any).YAML = { parse: JSON.parse };
         (globalThis as any).eventEmit = jest.fn().mockResolvedValue(undefined);
+        (globalThis as any).replaceVariables = jest.fn().mockResolvedValue(undefined);
+        (globalThis as any).insertOrAssignVariables = jest.fn().mockResolvedValue(undefined);
         (globalThis as any).updateVariablesWith = jest.fn().mockResolvedValue(undefined);
         (globalThis as any).setChatMessages = jest.fn().mockResolvedValue(undefined);
     });
@@ -613,15 +615,17 @@ describe('handleVariablesInMessage', () => {
             }
             return _.cloneDeep(mockMessageVariables);
         });
+        expect((globalThis as any).replaceVariables).toHaveBeenCalledTimes(0);
 
         await handleVariablesInMessage(0);
 
+        expect((globalThis as any).replaceVariables).toHaveBeenCalledTimes(1);
         expect((globalThis as any).updateVariablesWith).toHaveBeenCalledTimes(2);
 
         // 验证 chat 级别的变量更新
         const chatUpdateCall = (globalThis as any).updateVariablesWith.mock.calls[0];
         const updater = chatUpdateCall[0];
-        const updatedChatVariables = updater(mockChatVariables);
+        const updatedChatVariables = updater(structuredClone(mockChatVariables));
         const chatUpdateOptions = chatUpdateCall[1];
 
         expect(chatUpdateOptions).toEqual({ type: 'chat' });
@@ -717,10 +721,10 @@ describe('handleVariablesInMessage', () => {
         expect(updatedMessageVariables.stat_data.level).toBe(5); // 保留原值
 
         // 验证 display_data 包含新更新
-        expect(updatedMessageVariables.display_data.health).toBe('100->80 (受到伤害)');  // 新
-        expect(updatedMessageVariables.display_data.mana).toBe('50->30 (施法消耗)');     // 新
-        expect(updatedMessageVariables.display_data.stamina).toBe(30);                 // 保留
-        expect(updatedMessageVariables.display_data.level).toBe(5);                    // 保留
+        expect(updatedMessageVariables.display_data.health).toBe('100->80 (受到伤害)'); // 新
+        expect(updatedMessageVariables.display_data.mana).toBe('50->30 (施法消耗)'); // 新
+        expect(updatedMessageVariables.display_data.stamina).toBe(30); // 保留
+        expect(updatedMessageVariables.display_data.level).toBe(5); // 保留
 
         // 验证 delta_data 只包含本次更新
         expect(updatedMessageVariables.delta_data.health).toBe('100->80 (受到伤害)');
