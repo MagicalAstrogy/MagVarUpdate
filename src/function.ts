@@ -7,6 +7,8 @@ import {
     isArraySchema,
     isObjectSchema,
     isValueWithDescriptionStatData,
+    ObjectSchemaNode,
+    RootAdditionalProps,
 } from '@/variable_def';
 import * as math from 'mathjs';
 
@@ -553,9 +555,14 @@ export async function updateVariables(
     };
 
     const schema = variables.schema; // 获取 schema，可能为 undefined
+    let init_schema: (ObjectSchemaNode & Partial<RootAdditionalProps>) | undefined = undefined;
     const strict_template = schema?.strictTemplate ?? false;
     const concat_template_array = schema?.concatTemplateArray ?? true;
     const strict_set = schema?.strictSet ?? false;
+    {
+        let variable = await getVariables({ type: 'character' });
+        if (variable !== undefined) init_schema = variable.init_schema;
+    }
 
     for (const command of commands) {
         // 遍历所有命令，逐一处理
@@ -665,6 +672,7 @@ export async function updateVariables(
                         ? variables.stat_data
                         : _.get(variables.stat_data, targetPath);
                 const targetSchema = getSchemaForPath(schema, targetPath);
+                const targetInitSchema = getSchemaForPath(init_schema, targetPath);
 
                 // 验证1：目标是否为原始类型？如果是，则无法插入。
                 if (
@@ -680,7 +688,22 @@ export async function updateVariables(
 
                 // 验证2：Schema 规则
                 if (targetSchema) {
-                    if (targetSchema.type === 'object' && targetSchema.extensible === false) {
+                    const objectExtensible =
+                        targetSchema.type === 'object' && targetSchema.extensible === true;
+                    const initObjectExtensible =
+                        targetInitSchema !== null &&
+                        targetInitSchema.type === 'object' &&
+                        targetInitSchema.extensible === true;
+                    const arrayExtensible =
+                        targetSchema.type === 'array' && targetSchema.extensible === true;
+                    const initArrayExtensible =
+                        targetInitSchema !== null &&
+                        targetInitSchema.type === 'array' &&
+                        targetInitSchema.extensible === true;
+                    if (
+                        targetSchema.type === 'object' &&
+                        !(objectExtensible || initObjectExtensible)
+                    ) {
                         if (command.args.length === 2) {
                             // 合并
                             outError(
@@ -691,7 +714,10 @@ export async function updateVariables(
                         if (command.args.length >= 3) {
                             // 插入键
                             const newKey = String(parseCommandValue(command.args[1]));
-                            if (!_.has(targetSchema.properties, newKey)) {
+                            if (
+                                targetSchema.type == 'object' &&
+                                !_.has(targetSchema.properties, newKey)
+                            ) {
                                 outError(
                                     `SCHEMA VIOLATION: Cannot assign new key '${newKey}' into non-extensible object at path '${targetPath}'. ${reason_str}`
                                 );
@@ -700,7 +726,7 @@ export async function updateVariables(
                         }
                     } else if (
                         targetSchema.type === 'array' &&
-                        (targetSchema.extensible === false || targetSchema.extensible === undefined)
+                        !(arrayExtensible || initArrayExtensible)
                     ) {
                         outError(
                             `SCHEMA VIOLATION: Cannot assign elements into non-extensible array at path '${targetPath}'. ${reason_str}`

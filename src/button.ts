@@ -96,6 +96,14 @@ async function reloadInit() {
 
     await replaceVariables(merged_data, { type: 'chat' });
 
+    await updateVariablesWith(
+        data => {
+            data.init_schema = structuredClone(merged_data.schema);
+            return data;
+        },
+        { type: 'character' }
+    );
+
     console.info('InitVar更新完成');
     toastr.success('InitVar描述已更新', '', { timeOut: 3000 });
 }

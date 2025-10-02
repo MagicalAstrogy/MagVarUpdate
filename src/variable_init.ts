@@ -144,6 +144,13 @@ export async function initCheck() {
         //@ts-ignore
         await setChatMessage({ data: variables }, getLastMessageId());
     }
+    await updateVariablesWith(
+        data => {
+            data.init_schema = structuredClone(variables.schema);
+            return data;
+        },
+        { type: 'character' }
+    );
     try {
         // 输出构建信息
         toastr.info(
