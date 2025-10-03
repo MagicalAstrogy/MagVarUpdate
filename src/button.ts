@@ -1,8 +1,8 @@
 import { getLastValidVariable, handleVariablesInMessage } from '@/function';
-import { updateDescriptions } from '@/update_descriptions';
-import { createEmptyGameData, loadInitVarData } from '@/variable_init';
 import { cleanUpMetadata, reconcileAndApplySchema } from '@/schema';
+import { updateDescriptions } from '@/update_descriptions';
 import { MvuData } from '@/variable_def';
+import { createEmptyGameData, loadInitVarData } from '@/variable_init';
 
 const buttons = ['重新处理变量', '重新读取初始变量', '清除旧楼层变量'];
 
@@ -133,10 +133,16 @@ export function registerButtons() {
         const last_msg = getLastMessageId();
         if (last_msg < 1) return;
         if (SillyTavern.chat.length === 0) return;
-        await deleteVariable('stat_data', { type: 'message', message_id: last_msg });
-        await deleteVariable('delta_data', { type: 'message', message_id: last_msg });
-        await deleteVariable('display_data', { type: 'message', message_id: last_msg });
-        await deleteVariable('schema', { type: 'message', message_id: last_msg });
+        await updateVariablesWith(
+            variables => {
+                _.unset(variables, `stat_data`);
+                _.unset(variables, `delta_data`);
+                _.unset(variables, `display_data`);
+                _.unset(variables, `schema`);
+                return variables;
+            },
+            { type: 'message', message_id: last_msg }
+        );
         //重新处理变量
         await handleVariablesInMessage(getLastMessageId());
     });
@@ -158,12 +164,20 @@ export function registerButtons() {
             return;
         }
         SillyTavern.chat.slice(0, -depth).forEach(chat_message => {
-            if (chat_message.variables === undefined) return;
-            chat_message.variables.forEach(variable => {
-                _.unset(variable, `stat_data`);
-                _.unset(variable, `display_data`);
-                _.unset(variable, `delta_data`);
-                _.unset(variable, `schema`);
+            if (chat_message.variables === undefined) {
+                return;
+            }
+            chat_message.variables = _.range(0, chat_message.swipes?.length ?? 1).map(i => {
+                if (chat_message?.variables?.[i] === undefined) {
+                    return {};
+                }
+                return _.omit(
+                    chat_message.variables[i],
+                    `stat_data`,
+                    `display_data`,
+                    `delta_data`,
+                    `schema`
+                );
             });
         });
         SillyTavern.saveChat().then(() =>
