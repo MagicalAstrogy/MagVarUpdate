@@ -1,6 +1,11 @@
 import { describe, it, expect, beforeEach } from '@jest/globals';
 import { applyTemplate, updateVariables } from '../src/function';
-import {generateSchema, cleanUpMetadata, reconcileAndApplySchema, EXTENSIBLE_MARKER} from '../src/schema';
+import {
+    generateSchema,
+    cleanUpMetadata,
+    reconcileAndApplySchema,
+    EXTENSIBLE_MARKER,
+} from '../src/schema';
 import { StatData, MvuData } from '../src/variable_def';
 
 describe('Template Feature', () => {
@@ -18,7 +23,7 @@ describe('Template Feature', () => {
             expect(result).toEqual({
                 defaultName: 'default',
                 name: 'test',
-                age: 20 // value overrides template
+                age: 20, // value overrides template
             });
         });
 
@@ -26,7 +31,7 @@ describe('Template Feature', () => {
             const template: StatData[] = [{ type: 'default' }];
             const value = [{ name: 'item1' }];
             const result = applyTemplate(value, template);
-            expect(result).toEqual([{ name: 'item1'}, { type: 'default' }]);
+            expect(result).toEqual([{ name: 'item1' }, { type: 'default' }]);
         });
 
         it('should return original value when types mismatch', () => {
@@ -48,9 +53,9 @@ describe('Template Feature', () => {
         it('should preserve template in object schema from $meta', () => {
             const data: StatData = {
                 $meta: {
-                    template: { defaultProp: 'default' }
+                    template: { defaultProp: 'default' },
                 },
-                existingProp: 'value'
+                existingProp: 'value',
             };
             const schema = generateSchema(data);
             expect(schema.type).toBe('object');
@@ -62,10 +67,10 @@ describe('Template Feature', () => {
         it('should preserve template in array schema from metadata element', () => {
             const data = [
                 { name: 'item1' },
-                { $meta: { template: { defaultType: 'default' } }, "$arrayMeta": true }
+                { $meta: { template: { defaultType: 'default' } }, $arrayMeta: true },
             ];
             const schema = generateSchema(data);
-            expect(data.length).toBe(1);// Removed meta element after
+            expect(data.length).toBe(1); // Removed meta element after
             expect(schema.type).toBe('array');
             if (schema.type === 'array') {
                 expect(schema.template).toEqual({ defaultType: 'default' });
@@ -76,10 +81,10 @@ describe('Template Feature', () => {
             const oldSchema = {
                 type: 'object' as const,
                 properties: {},
-                template: { inherited: true }
+                template: { inherited: true },
             };
             const data: StatData = {
-                newProp: 'value'
+                newProp: 'value',
             };
             const schema = generateSchema(data, oldSchema);
             expect(schema.type).toBe('object');
@@ -97,16 +102,16 @@ describe('Template Feature', () => {
                 defaultName: 'test',
                 nestedObj: {
                     $meta: { required: ['id'] },
-                    id: null
-                }
+                    id: null,
+                },
             };
 
             // 创建数据，其中 template 是对上面对象的引用
             const data: StatData = {
                 $meta: {
-                    template: templateWithMeta
+                    template: templateWithMeta,
                 },
-                existingProp: 'value'
+                existingProp: 'value',
             };
 
             // 生成 schema
@@ -128,13 +133,10 @@ describe('Template Feature', () => {
             const data = [
                 { name: 'item1' },
                 { $meta: { template: { defaultType: 'default' } }, $arrayMeta: true },
-                { name: 'item2' }
+                { name: 'item2' },
             ];
             cleanUpMetadata(data);
-            expect(data).toEqual([
-                { name: 'item1' },
-                { name: 'item2' }
-            ]);
+            expect(data).toEqual([{ name: 'item1' }, { name: 'item2' }]);
         });
 
         it('should remove $meta from objects', () => {
@@ -143,15 +145,15 @@ describe('Template Feature', () => {
                 prop: 'value',
                 nested: {
                     $meta: { extensible: true },
-                    nestedProp: 'nestedValue'
-                }
+                    nestedProp: 'nestedValue',
+                },
             };
             cleanUpMetadata(data);
             expect(data).toEqual({
                 prop: 'value',
                 nested: {
-                    nestedProp: 'nestedValue'
-                }
+                    nestedProp: 'nestedValue',
+                },
             });
         });
     });
@@ -164,7 +166,7 @@ describe('Template Feature', () => {
                 initialized_lorebooks: {},
                 stat_data: {},
                 display_data: {},
-                delta_data: {}
+                delta_data: {},
             };
         });
 
@@ -173,30 +175,32 @@ describe('Template Feature', () => {
             variables.stat_data = {
                 items: [
                     { name: 'existing' },
-                    { $meta: { template: { type: 'default', rarity: 'common' }, extensible: true },
-                      "$arrayMeta": true }
-                ]
+                    {
+                        $meta: {
+                            template: { type: 'default', rarity: 'common' },
+                            extensible: true,
+                        },
+                        $arrayMeta: true,
+                    },
+                ],
             };
             // 生成 schema
             reconcileAndApplySchema(variables);
             cleanUpMetadata(variables.stat_data);
 
             // 执行 assign 操作
-            await updateVariables(
-                `_.assign('items', {"name": "sword"});`,
-                variables
-            );
+            await updateVariables(`_.assign('items', {"name": "sword"});`, variables);
 
             // 验证模板是否被应用
             expect(variables.stat_data.items).toEqual([
                 { name: 'existing' },
-                { name: 'sword', type: 'default', rarity: 'common' }
+                { name: 'sword', type: 'default', rarity: 'common' },
             ]);
         });
 
         it('should apply template when assigning to array with index (3 args)', async () => {
             variables.stat_data = {
-                items: [{ memori: "nothing" }]
+                items: [{ memori: 'nothing' }],
             };
             variables.schema = {
                 type: 'object',
@@ -205,25 +209,22 @@ describe('Template Feature', () => {
                         type: 'array',
                         elementType: { type: 'object', properties: {} },
                         extensible: true,
-                        template: { type: 'weapon', damage: 10 }
-                    }
-                }
+                        template: { type: 'weapon', damage: 10 },
+                    },
+                },
             };
 
-            await updateVariables(
-                `_.assign('items', 0, {"name": "dagger"});`,
-                variables
-            );
+            await updateVariables(`_.assign('items', 0, {"name": "dagger"});`, variables);
 
             expect(variables.stat_data.items).toEqual([
                 { name: 'dagger', type: 'weapon', damage: 10 },
-                { memori: "nothing" }
+                { memori: 'nothing' },
             ]);
         });
 
         it('should apply template when assigning to object property (3 args)', async () => {
             variables.stat_data = {
-                inventory: {}
+                inventory: {},
             };
             variables.schema = {
                 type: 'object',
@@ -232,9 +233,9 @@ describe('Template Feature', () => {
                         type: 'object',
                         properties: {},
                         extensible: true,
-                        template: { count: 1, stackable: true }
-                    }
-                }
+                        template: { count: 1, stackable: true },
+                    },
+                },
             };
 
             await updateVariables(
@@ -243,13 +244,283 @@ describe('Template Feature', () => {
             );
 
             expect(variables.stat_data.inventory).toEqual({
-                potion: { name: 'health potion', count: 1, stackable: true }
+                potion: { name: 'health potion', count: 1, stackable: true },
+            });
+        });
+
+        it('should clean metadata for nested template insert and allow subsequent insert', async () => {
+            variables.stat_data = {
+                root: {
+                    $meta: {
+                        extensible: true,
+                        template: {
+                            $meta: {
+                                extensible: true,
+                            },
+                        },
+                    },
+                },
+            };
+
+            reconcileAndApplySchema(variables);
+            cleanUpMetadata(variables.stat_data);
+
+            await updateVariables(`_.insert('root', 'new_node', {"owo": 123});`, variables);
+
+            const rootData = variables.stat_data.root as any;
+            expect(rootData.$meta).toBeUndefined();
+            expect(rootData.new_node).toEqual({ owo: 123 });
+
+            await updateVariables(`_.insert('root.new_node', 'tvt', "234");`, variables);
+
+            expect((rootData.new_node as any).$meta).toBeUndefined();
+            expect(rootData.new_node).toEqual({ owo: 123, tvt: '234' });
+        });
+
+        it('should clean metadata for nested template insert and allow subsequent insert', async () => {
+            variables.stat_data = {
+                root: {
+                    $meta: {
+                        extensible: true,
+                        template: {
+                            $meta: {
+                                extensible: true,
+                            },
+                        },
+                    },
+                },
+            };
+            //因为两条指令放在一起执行，和分开执行是有区别的，因此需要额外一条同时运行的用例。
+
+            reconcileAndApplySchema(variables);
+            cleanUpMetadata(variables.stat_data);
+
+            await updateVariables(
+                `_.insert('root', 'new_node', {"owo": 123});
+                                      _.insert('root.new_node', 'tvt', "234");`,
+                variables
+            );
+
+            const rootData = variables.stat_data.root as any;
+            expect(rootData.$meta).toBeUndefined();
+            expect((variables.schema!.properties['root'] as any).extensible).toBe(true);
+            expect((variables.schema as any).properties.root.properties.new_node.extensible).toBe(
+                true
+            );
+            expect(rootData.new_node).toEqual({ owo: 123, tvt: '234' });
+            expect((rootData.new_node as any).$meta).toBeUndefined();
+        });
+
+        it('should handle cascading inserts with nested templates after metadata cleanup', async () => {
+            variables.stat_data = {
+                root: {
+                    $meta: {
+                        extensible: true,
+                        template: {
+                            $meta: { extensible: true },
+                            items: [
+                                {
+                                    $meta: {
+                                        extensible: true,
+                                        template: {
+                                            $meta: { extensible: true },
+                                            type: 'base',
+                                            flag: false,
+                                        },
+                                    },
+                                    $arrayMeta: true,
+                                },
+                            ],
+                            config: {
+                                $meta: {
+                                    extensible: true,
+                                    template: {
+                                        level: 1,
+                                        info: {
+                                            $meta: { extensible: true },
+                                            createdBy: 'system',
+                                        },
+                                    },
+                                },
+                            },
+                        },
+                    },
+                },
+            };
+
+            reconcileAndApplySchema(variables);
+            cleanUpMetadata(variables.stat_data);
+
+            expect((variables.stat_data.root as any).$meta).toBeUndefined();
+
+            await updateVariables(
+                `_.insert('root', 'new_node', {"items": [], "config": {}});`,
+                variables
+            );
+
+            const newNode = (variables.stat_data.root as any).new_node;
+            expect(newNode.$meta).toBeUndefined();
+            expect(newNode).toEqual({
+                items: [],
+                config: {},
+            });
+
+            await updateVariables(`_.insert('root.new_node.items', {"name": "first"});`, variables);
+
+            expect(newNode).toEqual({
+                items: [{ type: 'base', flag: false, name: 'first' }],
+                config: {},
+            });
+
+            await updateVariables(
+                `_.assign('root.new_node.items', 0, {"name": "priority"});`,
+                variables
+            );
+            expect(newNode).toEqual({
+                items: [
+                    { type: 'base', flag: false, name: 'priority' },
+                    { type: 'base', flag: false, name: 'first' },
+                ],
+                config: {},
+            });
+
+            await updateVariables(
+                `_.insert('root.new_node.config', 'override', {"mode": "auto"});`,
+                variables
+            );
+            expect(newNode).toEqual({
+                items: [
+                    { type: 'base', flag: false, name: 'priority' },
+                    { type: 'base', flag: false, name: 'first' },
+                ],
+                config: {
+                    override: {
+                        level: 1,
+                        info: {
+                            createdBy: 'system',
+                        },
+                        mode: 'auto',
+                    },
+                },
+            });
+            expect(
+                (variables.schema as any).properties.root.properties.new_node.properties.items
+                    .extensible
+            ).toBe(true);
+            expect(
+                (variables.schema as any).properties.root.properties.new_node.properties.config
+                    .extensible
+            ).toBe(true);
+
+            const finalNode = (variables.stat_data.root as any).new_node;
+            expect(JSON.stringify(finalNode)).not.toContain('$meta');
+            expect(finalNode.items).toEqual([
+                { name: 'priority', type: 'base', flag: false },
+                { name: 'first', type: 'base', flag: false },
+            ]);
+            expect(finalNode.config).toEqual({
+                override: {
+                    mode: 'auto',
+                    level: 1,
+                    info: { createdBy: 'system' },
+                },
+            });
+        });
+
+        it('should handle cascading inserts with nested templates after metadata cleanup', async () => {
+            //相似的，需要一个一起运行，而不是分步运行的版本。
+            variables.stat_data = {
+                root: {
+                    $meta: {
+                        extensible: true,
+                        template: {
+                            $meta: { extensible: true },
+                            items: [
+                                {
+                                    $meta: {
+                                        extensible: true,
+                                        template: {
+                                            $meta: { extensible: true },
+                                            type: 'base',
+                                            flag: false,
+                                        },
+                                    },
+                                    $arrayMeta: true,
+                                },
+                            ],
+                            config: {
+                                $meta: {
+                                    extensible: true,
+                                    template: {
+                                        level: 1,
+                                        info: {
+                                            $meta: { extensible: true },
+                                            createdBy: 'system',
+                                        },
+                                    },
+                                },
+                            },
+                        },
+                    },
+                },
+            };
+
+            reconcileAndApplySchema(variables);
+            cleanUpMetadata(variables.stat_data);
+
+            expect((variables.stat_data.root as any).$meta).toBeUndefined();
+
+            await updateVariables(
+                `_.insert('root', 'new_node', {"items": [], "config": {}});
+                _.insert('root.new_node.items', {"name": "first"});
+                _.assign('root.new_node.items', 0, {"name": "priority"});
+                _.insert('root.new_node.config', 'override', {"mode": "auto"});`,
+                variables
+            );
+            const newNode = (variables.stat_data.root as any).new_node;
+
+            expect(
+                (variables.schema as any).properties.root.properties.new_node.properties.items
+                    .extensible
+            ).toBe(true);
+            expect(
+                (variables.schema as any).properties.root.properties.new_node.properties.config
+                    .extensible
+            ).toBe(true);
+            expect(newNode).toEqual({
+                items: [
+                    { type: 'base', flag: false, name: 'priority' },
+                    { type: 'base', flag: false, name: 'first' },
+                ],
+                config: {
+                    override: {
+                        level: 1,
+                        info: {
+                            createdBy: 'system',
+                        },
+                        mode: 'auto',
+                    },
+                },
+            });
+
+            const finalNode = (variables.stat_data.root as any).new_node;
+            expect(JSON.stringify(finalNode)).not.toContain('$meta');
+            expect(finalNode.items).toEqual([
+                { name: 'priority', type: 'base', flag: false },
+                { name: 'first', type: 'base', flag: false },
+            ]);
+            expect(finalNode.config).toEqual({
+                override: {
+                    mode: 'auto',
+                    level: 1,
+                    info: { createdBy: 'system' },
+                },
             });
         });
 
         it('should NOT apply template when merging objects (2 args)', async () => {
             variables.stat_data = {
-                player: { level: 1 }
+                player: { level: 1 },
             };
             variables.schema = {
                 type: 'object',
@@ -258,26 +529,23 @@ describe('Template Feature', () => {
                         type: 'object',
                         properties: {},
                         extensible: true,
-                        template: { defaultHP: 100 }
-                    }
-                }
+                        template: { defaultHP: 100 },
+                    },
+                },
             };
 
-            await updateVariables(
-                `_.assign('player', {"exp": 0});`,
-                variables
-            );
+            await updateVariables(`_.assign('player', {"exp": 0});`, variables);
 
             // 不应该应用模板
             expect(variables.stat_data.player).toEqual({
                 level: 1,
-                exp: 0
+                exp: 0,
             });
         });
 
         it('should handle type mismatch between template and value', async () => {
             variables.stat_data = {
-                items: []
+                items: [],
             };
             variables.schema = {
                 type: 'object',
@@ -286,9 +554,9 @@ describe('Template Feature', () => {
                         type: 'array',
                         elementType: { type: 'any' },
                         extensible: true,
-                        template: { type: 'object template' } // 对象模板
-                    }
-                }
+                        template: { type: 'object template' }, // 对象模板
+                    },
+                },
             };
 
             const consoleSpy = jest.spyOn(console, 'error').mockImplementation();
@@ -298,7 +566,9 @@ describe('Template Feature', () => {
                 variables
             );
 
-            expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('Template type mismatch'));
+            expect(consoleSpy).toHaveBeenCalledWith(
+                expect.stringContaining('Template type mismatch')
+            );
             expect(variables.stat_data.items).toEqual([['array value']]); // 未应用模板
 
             consoleSpy.mockRestore();
@@ -306,7 +576,7 @@ describe('Template Feature', () => {
 
         it('should apply template to multiple array elements', async () => {
             variables.stat_data = {
-                items: []
+                items: [],
             };
             variables.schema = {
                 type: 'object',
@@ -315,9 +585,9 @@ describe('Template Feature', () => {
                         type: 'array',
                         elementType: { type: 'object', properties: {} },
                         extensible: true,
-                        template: { category: 'item', sellable: true }
-                    }
-                }
+                        template: { category: 'item', sellable: true },
+                    },
+                },
             };
 
             await updateVariables(
@@ -325,26 +595,23 @@ describe('Template Feature', () => {
                 variables
             );
 
-            expect(variables.stat_data.items).toEqual([
-                [{ name: 'sword' },
-                { name: 'shield' }]
-            ]);
+            expect(variables.stat_data.items).toEqual([[{ name: 'sword' }, { name: 'shield' }]]);
         });
 
         it('should not create object and apply template when target does not exist', async () => {
             variables.schema = {
                 type: 'object',
                 properties: {},
-                extensible: true
+                extensible: true,
             };
 
             // 为不存在的路径设置模板
             variables.stat_data = {
                 game: {
                     $meta: {
-                        template: { initialized: true, version: '1.0' }
-                    }
-                }
+                        template: { initialized: true, version: '1.0' },
+                    },
+                },
             };
             reconcileAndApplySchema(variables);
 
@@ -356,9 +623,9 @@ describe('Template Feature', () => {
             expect(variables.stat_data).toEqual({
                 game: {
                     $meta: {
-                        template: { initialized: true, version: '1.0' }
-                    }
-                }
+                        template: { initialized: true, version: '1.0' },
+                    },
+                },
             });
         });
     });
@@ -369,9 +636,9 @@ describe('Template Feature', () => {
                 $meta: {
                     template: {
                         $meta: { extensible: true },
-                        defaultProp: 'value'
-                    }
-                }
+                        defaultProp: 'value',
+                    },
+                },
             };
             const schema = generateSchema(data);
             expect(schema.type).toBe('object');
@@ -387,10 +654,10 @@ describe('Template Feature', () => {
                     template: {
                         $meta: { extensible: false, required: ['name'] },
                         name: 'default',
-                        value: 0
-                    }
+                        value: 0,
+                    },
                 },
-                existingData: 'test'
+                existingData: 'test',
             };
 
             // Clone data to preserve original
@@ -438,10 +705,10 @@ describe('Template Feature', () => {
             const variables: MvuData = {
                 initialized_lorebooks: {},
                 stat_data: {
-                    attributes: []
+                    attributes: [],
                 },
                 display_data: {},
-                delta_data: {}
+                delta_data: {},
             };
 
             variables.schema = {
@@ -451,18 +718,15 @@ describe('Template Feature', () => {
                         type: 'array',
                         elementType: { type: 'any' },
                         extensible: true,
-                        template: ['default', 'This is a default attribute'] // ValueWithDescription 风格
-                    }
-                }
+                        template: ['default', 'This is a default attribute'], // ValueWithDescription 风格
+                    },
+                },
             };
 
-            await updateVariables(
-                `_.assign('attributes', ["strength"]);`,
-                variables
-            );
+            await updateVariables(`_.assign('attributes', ["strength"]);`, variables);
 
             expect(variables.stat_data.attributes).toEqual([
-                ['strength', 'default', 'This is a default attribute']
+                ['strength', 'default', 'This is a default attribute'],
             ]);
         });
 
@@ -470,10 +734,10 @@ describe('Template Feature', () => {
             const variables: MvuData = {
                 initialized_lorebooks: {},
                 stat_data: {
-                    attributes: []
+                    attributes: [],
                 },
                 display_data: {},
-                delta_data: {}
+                delta_data: {},
             };
 
             variables.schema = {
@@ -483,18 +747,15 @@ describe('Template Feature', () => {
                         type: 'array',
                         elementType: { type: 'any' },
                         extensible: true,
-                        template: ['default', 'This is a default attribute'] // ValueWithDescription 风格
-                    }
-                }
+                        template: ['default', 'This is a default attribute'], // ValueWithDescription 风格
+                    },
+                },
             };
 
-            await updateVariables(
-                    `_.assign('attributes', [["strength"]]);`,
-                    variables
-            );
+            await updateVariables(`_.assign('attributes', [["strength"]]);`, variables);
 
             expect(variables.stat_data.attributes).toEqual([
-                [['strength'], 'default', 'This is a default attribute']
+                [['strength'], 'default', 'This is a default attribute'],
             ]);
         });
 
@@ -503,7 +764,7 @@ describe('Template Feature', () => {
             const template: any[] = [
                 { type: 'default' },
                 'description',
-                { metadata: { version: 1 } }
+                { metadata: { version: 1 } },
             ];
 
             const value = [{ type: 'custom', value: 42 }];
@@ -511,9 +772,10 @@ describe('Template Feature', () => {
 
             // 合并结果应该保留 value 的内容并补充 template 的其他元素
             expect(result).toEqual([
-                { type: 'custom', value: 42 }, { type: 'default' },
+                { type: 'custom', value: 42 },
+                { type: 'default' },
                 'description',
-                { metadata: { version: 1 } }
+                { metadata: { version: 1 } },
             ]);
         });
 
@@ -538,10 +800,10 @@ describe('Template Feature', () => {
             const variables: MvuData = {
                 initialized_lorebooks: {},
                 stat_data: {
-                    skills: []
+                    skills: [],
                 },
                 display_data: {},
-                delta_data: {}
+                delta_data: {},
             };
 
             variables.schema = {
@@ -551,30 +813,24 @@ describe('Template Feature', () => {
                         type: 'array',
                         elementType: { type: 'any' },
                         extensible: true,
-                        template: ['skill description', { level: 1, maxLevel: 10 }]
-                    }
-                }
+                        template: ['skill description', { level: 1, maxLevel: 10 }],
+                    },
+                },
             };
 
             // 插入字符串字面量
-            await updateVariables(
-                `_.assign('skills', "剑术");`,
-                variables
-            );
+            await updateVariables(`_.assign('skills', "剑术");`, variables);
 
             expect(variables.stat_data.skills).toEqual([
-                ['剑术', 'skill description', { level: 1, maxLevel: 10 }]
+                ['剑术', 'skill description', { level: 1, maxLevel: 10 }],
             ]);
 
             // 插入数字字面量
-            await updateVariables(
-                `_.assign('skills', 0, 100);`,
-                variables
-            );
+            await updateVariables(`_.assign('skills', 0, 100);`, variables);
 
             expect(variables.stat_data.skills).toEqual([
                 [100, 'skill description', { level: 1, maxLevel: 10 }],
-                ['剑术', 'skill description', { level: 1, maxLevel: 10 }]
+                ['剑术', 'skill description', { level: 1, maxLevel: 10 }],
             ]);
         });
 
@@ -598,7 +854,7 @@ describe('Template Feature', () => {
                 initialized_lorebooks: {},
                 stat_data: {},
                 display_data: {},
-                delta_data: {}
+                delta_data: {},
             };
         });
 
@@ -607,8 +863,8 @@ describe('Template Feature', () => {
             variables.stat_data = {
                 items: [
                     { name: 'sword', damage: 5 },
-                    { name: 'shield', defense: 10 }
-                ]
+                    { name: 'shield', defense: 10 },
+                ],
             };
             variables.schema = {
                 type: 'object',
@@ -619,24 +875,21 @@ describe('Template Feature', () => {
                             type: 'object',
                             extensible: true,
                             properties: {},
-                            template: { rarity: 'common', level: 1 }
+                            template: { rarity: 'common', level: 1 },
                         },
                         extensible: true,
-                        template: { rarity: 'common', level: 1 }
-                    }
-                }
+                        template: { rarity: 'common', level: 1 },
+                    },
+                },
             };
 
             // 使用 set 命令修改已存在的元素
-            await updateVariables(
-                `_.set('items[0].damage', 10);`,
-                variables
-            );
+            await updateVariables(`_.set('items[0].damage', 10);`, variables);
 
             // 不应该添加模板中的属性
             expect((variables.stat_data.items as any[])[0]).toEqual({
                 name: 'sword',
-                damage: 10
+                damage: 10,
                 // 注意：没有 rarity 和 level
             });
         });
@@ -644,7 +897,7 @@ describe('Template Feature', () => {
         it('should validate extensible property for arrays', async () => {
             // 测试数组的 extensible 属性限制
             variables.stat_data = {
-                fixedArray: ['item1', 'item2']
+                fixedArray: ['item1', 'item2'],
             };
             variables.schema = {
                 type: 'object',
@@ -652,21 +905,20 @@ describe('Template Feature', () => {
                     fixedArray: {
                         type: 'array',
                         elementType: { type: 'string' },
-                        extensible: false // 不可扩展
-                    }
-                }
+                        extensible: false, // 不可扩展
+                    },
+                },
             };
 
             const consoleSpy = jest.spyOn(console, 'warn').mockImplementation();
 
-            await updateVariables(
-                `_.assign('fixedArray', 'item3');`,
-                variables
-            );
+            await updateVariables(`_.assign('fixedArray', 'item3');`, variables);
 
             // 应该有警告信息
             expect(consoleSpy).toHaveBeenCalledWith(
-                expect.stringContaining('SCHEMA VIOLATION: Cannot assign elements into non-extensible array')
+                expect.stringContaining(
+                    'SCHEMA VIOLATION: Cannot assign elements into non-extensible array'
+                )
             );
 
             // 数组不应该被修改
@@ -680,8 +932,8 @@ describe('Template Feature', () => {
             variables.stat_data = {
                 config: {
                     version: '1.0',
-                    name: 'test'
-                }
+                    name: 'test',
+                },
             };
             variables.schema = {
                 type: 'object',
@@ -690,19 +942,16 @@ describe('Template Feature', () => {
                         type: 'object',
                         properties: {
                             version: { type: 'string' },
-                            name: { type: 'string' }
+                            name: { type: 'string' },
                         },
-                        extensible: false // 不可扩展
-                    }
-                }
+                        extensible: false, // 不可扩展
+                    },
+                },
             };
 
             const consoleSpy = jest.spyOn(console, 'warn').mockImplementation();
 
-            await updateVariables(
-                `_.assign('config', 'newKey', 'newValue');`,
-                variables
-            );
+            await updateVariables(`_.assign('config', 'newKey', 'newValue');`, variables);
 
             // 应该有警告信息
             expect(consoleSpy).toHaveBeenCalledWith(
@@ -712,7 +961,7 @@ describe('Template Feature', () => {
             // 对象不应该被修改
             expect(variables.stat_data.config).toEqual({
                 version: '1.0',
-                name: 'test'
+                name: 'test',
             });
 
             consoleSpy.mockRestore();
@@ -723,29 +972,24 @@ describe('Template Feature', () => {
             variables.stat_data = {
                 characters: {
                     $meta: {
-                        template: { hp: 100, mp: 50 }
+                        template: { hp: 100, mp: 50 },
                     },
-                    players: [EXTENSIBLE_MARKER]
-                }
-            };//{$meta: {extensible: true}}
+                    players: [EXTENSIBLE_MARKER],
+                },
+            }; //{$meta: {extensible: true}}
             reconcileAndApplySchema(variables);
             cleanUpMetadata(variables.stat_data);
 
-            await updateVariables(
-                `_.assign('characters.players', {"name": "hero"});`,
-                variables
-            );
+            await updateVariables(`_.assign('characters.players', {"name": "hero"});`, variables);
 
             // 不应该应用父级的模板
-            expect((variables.stat_data.characters as any).players).toEqual([
-                { name: 'hero' }
-            ]);
+            expect((variables.stat_data.characters as any).players).toEqual([{ name: 'hero' }]);
         });
 
         it('should handle template with primitive array correctly', async () => {
             // 测试原始类型数组作为模板
             variables.stat_data = {
-                tags: []
+                tags: [],
             };
             variables.schema = {
                 type: 'object',
@@ -754,25 +998,20 @@ describe('Template Feature', () => {
                         type: 'array',
                         elementType: { type: 'any' },
                         extensible: true,
-                        template: ['default-tag', 'metadata'] // 原始类型数组模板
-                    }
-                }
+                        template: ['default-tag', 'metadata'], // 原始类型数组模板
+                    },
+                },
             };
 
-            await updateVariables(
-                `_.assign('tags', 'user-tag');`,
-                variables
-            );
+            await updateVariables(`_.assign('tags', 'user-tag');`, variables);
 
-            expect(variables.stat_data.tags).toEqual([
-                ['user-tag', 'default-tag', 'metadata']
-            ]);
+            expect(variables.stat_data.tags).toEqual([['user-tag', 'default-tag', 'metadata']]);
         });
 
         it('should handle inserting null or undefined values', async () => {
             // 测试插入 null 或 undefined 值
             variables.stat_data = {
-                items: []
+                items: [],
             };
             variables.schema = {
                 type: 'object',
@@ -781,15 +1020,12 @@ describe('Template Feature', () => {
                         type: 'array',
                         elementType: { type: 'any' },
                         extensible: true,
-                        template: { default: true }
-                    }
-                }
+                        template: { default: true },
+                    },
+                },
             };
 
-            await updateVariables(
-                `_.assign('items', null);`,
-                variables
-            );
+            await updateVariables(`_.assign('items', null);`, variables);
 
             // null 值不应该应用模板
             expect(variables.stat_data.items).toEqual([null]);
@@ -799,7 +1035,7 @@ describe('Template Feature', () => {
             // 测试模板中的日期对象处理
             const now = new Date().toISOString();
             variables.stat_data = {
-                events: []
+                events: [],
             };
             variables.schema = {
                 type: 'object',
@@ -808,18 +1044,15 @@ describe('Template Feature', () => {
                         type: 'array',
                         elementType: { type: 'object', properties: {} },
                         extensible: true,
-                        template: { createdAt: now, status: 'pending' }
-                    }
-                }
+                        template: { createdAt: now, status: 'pending' },
+                    },
+                },
             };
 
-            await updateVariables(
-                `_.assign('events', {"name": "login"});`,
-                variables
-            );
+            await updateVariables(`_.assign('events', {"name": "login"});`, variables);
 
             expect(variables.stat_data.events).toEqual([
-                { name: 'login', createdAt: now, status: 'pending' }
+                { name: 'login', createdAt: now, status: 'pending' },
             ]);
         });
 
@@ -830,10 +1063,10 @@ describe('Template Feature', () => {
                     levels: [
                         {
                             name: 'Level 1',
-                            rooms: []
-                        }
-                    ]
-                }
+                            rooms: [],
+                        },
+                    ],
+                },
             };
             variables.schema = {
                 type: 'object',
@@ -851,14 +1084,14 @@ describe('Template Feature', () => {
                                             type: 'array',
                                             elementType: { type: 'object', properties: {} },
                                             extensible: true,
-                                            template: { enemies: 0, treasure: false }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
+                                            template: { enemies: 0, treasure: false },
+                                        },
+                                    },
+                                },
+                            },
+                        },
+                    },
+                },
             };
 
             await updateVariables(
@@ -867,7 +1100,7 @@ describe('Template Feature', () => {
             );
 
             expect((variables.stat_data.game as any).levels[0].rooms).toEqual([
-                { name: 'entrance', enemies: 0, treasure: false }
+                { name: 'entrance', enemies: 0, treasure: false },
             ]);
         });
     });
@@ -879,10 +1112,10 @@ describe('Template Feature', () => {
             variables = {
                 initialized_lorebooks: {},
                 stat_data: {
-                    items: []
+                    items: [],
                 },
                 display_data: {},
-                delta_data: {}
+                delta_data: {},
             };
         });
 
@@ -895,9 +1128,9 @@ describe('Template Feature', () => {
                         type: 'array',
                         elementType: { type: 'any' },
                         extensible: true,
-                        template: ['default-tag', 'description'] // any[] 模板
-                    }
-                }
+                        template: ['default-tag', 'description'], // any[] 模板
+                    },
+                },
             };
 
             const consoleSpy = jest.spyOn(console, 'error').mockImplementation();
@@ -907,8 +1140,10 @@ describe('Template Feature', () => {
                 variables
             );
 
-            expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('Template type mismatch'));
-            expect(variables.stat_data.items).toEqual([{"name": "object-value"}]); // 未应用模板
+            expect(consoleSpy).toHaveBeenCalledWith(
+                expect.stringContaining('Template type mismatch')
+            );
+            expect(variables.stat_data.items).toEqual([{ name: 'object-value' }]); // 未应用模板
 
             consoleSpy.mockRestore();
         });
@@ -922,9 +1157,9 @@ describe('Template Feature', () => {
                         type: 'array',
                         elementType: { type: 'any' },
                         extensible: true,
-                        template: ['default', 'template-description']
-                    }
-                }
+                        template: ['default', 'template-description'],
+                    },
+                },
             };
 
             await updateVariables(
@@ -933,9 +1168,7 @@ describe('Template Feature', () => {
             );
 
             expect(variables.stat_data.items).toEqual([
-                [
-                    ['user-value', 'user-description'], 'default', 'template-description'
-                ]
+                [['user-value', 'user-description'], 'default', 'template-description'],
             ]);
         });
 
@@ -948,20 +1181,18 @@ describe('Template Feature', () => {
                         type: 'array',
                         elementType: { type: 'any' },
                         extensible: true,
-                        template: ['default', 'template-description']
-                    }
-                }
+                        template: ['default', 'template-description'],
+                    },
+                },
             };
 
             await updateVariables(
-                    `_.assign('items', 0, ["user-value", "user-description"]);`, // 3参数，数组值
-                    variables
+                `_.assign('items', 0, ["user-value", "user-description"]);`, // 3参数，数组值
+                variables
             );
 
             expect(variables.stat_data.items).toEqual([
-                [
-                    "user-value", "user-description", 'default', 'template-description'
-                ]
+                ['user-value', 'user-description', 'default', 'template-description'],
             ]);
         });
 
@@ -974,9 +1205,9 @@ describe('Template Feature', () => {
                         type: 'array',
                         elementType: { type: 'any' },
                         extensible: true,
-                        template: ['description', { metadata: true }]
-                    }
-                }
+                        template: ['description', { metadata: true }],
+                    },
+                },
             };
 
             // 测试字符串字面量
@@ -986,7 +1217,7 @@ describe('Template Feature', () => {
             );
 
             expect(variables.stat_data.items).toEqual([
-                ['string-literal', 'description', { metadata: true }]
+                ['string-literal', 'description', { metadata: true }],
             ]);
 
             // 测试数字字面量
@@ -997,7 +1228,7 @@ describe('Template Feature', () => {
 
             expect(variables.stat_data.items).toEqual([
                 ['string-literal', 'description', { metadata: true }],
-                [42, 'description', { metadata: true }]
+                [42, 'description', { metadata: true }],
             ]);
 
             // 测试布尔字面量
@@ -1009,7 +1240,7 @@ describe('Template Feature', () => {
             expect(variables.stat_data.items).toEqual([
                 ['string-literal', 'description', { metadata: true }],
                 [42, 'description', { metadata: true }],
-                [true, 'description', { metadata: true }]
+                [true, 'description', { metadata: true }],
             ]);
         });
 
@@ -1022,18 +1253,15 @@ describe('Template Feature', () => {
                         type: 'array',
                         elementType: { type: 'object', properties: {} },
                         extensible: true,
-                        template: { type: 'default', active: true } // 对象模板
-                    }
-                }
+                        template: { type: 'default', active: true }, // 对象模板
+                    },
+                },
             };
 
-            await updateVariables(
-                `_.assign('items', 0, {"name": "item1"});`,
-                variables
-            );
+            await updateVariables(`_.assign('items', 0, {"name": "item1"});`, variables);
 
             expect(variables.stat_data.items).toEqual([
-                { name: 'item1', type: 'default', active: true }
+                { name: 'item1', type: 'default', active: true },
             ]);
         });
     });
@@ -1044,7 +1272,7 @@ describe('Template Feature', () => {
                 const variables: MvuData = {
                     initialized_lorebooks: {},
                     stat_data: {
-                        items: []
+                        items: [],
                     },
                     display_data: {},
                     delta_data: {},
@@ -1057,37 +1285,35 @@ describe('Template Feature', () => {
                                 type: 'array',
                                 extensible: true,
                                 elementType: { type: 'any' },
-                                template: ['default1', 'default2']
-                            }
-                        }
-                    }
+                                template: ['default1', 'default2'],
+                            },
+                        },
+                    },
                 };
 
-                await updateVariables(
-                    `_.assign('items', 'primitive-value');`,
-                    variables
-                );
+                await updateVariables(`_.assign('items', 'primitive-value');`, variables);
 
                 // strictTemplate=true prevents primitive->array conversion
                 expect(variables.stat_data.items).toEqual(['primitive-value']);
 
                 // Array assignment with concat behavior
-                await updateVariables(
-                    `_.assign('items', ['user1', 'user2']);`,
-                    variables
-                );
+                await updateVariables(`_.assign('items', ['user1', 'user2']);`, variables);
 
-                expect(variables.stat_data.items).toEqual(["primitive-value", ['user1', 'user2', 'default1', 'default2']]);
+                expect(variables.stat_data.items).toEqual([
+                    'primitive-value',
+                    ['user1', 'user2', 'default1', 'default2'],
+                ]);
             });
 
             it('should handle 3-param assignment with strict mode', async () => {
                 const variables: MvuData = {
                     initialized_lorebooks: {},
                     stat_data: {
-                        "$meta": {
+                        $meta: {
                             strictTemplate: true,
-                            concatTemplateArray: true
-                        }, items: []
+                            concatTemplateArray: true,
+                        },
+                        items: [],
                     },
                     display_data: {},
                     delta_data: {},
@@ -1097,20 +1323,17 @@ describe('Template Feature', () => {
                             items: {
                                 type: 'array',
                                 extensible: true,
-                                elementType: {type: 'any'},
-                                template: ['template-item']
-                            }
-                        }
-                    }
+                                elementType: { type: 'any' },
+                                template: ['template-item'],
+                            },
+                        },
+                    },
                 };
 
                 reconcileAndApplySchema(variables);
                 cleanUpMetadata(variables.stat_data);
 
-                await updateVariables(
-                    `_.assign('items', 0, 'primitive-value');`,
-                    variables
-                );
+                await updateVariables(`_.assign('items', 0, 'primitive-value');`, variables);
 
                 // No conversion happens in strict mode
                 expect(variables.stat_data.items).toEqual(['primitive-value']);
@@ -1133,19 +1356,18 @@ describe('Template Feature', () => {
                                 type: 'array',
                                 extensible: true,
                                 elementType: { type: 'any' },
-                                template: ['default1', 'default2', 'default3']
-                            }
-                        }
-                    }
+                                template: ['default1', 'default2', 'default3'],
+                            },
+                        },
+                    },
                 };
 
-                await updateVariables(
-                    `_.assign('items', 'primitive-value');`,
-                    variables
-                );
+                await updateVariables(`_.assign('items', 'primitive-value');`, variables);
 
                 // Primitive converted to array and merged
-                expect(variables.stat_data.items).toEqual([['primitive-value', 'default2', 'default3']]);
+                expect(variables.stat_data.items).toEqual([
+                    ['primitive-value', 'default2', 'default3'],
+                ]);
             });
 
             it('should merge arrays by position', async () => {
@@ -1166,11 +1388,11 @@ describe('Template Feature', () => {
                                 template: [
                                     { id: 1, value: 'default1' },
                                     { id: 2, value: 'default2' },
-                                    { id: 3, value: 'default3' }
-                                ]
-                            }
-                        }
-                    }
+                                    { id: 3, value: 'default3' },
+                                ],
+                            },
+                        },
+                    },
                 };
 
                 await updateVariables(
@@ -1178,11 +1400,13 @@ describe('Template Feature', () => {
                     variables
                 );
 
-                expect(variables.stat_data.data).toEqual([[
-                    { id: 1, value: 'user1' },
-                    { id: 2, value: 'user2' },
-                    { id: 3, value: 'default3' }
-                ]]);
+                expect(variables.stat_data.data).toEqual([
+                    [
+                        { id: 1, value: 'user1' },
+                        { id: 2, value: 'user2' },
+                        { id: 3, value: 'default3' },
+                    ],
+                ]);
             });
         });
 
@@ -1202,76 +1426,73 @@ describe('Template Feature', () => {
                                 type: 'array',
                                 extensible: true,
                                 elementType: { type: 'any' },
-                                template: ['t1', 't2', 't3', 't4']
-                            }
-                        }
-                    }
+                                template: ['t1', 't2', 't3', 't4'],
+                            },
+                        },
+                    },
                 };
 
                 // First try primitive assignment
-                await updateVariables(
-                    `_.assign('items', 'no-conversion');`,
-                    variables
-                );
+                await updateVariables(`_.assign('items', 'no-conversion');`, variables);
 
                 expect(variables.stat_data.items).toEqual(['no-conversion']);
 
                 // Then array assignment with merge
-                await updateVariables(
-                    `_.assign('items', ['a', 'b']);`,
-                    variables
-                );
+                await updateVariables(`_.assign('items', ['a', 'b']);`, variables);
 
-                expect(variables.stat_data.items).toEqual(['no-conversion', ['a', 'b', 't3', 't4']]);
+                expect(variables.stat_data.items).toEqual([
+                    'no-conversion',
+                    ['a', 'b', 't3', 't4'],
+                ]);
             });
 
             it('should prevent conversion and use merge for arrays(from $meta)', async () => {
                 const variables: MvuData = {
                     initialized_lorebooks: {},
                     stat_data: {
-                        "$meta": {
+                        $meta: {
                             strictTemplate: true,
-                            concatTemplateArray: false
+                            concatTemplateArray: false,
                         },
                         items: [
-                            {"$meta": {
+                            {
+                                $meta: {
                                     extensible: true,
-                                    template: ['t1', 't2', 't3', 't4']
-                                }, "$arrayMeta": true}
-                        ] },
+                                    template: ['t1', 't2', 't3', 't4'],
+                                },
+                                $arrayMeta: true,
+                            },
+                        ],
+                    },
                     display_data: {},
-                    delta_data: {}
+                    delta_data: {},
                 };
                 reconcileAndApplySchema(variables);
                 cleanUpMetadata(variables.stat_data);
 
-
-
                 // First try primitive assignment
-                await updateVariables(
-                        `_.assign('items', 'no-conversion');`,
-                        variables
-                );
+                await updateVariables(`_.assign('items', 'no-conversion');`, variables);
 
                 expect(variables.stat_data.items).toEqual(['no-conversion']);
 
                 // Then array assignment with merge
-                await updateVariables(
-                        `_.assign('items', ['a', 'b']);`,
-                        variables
-                );
+                await updateVariables(`_.assign('items', ['a', 'b']);`, variables);
 
-                expect(variables.stat_data.items).toEqual(['no-conversion', ['a', 'b', 't3', 't4']]);
+                expect(variables.stat_data.items).toEqual([
+                    'no-conversion',
+                    ['a', 'b', 't3', 't4'],
+                ]);
             });
 
             it('should handle nested operations with both switches', async () => {
                 const variables: MvuData = {
                     initialized_lorebooks: {},
                     stat_data: {
-                        "$meta": {
+                        $meta: {
                             strictTemplate: true,
-                            concatTemplateArray: false
-                        }, container: {list: []}
+                            concatTemplateArray: false,
+                        },
+                        container: { list: [] },
                     },
                     display_data: {},
                     delta_data: {},
@@ -1284,33 +1505,27 @@ describe('Template Feature', () => {
                                     list: {
                                         type: 'array',
                                         extensible: true,
-                                        elementType: {type: 'any'},
-                                        template: ['x', 'y', 'z']
-                                    }
-                                }
-                            }
-                        }
-                    }
+                                        elementType: { type: 'any' },
+                                        template: ['x', 'y', 'z'],
+                                    },
+                                },
+                            },
+                        },
+                    },
                 };
 
                 reconcileAndApplySchema(variables);
                 cleanUpMetadata(variables.stat_data);
 
                 // 3-param with primitive
-                await updateVariables(
-                        `_.assign('container.list', 0, 'item');`,
-                        variables
-                );
+                await updateVariables(`_.assign('container.list', 0, 'item');`, variables);
 
                 expect((variables.stat_data.container as any).list).toEqual(['item']);
 
                 // Reset and test array merge
                 (variables.stat_data.container as any).list = [];
 
-                await updateVariables(
-                        `_.assign('container.list', 0, ['nested']);`,
-                        variables
-                );
+                await updateVariables(`_.assign('container.list', 0, ['nested']);`, variables);
 
                 expect((variables.stat_data.container as any).list).toEqual([['nested', 'y', 'z']]);
             });
