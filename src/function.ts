@@ -870,13 +870,22 @@ export async function updateVariables(
                         oldValue,
                         newValue
                     );
-                    {
+                    try {
                         //对新应用的 template 立刻处理模板。
                         const currentDataClone = structuredClone(newValue);
 
                         const newSchema = generateSchema(currentDataClone, targetSchema!);
                         _.merge(targetSchema, newSchema);
                         cleanUpMetadata(newValue);
+                    } catch (error) {
+                        // 应用失败，记录错误并继续处理下一命令
+                        if (error instanceof Error) {
+                            outError(
+                                `Failed to resolve template meta at '${path}', '${error.message}'`
+                            );
+                        } else {
+                            outError(`Failed to resolve template meta at '${path}', '${error}'`);
+                        }
                     }
                 } else {
                     // 插入失败，记录错误并继续处理下一命令
