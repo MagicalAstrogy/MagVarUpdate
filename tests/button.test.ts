@@ -24,6 +24,7 @@ const updateDescriptionsSpy = jest.spyOn(require('@/update_descriptions'), 'upda
 global._ = _;
 global.getLastMessageId = jest.fn();
 global.replaceVariables = jest.fn();
+global.updateVariablesWith = jest.fn();
 global.toastr = {
     error: jest.fn(),
     success: jest.fn(),
@@ -327,6 +328,11 @@ describe('reloadInit function', () => {
             });
             expect(replaceVariables).toHaveBeenNthCalledWith(2, expect.any(Object), {
                 type: 'chat',
+            });
+
+            // Character update with init_schema
+            expect(updateVariablesWith).toHaveBeenCalledWith(expect.any(Function), {
+                type: 'character',
             });
 
             expect(toastr.success).toHaveBeenCalledWith('InitVar描述已更新', '', { timeOut: 3000 });
