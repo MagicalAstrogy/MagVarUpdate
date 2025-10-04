@@ -1,4 +1,5 @@
 import MiniCssExtractPlugin from 'mini-css-extract-plugin';
+import child_process from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import url from 'node:url';
@@ -35,6 +36,17 @@ function watch_it(compiler: webpack.Compiler) {
 }
 
 function config(_env: any, argv: any): webpack.Configuration {
+    // 获取构建时常量
+    const buildDate = new Date().toISOString();
+    let commitId = 'unknown';
+    try {
+        commitId = child_process
+            .execSync('git rev-parse --short HEAD', { encoding: 'utf-8' })
+            .trim();
+    } catch (error) {
+        console.warn('无法获取 Git commit ID:', error);
+    }
+
     return {
         experiments: {
             outputModule: true,
@@ -185,6 +197,10 @@ function config(_env: any, argv: any): webpack.Configuration {
             { apply: watch_it },
             new VueLoaderPlugin(),
             new webpack.optimize.LimitChunkCountPlugin({ maxChunks: 1 }),
+            new webpack.DefinePlugin({
+                __BUILD_DATE__: JSON.stringify(buildDate),
+                __COMMIT_ID__: JSON.stringify(commitId),
+            }),
         ],
         optimization: {
             minimize: true,
