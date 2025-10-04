@@ -140,8 +140,8 @@ export async function initCheck() {
             },
         ]);
     } else {
-        //非开局直接更新到最后一条即可，也并不需要重新结算当前的变量
-        //@ts-ignore
+        // 非开局直接更新到最后一条即可，也并不需要重新结算当前的变量
+        // @ts-expect-error 该函数可用
         await setChatMessage({ data: variables }, getLastMessageId());
     }
     try {
@@ -204,6 +204,7 @@ export async function loadInitVarData(
                 } catch (e) {
                     // Try JSON5
                     try {
+                        // eslint-disable-next-line import-x/no-named-as-default-member
                         parsedData = JSON5.parse(content);
                     } catch (e2) {
                         // Try TOML
@@ -221,7 +222,6 @@ export async function loadInitVarData(
                     console.error(
                         `Failed to parse lorebook entry[${entry.comment}]: ${parseError}`
                     );
-                    // @ts-ignore
                     toastr.error(parseError.message, 'Failed to parse lorebook entry', {
                         timeOut: 5000,
                     });
