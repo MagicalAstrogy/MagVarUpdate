@@ -40,11 +40,6 @@ import 'https://gcore.jsdelivr.net/gh/MagicalAstrogy/MagVarUpdate@master/artifac
 ```
 作用范围配置为 `AI输出`，其他选项配置为 `仅格式提示词`。如图所示：
 
-额外的，如果要避免流式过程中，显示出变量更新的内容，还可以选择增加下面的正则(airly99提供)：
-```regexp
-/<update(?:variable)?>((?!.*<\/update(?:variable)?>).*$|.*<\/update(?:variable)?>)/gsi
-```
-
 3. 在你的角色使用的世界书中，新增下面的 `蓝灯 D1` 条目，作用是将变量列表输出给 llm，并说明变量更新的规则:
 ```ejs
 <status_description>//do not output following content
@@ -215,21 +210,42 @@ document.addEventListener('DOMContentLoaded', initDisplay);
 ### 纯文本状态栏显示
 你同样可以以纯文本的形式来编写状态栏，下面是一段代码范例，将这些部分置入正则的`替换为` 部分即可：
 ```ejs
-💖 当前好感度: {{get_message_variable::stat_data.理.好感度[0]}}
-🎁 重要物品: {{get_message_variable::stat_data.理.重要物品[0]}}
-🧠 重要记忆: {{get_message_variable::stat_data.理.重要记忆[0]}}
-👗 着装: {{get_message_variable::stat_data.理.着装[0]}}
-🌸 处女: {{get_message_variable::stat_data.理.处女[0]}}
-🔢 性行为次数: {{get_message_variable::stat_data.理.性行为次数[0]}}
-😊 情绪状态‑pleasure: {{get_message_variable::stat_data.理.情绪状态.pleasure[0]}}
-🔥 情绪状态‑arousal: {{get_message_variable::stat_data.理.情绪状态.arousal[0]}}
-👑 情绪状态‑dominance: {{get_message_variable::stat_data.理.情绪状态.dominance[0]}}
-🤝 情绪状态‑affinity: {{get_message_variable::stat_data.理.情绪状态.affinity[0]}}
-💭 当前所想: {{get_message_variable::stat_data.理.当前所想[0]}}
+<%
+if (runType == 'render')
+{
+    function SafeGetValue(value, defaultValue = "") {
+        // 如果值不存在，返回默认值
+        if (value === undefined || value === null) {
+            return defaultValue;
+        }
+        // 如果是数组，取第一个元素
+        if (Array.isArray(value)) {
+            return value.length !== 0 ? value[0] : defaultValue;
+        }
+        // 否则直接返回值本身
+        return value;
+    }
+const data = window.TavernHelper.getVariables({type: 'message', message_id: message_id});
+const msg_data = data.display_data;
+//上面是固定写法，不用管
+ %>
+💖 当前好感度: <%- SafeGetValue(msg_data.理.好感度) %><br>
+🎁 重要物品: <%- SafeGetValue(msg_data.理.重要物品) %><br>
+🧠 重要记忆: <%- SafeGetValue(msg_data.理.重要记忆) %><br>
+👗 着装: <%- SafeGetValue(msg_data.理.着装) %><br>
+🌸 处女: <%- SafeGetValue(msg_data.理.处女) %><br>
+🔢 性行为次数: <%- SafeGetValue(msg_data.理.性行为次数) %><br>
+😊 情绪状态‑pleasure: <%- SafeGetValue(msg_data.理.情绪状态.pleasure) %><br>
+🔥 情绪状态‑arousal: <%- SafeGetValue(msg_data.理.情绪状态.arousal) %><br>
+👑 情绪状态‑dominance: <%- SafeGetValue(msg_data.理.情绪状态.dominance) %><br>
+🤝 情绪状态‑affinity: <%- SafeGetValue(msg_data.理.情绪状态.affinity) %><br>
+💭 当前所想: <%- SafeGetValue(msg_data.理.当前所想) %><br>
 <% } %>
 ```
 
-每个 `{{get_message_variable::stat_data.理.当前所想[0]}}` 段，都是在取 `stat_data` 中对应名称的变量。你可以按照你想要的任意形式来组织文本结构。（需要更新到酒馆助手 3.2.1 以上版本才能正常运行）
+这段文本一开始的部分，定义了上面章节所述的 `SafeGetValue` 的其中一种实现，然后通过 `window.TavernHelper.getVariables` 获取了当前层的变量，供之后的流程读取。
+
+每个 `<%- SafeGetValue(msg_data.路径) %>` 段，都是在取 `display_data` 中对应名称的变量。你可以按照你想要的任意形式来组织文本结构。`<br>` 代表的是html 中的换行。
 
 具体可以参考 `圣女理理` 中的 `状态栏-纯文本` 正则。
 

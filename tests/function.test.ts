@@ -1,12 +1,12 @@
 import {
-    getLastValidVariable,
     handleVariablesInCallback,
-    handleVariablesInMessage,
     parseParameters,
     trimQuotesAndBackslashes,
+    getLastValidVariable,
     updateVariables,
+    handleVariablesInMessage,
 } from '@/function';
-import { VariableData } from '@/variable_def';
+import { assertVWD, MvuData, VariableData } from '@/variable_def';
 import _ from 'lodash';
 
 describe('parseParameters', () => {
@@ -517,7 +517,7 @@ describe('updateVariables', () => {
     });
 
     test('应该更新变量并保留原始变量结构', async () => {
-        const variables = {
+        const variables: MvuData = {
             stat_data: {
                 health: 100,
                 mana: 50,
@@ -525,7 +525,7 @@ describe('updateVariables', () => {
             },
             display_data: {},
             delta_data: {},
-            initialized_lorebooks: ['book1', 'book2'],
+            initialized_lorebooks: { book1: [], book2: [] },
         };
 
         const messageContent = "_.set('health', 100, 80);//受到伤害";
@@ -541,13 +541,14 @@ describe('updateVariables', () => {
     });
 
     test('应该处理多个变量更新', async () => {
-        const variables = {
+        const variables: MvuData = {
             stat_data: {
                 health: 100,
                 mana: 50,
             },
             display_data: {},
             delta_data: {},
+            initialized_lorebooks: {},
         };
 
         const messageContent = `
@@ -571,6 +572,7 @@ describe('handleVariablesInMessage', () => {
         (globalThis as any).eventEmit = jest.fn().mockResolvedValue(undefined);
         (globalThis as any).replaceVariables = jest.fn().mockResolvedValue(undefined);
         (globalThis as any).insertOrAssignVariables = jest.fn().mockResolvedValue(undefined);
+        (globalThis as any).updateVariablesWith = jest.fn().mockResolvedValue(undefined);
         (globalThis as any).setChatMessages = jest.fn().mockResolvedValue(undefined);
     });
 
@@ -613,17 +615,17 @@ describe('handleVariablesInMessage', () => {
             }
             return _.cloneDeep(mockMessageVariables);
         });
+        expect((globalThis as any).replaceVariables).toHaveBeenCalledTimes(0);
 
         await handleVariablesInMessage(0);
 
-        // 验证 insertOrAssignVariables 被调用
         expect((globalThis as any).replaceVariables).toHaveBeenCalledTimes(1);
-        expect((globalThis as any).insertOrAssignVariables).toHaveBeenCalledTimes(1);
+        expect((globalThis as any).updateVariablesWith).toHaveBeenCalledTimes(2);
 
         // 验证 chat 级别的变量更新
-        // 第一次是 setting的。
-        const chatUpdateCall = (globalThis as any).replaceVariables.mock.calls[0];
-        const updatedChatVariables = chatUpdateCall[0];
+        const chatUpdateCall = (globalThis as any).updateVariablesWith.mock.calls[0];
+        const updater = chatUpdateCall[0];
+        const updatedChatVariables = updater(structuredClone(mockChatVariables));
         const chatUpdateOptions = chatUpdateCall[1];
 
         expect(chatUpdateOptions).toEqual({ type: 'chat' });
@@ -642,12 +644,12 @@ describe('handleVariablesInMessage', () => {
         expect(updatedChatVariables.another_field).toEqual({ nested: 'data' });
 
         // 验证 message 级别的变量更新
-        const messageUpdateCall = (globalThis as any).insertOrAssignVariables.mock.calls[0];
+        const messageUpdateCall = (globalThis as any).updateVariablesWith.mock.calls[1];
         const messageUpdateOptions = messageUpdateCall[1];
         expect(messageUpdateOptions).toEqual({ type: 'message', message_id: 0 });
     });
 
-    test('使用insertOrAssignVariables时应该合并而不是覆盖消息级别的变量', async () => {
+    test('覆盖消息级别变量', async () => {
         // 模拟消息已有的变量（之前的状态）
         const existingMessageVariables = {
             stat_data: {
@@ -701,11 +703,11 @@ describe('handleVariablesInMessage', () => {
 
         await handleVariablesInMessage(0);
 
-        // 验证 insertOrAssignVariables 被调用
-        expect((globalThis as any).insertOrAssignVariables).toHaveBeenCalledTimes(1);
+        expect((globalThis as any).updateVariablesWith).toHaveBeenCalledTimes(2);
 
-        const messageUpdateCall = (globalThis as any).insertOrAssignVariables.mock.calls[0];
-        const updatedMessageVariables = messageUpdateCall[0];
+        const messageUpdateCall = (globalThis as any).updateVariablesWith.mock.calls[1];
+        const updater = messageUpdateCall[0];
+        const updatedMessageVariables = updater(existingMessageVariables);
         const messageUpdateOptions = messageUpdateCall[1];
 
         expect(messageUpdateOptions).toEqual({ type: 'message', message_id: 0 });
@@ -732,9 +734,6 @@ describe('handleVariablesInMessage', () => {
         expect(updatedMessageVariables.delta_data.level).toBeUndefined();
 
         expect(updatedMessageVariables.initialized_lorebooks).toEqual(['book1']); // 更新后的值
-
-        // 验证其他字段不包含
-        expect(updatedMessageVariables.custom_message_field).toBe(undefined); // 消息特有字段不会被传入
     });
 
     test('当没有变量修改时不应该更新chat级别变量', async () => {
@@ -769,9 +768,9 @@ describe('handleVariablesInMessage', () => {
         await handleVariablesInMessage(0);
 
         // 验证只调用了一次 insertOrAssignVariables (仅 message 级别)
-        expect((globalThis as any).insertOrAssignVariables).toHaveBeenCalledTimes(1);
+        expect((globalThis as any).updateVariablesWith).toHaveBeenCalledTimes(1);
 
-        const call = (globalThis as any).insertOrAssignVariables.mock.calls[0];
+        const call = (globalThis as any).updateVariablesWith.mock.calls[0];
         expect(call[1]).toEqual({ type: 'message', message_id: 0 });
 
         // 验证没有调用 getVariables 获取 chat 级别变量
@@ -783,7 +782,7 @@ describe('invokeVariableTest', () => {
     test('should update variable value', async () => {
         const inputData: VariableData = {
             old_variables: {
-                initialized_lorebooks: [],
+                initialized_lorebooks: {},
                 stat_data: { 喵呜: 20 },
                 display_data: {},
                 delta_data: {},
@@ -797,7 +796,7 @@ describe('invokeVariableTest', () => {
     test('expect not updated', async () => {
         const inputData: VariableData = {
             old_variables: {
-                initialized_lorebooks: [],
+                initialized_lorebooks: {},
                 stat_data: { 喵呜: 20 },
                 display_data: {},
                 delta_data: {},
@@ -805,5 +804,138 @@ describe('invokeVariableTest', () => {
         };
         await handleVariablesInCallback('这是一个没有更新的文本。明天见是最好的预言。', inputData);
         expect(inputData.new_variables).toBeUndefined();
+    });
+});
+
+describe('strictSet feature', () => {
+    test('strictSet=false 应该处理 ValueWithDescription 类型（默认行为）', async () => {
+        const variables: MvuData = {
+            stat_data: {
+                health: [100, '生命值'],
+                mana: [50, '魔力值'],
+            },
+            display_data: {},
+            delta_data: {},
+            initialized_lorebooks: {},
+            schema: {
+                type: 'object',
+                strictSet: false, // 显式设置为 false（默认值）
+                properties: {},
+            },
+        };
+
+        const messageContent = "_.set('health', 80);//受到伤害";
+        const result = await updateVariables(messageContent, variables);
+
+        expect(result).toBe(true);
+        // strictSet=false 时，只更新数组的第一个元素
+        expect(variables.stat_data.health).toEqual([80, '生命值']);
+        expect((variables.display_data as any)['health']).toBe('100->80 (受到伤害)');
+    });
+
+    test('strictSet=true 应该直接替换整个值', async () => {
+        const variables: MvuData = {
+            stat_data: {
+                health: [100, '生命值'],
+                mana: [50, '魔力值'],
+            },
+            display_data: {},
+            delta_data: {},
+            initialized_lorebooks: {},
+            schema: {
+                type: 'object',
+                strictSet: true, // 启用严格设置模式
+                properties: {},
+            },
+        };
+
+        const messageContent = "_.set('health', [140, '生命值喵']);//受到伤害";
+        const result = await updateVariables(messageContent, variables);
+
+        expect(result).toBe(true);
+        // strictSet=true 时，直接替换整个值
+        assertVWD(true, variables.stat_data.health);
+        expect(variables.stat_data.health[0]).toBe(140);
+        expect(variables.stat_data.health[1]).toBe('生命值喵');
+    });
+
+    test('strictSet=true 应该允许替换整个数组', async () => {
+        const variables: MvuData = {
+            stat_data: {
+                items: [10, '物品数量'],
+            },
+            display_data: {},
+            delta_data: {},
+            initialized_lorebooks: {},
+            schema: {
+                type: 'object',
+                strictSet: true,
+                properties: {},
+            },
+        };
+
+        const messageContent =
+            "_.set('items', [10, '物品数量'], [15, '增强的物品数量']);//升级物品";
+        const result = await updateVariables(messageContent, variables);
+
+        expect(result).toBe(true);
+        // strictSet=true 时，可以替换为新的数组
+        expect(variables.stat_data.items).toEqual([15, '增强的物品数量']);
+        expect((variables.display_data as any)['items']).toBe(
+            '[10,"物品数量"]->[15,"增强的物品数量"] (升级物品)'
+        );
+    });
+
+    test('strictSet 从 $meta 读取配置', async () => {
+        const variables: MvuData = {
+            stat_data: {
+                $meta: {
+                    strictSet: true,
+                },
+                level: [5, '等级描述'],
+            },
+            display_data: {},
+            delta_data: {},
+            initialized_lorebooks: {},
+        };
+        //因为从$schema 的移动是在 updateVariable 的结尾进行的，所以当次不会奏效
+        //对应于实际场景，就是 initVar。
+        {
+            const messageContent = "_.set('level[0]', 6);//升级";
+            const result = await updateVariables(messageContent, variables);
+            expect(result).toBe(true);
+        }
+
+        {
+            const messageContent = "_.set('level', [5, '等级描述'], 6);//升级";
+            const result = await updateVariables(messageContent, variables);
+            expect(result).toBe(true);
+        }
+        // 从 $meta 读取的 strictSet=true，直接替换
+        expect(variables.stat_data.level).toEqual(6);
+    });
+
+    test('strictSet=false 保持数组描述不变', async () => {
+        const variables: MvuData = {
+            stat_data: {
+                relationship: [75, '与角色的关系等级'],
+            },
+            display_data: {},
+            delta_data: {},
+            initialized_lorebooks: {},
+            schema: {
+                type: 'object',
+                strictSet: false,
+                properties: {},
+            },
+        };
+
+        const messageContent = "_.set('relationship', [75, '与角色的关系等级'], 85);//关系改善";
+        const result = await updateVariables(messageContent, variables);
+
+        expect(result).toBe(true);
+        // strictSet=false 时，保持描述不变，只更新值
+        expect(variables.stat_data.relationship).toEqual([85, '与角色的关系等级']);
+        expect((variables.display_data as any)['relationship']).toBe('75->85 (关系改善)');
     });
 });

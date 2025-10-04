@@ -1,6 +1,7 @@
 // 整体游戏数据类型
-import { updateVariables } from '@/function';
-import { MvuData } from '@/variable_def';
+import { getLastValidVariable, updateVariables } from '@/function';
+import { MvuData, isObjectSchema, RootAdditionalProps, SchemaNode } from '@/variable_def';
+import { cleanUpMetadata, EXTENSIBLE_MARKER, generateSchema } from '@/schema';
 import JSON5 from 'json5';
 import TOML from 'toml';
 
@@ -8,6 +9,154 @@ type LorebookEntry = {
     content: string;
     comment?: string;
 };
+
+export async function initCheck() {
+    let variables: MvuData & Record<string, any>;
+    //这个函数需要处理 dryRun,因为0层。
+
+    try {
+        if (SillyTavern.chat.length === 0) {
+            console.error('不存在任何一条消息，退出');
+            toastr.error(`无开场白，无法进行初始化`, '变量初始化失败');
+            return;
+        }
+        variables = (await getLastValidVariable(getLastMessageId())) ?? createEmptyGameData();
+    } catch (e) {
+        console.error('不存在任何一条消息，退出');
+        return;
+    }
+
+    // 确保变量结构完整
+    if (variables === undefined) {
+        variables = createEmptyGameData();
+    }
+    if (!_.has(variables, 'initialized_lorebooks')) {
+        variables.initialized_lorebooks = {};
+    }
+    if (Array.isArray(variables.initialized_lorebooks)) {
+        console.warn(
+            'Old "initialized_lorebooks" array format detected. Migrating to the new object format.'
+        );
+        const oldArray = variables.initialized_lorebooks as string[];
+        const newObject: Record<string, any[]> = {};
+        for (const lorebookName of oldArray) {
+            newObject[lorebookName] = []; // 按照新格式，值为一个空数组
+        }
+        variables.initialized_lorebooks = newObject;
+    }
+    if (!variables.stat_data) {
+        variables.stat_data = {};
+    }
+    if (!variables.schema) {
+        variables.schema = { extensible: false, properties: {}, type: 'object' };
+    }
+
+    // 加载 InitVar 数据
+    const is_updated = await loadInitVarData(variables);
+
+    // --- 一次性清理所有魔法字符串 ---
+    if (is_updated) {
+        // 递归遍历整个 stat_data，移除所有魔法字符串
+        const cleanData = (data: any) => {
+            if (Array.isArray(data)) {
+                // 使用 filter 创建一个不含标记的新数组
+                const cleanedArray = data.filter(item => item !== EXTENSIBLE_MARKER);
+                // 递归清理数组内的对象或数组
+                cleanedArray.forEach(cleanData);
+                return cleanedArray;
+            }
+            if (_.isObject(data)) {
+                const newObj: Record<string, any> = {};
+                const typedData = data as Record<string, any>; // 类型断言
+                for (const key in data) {
+                    // 递归清理子节点，并将结果赋给新对象
+                    newObj[key] = cleanData(typedData[key]);
+                }
+                return newObj;
+            }
+            return data;
+        };
+        // 在生成 Schema 之前，先清理一遍 stat_data
+        // 这里需要先生成 Schema，再清理数据
+        // 所以还是得用克隆
+    }
+
+    // 在所有 lorebook 初始化完成后，生成最终的模式
+    if (is_updated || !variables.schema || _.isEmpty(variables.schema)) {
+        // 1. 克隆数据用于 Schema 生成
+        const dataForSchema = structuredClone(variables.stat_data);
+        // 2. generateSchema 会读取并移除克隆体中的标记，生成正确的 schema
+        // 对于增量场景，会以之前的 schema 为基础生成。
+        const generated_schema: SchemaNode & RootAdditionalProps = generateSchema(
+            dataForSchema,
+            variables.schema
+        );
+
+        // 使用类型守卫确保生成的 schema 是 ObjectSchemaNode
+        if (isObjectSchema(generated_schema)) {
+            if (_.has(variables.stat_data, '$meta.strictTemplate'))
+                generated_schema.strictTemplate = variables.stat_data['$meta']
+                    ?.strictTemplate as boolean;
+            if (_.has(variables.stat_data, '$meta.concatTemplateArray'))
+                generated_schema.concatTemplateArray = variables.stat_data['$meta']
+                    ?.concatTemplateArray as boolean;
+            if (_.has(variables.stat_data, '$meta.strictSet'))
+                generated_schema.strictSet = variables.stat_data['$meta']?.strictSet as boolean;
+            variables.schema = generated_schema;
+        } else {
+            console.error(
+                'Generated schema is not an object schema, which is unexpected for stat_data root'
+            );
+        }
+
+        // 3. 现在，清理真实的 stat_data，让它在后续操作中保持干净
+        cleanUpMetadata(variables.stat_data);
+    }
+
+    if (!is_updated) {
+        return;
+    }
+
+    console.info(`Init chat variables.`);
+    await updateVariablesWith(data => _.assign(data, variables));
+
+    if (getLastMessageId() == 0) {
+        const last_msg = getChatMessages(0, { include_swipes: true })[0];
+        // 更新所有 swipes
+        await setChatMessages([
+            {
+                // last_msg 不一定存在 message_id
+                message_id: 0,
+                swipes_data: await Promise.all(
+                    last_msg.swipes!.map(async swipe => {
+                        const current_data = structuredClone(variables);
+                        // 此处调用的是新版 updateVariables，它将支持更多命令
+                        // 不再需要手动调用 substitudeMacros，updateVariables 会处理
+                        await updateVariables(swipe, current_data);
+                        console.log(`变量初始化完成`);
+                        return current_data;
+                    })
+                ),
+            },
+        ]);
+    } else {
+        // 非开局直接更新到最后一条即可，也并不需要重新结算当前的变量
+        // @ts-expect-error 该函数可用
+        await setChatMessage({ data: variables }, getLastMessageId());
+    }
+    try {
+        // 输出构建信息
+        toastr.info(
+            `有新的世界书初始化变量被加载，当前使用世界书: ${YAML.stringify(variables.initialized_lorebooks)}`,
+            '变量初始化成功'
+        );
+    } catch (_e) {
+        /* empty */
+    }
+
+    // 更新 lorebook 设置
+    await updateLorebookSettings();
+}
 
 /**
  * 获取所有启用的 lorebook 列表
@@ -32,9 +181,15 @@ export async function loadInitVarData(
     const enabled_lorebook_list = lorebook_list || (await getEnabledLorebookList());
     let is_updated = false;
 
+    // 确保 initialized_lorebooks 是对象格式
+    if (!mvu_data.initialized_lorebooks || Array.isArray(mvu_data.initialized_lorebooks)) {
+        mvu_data.initialized_lorebooks = {};
+    }
+
     for (const current_lorebook of enabled_lorebook_list) {
-        if (mvu_data.initialized_lorebooks.includes(current_lorebook)) continue;
-        mvu_data.initialized_lorebooks.push(current_lorebook);
+        // 适配 beta 分支的对象结构
+        if (_.has(mvu_data.initialized_lorebooks, current_lorebook)) continue;
+        mvu_data.initialized_lorebooks[current_lorebook] = [];
         const init_entries = (await getLorebookEntries(current_lorebook)) as LorebookEntry[];
 
         for (const entry of init_entries) {
@@ -45,11 +200,11 @@ export async function loadInitVarData(
 
                 // Try YAML first (which also handles JSON)
                 try {
-                    parsedData = YAML.parse(content);
+                    parsedData = YAML.parseDocument(content, { merge: true }).toJS();
                 } catch (e) {
                     // Try JSON5
                     try {
-                        // eslint-disable-next-line
+                        // eslint-disable-next-line import-x/no-named-as-default-member
                         parsedData = JSON5.parse(content);
                     } catch (e2) {
                         // Try TOML
@@ -64,7 +219,9 @@ export async function loadInitVarData(
                 }
 
                 if (parseError) {
-                    console.error(`Failed to parse lorebook entry: ${parseError}`);
+                    console.error(
+                        `Failed to parse lorebook entry[${entry.comment}]: ${parseError}`
+                    );
                     toastr.error(parseError.message, 'Failed to parse lorebook entry', {
                         timeOut: 5000,
                     });
@@ -88,9 +245,13 @@ export async function loadInitVarData(
 export function createEmptyGameData(): MvuData {
     return {
         display_data: {},
-        initialized_lorebooks: [],
+        initialized_lorebooks: {}, // 适配 beta 分支的对象结构
         stat_data: {},
         delta_data: {},
+        schema: {
+            type: 'object',
+            properties: {},
+        }, // beta 分支新增的 schema 字段
     };
 }
 
@@ -155,57 +316,6 @@ export async function updateLorebookSettings(): Promise<void> {
     if (!_.isEqual(_.merge({}, settings, dst_setting), settings)) {
         setLorebookSettings(dst_setting);
     }
-}
-
-export async function initCheck() {
-    let last_msg: ChatMessageSwiped;
-    let variables: MvuData & Record<string, any>;
-
-    try {
-        const result = await getLastMessageVariables();
-        last_msg = result.message;
-        variables = result.variables ?? createEmptyGameData();
-    } catch (e) {
-        console.error('不存在任何一条消息，退出');
-        return;
-    }
-
-    // 确保变量结构完整
-    if (variables === undefined) {
-        variables = createEmptyGameData();
-    }
-    if (!_.has(variables, 'initialized_lorebooks')) {
-        variables.initialized_lorebooks = [];
-    }
-    if (!variables.stat_data) {
-        variables.stat_data = {};
-    }
-
-    // 加载 InitVar 数据
-    const is_updated = await loadInitVarData(variables);
-    if (!is_updated) {
-        return;
-    }
-
-    console.info(`Init chat variables.`);
-    await insertOrAssignVariables(variables);
-
-    // 哪里不好用了
-    await setChatMessages([
-        {
-            message_id: last_msg.message_id,
-            swipes_data: await Promise.all(
-                last_msg.swipes.map(async swipe => {
-                    const current_data = _.cloneDeep(variables);
-                    await updateVariables(substitudeMacros(swipe), current_data);
-                    return current_data;
-                })
-            ),
-        },
-    ]);
-
-    // 更新 lorebook 设置
-    await updateLorebookSettings();
 }
 
 //window.initCheck = initCheck;

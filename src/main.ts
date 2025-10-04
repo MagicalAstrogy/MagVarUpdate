@@ -91,9 +91,16 @@ $(async () => {
         handleVariablesInMessage(message_id);
     });
 
+    eventOn(tavern_events.MESSAGE_RECEIVED, handleVariablesInMessage);
     eventOn(exported_events.INVOKE_MVU_PROCESS, handleVariablesInCallback);
     eventOn(exported_events.UPDATE_VARIABLE, updateVariable);
-    _.set(parent.window, 'handleVariablesInMessage', handleVariablesInMessage);
+
+    _.set(window.parent, 'handleVariablesInMessage', handleVariablesInMessage);
+
+    toastr.info(
+        `构建信息: ${__BUILD_DATE__ ?? 'Unknown'} (${__COMMIT_ID__ ?? 'Unknown'})`,
+        'MVU加载成功'
+    );
 });
 
 $(window).on('pagehide', () => {

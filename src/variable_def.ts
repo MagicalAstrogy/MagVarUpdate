@@ -1,12 +1,104 @@
+// 模板类型定义
+export type TemplateType = StatData | StatData[] | any[];
+
+// StatData 的元数据类型定义
+export type StatDataMeta = {
+    extensible?: boolean;
+    recursiveExtensible?: boolean;
+    required?: string[];
+    template?: TemplateType; // 模板定义，用于自动填充新元素
+    [key: string]: unknown;
+};
+
+export type JSONPrimitive = string | number | boolean | null;
+
+// StatData 类型定义 - 支持嵌套对象和数组，可以有 $meta 属性
+export type StatData = {
+    [key: string]: StatData | JSONPrimitive | (StatData | JSONPrimitive)[];
+} & {
+    $meta?: StatDataMeta;
+    $arrayMeta?: boolean;
+};
+
+// Schema 节点类型定义
+export type SchemaNode = ObjectSchemaNode | ArraySchemaNode | PrimitiveSchemaNode;
+
+// 对象类型的 Schema 节点
+export type ObjectSchemaNode = {
+    type: 'object';
+    properties: {
+        [key: string]: SchemaNode & { required?: boolean };
+    };
+    extensible?: boolean;
+    template?: TemplateType; // 新增属性的模板
+    recursiveExtensible?: boolean;
+};
+
+// 数组类型的 Schema 节点
+export type ArraySchemaNode = {
+    type: 'array';
+    elementType: SchemaNode;
+    extensible?: boolean;
+    template?: TemplateType; // 新增元素的模板
+    recursiveExtensible?: boolean;
+};
+
+// 原始类型的 Schema 节点
+export type PrimitiveSchemaNode = {
+    type: 'string' | 'number' | 'boolean' | 'any';
+};
+
+// ValueWithDescription 类型 - 用于表示带描述的值
 export type ValueWithDescription<T> = [T, string];
 
-export function isValueWithDescription<T>(value: unknown): value is ValueWithDescription<T> {
+export function assertVWD(
+    _flag: boolean,
+    _v: StatData | JSONPrimitive | (StatData | JSONPrimitive)[]
+): asserts _v is ValueWithDescription<StatData | JSONPrimitive> {}
+
+export function isValueWithDescription(value: unknown): boolean {
     return Array.isArray(value) && value.length === 2 && typeof value[1] === 'string';
 }
 
+export function isValueWithDescriptionStatData(
+    value: StatData | JSONPrimitive | (StatData | JSONPrimitive)[]
+): value is ValueWithDescription<StatData | JSONPrimitive> {
+    return Array.isArray(value) && value.length === 2 && typeof value[1] === 'string';
+}
+
+// 类型守卫函数
+export function isArraySchema(value: SchemaNode): value is ArraySchemaNode {
+    return value.type === 'array';
+}
+
+export function isObjectSchema(value: SchemaNode): value is ObjectSchemaNode {
+    return value.type === 'object';
+}
+
+export function isPrimitiveSchema(value: SchemaNode): value is PrimitiveSchemaNode {
+    return (
+        value.type === 'string' ||
+        value.type === 'number' ||
+        value.type === 'boolean' ||
+        value.type === 'any'
+    );
+}
+
+export type RootAdditionalProps = {
+    strictTemplate?: boolean;
+    concatTemplateArray?: boolean;
+    strictSet?: boolean;
+};
+
+export type RootAdditionalMetaProps = {
+    $meta?: StatDataMeta & RootAdditionalProps;
+};
+
 export type MvuData = {
+    // initialized_lorebooks 从字符串列表变为记录对象
+    // 这样可以为每个知识库存储元数据，例如初始化的标记变量
     /** 已初始化的 lorebook 列表 */
-    initialized_lorebooks: string[];
+    initialized_lorebooks?: Record<string, any[]>;
 
     /**
      * 状态数据 - 存储实际的变量值
@@ -18,7 +110,7 @@ export type MvuData = {
      * 2. ValueWithDescription 类型：更新数组的第一个元素（实际值），保留第二个元素（描述）
      * 3. 数字类型：自动将字符串新值转换为数字
      */
-    stat_data: Record<string, any> & { $internal?: InternalData };
+    stat_data: StatData & RootAdditionalMetaProps & { $internal?: InternalData };
 
     /**
      * 显示数据 - 存储变量变化的可视化表示
@@ -29,7 +121,7 @@ export type MvuData = {
      * 更新时机：每次 stat_data 中的值发生变化时同步更新
      * 用途：在UI中展示变量的变化历史，让用户了解数值是如何变化的
      */
-    display_data: Record<string, any>;
+    display_data?: Record<string, any>;
 
     /**
      * 增量数据 - 存储本次更新中发生变化的变量
@@ -42,7 +134,9 @@ export type MvuData = {
      *
      * 用途：仅显示当前消息/操作中实际发生变化的变量，而不是所有历史变化
      */
-    delta_data: Record<string, any>;
+    delta_data?: Record<string, any>;
+    // 用于存储数据结构的模式
+    schema?: ObjectSchemaNode & Partial<RootAdditionalProps>;
 };
 
 export interface VariableData {
@@ -61,11 +155,9 @@ export const variable_events = {
 export const exported_events = {
     INVOKE_MVU_PROCESS: 'mag_invoke_mvu',
     UPDATE_VARIABLE: 'mag_update_variable',
-};
+} as const;
 
 export type InternalData = {
-    //不存自己，会导致环形引用
-    //stat_data: Record<string, any>;
     display_data: Record<string, any>;
     delta_data: Record<string, any>;
 };
@@ -95,6 +187,8 @@ export type ExtendedListenerType = {
     ) => void;
 };
 
+export type InitVarType = StatData & RootAdditionalMetaProps;
+
 export type DataCategory = 'stat' | 'display' | 'delta';
 
 export function extractRecord(category: 'stat' | 'display' | 'delta', game_data: MvuData) {
@@ -104,10 +198,10 @@ export function extractRecord(category: 'stat' | 'display' | 'delta', game_data:
             data = game_data.stat_data;
             break;
         case 'display':
-            data = game_data.display_data;
+            data = game_data.display_data!;
             break;
         case 'delta':
-            data = game_data.delta_data;
+            data = game_data.delta_data!;
             break;
     }
     return data;

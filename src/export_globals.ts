@@ -243,17 +243,17 @@ function createMVU() {
                     data = mvu_data.stat_data;
                     break;
                 case 'display':
-                    data = mvu_data.display_data;
+                    data = mvu_data.display_data!;
                     break;
                 case 'delta':
-                    data = mvu_data.delta_data;
+                    data = mvu_data.delta_data!;
                     break;
             }
 
             const value = _.get(data, path, default_value);
 
             /* 如果是 VWD，取第一个元素 */
-            if (isValueWithDescription<any>(value)) {
+            if (isValueWithDescription(value)) {
                 return value[0];
             }
 

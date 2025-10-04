@@ -1,34 +1,39 @@
 import { getLastValidVariable, handleVariablesInMessage } from '@/function';
+import { cleanUpMetadata, reconcileAndApplySchema } from '@/schema';
 import { updateDescriptions } from '@/update_descriptions';
+import { MvuData } from '@/variable_def';
 import { createEmptyGameData, loadInitVarData } from '@/variable_init';
 
 interface Button {
     name: string;
     function: (() => void) | (() => Promise<void>);
 }
+
 export const buttons: Button[] = [
     {
         name: '重新处理变量',
         function: async () => {
             const last_msg = getLastMessageId();
-            if (last_msg < 1 || SillyTavern.chat.length === 0) {
-                return;
-            }
+            if (last_msg < 1) return;
+            if (SillyTavern.chat.length === 0) return;
             await updateVariablesWith(
                 variables => {
-                    _.unset(variables, 'stat_data');
-                    _.unset(variables, 'delta_data');
-                    _.unset(variables, 'display_data');
+                    _.unset(variables, `stat_data`);
+                    _.unset(variables, `delta_data`);
+                    _.unset(variables, `display_data`);
+                    _.unset(variables, `schema`);
                     return variables;
                 },
                 { type: 'message', message_id: last_msg }
             );
-            await handleVariablesInMessage(last_msg);
+            //重新处理变量
+            await handleVariablesInMessage(getLastMessageId());
         },
     },
     {
         name: '重新读取初始变量',
         function: async () => {
+            // 1. 创建一个新的空 GameData 并加载 InitVar 数据
             const latest_init_data = createEmptyGameData();
 
             try {
@@ -42,6 +47,9 @@ export const buttons: Button[] = [
                 console.error('加载 InitVar 数据失败:', e);
                 return;
             }
+            await reconcileAndApplySchema(latest_init_data);
+
+            cleanUpMetadata(latest_init_data.stat_data);
 
             // 2. 从最新楼层获取最新变量
             const message_id = getLastMessageId();
@@ -61,8 +69,20 @@ export const buttons: Button[] = [
 
             // 3. 产生新变量，以 latest_init_data 为基础，合并入 latest_msg_data 的内容
             //此处 latest_init_data 内不存在复杂类型，因此可以采用 structuredClone
-            const merged_data = structuredClone(latest_init_data);
-            merged_data.stat_data = _.merge(merged_data.stat_data, latest_msg_data.stat_data);
+            const merged_data: Record<string, any> = { stat_data: undefined, schema: undefined };
+            merged_data.stat_data = _.merge(
+                {},
+                latest_init_data.stat_data,
+                latest_msg_data.stat_data
+            );
+            merged_data.schema = _.merge({}, latest_msg_data.schema, latest_init_data.schema);
+            merged_data.initialized_lorebooks = _.merge(
+                {},
+                latest_init_data.initialized_lorebooks,
+                latest_msg_data.initialized_lorebooks
+            );
+            merged_data.display_data = structuredClone(merged_data.stat_data);
+            merged_data.delta_data = latest_msg_data.delta_data;
 
             // 4-5. 遍历并更新描述字段
             updateDescriptions(
@@ -72,8 +92,18 @@ export const buttons: Button[] = [
                 merged_data.stat_data
             );
 
+            //应用
+            await reconcileAndApplySchema(merged_data as MvuData);
+
+            cleanUpMetadata(merged_data.stat_data);
+
             // 6. 更新变量到最新消息
             await replaceVariables(merged_data, { type: 'message', message_id: message_id });
+
+            // @ts-expect-error 该函数可用
+            await setChatMessage({}, message_id);
+
+            await replaceVariables(merged_data, { type: 'chat' });
 
             console.info('InitVar更新完成');
             toastr.success('InitVar描述已更新', '', { timeOut: 3000 });
@@ -96,12 +126,20 @@ export const buttons: Button[] = [
                 return;
             }
             SillyTavern.chat.slice(0, -depth).forEach(chat_message => {
-                if (chat_message.variables === undefined) return;
-                chat_message.variables.forEach(variable => {
-                    _.unset(variable, `stat_data`);
-                    _.unset(variable, `display_data`);
-                    _.unset(variable, `delta_data`);
-                    _.unset(variable, `schema`);
+                if (chat_message.variables === undefined) {
+                    return;
+                }
+                chat_message.variables = _.range(0, chat_message.swipes?.length ?? 1).map(i => {
+                    if (chat_message?.variables?.[i] === undefined) {
+                        return {};
+                    }
+                    return _.omit(
+                        chat_message.variables[i],
+                        `stat_data`,
+                        `display_data`,
+                        `delta_data`,
+                        `schema`
+                    );
                 });
             });
             SillyTavern.saveChat().then(() =>

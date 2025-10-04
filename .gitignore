@@ -12,12 +12,6 @@ build/
 node_modules/
 .yarn/
 
-# Ignore other package manager lock files
-package-lock.json
-pnpm-lock.yaml
-bun.lockb
-npm-shrinkwrap.json
-
 # Ignore logs
 npm-debug.log*
 yarn-debug.log*
@@ -35,6 +29,9 @@ coverage/
 
 # Ignore Webpack cache
 .cache/
+
+# Ignore Visual Studio
+.vs/
 
 # Ignore OS generated files
 .DS_Store
