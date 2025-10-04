@@ -3,6 +3,7 @@ import child_process from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import url from 'node:url';
+import RemarkHTML from 'remark-html';
 import { Server } from 'socket.io';
 import TerserPlugin from 'terser-webpack-plugin';
 import TsconfigPathsPlugin from 'tsconfig-paths-webpack-plugin';
@@ -121,6 +122,22 @@ function config(_env: any, argv: any): webpack.Configuration {
                             resourceQuery: /raw/,
                             type: 'asset/source',
                             exclude: /node_modules/,
+                        },
+                        {
+                            test: /\.md$/,
+                            use: [
+                                {
+                                    loader: 'html-loader',
+                                },
+                                {
+                                    loader: 'remark-loader',
+                                    options: {
+                                        remarkOptions: {
+                                            plugins: [RemarkHTML],
+                                        },
+                                    },
+                                },
+                            ],
                         },
                         {
                             test: /\.tsx?$/,

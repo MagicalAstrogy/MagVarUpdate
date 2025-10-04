@@ -104,31 +104,17 @@
 
 <script setup lang="ts">
 import { buttons } from '@/button';
+import panel_help from '@/panel_help.md';
 import { useSettingsStore } from '@/settings';
 import { storeToRefs } from 'pinia';
 
 const { settings } = storeToRefs(useSettingsStore());
 
-function showHelp() {
-    SillyTavern.callGenericPopup(
-        `<p>为了让剧情模型更专注于剧情，你可以选择变量更新的方式：</p>
-        <ul>
-        <li><strong>随AI输出</strong>：名字中有 <code>[mvu_update]</code> 的条目将会正常发给 AI，因此 AI 将会在回复时输出变量更新分析及更新命令，进而更新变量。</li>
-        <li><strong>额外模型解析</strong>：名字中有 <code>[mvu_update]</code> 的条目不会发给 AI。在 AI 回复完成后，MVU 将会只使用名字中有 <code>[mvu_update]</code> 的条目调用额外模型专门解析变量更新。</li>
-        <li><strong>工具调用（待完成）</strong>：名字中有 <code>[mvu_update]</code> 的条目将作为工具调用的提示词发给 AI，因此 AI 将会通过工具调用来更新变量。</li>
-        </ul>
-        <hr/>
-        <p>如果要使用除<q>随AI输出</q>以外的方式，则需要作者适配世界书，添加带有 <code>[mvu_update]</code> 的条目；如果作者没有适配，则依旧会使用<q>随AI输出</q>的方式。<br>
-        具体地，MVU 变量框架的提示词分为：</p>
-        <ul>
-        <li><strong>变量列表</strong>：让 AI 知道有什么变量，如 <code>null</code>、<code>&lt;%= getvar('stat_data') _%&gt;</code> 等。</li>
-        <li><strong>变量更新规则</strong>：让 AI 知道变量该如何更新，如<code>药物依赖度应该每分钟增加1点</code>等。</li>
-        <li><strong>输出规则</strong>：让 AI 知道该输出什么来表达变量发生变化，如提示词中要求输出的<code>&lt;UpdateVariable&gt;</code>块。</li>
-        </ul>
-        <p>作者需要做的，是给<q>变量更新规则</q>和<q>输出规则</q>条目的名字添加 <code>[mvu_update]</code>。</p>`,
-        SillyTavern.POPUP_TYPE.TEXT,
-        '',
-        { allowHorizontalScrolling: true, leftAlign: true }
-    );
+async function showHelp() {
+    SillyTavern.callGenericPopup(panel_help, SillyTavern.POPUP_TYPE.TEXT, '', {
+        allowHorizontalScrolling: true,
+        leftAlign: true,
+        wide: true,
+    });
 }
 </script>
