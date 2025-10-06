@@ -36,6 +36,16 @@
 
                 <template v-if="settings.更新方式 === '额外模型解析'">
                     <select
+                        id="mvu_update_mode"
+                        v-model="settings.额外模型解析模式"
+                        class="text_pole"
+                    >
+                        <option value="不含预设">不含预设</option>
+                        <option value="含预设">含预设</option>
+                        <option value="函数调用含预设">函数调用含预设</option>
+                    </select>
+
+                    <select
                         id="mvu_extra_model_source"
                         v-model="settings.额外模型解析配置.模型来源"
                         class="text_pole"

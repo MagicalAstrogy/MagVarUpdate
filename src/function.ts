@@ -543,6 +543,7 @@ export async function updateVariables(
         display_data: out_status.stat_data,
         delta_data: delta_status.stat_data || {},
     };
+    //@ts-expect-error 这里会有一个variables类型的不一致，一个内部类型，一个外部类型。
     await eventEmit(variable_events.VARIABLE_UPDATE_STARTED, variables);
     let variable_modified = false;
 
@@ -1191,6 +1192,7 @@ export async function updateVariables(
     variables.display_data = out_status.stat_data;
     variables.delta_data = delta_status.stat_data!;
     // 触发变量更新结束事件
+    //@ts-expect-error 这里会有一个variables类型的不一致，一个内部类型，一个外部类型。
     await eventEmit(variable_events.VARIABLE_UPDATE_ENDED, variables);
     //在结束事件中也可能设置变量
     delete variables.stat_data.$internal;
