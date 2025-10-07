@@ -1,5 +1,5 @@
 // 整体游戏数据类型
-import { getLastValidVariable, updateVariables } from '@/function';
+import { getLastValidVariable, IsVariableUpdateInProgress, updateVariables } from '@/function';
 import { MvuData, isObjectSchema, RootAdditionalProps, SchemaNode } from '@/variable_def';
 import { cleanUpMetadata, EXTENSIBLE_MARKER, generateSchema } from '@/schema';
 import JSON5 from 'json5';
@@ -13,6 +13,10 @@ type LorebookEntry = {
 export async function initCheck() {
     let variables: MvuData & Record<string, any>;
     //这个函数需要处理 dryRun,因为0层。
+    if (IsVariableUpdateInProgress()) {
+        console.log('当前环境运行较慢', '变量初始化跳过');
+        return;
+    }
 
     try {
         if (SillyTavern.chat.length === 0) {

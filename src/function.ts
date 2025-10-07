@@ -411,7 +411,7 @@ export function parseParameters(paramsString: string): string[] {
     return params;
 }
 
-export async function getLastValidVariable(message_id: number): Promise<MvuData> {
+export function getLastValidVariable(message_id: number): MvuData {
     return (structuredClone(
         _(SillyTavern.chat)
             .slice(0, message_id + 1)
@@ -544,7 +544,6 @@ export async function updateVariables(
         display_data: out_status.stat_data,
         delta_data: delta_status.stat_data || {},
     };
-    await eventEmit(variable_events.VARIABLE_UPDATE_STARTED, variables, out_is_modifed);
     let variable_modified = false;
 
     let error_info: ErrorInfo | undefined;
@@ -561,6 +560,9 @@ export async function updateVariables(
     const strict_template = schema?.strictTemplate ?? false;
     const concat_template_array = schema?.concatTemplateArray ?? true;
     const strict_set = schema?.strictSet ?? false;
+
+    //@ts-ignore 新老接口问题
+    await eventEmit(variable_events.VARIABLE_UPDATE_STARTED, variables, out_is_modifed);
 
     for (const command of commands) {
         // 遍历所有命令，逐一处理
@@ -1192,6 +1194,7 @@ export async function updateVariables(
     variables.display_data = out_status.stat_data;
     variables.delta_data = delta_status.stat_data!;
     // 触发变量更新结束事件
+    //@ts-ignore 新老接口问题
     await eventEmit(variable_events.VARIABLE_UPDATE_ENDED, variables, out_is_modifed);
     //在结束事件中也可能设置变量
     delete variables.stat_data.$internal;
@@ -1218,6 +1221,12 @@ export async function updateVariables(
 let lastExecutionTime = 0;
 const RATE_LIMIT_INTERVAL = 3000; // 3 seconds in milliseconds
 
+let VariableUpdateInProgress = false;
+
+export function IsVariableUpdateInProgress() {
+    return VariableUpdateInProgress;
+}
+
 export async function handleVariablesInMessage(message_id: number) {
     // Skip rate limiting in Jest test environment
     const isJestEnvironment =
@@ -1239,57 +1248,63 @@ export async function handleVariablesInMessage(message_id: number) {
         }
         lastExecutionTime = now;
     }
-
-    const chat_message = getChatMessages(message_id).at(-1);
-    if (!chat_message) {
-        return;
-    }
-
-    let message_content = chat_message.message;
-
-    if (message_content.length < 5)
-        //MESSAGE_RECEIVED会递交一个 "..." 的消息
-        return;
-    const request_message_id = message_id === 0 ? 0 : message_id - 1;
-    const variables = await getLastValidVariable(request_message_id);
-    if (!_.has(variables, 'stat_data')) {
-        console.error(`cannot found stat_data for ${request_message_id}`);
-        return;
-    }
-
-    const has_variable_modified = await updateVariables(message_content, variables);
-    const updater = (data: Record<string, any>) => {
-        data.stat_data = variables.stat_data;
-        data.display_data = variables.display_data;
-        data.delta_data = variables.delta_data;
-        data.initialized_lorebooks = variables.initialized_lorebooks;
-        if (variables.schema !== undefined) {
-            data.schema = variables.schema;
-        } else {
-            delete data.schema;
+    try {
+        //如果变量更新的耗时超过 300 ms，那么可能会与酒馆的延迟 generate (dry-run) 事件
+        //发生并发冲突，此处在第一个 await 前设置，以避免这个问题
+        VariableUpdateInProgress = true;
+        const chat_message = getChatMessages(message_id).at(-1);
+        if (!chat_message) {
+            return;
         }
-        return data;
-    };
-    if (has_variable_modified) {
-        await updateVariablesWith(updater, { type: 'chat' });
-    }
-    await updateVariablesWith(updater, { type: 'message', message_id: message_id });
 
-    if (chat_message.role !== 'user') {
-        if (!message_content.includes('<StatusPlaceHolderImpl/>')) {
-            message_content += '\n\n<StatusPlaceHolderImpl/>';
+        let message_content = chat_message.message;
+
+        if (message_content.length < 5)
+            //MESSAGE_RECEIVED会递交一个 "..." 的消息
+            return;
+        const request_message_id = message_id === 0 ? 0 : message_id - 1;
+        const variables = getLastValidVariable(request_message_id);
+        if (!_.has(variables, 'stat_data')) {
+            console.error(`cannot found stat_data for ${request_message_id}`);
+            return;
         }
-        await setChatMessages(
-            [
-                {
-                    message_id: message_id,
-                    message: message_content,
-                },
-            ],
-            {
-                refresh: 'affected',
+
+        const has_variable_modified = await updateVariables(message_content, variables);
+        const updater = (data: Record<string, any>) => {
+            data.stat_data = variables.stat_data;
+            data.display_data = variables.display_data;
+            data.delta_data = variables.delta_data;
+            data.initialized_lorebooks = variables.initialized_lorebooks;
+            if (variables.schema !== undefined) {
+                data.schema = variables.schema;
+            } else {
+                delete data.schema;
             }
-        );
+            return data;
+        };
+        if (has_variable_modified) {
+            await updateVariablesWith(updater, { type: 'chat' });
+        }
+        await updateVariablesWith(updater, { type: 'message', message_id: message_id });
+
+        if (chat_message.role !== 'user') {
+            if (!message_content.includes('<StatusPlaceHolderImpl/>')) {
+                message_content += '\n\n<StatusPlaceHolderImpl/>';
+            }
+            await setChatMessages(
+                [
+                    {
+                        message_id: message_id,
+                        message: message_content,
+                    },
+                ],
+                {
+                    refresh: 'affected',
+                }
+            );
+        }
+    } finally {
+        VariableUpdateInProgress = false;
     }
 }
 

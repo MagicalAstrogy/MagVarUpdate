@@ -101,11 +101,13 @@ async function reloadInit() {
 }
 
 function addButtons() {
+    //@ts-ignore 新老版本
     const current_buttons = getScriptButtons(getScriptId());
     const current_button_names = current_buttons.map(b => b.name);
     for (const button of buttons.filter(b => !current_button_names.includes(b))) {
         current_buttons.push({ name: button, visible: false });
     }
+    //@ts-ignore 新老版本
     replaceScriptButtons(getScriptId(), current_buttons);
 }
 
