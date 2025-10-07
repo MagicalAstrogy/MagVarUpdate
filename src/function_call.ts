@@ -9,8 +9,50 @@ import { useSettingsStore } from '@/settings';
  * 目前的折衷方式是在 generate 中触发函数调用，在这个情况下可以利用 required 肘掉正文的特性，来精简输出。
  */
 
-const mvu_function_name = 'mvu_VariableUpdate';
+export const MVU_FUNCTION_NAME = 'mvu_VariableUpdate';
 const mvu_update_call_function_name = 'mvu_updateRound';
+
+/*
+    e.g.: [
+    [
+        {
+            "index": 0,
+            "id": "tool_0_mvu_VariableUpdate_2lJb8gNNBxCT4Gi4QDkF",
+            "type": "function",
+            "function": {
+                "name": "mvu_VariableUpdate",
+                "arguments": "{\"delta\":\"\\n_.set('世界.当前时间','19:30');//赤油们因为饥饿最终选择了吃饲料\\n_.set('yukkuri.yukkuri_1.fullness_level',45);\\n_.set('yukkuri.yukkuri_1.pickiness_level',40);\\n_.set('yukkuri.yukkuri_1.monologue','姆Q……难吃……但是……肚子不饿了……麻麻……什么时候回来……');\\n_.set('yukkuri.yukkuri_2.fullness_level',45);\\n_.set('yukkuri.yukkuri_2.pickiness_level',40);\\n_.set('yukkuri.yukkuri_2.monologue','谬嗯……嚼嚼……不甜……但是……肚子……不空了……麻麻……');\\n_.set('yukkuri.yukkuri_3.fullness_level',45);\\n_.set('yukkuri.yukkuri_3.pickiness_level',40);\\n_.set('yukkuri.yukkuri_3.monologue','麻麻……为什么不给灵缪甜甜……灵缪是坏孩子吗……嚼嚼……好难吃……但是……肚子……');\\n_.set('yukkuri.yukkuri_4.fullness_level',30);\\n_.set('yukkuri.yukkuri_4.pickiness_level',45);\\n_.set('yukkuri.yukkuri_4.monologue','诺杰……好饿……可恶的麻麻……竟然给麻理洽吃这种东西……嚼嚼……呜……好难吃……但是……好饿……');\\n_.set('yukkuri.yukkuri_5.fullness_level',30);\\n_.set('yukkuri.yukkuri_5.pickiness_level',45);\\n_.set('yukkuri.yukkuri_5.monologue','呜……蕾咪才不要吃这种垃圾……蕾咪是高贵的吸血鬼……要吃肉肉……好饿……可恶的麻麻……呜……');\\n\",\"analysis\":\"\\nTime passed: 1 hour. Not a special case, so no dramatic updates.\\nVariables to check: 世界.当前时间, yukkuri.yukkuri_1.fullness_level, yukkuri.yukkuri_1.pickiness_level, yukkuri.yukkuri_1.monologue, yukkuri.yukkuri_2.fullness_level, yukkuri.yukkuri_2.pickiness_level, yukkuri.yukkuri_2.monologue, yukkuri.yukkuri_3.fullness_level, yukkuri.yukkuri_3.pickiness_level, yukkuri.yukkuri_3.monologue, yukkuri.yukkuri_4.fullness_level, yukkuri.yukkuri_4.pickiness_level, yukkuri.yukkuri_4.monologue, yukkuri.yukkuri_5.fullness_level, yukkuri.yukkuri_5.pickiness_level, yukkuri.yukkuri_5.monologue\\n\\n世界.当前时间: Y\\nyukkuri.yukkuri_1.fullness_level: Y\\nyukkuri.yukkuri_1.pickiness_level: Y\\nyukkuri.yukkuri_1.monologue: Y\\nyukkuri.yukkuri_2.fullness_level: Y\\nyukkuri.yukkuri_2.pickiness_level: Y\\nyukkuri.yukkuri_2.monologue: Y\\nyukkuri.yukkuri_3.fullness_level: Y\\nyukkuri.yukkuri_3.pickiness_level: Y\\nyukkuri.yukkuri_3.monologue: Y\\nyukkuri.yukkuri_4.fullness_level: Y\\nyukkuri.yukkuri_4.pickiness_level: Y\\nyukkuri.yukkuri_4.monologue: Y\\nyukkuri.yukkuri_5.fullness_level: Y\\nyukkuri.yukkuri_5.pickiness_level: Y\\nyukkuri.yukkuri_5.monologue: Y\\n\"}"
+            }
+        }
+    ]
+]
+ */
+
+/** 工具调用的“函数体” */
+export interface FunctionCallBody {
+    /** 工具名，例如 "mvu_VariableUpdate"。你也可以扩成联合类型做更强约束 */
+    name: ToolName;
+    /** 注意：这里是**字符串里包 JSON**。解析请看后面的辅助函数 */
+    arguments: string;
+}
+
+/** 单个工具调用（function-calling 形态） */
+export interface ToolFunctionCall {
+    index: number; // 这条 tool_call 在“本批次”中的顺序
+    id: string; // 流式/合并用的临时 ID
+    type: 'function'; // 本题场景锁定 function；留扩展点以兼容其它类型
+    function: FunctionCallBody;
+}
+
+/** 一批（组）工具调用：你示例里的内层数组 */
+export type ToolCallBatch = ToolFunctionCall[];
+
+/** 多批（组）工具调用：你示例的最外层 */
+export type ToolCallBatches = ToolCallBatch[];
+
+/** 已知的工具名：先收窄 mvu_VariableUpdate，保留 string 兼容其它 */
+export type ToolName = typeof MVU_FUNCTION_NAME | (string & {});
+
 let is_function_call_enabled: boolean = false;
 
 export function setFunctionCallEnabled(enabled: boolean) {
@@ -18,7 +60,7 @@ export function setFunctionCallEnabled(enabled: boolean) {
 }
 
 export function unregisterFunction() {
-    SillyTavern.unregisterFunctionTool(mvu_function_name);
+    SillyTavern.unregisterFunctionTool(MVU_FUNCTION_NAME);
     SillyTavern.unregisterFunctionTool(mvu_update_call_function_name);
 }
 
@@ -125,7 +167,7 @@ export function registerFunction() {
     });
 
     registerFunctionTool({
-        name: mvu_function_name,
+        name: MVU_FUNCTION_NAME,
         displayName: 'MVU update',
         stealth: true,
         description: 'use this tool to UpdateVariable.',

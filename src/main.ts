@@ -2,9 +2,11 @@ import { registerButtons } from '@/button';
 import { exportGlobals } from '@/export_globals';
 import { handleVariablesInCallback, handleVariablesInMessage, updateVariable } from '@/function';
 import {
+    MVU_FUNCTION_NAME,
     overrideToolRequest,
     registerFunction,
     setFunctionCallEnabled,
+    ToolCallBatches,
     unregisterFunction,
 } from '@/function_call';
 import { destroyPanel, initPanel } from '@/panel';
@@ -60,6 +62,8 @@ async function handlePromptFilter(lores: {
             remove_and_count(lores.personaLore);
     }
 }
+
+let vanilla_parseToolCalls: any = null;
 
 async function onMessageReceived(message_id: number) {
     const current_chatmsg = getChatMessages(message_id).at(-1);
@@ -132,18 +136,33 @@ async function onMessageReceived(message_id: number) {
                 content: '</past_observe>',
             },
         ]; //部分预设会在后面强调 user_input 的演绎行为，需要找个方式肘掉它
+
+        let collected_tool_calls: ToolCallBatches | undefined = undefined;
+        if (settings.额外模型解析配置.使用函数调用) {
+            vanilla_parseToolCalls = SillyTavern.ToolManager.parseToolCalls;
+            const vanilla_bound = SillyTavern.ToolManager.parseToolCalls.bind(
+                SillyTavern.ToolManager
+            );
+            SillyTavern.ToolManager.parseToolCalls = (tool_calls: any, parsed: any) => {
+                vanilla_bound(tool_calls, parsed);
+                collected_tool_calls = tool_calls;
+            };
+        }
+
         for (retries = 0; retries < 3; retries++) {
             if (settings.通知.额外模型解析中) {
                 toastr.info(
                     `[MVU]额外模型分析变量更新中...${retries === 0 ? '' : ` 重试 ${retries}/3`}`
                 );
             }
+            collected_tool_calls = undefined;
             const current_result = await generateFn(
                 settings.额外模型解析配置.模型来源 === '与插头相同'
                     ? {
                           user_input: `遵循后续的 <must> 指令`,
                           injects: promptInjects,
                           max_chat_history: 2,
+                          should_stream: settings.额外模型解析配置.使用函数调用,
                       }
                     : {
                           user_input: `遵循后续的 <must> 指令`,
@@ -153,8 +172,40 @@ async function onMessageReceived(message_id: number) {
                               model: settings.额外模型解析配置.模型名称,
                           },
                           injects: promptInjects,
+                          should_stream: settings.额外模型解析配置.使用函数调用,
                       }
             );
+            if (collected_tool_calls !== undefined) {
+                const content = _.get(collected_tool_calls as ToolCallBatches, '[0]');
+                if (content) {
+                    const mvu_function_call = _(content).findLast(
+                        fn => fn.function.name === MVU_FUNCTION_NAME
+                    );
+                    if (mvu_function_call) {
+                        const mvu_function_call_content = _.get(
+                            mvu_function_call,
+                            'function.arguments'
+                        );
+                        if (mvu_function_call_content) {
+                            try {
+                                const mvu_function_call_json =
+                                    JSON.parse(mvu_function_call_content);
+                                if (
+                                    mvu_function_call_json.delta &&
+                                    mvu_function_call_json.delta.length > 5
+                                ) {
+                                    result = `<UpdateVariable><Analyze>${mvu_function_call_json.analysis}</Analyze>${mvu_function_call_json.delta}</UpdateVariable>`;
+                                    break;
+                                }
+                            } catch (e) {
+                                console.log(
+                                    `failed to parse function call content,retry: ${mvu_function_call_content}: ${e}`
+                                );
+                            }
+                        }
+                    }
+                }
+            }
             if (current_result.indexOf('<UpdateVariable>') !== -1) {
                 result = current_result;
                 break;
@@ -165,6 +216,10 @@ async function onMessageReceived(message_id: number) {
         await handleVariablesInMessage(message_id);
         return;
     } finally {
+        if (vanilla_parseToolCalls !== null) {
+            SillyTavern.ToolManager.parseToolCalls = vanilla_parseToolCalls;
+            vanilla_parseToolCalls = null;
+        }
         SillyTavern.unregisterMacro('lastUserMessage');
         setFunctionCallEnabled(false);
         enabledPromptFilter = true;
@@ -215,7 +270,7 @@ $(async () => {
 
     eventOn(
         tavern_events.MESSAGE_RECEIVED,
-        is_jest_environment ? onMessageReceived : _.debounce(onMessageReceived, 3000)
+        is_jest_environment ? onMessageReceived : _.throttle(onMessageReceived, 3000)
     );
 
     eventOn(exported_events.INVOKE_MVU_PROCESS, handleVariablesInCallback);
@@ -232,6 +287,10 @@ $(async () => {
 });
 
 $(window).on('pagehide', () => {
+    if (vanilla_parseToolCalls !== null) {
+        SillyTavern.ToolManager.parseToolCalls = vanilla_parseToolCalls;
+        vanilla_parseToolCalls = null;
+    }
     destroyPanel();
     unregisterFunction();
 });
