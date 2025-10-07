@@ -1,15 +1,15 @@
 let sillytavern_version: string = '1.0.0';
-export async function init_silltavern_version(): Promise<void> {
+export async function initSillyTavernVersion(): Promise<void> {
     sillytavern_version = await fetch('/version')
         .then(res => res.json())
         .then(data => data.pkgVersion)
         .catch(() => '1.0.0');
 }
-export function get_sillytavern_version(): string {
+export function getSillyTavernVersion(): string {
     return sillytavern_version;
 }
 
-export function is_toolcall_supported() {
+export function isFunctionCallingSupported() {
     if (!SillyTavern.ToolManager.isToolCallingSupported()) {
         return false;
     }

@@ -34,8 +34,8 @@
                     <i
                         class="fa-solid fa-circle-question fa-sm note-link-span"
                         style="cursor: pointer"
-                        @click="showHelp"
-                    ></i>
+                        @click="showMethodHelp"
+                    />
                 </div>
                 <select id="mvu_update_method" v-model="store.settings.更新方式" class="text_pole">
                     <option value="随AI输出">随AI输出</option>
@@ -43,18 +43,32 @@
                 </select>
 
                 <template v-if="store.settings.更新方式 === '额外模型解析'">
-                    <select
-                        id="mvu_update_mode"
-                        v-model="store.settings.额外模型解析配置.解析方式"
-                        class="text_pole"
-                    >
-                        <option value="仅发送变量提示词">仅发送变量提示词</option>
-                        <option value="发送变量提示词及预设">发送变量提示词及预设</option>
-                        <option value="发送变量提示词及预设 (函数调用)">
-                            发送变量提示词及预设 (函数调用)
-                        </option>
-                    </select>
+                    <label>
+                        解析方式
+                        <i
+                            class="fa-solid fa-circle-question fa-sm note-link-span"
+                            style="cursor: pointer"
+                            @click="showExtraModeHelp"
+                        />
+                    </label>
+                    <label class="checkbox_label" for="mvu_extra_model_send_preset">
+                        <input
+                            id="mvu_extra_model_send_preset"
+                            v-model="store.settings.额外模型解析配置.发送预设"
+                            type="checkbox"
+                        />
+                        <span>发送预设</span>
+                    </label>
+                    <label class="checkbox_label" for="mvu_extra_model_use_function_calling">
+                        <input
+                            id="mvu_extra_model_use_function_calling"
+                            v-model="store.settings.额外模型解析配置.使用函数调用"
+                            type="checkbox"
+                        />
+                        <span>使用函数调用</span>
+                    </label>
 
+                    <label for="mvu_extra_model_source">模型来源</label>
                     <select
                         id="mvu_extra_model_source"
                         v-model="store.settings.额外模型解析配置.模型来源"
@@ -124,9 +138,10 @@
 
 <script setup lang="ts">
 import { buttons } from '@/button';
-import panel_help from '@/panel_help.md';
+import panel_extra_mode_help from '@/panel_extra_mode_help.md';
+import panel_method_help from '@/panel_method_help.md';
 import { useSettingsStore } from '@/settings';
-import { get_sillytavern_version } from '@/util';
+import { getSillyTavernVersion } from '@/util';
 import { compare } from 'compare-versions';
 import { watch } from 'vue';
 
@@ -135,7 +150,7 @@ const store = useSettingsStore();
 watch(
     () => store.settings.更新方式,
     value => {
-        if (value === '额外模型解析' && compare(get_sillytavern_version(), '1.13.4', '<')) {
+        if (value === '额外模型解析' && compare(getSillyTavernVersion(), '1.13.4', '<')) {
             toastr.error(
                 "检查到酒馆版本过低，要使用'额外模型解析'请保证酒馆版本大于等于 1.13.4",
                 "[MVU]无法使用'额外模型解析'",
@@ -147,9 +162,9 @@ watch(
 );
 
 watch(
-    () => store.settings.额外模型解析配置.解析方式,
+    () => store.settings.额外模型解析配置.使用函数调用,
     value => {
-        if (value === '发送变量提示词及预设 (函数调用)') {
+        if (value === true) {
             if (!SillyTavern.ToolManager.isToolCallingSupported()) {
                 toastr.error(
                     "请在 API 配置 (插头) 处将提示词后处理改为'含工具'的选项",
@@ -160,21 +175,25 @@ watch(
                 );
             }
             if (SillyTavern.chatCompletionSettings.function_calling === false) {
-                toastr.error(
-                    "请在预设面板勾选'启用函数调用'选项",
-                    "[MVU]无法使用'函数调用'",
-                    {
-                        timeOut: 5000,
-                    }
-                );
+                toastr.error("请在预设面板勾选'启用函数调用'选项", "[MVU]无法使用'函数调用'", {
+                    timeOut: 5000,
+                });
             }
-            store.settings.额外模型解析配置.解析方式 = '发送变量提示词及预设';
+            store.settings.额外模型解析配置.使用函数调用 = true;
         }
     }
 );
 
-async function showHelp() {
-    SillyTavern.callGenericPopup(panel_help, SillyTavern.POPUP_TYPE.TEXT, '', {
+async function showMethodHelp() {
+    SillyTavern.callGenericPopup(panel_method_help, SillyTavern.POPUP_TYPE.TEXT, '', {
+        allowHorizontalScrolling: true,
+        leftAlign: true,
+        wide: true,
+    });
+}
+
+async function showExtraModeHelp() {
+    SillyTavern.callGenericPopup(panel_extra_mode_help, SillyTavern.POPUP_TYPE.TEXT, '', {
         allowHorizontalScrolling: true,
         leftAlign: true,
         wide: true,

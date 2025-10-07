@@ -7,7 +7,8 @@ const Settings = z
         更新方式: z.enum(['随AI输出', '额外模型解析']).default('随AI输出'),
         额外模型解析配置: z
             .object({
-                解析方式: z.enum(['仅发送变量提示词', '发送变量提示词及预设', '发送变量提示词及预设 (函数调用)']).default('发送变量提示词及预设'),
+                发送预设: z.boolean().default(true),
+                使用函数调用: z.boolean().default(false),
                 模型来源: z.enum(['与插头相同', '自定义']).default('与插头相同'),
                 api地址: z.string().default('http://localhost:1234/v1'),
                 密钥: z.string().default(''),

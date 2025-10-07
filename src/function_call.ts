@@ -135,7 +135,7 @@ export function registerFunction() {
                 return false;
             }
             const settings = useSettingsStore().settings;
-            return settings.额外模型解析配置.解析方式 === '发送变量提示词及预设 (函数调用)';
+            return settings.额外模型解析配置.使用函数调用;
         },
         action: onVariableUpdatedCall,
         formatMessage: () => '',
@@ -182,10 +182,7 @@ export function registerFunction() {
 
 export function overrideToolRequest(generate_data: any) {
     const settings = useSettingsStore().settings;
-    if (
-        settings.更新方式 !== '额外模型解析' ||
-        settings.额外模型解析配置.解析方式 !== '发送变量提示词及预设 (函数调用)'
-    ) {
+    if (settings.更新方式 !== '额外模型解析' || settings.额外模型解析配置.使用函数调用 !== true) {
         return;
     }
     if (!is_function_call_enabled) {

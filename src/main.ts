@@ -9,7 +9,7 @@ import {
 } from '@/function_call';
 import { destroyPanel, initPanel } from '@/panel';
 import { useSettingsStore } from '@/settings';
-import { init_silltavern_version, is_jest_environment, is_toolcall_supported } from '@/util';
+import { initSillyTavernVersion, is_jest_environment, isFunctionCallingSupported } from '@/util';
 import { exported_events, ExtraLLMRequestContent } from '@/variable_def';
 import { initCheck } from '@/variable_init';
 import { compare } from 'compare-versions';
@@ -35,10 +35,7 @@ async function handlePromptFilter(lores: {
     if (settings.更新方式 === '随AI输出') {
         return;
     }
-    if (
-        settings.额外模型解析配置.解析方式 === '发送变量提示词及预设 (函数调用)' &&
-        !is_toolcall_supported()
-    ) {
+    if (settings.额外模型解析配置.使用函数调用 && !isFunctionCallingSupported()) {
         toastr.warning(
             '当前预设/API 不支持函数调用，已退化回 `随AI输出`',
             '[MVU]无法使用函数调用',
@@ -83,8 +80,7 @@ async function onMessageReceived(message_id: number) {
     if (
         settings.更新方式 === '随AI输出' ||
         //primary_worldbook === null || 这种情况下， matchLores 也等于 0 ，不需要专门比对
-        (settings.额外模型解析配置.解析方式 === '发送变量提示词及预设 (函数调用)' &&
-            !is_toolcall_supported()) || //与上面相同的退化情况。
+        (settings.额外模型解析配置.使用函数调用 && !isFunctionCallingSupported()) || //与上面相同的退化情况。
         // 角色卡未适配时, 依旧使用 "随AI输出"
         matchedLores === 0 // 代表实际上没有任何 世界书条目被筛选掉，也就是并没有对应去支持 [mvu_update] 逻辑。
     ) {
@@ -94,11 +90,10 @@ async function onMessageReceived(message_id: number) {
 
     enabledPromptFilter = false;
     let user_input = ExtraLLMRequestContent;
-    if (settings.额外模型解析配置.解析方式 === '发送变量提示词及预设 (函数调用)') {
+    if (settings.额外模型解析配置.使用函数调用) {
         user_input += `\n use \`mvu_VariableUpdate\` tool to update variables.`;
     }
-    const generateFn =
-        settings.额外模型解析配置.解析方式 === '仅发送变量提示词' ? generateRaw : generate;
+    const generateFn = settings.额外模型解析配置.发送预设 === false ? generateRaw : generate;
 
     let result: string = '';
     let retries = 0;
@@ -205,7 +200,7 @@ $(async () => {
         );
     }
 
-    await init_silltavern_version();
+    await initSillyTavernVersion();
 
     initPanel();
 
