@@ -40,7 +40,7 @@ export const buttons: Button[] = [
                 const hasInitData = await loadInitVarData(latest_init_data);
                 if (!hasInitData) {
                     console.error('没有找到 InitVar 数据');
-                    toastr.error('没有找到 InitVar 数据', '', { timeOut: 3000 });
+                    toastr.error('没有找到 InitVar 数据', '[MVU]', { timeOut: 3000 });
                     return;
                 }
             } catch (e) {
@@ -55,7 +55,7 @@ export const buttons: Button[] = [
             const message_id = getLastMessageId();
             if (message_id < 0) {
                 console.error('没有找到消息');
-                toastr.error('没有找到消息', '', { timeOut: 3000 });
+                toastr.error('没有找到消息', '[MVU]', { timeOut: 3000 });
                 return;
             }
 
@@ -63,7 +63,7 @@ export const buttons: Button[] = [
 
             if (!_.has(latest_msg_data, 'stat_data')) {
                 console.error('最新消息中没有找到 stat_data');
-                toastr.error('最新消息中没有 stat_data', '', { timeOut: 3000 });
+                toastr.error('最新消息中没有 stat_data', '[MVU]', { timeOut: 3000 });
                 return;
             }
 
@@ -106,7 +106,7 @@ export const buttons: Button[] = [
             await replaceVariables(merged_data, { type: 'chat' });
 
             console.info('InitVar更新完成');
-            toastr.success('InitVar描述已更新', '', { timeOut: 3000 });
+            toastr.success('InitVar描述已更新', '[MVU]', { timeOut: 3000 });
         },
     },
     {
@@ -122,7 +122,7 @@ export const buttons: Button[] = [
             }
             const depth = parseInt(result);
             if (isNaN(depth)) {
-                toastr.error(`请输入有效的楼层数, 你输入的是 '${result}'`, '清理旧楼层变量失败');
+                toastr.error(`请输入有效的楼层数, 你输入的是 '${result}'`, '[MVU]清理旧楼层变量失败');
                 return;
             }
             SillyTavern.chat.slice(0, -depth).forEach(chat_message => {
@@ -143,7 +143,7 @@ export const buttons: Button[] = [
                 });
             });
             SillyTavern.saveChat().then(() =>
-                toastr.success(`已清理旧变量, 保留了最后 ${depth} 层的变量`, '清理旧楼层变量成功')
+                toastr.success(`已清理旧变量, 保留了最后 ${depth} 层的变量`, '[MVU]清理旧楼层变量成功')
             );
         },
     },

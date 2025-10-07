@@ -1206,7 +1206,7 @@ export async function updateVariables(
         if (typeof toastr !== 'undefined')
             toastr.warning(
                 `最近错误: ${error_info.error_last}`,
-                `发生变量更新错误，可能需要重Roll:${base_command}`,
+                `[MVU]发生变量更新错误，可能需要重Roll: ${base_command}`,
                 { timeOut: 6000 }
             );
     }

@@ -5,21 +5,21 @@ import { useSettingsStore } from '@/settings';
  * 最终的变量更新机制实际上是专门generate 一个新的请求，那个请求会通过 tool_call 直接更新变量。
  * 并不会直接在一条输出消息里面进行 tool_call，因为这种情况很可能 llm 直接无视你的tool call请求（auto/any）
  * 或者 tool call 请求直接把正文肘掉（required）
- * 如果想不肘正文，需要从外部输入格式强调才行，因此直接把 mvu 更新移动到工具调用中不现实。
- * 目前的折衷方式是在 generate 中触发工具调用，在这个情况下可以利用 required 肘掉正文的特性，来精简输出。
+ * 如果想不肘正文，需要从外部输入格式强调才行，因此直接把 mvu 更新移动到函数调用中不现实。
+ * 目前的折衷方式是在 generate 中触发函数调用，在这个情况下可以利用 required 肘掉正文的特性，来精简输出。
  */
 
-const MVUFunctionName = 'mvu_VariableUpdate';
-const MVUUpdateCallFunctionName = 'mvu_updateRound';
-let IsFunctionCallEnabled: boolean = false;
+const mvu_function_name = 'mvu_VariableUpdate';
+const mvu_update_call_function_name = 'mvu_updateRound';
+let is_function_call_enabled: boolean = false;
 
 export function setFunctionCallEnabled(enabled: boolean) {
-    IsFunctionCallEnabled = enabled;
+    is_function_call_enabled = enabled;
 }
 
 export function unregisterFunction() {
-    SillyTavern.unregisterFunctionTool(MVUFunctionName);
-    SillyTavern.unregisterFunctionTool(MVUUpdateCallFunctionName);
+    SillyTavern.unregisterFunctionTool(mvu_function_name);
+    SillyTavern.unregisterFunctionTool(mvu_update_call_function_name);
 }
 
 /*
@@ -103,7 +103,7 @@ export function registerFunction() {
         return;
     }
 
-    const mvuUpdateSchema = Object.freeze({
+    const mvu_update_schema = Object.freeze({
         $schema: 'http://json-schema.org/draft-04/schema#',
         type: 'object',
         additionalProperties: false,
@@ -125,15 +125,17 @@ export function registerFunction() {
     });
 
     registerFunctionTool({
-        name: MVUFunctionName,
+        name: mvu_function_name,
         displayName: 'MVU update',
         stealth: true,
         description: 'use this tool to UpdateVariable.',
-        parameters: mvuUpdateSchema,
+        parameters: mvu_update_schema,
         shouldRegister: () => {
-            if (!IsFunctionCallEnabled) return false;
+            if (!is_function_call_enabled) {
+                return false;
+            }
             const settings = useSettingsStore().settings;
-            return settings.额外模型解析模式 === '函数调用含预设';
+            return settings.额外模型解析配置.解析方式 === '发送变量提示词及预设 (函数调用)';
         },
         action: onVariableUpdatedCall,
         formatMessage: () => '',
@@ -157,7 +159,7 @@ export function registerFunction() {
         parameters: mvuRoundUpdateSchema,
         shouldRegister: () => {
             const settings = useSettingsStore().settings;
-            if (settings.更新方式 === '额外轮次工具调用') {
+            if (settings.更新方式 === '额外轮次函数调用') {
                 const message_id = getLastMessageId();
                 const chat_message = getChatMessages(message_id).at(-1);
                 if (!chat_message) {
@@ -165,7 +167,7 @@ export function registerFunction() {
                 }
 
                 let message_content = chat_message.message;
-                //如果已经是一次工具调用的应答，则不进行处理
+                //如果已经是一次函数调用的应答，则不进行处理
                 if (message_content.indexOf(`以旁白视角分析最新剧情，按照变量更新规则更新`) != -1)
                     return false;
                 return true;
@@ -180,9 +182,15 @@ export function registerFunction() {
 
 export function overrideToolRequest(generate_data: any) {
     const settings = useSettingsStore().settings;
-    if (settings.更新方式 !== '额外模型解析' || settings.额外模型解析模式 !== '函数调用含预设')
+    if (
+        settings.更新方式 !== '额外模型解析' ||
+        settings.额外模型解析配置.解析方式 !== '发送变量提示词及预设 (函数调用)'
+    ) {
         return;
-    if (!IsFunctionCallEnabled) return;
+    }
+    if (!is_function_call_enabled) {
+        return;
+    }
     if (generate_data.tools !== undefined && _.size(generate_data.tools) > 0) {
         //如 v3之类的模型， required之后效力会更好。
         /*
