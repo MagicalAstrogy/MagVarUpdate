@@ -50,7 +50,7 @@ async function handlePromptFilter(lores: {
     if (enabledPromptFilter) {
         const remove_and_count = (lore: Record<string, any>[]) => {
             const filtered = _.remove(lore, entry => {
-                const match = entry.comment.match(/\[mvu_update\]/i);
+                const match = entry.comment.toLowerCase().match(/\[mvu_update\]/i);
                 return !!match;
             });
             return filtered.length;
