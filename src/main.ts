@@ -11,7 +11,12 @@ import {
 } from '@/function_call';
 import { destroyPanel, initPanel } from '@/panel';
 import { useSettingsStore } from '@/settings';
-import { initSillyTavernVersion, is_jest_environment, isFunctionCallingSupported } from '@/util';
+import {
+    getSillyTavernVersion,
+    initSillyTavernVersion,
+    is_jest_environment,
+    isFunctionCallingSupported,
+} from '@/util';
 import { exported_events, ExtraLLMRequestContent } from '@/variable_def';
 import { initCheck } from '@/variable_init';
 import { compare } from 'compare-versions';
@@ -106,6 +111,11 @@ async function onMessageReceived(message_id: number) {
         setFunctionCallEnabled(true);
         //因为部分预设会用到 {{lastUserMessage}}，因此进行修正。
         console.log('Before RegisterMacro');
+        if (compare(getSillyTavernVersion(), '1.13.4', '<=')) {
+            //https://github.com/SillyTavern/SillyTavern/pull/4614
+            //需要等待1s来错开 dry_run
+            await new Promise(res => setTimeout(res, 1000));
+        }
         SillyTavern.registerMacro('lastUserMessage', () => {
             return user_input;
         });
