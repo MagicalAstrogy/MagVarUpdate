@@ -206,9 +206,21 @@ async function onMessageReceived(message_id: number) {
                     }
                 }
             }
+            console.log(`Vanilla Response: ${current_result}`);
             if (current_result.indexOf('<UpdateVariable>') !== -1) {
-                result = current_result;
-                break;
+                //至少要出现一个变量设置语句，因为可能会有跑完thinking 直接截断的情况。
+                const lastUpdateVariableIndex = current_result.lastIndexOf('<UpdateVariable>');
+                const last_content = current_result
+                    .slice(lastUpdateVariableIndex + 16)
+                    .replace(/<\/UpdateVariable>/g, '');
+                const fn_call_match =
+                    /_\.(?:set|insert|assign|remove|unset|delete|add)\s*\([\s\S]*?\)\s*;/.test(
+                        last_content
+                    );
+                if (fn_call_match) {
+                    result = `<UpdateVariable>${last_content}</UpdateVariable>`;
+                    break;
+                }
             }
         }
     } catch (e) {
@@ -228,13 +240,12 @@ async function onMessageReceived(message_id: number) {
     if (result !== '') {
         // QUESTION: 目前的方案是直接将额外模型对变量的解析结果直接尾附到楼层中, 会不会像 tool calling 那样把结果新建为一个楼层更好?
         const chat_message = getChatMessages(message_id);
-        // 允许在变量更新中包含推理
-        const updateContent = result.match(/<UpdateVariable[^>]*>(.*)<\/UpdateVariable[^>]*>/s);
+
         await setChatMessages(
             [
                 {
                     message_id,
-                    message: chat_message[0].message + (updateContent?.[0] ?? ''),
+                    message: chat_message[0].message + result,
                 },
             ],
             {
