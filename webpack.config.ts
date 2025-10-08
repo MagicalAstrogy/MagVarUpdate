@@ -52,7 +52,7 @@ function config(_env: any, argv: any): webpack.Configuration {
         experiments: {
             outputModule: true,
         },
-        devtool: argv.mode === 'production' ? false : 'eval-source-map',
+        devtool: argv.mode === 'production' ? 'source-map' : 'eval-source-map',
         watchOptions: {
             ignored: ['**/dist', '**/node_modules'],
         },
