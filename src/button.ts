@@ -122,7 +122,10 @@ export const buttons: Button[] = [
             }
             const depth = parseInt(result);
             if (isNaN(depth)) {
-                toastr.error(`请输入有效的楼层数, 你输入的是 '${result}'`, '[MVU]清理旧楼层变量失败');
+                toastr.error(
+                    `请输入有效的楼层数, 你输入的是 '${result}'`,
+                    '[MVU]清理旧楼层变量失败'
+                );
                 return;
             }
             SillyTavern.chat.slice(0, -depth).forEach(chat_message => {
@@ -143,7 +146,10 @@ export const buttons: Button[] = [
                 });
             });
             SillyTavern.saveChat().then(() =>
-                toastr.success(`已清理旧变量, 保留了最后 ${depth} 层的变量`, '[MVU]清理旧楼层变量成功')
+                toastr.success(
+                    `已清理旧变量, 保留了最后 ${depth} 层的变量`,
+                    '[MVU]清理旧楼层变量成功'
+                )
             );
         },
     },
