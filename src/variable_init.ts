@@ -1,7 +1,7 @@
 // 整体游戏数据类型
 import { getLastValidVariable, updateVariables } from '@/function';
-import { MvuData, isObjectSchema, RootAdditionalProps, SchemaNode } from '@/variable_def';
 import { cleanUpMetadata, EXTENSIBLE_MARKER, generateSchema } from '@/schema';
+import { isObjectSchema, MvuData, RootAdditionalProps, SchemaNode } from '@/variable_def';
 import JSON5 from 'json5';
 import TOML from 'toml';
 
@@ -17,7 +17,7 @@ export async function initCheck() {
     try {
         if (SillyTavern.chat.length === 0) {
             console.error('不存在任何一条消息，退出');
-            toastr.error(`无开场白，无法进行初始化`, '变量初始化失败');
+            toastr.error('需要有开场白才能初始化变量', '[MVU]变量初始化失败');
             return;
         }
         variables = (await getLastValidVariable(getLastMessageId())) ?? createEmptyGameData();
@@ -140,15 +140,22 @@ export async function initCheck() {
             },
         ]);
     } else {
-        //非开局直接更新到最后一条即可，也并不需要重新结算当前的变量
-        //@ts-ignore
+        // 非开局直接更新到最后一条即可，也并不需要重新结算当前的变量
+        // @ts-expect-error 该函数可用
         await setChatMessage({ data: variables }, getLastMessageId());
     }
     try {
         // 输出构建信息
         toastr.info(
-            `有新的世界书初始化变量被加载，当前使用世界书: ${YAML.stringify(variables.initialized_lorebooks)}`,
-            '变量初始化成功'
+            `有新的世界书初始化变量被加载，当前使用世界书:<br>${Object.entries(
+                variables.initialized_lorebooks ?? {}
+            )
+                .map(([key, value]) => `- ${key}: ${JSON.stringify(value)}`)
+                .join('<br>')}}`,
+            '[MVU]变量初始化成功',
+            {
+                escapeHtml: false,
+            }
         );
     } catch (_e) {
         /* empty */
@@ -204,6 +211,7 @@ export async function loadInitVarData(
                 } catch (e) {
                     // Try JSON5
                     try {
+                        // eslint-disable-next-line import-x/no-named-as-default-member
                         parsedData = JSON5.parse(content);
                     } catch (e2) {
                         // Try TOML
@@ -211,18 +219,15 @@ export async function loadInitVarData(
                             parsedData = TOML.parse(content);
                         } catch (e3) {
                             parseError = new Error(
-                                `Failed to parse content as YAML/JSON, JSON5, or TOML: ${e3}`
+                                `initvar 不是有效的 YAML/JSON/JSON5/TOML 格式: ${e3}`
                             );
                         }
                     }
                 }
 
                 if (parseError) {
-                    console.error(
-                        `Failed to parse lorebook entry[${entry.comment}]: ${parseError}`
-                    );
-                    // @ts-ignore
-                    toastr.error(parseError.message, 'Failed to parse lorebook entry', {
+                    console.error(`解析世界书条目'${entry.comment}'失败: ${parseError}`);
+                    toastr.error(parseError.message, `[MVU] 解析世界书条目'${entry.comment}'失败`, {
                         timeOut: 5000,
                     });
                     throw parseError;

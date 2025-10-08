@@ -8,7 +8,8 @@
             "jqueryui",
             "lodash",
             "toastr",
-            "yaml"
+            "yaml",
+            "vue"
         ],
         "esModuleInterop": true,
         "allowSyntheticDefaultImports": true

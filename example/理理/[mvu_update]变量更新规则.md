@@ -1,6 +1,3 @@
-<status_description>//do not output following content
-    {{get_message_variable::stat_data}},
-</status_description>//do not output content below directly
 <Analysis>$(IN ENGLISH$)
     - calculate time passed: ...
     - decide whether dramatic updates are allowed as it's in a special case or the time passed is more than usual: yes or no

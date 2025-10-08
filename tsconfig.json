@@ -6,6 +6,7 @@
             "lodash",
             "toastr",
             "yaml",
+            "vue"
         ],
         "target": "ESNext",
         "module": "ESNext",

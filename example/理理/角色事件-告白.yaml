@@ -8,10 +8,10 @@
      * @type {GameData}
      */
     let EvStat = getvar("stat_data");
-    if (!_.has(EvStat, 'user.与理的关系')) {
-        EvStat.user.与理的关系 =['', ''];
+    if (!_.has(EvStat, '<user>.与理的关系')) {
+        EvStat.<user>.与理的关系 =['', ''];
     }
-    let EvCondition = (EvStat.user.与理的关系[0] !== '恋人' && EvStat.user.与理的关系[0] !== '哥哥')
+    let EvCondition = (EvStat.<user>.与理的关系[0] !== '恋人' && EvStat.<user>.与理的关系[0] !== '哥哥')
             && EvStat.理.好感度[0] >= 60;
 
 
@@ -22,22 +22,22 @@ if (EvCondition) {_%>
     <success>
     成功后将表现得很开心。
     在 <UpdateVariables> 中加入
-     _.set('user.与理的关系', '','恋人');//成为恋人
+     _.set('<user>.与理的关系', '','恋人');//成为恋人
      _.set('理.情绪状态.arousal', 1, 1);//成为恋人
      _.set('理.情绪状态.dominance', 1, 1);//成为恋人
      _.set('理.情绪状态.pleasure', 1, 1);//成为恋人
      _.set('理.情绪状态.affinity', 1, 1);//成为恋人
-     _.set('user.与理的关系', '','恋人');//成为恋人
+     _.set('<user>.与理的关系', '','恋人');//成为恋人
     </success>
 
     <failed>
     失败时，理会说将 <user> 一直当作 哥哥 吧。并为此暗暗感到痛苦。
     在 <UpdateVariables> 中加入
-    _.set('user.与理的关系', '','哥哥');//表白失败
+    _.set('<user>.与理的关系', '','哥哥');//表白失败
     _.set('理.情绪状态.pleasure', 1, -0.8);//表白失败
     _.set('理.情绪状态.dominance', 1, -0.8);//表白失败
     _.set('理.情绪状态.affinity', 1, -0.1);//表白失败
-    _.set('user.与理的关系', '','恋人');//成为恋人
+    _.set('<user>.与理的关系', '','恋人');//成为恋人
     </failed>
 </story_override>
 <%_ } } }_%>

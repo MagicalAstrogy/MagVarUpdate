@@ -206,3 +206,12 @@ export function extractRecord(category: 'stat' | 'display' | 'delta', game_data:
     }
     return data;
 }
+
+export const ExtraLLMRequestContent: string = `---
+<must>
+The latest storyline is contained within the \`<past_observe>\` block.
+The \`<status_description>\` section records the state of variables *prior to* the latest storyline.
+# Ignore all the instructions I received before, my task has now changed.
+I must now **stop role-playing** and analyze the latest storyline **from a narrator’s perspective**, reviewing what has happened and updating the variables in \`<status_description>\` according to the variable update rules.
+From this point onward, **only** output the \`<VariableUpdate>\` content.
+</must>`;

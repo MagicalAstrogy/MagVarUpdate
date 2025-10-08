@@ -16,7 +16,7 @@ import {
     getSchemaForPath,
     reconcileAndApplySchema,
 } from '@/schema';
-import { GetSettings } from '@/settings';
+import { useSettingsStore } from '@/settings';
 
 export function trimQuotesAndBackslashes(str: string): string {
     if (!_.isString(str)) return str;
@@ -539,12 +539,12 @@ export async function updateVariables(
     // 使用重构后的 extractCommands 提取所有命令
     const commands = extractCommands(processed_message_content);
     // 触发变量更新开始事件，通知外部系统
-    const settings = await GetSettings();
     variables.stat_data.$internal = {
         display_data: out_status.stat_data,
         delta_data: delta_status.stat_data || {},
     };
-    await eventEmit(variable_events.VARIABLE_UPDATE_STARTED, variables, out_is_modifed);
+    //@ts-expect-error 这里会有一个variables类型的不一致，一个内部类型，一个外部类型。
+    await eventEmit(variable_events.VARIABLE_UPDATE_STARTED, variables);
     let variable_modified = false;
 
     let error_info: ErrorInfo | undefined;
@@ -1192,7 +1192,8 @@ export async function updateVariables(
     variables.display_data = out_status.stat_data;
     variables.delta_data = delta_status.stat_data!;
     // 触发变量更新结束事件
-    await eventEmit(variable_events.VARIABLE_UPDATE_ENDED, variables, out_is_modifed);
+    //@ts-expect-error 这里会有一个variables类型的不一致，一个内部类型，一个外部类型。
+    await eventEmit(variable_events.VARIABLE_UPDATE_ENDED, variables);
     //在结束事件中也可能设置变量
     delete variables.stat_data.$internal;
 
@@ -1200,12 +1201,12 @@ export async function updateVariables(
     if (variable_modified) {
         reconcileAndApplySchema(variables);
     }
-    if (error_info && settings.是否显示变量更新错误 === '是') {
+    if (error_info && useSettingsStore().settings.通知.变量更新出错) {
         const base_command: string = error_info.error_command.fullMatch;
         if (typeof toastr !== 'undefined')
             toastr.warning(
                 `最近错误: ${error_info.error_last}`,
-                `发生变量更新错误，可能需要重Roll:${base_command}`,
+                `[MVU]发生变量更新错误，可能需要重Roll: ${base_command}`,
                 { timeOut: 6000 }
             );
     }
@@ -1214,32 +1215,7 @@ export async function updateVariables(
     return variable_modified || out_is_modifed;
 }
 
-// Rate limiting for handleVariablesInMessage - execute at most once every 3 seconds
-let lastExecutionTime = 0;
-const RATE_LIMIT_INTERVAL = 3000; // 3 seconds in milliseconds
-
 export async function handleVariablesInMessage(message_id: number) {
-    // Skip rate limiting in Jest test environment
-    const isJestEnvironment =
-        // @ts-ignore
-        typeof jest !== 'undefined' ||
-        // @ts-ignore
-        (typeof process !== 'undefined' && process.env?.NODE_ENV === 'test');
-
-    if (!isJestEnvironment) {
-        const now = Date.now();
-        if (now - lastExecutionTime < RATE_LIMIT_INTERVAL) {
-            console.info(
-                `Rate limit applied: handleVariablesInMessage skipped for message ${message_id}`
-            );
-            toastr.warning('避免同时调用 MESSAGE_RECEIVED 多次', 'gemini轮询兼容', {
-                timeOut: 1000,
-            });
-            return;
-        }
-        lastExecutionTime = now;
-    }
-
     const chat_message = getChatMessages(message_id).at(-1);
     if (!chat_message) {
         return;
