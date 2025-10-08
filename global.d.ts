@@ -15,6 +15,12 @@ declare module '*.css' {
     export default content;
 }
 
+declare module '*.vue' {
+    import type { DefineComponent } from 'vue';
+    const component: DefineComponent<{}, {}, any>;
+    export default component;
+}
+
 declare const YAML: typeof import('yaml');
 
 declare const __BUILD_DATE__: string | undefined;
