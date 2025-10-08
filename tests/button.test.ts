@@ -88,7 +88,7 @@ describe('reloadInit function', () => {
 
             await reloadInit();
 
-            expect(toastr.error).toHaveBeenCalledWith('没有找到 InitVar 数据', '', {
+            expect(toastr.error).toHaveBeenCalledWith('没有找到 InitVar 数据', '[MVU]', {
                 timeOut: 3000,
             });
             expect(reconcileAndApplySchemaSpy).not.toHaveBeenCalled();
@@ -111,7 +111,7 @@ describe('reloadInit function', () => {
 
             await reloadInit();
 
-            expect(toastr.error).toHaveBeenCalledWith('没有找到消息', '', { timeOut: 3000 });
+            expect(toastr.error).toHaveBeenCalledWith('没有找到消息', '[MVU]', { timeOut: 3000 });
             expect(getLastValidVariable).not.toHaveBeenCalled();
         });
 
@@ -120,7 +120,7 @@ describe('reloadInit function', () => {
 
             await reloadInit();
 
-            expect(toastr.error).toHaveBeenCalledWith('最新消息中没有 stat_data', '', {
+            expect(toastr.error).toHaveBeenCalledWith('最新消息中没有 stat_data', '[MVU]', {
                 timeOut: 3000,
             });
             expect(updateDescriptionsSpy).not.toHaveBeenCalled();
@@ -329,7 +329,7 @@ describe('reloadInit function', () => {
                 type: 'chat',
             });
 
-            expect(toastr.success).toHaveBeenCalledWith('InitVar描述已更新', '', { timeOut: 3000 });
+            expect(toastr.success).toHaveBeenCalledWith('InitVar描述已更新', '[MVU]', { timeOut: 3000 });
         });
 
         test('should create new object instead of using structuredClone', async () => {

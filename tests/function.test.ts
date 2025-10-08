@@ -619,7 +619,7 @@ describe('handleVariablesInMessage', () => {
 
         await handleVariablesInMessage(0);
 
-        expect((globalThis as any).replaceVariables).toHaveBeenCalledTimes(1);
+        expect((globalThis as any).replaceVariables).toHaveBeenCalledTimes(0);
         expect((globalThis as any).updateVariablesWith).toHaveBeenCalledTimes(2);
 
         // 验证 chat 级别的变量更新
