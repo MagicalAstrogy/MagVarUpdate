@@ -23,7 +23,7 @@ let is_day_passed = false;
 function commandParsed(_variables: MvuData, commands: CommandInfo[]) {
     // 移除所有对 教堂.desc1 的修改
     _.remove(commands, cmd => {
-        if (cmd.command == 'set') {
+        if (cmd.type == 'set') {
             if (cmd.args[0].indexOf(`教堂.desc1`) !== -1) return true;
         }
         return false;
