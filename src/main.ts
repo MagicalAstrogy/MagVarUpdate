@@ -38,6 +38,10 @@ async function handlePromptFilter(lores: {
     personaLore: Record<string, any>[];
 }) {
     const settings = useSettingsStore().settings;
+
+    //每次开始解析时都进行重置。
+    isExtraModelSupported = false;
+
     //在这个回调中，会将所有lore的条目传入，此处可以去除所有 [mvu_update] 相关的条目，避免在非更新的轮次中输出相关内容。
     if (settings.更新方式 === '随AI输出') {
         return;
