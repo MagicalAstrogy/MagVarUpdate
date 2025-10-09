@@ -192,8 +192,8 @@ type CommandNames = 'set' | 'insert' | 'assign' | 'remove' | 'unset' | 'delete' 
 // 接口定义：用于统一不同命令的结构
 // 新增：Command 接口，比 SetCommand 更通用
 interface Command {
-    command: CommandNames;
-    fullMatch: string;
+    type: CommandNames;
+    full_match: string;
     args: string[];
     reason: string;
 }
@@ -285,7 +285,12 @@ export function extractCommands(inputText: string): Command[] {
 
         if (isValid) {
             // 命令有效，添加到结果列表，包含命令类型、完整匹配、参数和注释
-            results.push({ command: commandType, fullMatch, args: params, reason: comment });
+            results.push({
+                type: commandType,
+                full_match: fullMatch,
+                args: params,
+                reason: comment,
+            });
         }
 
         // 更新搜索索引到命令末尾，继续查找下一个命令
@@ -562,6 +567,17 @@ export async function updateVariables(
     const concat_template_array = schema?.concatTemplateArray ?? true;
     const strict_set = schema?.strictSet ?? false;
 
+    //处理别名
+    for (const cmd of commands) {
+        if (cmd.type === 'remove') {
+            cmd.type = 'delete';
+        } else if (cmd.type === 'assign') {
+            cmd.type = 'insert';
+        } else if (cmd.type === 'unset') {
+            cmd.type = 'delete';
+        }
+    }
+
     await eventEmit(variable_events.COMMAND_PARSED, variables, commands);
 
     for (const command of commands) {
@@ -574,7 +590,7 @@ export async function updateVariables(
         current_command = command;
 
         switch (
-            command.command // 根据命令类型执行不同操作
+            command.type // 根据命令类型执行不同操作
         ) {
             case 'set': {
                 // _.has 检查，确保路径存在
@@ -1204,7 +1220,7 @@ export async function updateVariables(
         reconcileAndApplySchema(variables);
     }
     if (error_info && useSettingsStore().settings.通知.变量更新出错) {
-        const base_command: string = error_info.error_command.fullMatch;
+        const base_command: string = error_info.error_command.full_match;
         if (typeof toastr !== 'undefined')
             toastr.warning(
                 `最近错误: ${error_info.error_last}`,

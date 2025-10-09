@@ -198,8 +198,8 @@ _.set('悠纪.当前所想[0]', "", "……狐狸？嗯…她的用词很精准�
 
         expect(commands).toHaveLength(1);
         expect(commands[0]).toMatchObject({
-            command: 'set',
-            fullMatch: "_.set('player.health', 100, 90);//Test reason",
+            type: 'set',
+            full_match: "_.set('player.health', 100, 90);//Test reason",
             args: ["'player.health'", '100', '90'],
             reason: 'Test reason',
         });

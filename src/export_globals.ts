@@ -8,7 +8,7 @@ import {
 } from '@/variable_def';
 import { loadInitVarData } from '@/variable_init';
 
-type CommandNames = 'set' | 'insert' | 'assign' | 'remove' | 'unset' | 'delete' | 'add';
+type CommandNames = 'set' | 'insert' | 'delete' | 'add';
 
 /**
  * 对 parseMessage / updateVariables 内部命令解析结果的补充类型说明。
@@ -38,10 +38,7 @@ type AddCommandArgs = [path: string, deltaOrToggleLiteral: string];
 
 type CommandArgsMap = {
     set: SetCommandArgs;
-    assign: AssignCommandArgs;
     insert: AssignCommandArgs;
-    remove: RemoveCommandArgs;
-    unset: RemoveCommandArgs;
     delete: RemoveCommandArgs;
     add: AddCommandArgs;
 };
@@ -52,8 +49,8 @@ type CommandArgsMap = {
  */
 export type CommandInfo = {
     [K in CommandNames]: {
-        command: K;
-        fullMatch: string;
+        type: K;
+        full_match: string;
         args: CommandArgsMap[K];
         reason: string;
     };
