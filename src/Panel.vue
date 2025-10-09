@@ -186,7 +186,7 @@ watch(
 
 async function showMethodHelp() {
     SillyTavern.callGenericPopup(panel_method_help, SillyTavern.POPUP_TYPE.TEXT, '', {
-        allowHorizontalScrolling: true,
+        allowVerticalScrolling: true,
         leftAlign: true,
         wide: true,
     });
@@ -194,7 +194,7 @@ async function showMethodHelp() {
 
 async function showExtraModeHelp() {
     SillyTavern.callGenericPopup(panel_extra_mode_help, SillyTavern.POPUP_TYPE.TEXT, '', {
-        allowHorizontalScrolling: true,
+        allowVerticalScrolling: true,
         leftAlign: true,
         wide: true,
     });
