@@ -715,13 +715,14 @@
         document.getElementById('date').innerText = SafeGetValue(characterData.日期);
         document.getElementById('time').innerText = SafeGetValue(characterData.时间);
 
+        const userName = substitudeMacros('<user>');
         /* 设置用户信息*/
         const userIdentityElement = document.getElementById('user-identity').parentElement;
-        if (showDeltaOnly && !propertyExists(characterData, 'user.身份')) {
+        if (showDeltaOnly && !propertyExists(characterData, `${userName}.身份`)) {
             userIdentityElement.style.display = 'none';
         } else {
             userIdentityElement.style.display = '';
-            document.getElementById('user-identity').innerText = SafeGetValue(characterData.user?.身份);
+            document.getElementById('user-identity').innerText = SafeGetValue(characterData[userName]?.身份);
         }
 
         /* 设置理的信息*/

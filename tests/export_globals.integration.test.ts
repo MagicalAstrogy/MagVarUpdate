@@ -1,5 +1,6 @@
 import { exportGlobals, MVU } from '@/export_globals';
-import { MvuData } from '@/variable_def';
+import type { CommandInfo } from '@/export_globals';
+import { MvuData, variable_events } from '@/variable_def';
 import _ from 'lodash';
 
 // Mock the function module to provide real implementation
@@ -167,6 +168,41 @@ _.set('悠纪.当前所想[0]', "", "……狐狸？嗯…她的用词很精准�
         expect(updatedState.delta_data.剩余时间).toBeUndefined();
         expect(updatedState.delta_data.慕心?.好感度).toBeUndefined();
         expect(updatedState.delta_data.悠纪?.好感度).toBeUndefined();
+    });
+
+    test('should emit COMMAND_PARSED with parsed command payload during parseMessage', async () => {
+        const initialState: MvuData = {
+            initialized_lorebooks: {},
+            stat_data: {
+                player: {
+                    health: 100,
+                },
+            },
+            display_data: {},
+            delta_data: {},
+        };
+
+        const updateMessage = "_.set('player.health', 100, 90);//Test reason";
+
+        const updatedState = await mvu.parseMessage(updateMessage, initialState);
+        expect(updatedState).toBeDefined();
+        expect(updatedState?.stat_data.player.health).toBe(90);
+
+        const commandParsedCalls = mockEventEmit.mock.calls.filter(
+            ([eventName]) => eventName === variable_events.COMMAND_PARSED
+        );
+        expect(commandParsedCalls).toHaveLength(1);
+
+        const [, , parsedCommands] = commandParsedCalls[0];
+        const commands = parsedCommands as CommandInfo[];
+
+        expect(commands).toHaveLength(1);
+        expect(commands[0]).toMatchObject({
+            type: 'set',
+            full_match: "_.set('player.health', 100, 90);//Test reason",
+            args: ["'player.health'", '100', '90'],
+            reason: 'Test reason',
+        });
     });
 
     test('should use Mvu.setMvuVariable to update variables with display_data and delta_data', async () => {

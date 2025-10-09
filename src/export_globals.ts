@@ -8,6 +8,54 @@ import {
 } from '@/variable_def';
 import { loadInitVarData } from '@/variable_init';
 
+type CommandNames = 'set' | 'insert' | 'delete' | 'add';
+
+/**
+ * 对 parseMessage / updateVariables 内部命令解析结果的补充类型说明。
+ *
+ * 每个字符串元素都是在原始指令中截取的字面量或表达式片段，尚未经过 `parseCommandValue` 解析。
+ */
+type SetCommandArgs =
+    | [path: string, newValueLiteral: string]
+    | [path: string, expectedOldValueLiteral: string, newValueLiteral: string];
+
+/**
+ * `_.assign` 与 `_.insert` 支持两种形态：直接追加值，或在指定键/索引处写入。
+ */
+type AssignCommandArgs =
+    | [path: string, valueLiteral: string]
+    | [path: string, indexOrKeyLiteral: string, valueLiteral: string];
+
+/**
+ * 删除指令既可以直接给出完整路径，也可以通过第二个参数指定要移除的索引/键或匹配值。
+ */
+type RemoveCommandArgs = [path: string] | [path: string, indexKeyOrValueLiteral: string];
+
+/**
+ * `_.add` 始终需要增量或布尔目标，用第二个参数表示。
+ */
+type AddCommandArgs = [path: string, deltaOrToggleLiteral: string];
+
+type CommandArgsMap = {
+    set: SetCommandArgs;
+    insert: AssignCommandArgs;
+    delete: RemoveCommandArgs;
+    add: AddCommandArgs;
+};
+
+/**
+ * CommandInfo 与内部的 Command 结构保持字段布局一致，
+ * 但针对不同命令给出了更精确的参数元组形态，方便在外部做类型推断或文档查看。
+ */
+export type CommandInfo = {
+    [K in CommandNames]: {
+        type: K;
+        full_match: string;
+        args: CommandArgsMap[K];
+        reason: string;
+    };
+}[CommandNames];
+
 function createMVU() {
     const mvu = {
         /**
@@ -50,6 +98,18 @@ function createMVU() {
          * - 典型用途:
          *   - 对变量的值进行回滚
          *   - 根据变量的变更更新事件触发、变量取值（如日替后更新每日任务等）
+         *
+         * @property {string} COMMAND_PARSED - 'mag_command_parsed'
+         * 解析完指令后，开始处理之前触发的事件
+         * - 事件值: 'mag_command_parsed'
+         * - 回调签名: (variables: MvuData, commands: CommandInfo[]) => void
+         *   - variables: 当前上下文的完整数据
+         *   - commands: 待处理的指令列表
+         * - 触发时机: 解析完指令后，开始处理之前
+         * - 典型用途:
+         *   - 保护特定变量：扫描 Command 列表中，是否有对特定变量进行修改的，删除它们
+         *   - 兜底错误的llm输入：如 Gemini 在变量里面加横杠了 悠-纪.好感度 可以通过在这个回调里面调整 Path 来修改为正确的
+         *   - 给角色增加别名：如角色 雪莲 有时候 llm 飙繁体 雪蓮，可以通过这个回调，给角色增加若干个别名，保证各种情况都能正确更新变量。
          *
          * @example
          * // 1. 监听单个变量更新 - 实现变量联动

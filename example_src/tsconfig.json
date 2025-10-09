@@ -26,6 +26,7 @@
     },
     "include": [
         "./src/**/*.ts",
+        "../artifact/*",
         "../slash-runner/@types/**/*"          // 你定义的 d.ts
     ],
     "exclude": [

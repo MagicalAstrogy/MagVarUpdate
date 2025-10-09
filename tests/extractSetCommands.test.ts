@@ -13,8 +13,8 @@ describe('extractCommands', () => {
 
             expect(result).toHaveLength(1);
             const cmd = result[0];
-            expect(cmd.command).toBe('set');
-            expect(cmd.fullMatch).toBe(`_.set('name', 'John', 'Jane');//更新名字`);
+            expect(cmd.type).toBe('set');
+            expect(cmd.full_match).toBe(`_.set('name', 'John', 'Jane');//更新名字`);
             expect(cmd.reason).toBe('更新名字');
             expect(cmd.args).toEqual(["'name'", "'John'", "'Jane'"]);
 
@@ -29,8 +29,8 @@ describe('extractCommands', () => {
 
             expect(result).toHaveLength(1);
             const cmd = result[0];
-            expect(cmd.command).toBe('set');
-            expect(cmd.fullMatch).toBe(`_.set('时间', "09:15");//设置时间`);
+            expect(cmd.type).toBe('set');
+            expect(cmd.full_match).toBe(`_.set('时间', "09:15");//设置时间`);
             expect(cmd.reason).toBe('设置时间');
             expect(cmd.args).toEqual(["'时间'", '"09:15"']);
 
@@ -46,9 +46,9 @@ describe('extractCommands', () => {
             const result = extractCommands(input);
 
             expect(result).toHaveLength(2);
-            expect(result[0].command).toBe('set');
+            expect(result[0].type).toBe('set');
             expect(parseCommandValue(result[0].args[0])).toBe('time');
-            expect(result[1].command).toBe('set');
+            expect(result[1].type).toBe('set');
             expect(parseCommandValue(result[1].args[0])).toBe('location');
         });
     });
@@ -60,11 +60,11 @@ describe('extractCommands', () => {
 
             expect(result).toHaveLength(1);
             const cmd = result[0];
-            expect(cmd.command).toBe('set');
+            expect(cmd.type).toBe('set');
             expect(parseCommandValue(cmd.args[0])).toBe('悠纪.想对user说的事');
             expect(cmd.reason).toBe('邀请已经发出并被接受，待办事项完成并清空。');
             // 验证没有错误地提取内部的 _.set
-            expect(cmd.fullMatch).toContain('待办事项完成并清空。');
+            expect(cmd.full_match).toContain('待办事项完成并清空。');
         });
 
         test('处理嵌套数组和对象', () => {
@@ -73,7 +73,7 @@ describe('extractCommands', () => {
 
             expect(result).toHaveLength(1);
             const cmd = result[0];
-            expect(cmd.command).toBe('set');
+            expect(cmd.type).toBe('set');
             expect(parseCommandValue(cmd.args[0])).toBe('data');
             expect(cmd.reason).toBe('更新数据');
             expect(parseCommandValue(cmd.args[1])).toEqual({ arr: [1, 2, { nested: 'value)}' }] });
@@ -86,7 +86,7 @@ describe('extractCommands', () => {
 
             expect(result).toHaveLength(1);
             const cmd = result[0];
-            expect(cmd.command).toBe('set');
+            expect(cmd.type).toBe('set');
             expect(parseCommandValue(cmd.args[1])).toBe('Hello (world)');
             expect(parseCommandValue(cmd.args[2])).toBe('Goodbye (world)');
         });
@@ -99,7 +99,7 @@ describe('extractCommands', () => {
 
             expect(result).toHaveLength(1);
             const cmd = result[0];
-            expect(cmd.command).toBe('set');
+            expect(cmd.type).toBe('set');
             expect(parseCommandValue(cmd.args[1])).toBe('old"value');
             expect(parseCommandValue(cmd.args[2])).toBe("new'value");
         });
@@ -110,7 +110,7 @@ describe('extractCommands', () => {
 
             expect(result).toHaveLength(1);
             const cmd = result[0];
-            expect(cmd.command).toBe('set');
+            expect(cmd.type).toBe('set');
             expect(parseCommandValue(cmd.args[1])).toBe('value with "quotes"');
         });
 
@@ -120,7 +120,7 @@ describe('extractCommands', () => {
 
             expect(result).toHaveLength(1);
             const cmd = result[0];
-            expect(cmd.command).toBe('set');
+            expect(cmd.type).toBe('set');
             expect(parseCommandValue(cmd.args[1])).toBe('Hello ${name}');
             expect(parseCommandValue(cmd.args[2])).toBe('Goodbye ${name}');
         });
@@ -227,7 +227,7 @@ describe('Assign/Insert 命令及别名测试', () => {
 
         expect(result).toHaveLength(1);
         const cmd = result[0];
-        expect(cmd.command).toBe(command);
+        expect(cmd.type).toBe(command);
         expect(cmd.reason).toBe('获得治疗药水');
         expect(parseCommandValue(cmd.args[0])).toBe('inventory');
         expect(parseCommandValue(cmd.args[1])).toBe('healing potion');
@@ -239,7 +239,7 @@ describe('Assign/Insert 命令及别名测试', () => {
 
         expect(result).toHaveLength(1);
         const cmd = result[0];
-        expect(cmd.command).toBe(command);
+        expect(cmd.type).toBe(command);
         expect(parseCommandValue(cmd.args[0])).toBe('quest_log');
         expect(parseCommandValue(cmd.args[1])).toBe(0);
         expect(parseCommandValue(cmd.args[2])).toBe('主线任务：寻找古代遗物');
@@ -251,7 +251,7 @@ describe('Assign/Insert 命令及别名测试', () => {
 
         expect(result).toHaveLength(1);
         const cmd = result[0];
-        expect(cmd.command).toBe(command);
+        expect(cmd.type).toBe(command);
         expect(cmd.reason).toBe('添加金手指');
         expect(parseCommandValue(cmd.args[0])).toBe('悠纪.金手指系统');
         expect(parseCommandValue(cmd.args[1])).toBe('体育生系统');
@@ -267,7 +267,7 @@ describe('Assign/Insert 命令及别名测试', () => {
 
         expect(result).toHaveLength(1);
         const cmd = result[0];
-        expect(cmd.command).toBe(command);
+        expect(cmd.type).toBe(command);
         expect(parseCommandValue(cmd.args[0])).toBe('');
         expect(parseCommandValue(cmd.args[1])).toBe('新角色');
         expect(parseCommandValue(cmd.args[2])).toStrictEqual({});
@@ -281,7 +281,7 @@ describe('Remove/Unset/Delete 命令及别名测试', () => {
 
         expect(result).toHaveLength(1);
         const cmd = result[0];
-        expect(cmd.command).toBe(command);
+        expect(cmd.type).toBe(command);
         expect(cmd.reason).toBe('不再疲劳');
         expect(cmd.args).toHaveLength(1);
         expect(parseCommandValue(cmd.args[0])).toBe('user.status.is_tired');
@@ -293,7 +293,7 @@ describe('Remove/Unset/Delete 命令及别名测试', () => {
 
         expect(result).toHaveLength(1);
         const cmd = result[0];
-        expect(cmd.command).toBe(command);
+        expect(cmd.type).toBe(command);
         expect(cmd.reason).toBe('完成第三个任务');
         expect(parseCommandValue(cmd.args[0])).toBe('tasks');
         expect(parseCommandValue(cmd.args[1])).toBe(2);
@@ -305,7 +305,7 @@ describe('Remove/Unset/Delete 命令及别名测试', () => {
 
         expect(result).toHaveLength(1);
         const cmd = result[0];
-        expect(cmd.command).toBe(command);
+        expect(cmd.type).toBe(command);
         expect(cmd.reason).toBe('中毒效果已解除');
         expect(parseCommandValue(cmd.args[0])).toBe('debuffs');
         expect(parseCommandValue(cmd.args[1])).toBe('poison_effect');
@@ -331,7 +331,7 @@ describe('Add 命令测试', () => {
 
         expect(result).toHaveLength(1);
         const cmd = result[0];
-        expect(cmd.command).toBe('add');
+        expect(cmd.type).toBe('add');
         expect(cmd.reason).toBe('恢复10点生命值');
         expect(parseCommandValue(cmd.args[0])).toBe('player.health');
         expect(parseCommandValue(cmd.args[1])).toBe(10);
@@ -343,7 +343,7 @@ describe('Add 命令测试', () => {
 
         expect(result).toHaveLength(1);
         const cmd = result[0];
-        expect(cmd.command).toBe('add');
+        expect(cmd.type).toBe('add');
         expect(cmd.reason).toBe('增加250分');
         expect(parseCommandValue(cmd.args[0])).toBe('score.total');
         expect(parseCommandValue(cmd.args[1])).toBe(250);
@@ -372,10 +372,10 @@ describe('Add 命令测试', () => {
         const result = extractCommands(input);
 
         expect(result).toHaveLength(3);
-        expect(result[1].command).toBe('assign');
+        expect(result[1].type).toBe('assign');
         expect(result[1].args).toHaveLength(2);
 
-        expect(result[2].command).toBe('add');
+        expect(result[2].type).toBe('add');
         expect(parseCommandValue(result[2].args[0])).toBe('player.mana');
         expect(parseCommandValue(result[2].args[1])).toBe(20);
     });
