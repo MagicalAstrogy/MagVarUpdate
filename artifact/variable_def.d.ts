@@ -101,6 +101,7 @@ export declare const variable_events: {
     readonly SINGLE_VARIABLE_UPDATED: "mag_variable_updated";
     readonly VARIABLE_UPDATE_ENDED: "mag_variable_update_ended";
     readonly VARIABLE_UPDATE_STARTED: "mag_variable_update_started";
+    readonly COMMAND_PARSED: "mag_command_parsed";
 };
 export declare const exported_events: {
     readonly INVOKE_MVU_PROCESS: "mag_invoke_mvu";
@@ -114,6 +115,7 @@ export type ExtendedListenerType = {
     [variable_events.SINGLE_VARIABLE_UPDATED]: (stat_data: Record<string, any>, path: string, _oldValue: any, _newValue: any) => void;
     [variable_events.VARIABLE_UPDATE_STARTED]: (variables: MvuData, out_is_updated: boolean) => void;
     [variable_events.VARIABLE_UPDATE_ENDED]: (variables: MvuData, out_is_updated: boolean) => void;
+    [variable_events.COMMAND_PARSED]: (variables: MvuData, commands: any) => void;
     [exported_events.INVOKE_MVU_PROCESS]: (message_content: string, variable_info: VariableData) => void;
     [exported_events.UPDATE_VARIABLE]: (stat_data: Record<string, any>, path: string, newValue: any, reason: string, isRecursive: boolean) => void;
 };

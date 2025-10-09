@@ -29,8 +29,8 @@ type CommandNames = 'set' | 'insert' | 'assign' | 'remove' | 'unset' | 'delete' 
  * 并解析出每个匹配项的路径、新值和原因部分
  */
 interface Command {
-    command: CommandNames;
-    fullMatch: string;
+    type: CommandNames;
+    full_match: string;
     args: string[];
     reason: string;
 }
