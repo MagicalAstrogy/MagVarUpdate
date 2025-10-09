@@ -22,14 +22,14 @@ import { initCheck } from '@/variable_init';
 import { compare } from 'compare-versions';
 
 /**
- * 标记是否启用提示词筛选，将 [mvu_update] 条目排除在外
+ * 标记是否处于额外模型解析
  */
-let enabledPromptFilter = true;
+let duringExtraCall = false;
 
 /**
- * 记录在世界书处理过程中，筛选掉的条目总数，根据总数判断是否需要fallback。
+ * 记录世界书是否支持额外模型
  */
-let matchedLores = 0;
+let isExtraModelSupported = false;
 
 async function handlePromptFilter(lores: {
     globalLore: Record<string, any>[];
@@ -52,20 +52,21 @@ async function handlePromptFilter(lores: {
         );
         return;
     }
-    if (enabledPromptFilter) {
-        const remove_and_count = (lore: Record<string, any>[]) => {
-            const filtered = _.remove(lore, entry => {
-                const match = entry.comment.toLowerCase().match(/\[mvu_update\]/i);
-                return !!match;
-            });
-            return filtered.length;
-        };
-        matchedLores =
-            remove_and_count(lores.globalLore) +
-            remove_and_count(lores.characterLore) +
-            remove_and_count(lores.chatLore) +
-            remove_and_count(lores.personaLore);
-    }
+
+    const remove_and_check = (lore: Record<string, any>[], regex: RegExp) => {
+        const filtered = _.remove(lore, entry => {
+            const match = entry.comment.match(regex);
+            return !!match;
+        });
+        if (filtered.length > 0) {
+            isExtraModelSupported = true;
+        }
+    };
+    const regex_to_remove = duringExtraCall ? /\[mvu_update\]/i : /\[mvu_plot\]/i;
+    remove_and_check(lores.globalLore, regex_to_remove);
+    remove_and_check(lores.characterLore, regex_to_remove);
+    remove_and_check(lores.chatLore, regex_to_remove);
+    remove_and_check(lores.personaLore, regex_to_remove);
 }
 
 let vanilla_parseToolCalls: any = null;
@@ -85,19 +86,16 @@ async function onMessageReceived(message_id: number) {
 
     const settings = useSettingsStore().settings;
 
-    //const primary_worldbook = getCharWorldbookNames('current').primary;
     if (
         settings.更新方式 === '随AI输出' ||
-        //primary_worldbook === null || 这种情况下， matchLores 也等于 0 ，不需要专门比对
         (settings.额外模型解析配置.使用函数调用 && !isFunctionCallingSupported()) || //与上面相同的退化情况。
-        // 角色卡未适配时, 依旧使用 "随AI输出"
-        matchedLores === 0 // 代表实际上没有任何 世界书条目被筛选掉，也就是并没有对应去支持 [mvu_update] 逻辑。
+        isExtraModelSupported === false // 角色卡未适配时, 依旧使用 "随AI输出"
     ) {
         await handleVariablesInMessage(message_id);
         return;
     }
 
-    enabledPromptFilter = false;
+    duringExtraCall = true;
     let user_input = ExtraLLMRequestContent;
     if (settings.额外模型解析配置.使用函数调用) {
         user_input += `\n use \`mvu_VariableUpdate\` tool to update variables.`;
@@ -246,7 +244,7 @@ async function onMessageReceived(message_id: number) {
         }
         SillyTavern.unregisterMacro('lastUserMessage');
         setFunctionCallEnabled(false);
-        enabledPromptFilter = true;
+        duringExtraCall = false;
     }
 
     if (result !== '') {
