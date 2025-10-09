@@ -53,20 +53,24 @@ async function handlePromptFilter(lores: {
         return;
     }
 
-    const remove_and_check = (lore: Record<string, any>[], regex: RegExp) => {
+    const update_regex = /\[mvu_update\]/i;
+    const plot_regex = /\[mvu_plot\]/i;
+    const remove_and_check = (lore: Record<string, any>[]) => {
         const filtered = _.remove(lore, entry => {
-            const match = entry.comment.match(regex);
-            return !!match;
+            const is_update_regex = entry.comment.match(update_regex);
+            const is_plot_regex = entry.comment.match(plot_regex);
+            return duringExtraCall
+                ? is_plot_regex && !is_update_regex
+                : !is_plot_regex && is_update_regex;
         });
         if (filtered.length > 0) {
             isExtraModelSupported = true;
         }
     };
-    const regex_to_remove = duringExtraCall ? /\[mvu_update\]/i : /\[mvu_plot\]/i;
-    remove_and_check(lores.globalLore, regex_to_remove);
-    remove_and_check(lores.characterLore, regex_to_remove);
-    remove_and_check(lores.chatLore, regex_to_remove);
-    remove_and_check(lores.personaLore, regex_to_remove);
+    remove_and_check(lores.globalLore);
+    remove_and_check(lores.characterLore);
+    remove_and_check(lores.chatLore);
+    remove_and_check(lores.personaLore);
 }
 
 let vanilla_parseToolCalls: any = null;
