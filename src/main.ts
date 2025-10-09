@@ -76,7 +76,6 @@ async function onMessageReceived(message_id: number) {
     if (!current_chatmsg) {
         return;
     }
-    //
 
     const message_content = current_chatmsg.message;
     if (message_content.length < 5) {
@@ -85,6 +84,7 @@ async function onMessageReceived(message_id: number) {
     }
 
     const settings = useSettingsStore().settings;
+    duringExtraCall = false;
 
     if (
         settings.更新方式 === '随AI输出' ||
