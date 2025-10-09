@@ -562,6 +562,8 @@ export async function updateVariables(
     const concat_template_array = schema?.concatTemplateArray ?? true;
     const strict_set = schema?.strictSet ?? false;
 
+    await eventEmit(variable_events.COMMAND_PARSED, variables, commands);
+
     for (const command of commands) {
         // 遍历所有命令，逐一处理
         // 修正路径格式，去除首尾引号和反斜杠，确保路径有效

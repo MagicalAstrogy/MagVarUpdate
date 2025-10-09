@@ -151,6 +151,7 @@ export const variable_events = {
     SINGLE_VARIABLE_UPDATED: 'mag_variable_updated',
     VARIABLE_UPDATE_ENDED: 'mag_variable_update_ended',
     VARIABLE_UPDATE_STARTED: 'mag_variable_update_started',
+    COMMAND_PARSED: 'mag_command_parsed',
 } as const;
 export const exported_events = {
     INVOKE_MVU_PROCESS: 'mag_invoke_mvu',
@@ -174,6 +175,7 @@ export type ExtendedListenerType = {
         out_is_updated: boolean
     ) => void;
     [variable_events.VARIABLE_UPDATE_ENDED]: (variables: MvuData, out_is_updated: boolean) => void;
+    [variable_events.COMMAND_PARSED]: (variables: MvuData, commands: any) => void;
     [exported_events.INVOKE_MVU_PROCESS]: (
         message_content: string,
         variable_info: VariableData
