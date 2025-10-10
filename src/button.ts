@@ -1,4 +1,4 @@
-import { getLastValidVariable, handleVariablesInMessage } from '@/function';
+import { getLastValidVariable, handleVariablesInMessage, updateVariables } from '@/function';
 import { cleanUpMetadata, reconcileAndApplySchema } from '@/schema';
 import { updateDescriptions } from '@/update_descriptions';
 import { MvuData } from '@/variable_def';
@@ -110,6 +110,138 @@ export const buttons: Button[] = [
         },
     },
     {
+        name: '快照楼层',
+        function: async () => {
+            const result = (await SillyTavern.callGenericPopup(
+                '<h4>设置快照楼层可以避免指定的楼层在清理操作中被移除变量信息</h4>请填写要保留变量信息的楼层 (如 10 为第 10 层)<br><strong>后续楼层的重演将可以从这一层开始</strong>',
+                SillyTavern.POPUP_TYPE.INPUT,
+                '10'
+            )) as string | undefined;
+            if (!result) {
+                return;
+            }
+            const message_id = parseInt(result);
+            if (isNaN(message_id)) {
+                toastr.error(`请输入有效的楼层数, 你输入的是 '${result}'`, '[MVU]配置楼层快照失败');
+                return;
+            }
+            const chat_message = SillyTavern.chat[message_id];
+            if (chat_message === undefined) {
+                toastr.error(`无效的楼层 '${result}'`, '[MVU]配置楼层快照失败');
+                return;
+            }
+            _.range(0, chat_message.swipes?.length ?? 1).forEach(i => {
+                if (chat_message?.variables?.[i] === undefined) {
+                    return;
+                }
+                chat_message.variables[i].snapshot = true;
+            });
+            SillyTavern.saveChat().then(() =>
+                toastr.success(`已将 ${message_id} 层配置为快照楼层`, '[MVU]配置楼层快照')
+            );
+        },
+    },
+    {
+        name: '重演楼层',
+        function: async () => {
+            const result = (await SillyTavern.callGenericPopup(
+                '<h4>当变量更新出现 required/extensible 相关问题时，可以尝试通过从过去的楼层重演解决</h4>请填写要进行重演的楼层 (如 10 为第 10 层, -1 为最新楼层)<br><strong>也就是出现问题的楼层</strong>',
+                SillyTavern.POPUP_TYPE.INPUT,
+                '-1'
+            )) as string | undefined;
+            if (!result) {
+                return;
+            }
+            let message_id = parseInt(result);
+            if (isNaN(message_id) || SillyTavern.chat[message_id] === undefined) {
+                toastr.error(`请输入有效的楼层数, 你输入的是 '${result}'`, '[MVU]楼层重演失败');
+                return;
+            }
+            if (message_id === -1) {
+                message_id = getLastMessageId();
+            }
+            const fnd_message = _(SillyTavern.chat)
+                .slice(0, message_id) // 不包括那个下标
+                .findLastIndex(chat_message => {
+                    return (
+                        _.get(chat_message, [
+                            'variables',
+                            chat_message.swipe_id ?? 0,
+                            'stat_data',
+                        ]) !== undefined &&
+                        _.get(chat_message, ['variables', chat_message.swipe_id ?? 0, 'schema']) !==
+                            undefined
+                    ); //需要同时有 schema 和 stat_data
+                });
+            if (fnd_message === -1) {
+                toastr.error(`无法找到可以进行重演的楼层`, '[MVU]楼层重演失败');
+                return;
+            }
+            //让用户输入从哪个楼层开始重演
+            const result2 = (await SillyTavern.callGenericPopup(
+                `请填写从哪个楼层开始重演，找到最近的支持重演楼层为 [${fnd_message}]`,
+                SillyTavern.POPUP_TYPE.INPUT,
+                fnd_message.toString()
+            )) as string | undefined;
+            if (!result2) {
+                return;
+            }
+            const final_message_id = parseInt(result2);
+            if (isNaN(final_message_id)) {
+                toastr.error(`请输入有效的楼层数, 你输入的是 '${result2}'`, '[MVU]楼层重演失败');
+                return;
+            }
+
+            //进行重演
+            const final_variable_data = structuredClone(
+                getVariables({
+                    type: 'message',
+                    message_id: final_message_id,
+                })
+            );
+            if (
+                final_variable_data === undefined ||
+                !_.has(final_variable_data, 'stat_data') ||
+                !_.has(final_variable_data, 'schema')
+            ) {
+                toastr.error(
+                    `请输入含变量信息的楼层, 你输入的是 '${result2}'`,
+                    '[MVU]楼层重演失败'
+                );
+                return;
+            }
+            let counter = 0;
+            _(SillyTavern.chat)
+                .slice(final_message_id + 1, message_id + 1)
+                .forEach(async (chat_message, index) => {
+                    console.log(`正在重演 ${index}, 内容 ${chat_message.mes}`);
+                    await updateVariables(chat_message.mes, final_variable_data);
+                    if (counter % 50 === 0)
+                        toastr.info(
+                            `处理变量中 (${counter} / ${message_id - final_message_id - 1})`,
+                            `[MVU]楼层重演`
+                        );
+                    counter++;
+                });
+            const updater = (data: Record<string, any>) => {
+                data.stat_data = final_variable_data.stat_data;
+                data.display_data = final_variable_data.display_data;
+                data.delta_data = final_variable_data.delta_data;
+                data.initialized_lorebooks = final_variable_data.initialized_lorebooks;
+                data.schema = final_variable_data.schema;
+                return data;
+            };
+            await updateVariablesWith(updater, { type: 'message', message_id: message_id });
+
+            SillyTavern.saveChat().then(() =>
+                toastr.success(
+                    `已将 ${message_id} 层变量状态重演完毕，共重演 ${counter} 楼`,
+                    '[MVU]楼层重演'
+                )
+            );
+        },
+    },
+    {
         name: '清除旧楼层变量',
         function: async () => {
             const result = (await SillyTavern.callGenericPopup(
@@ -136,6 +268,9 @@ export const buttons: Button[] = [
                     if (chat_message?.variables?.[i] === undefined) {
                         return {};
                     }
+                    if (chat_message.message_id === 0) return chat_message.variables[i];
+                    if (_.get(chat_message.variables[i], 'snapshot') === true)
+                        return chat_message.variables[i];
                     return _.omit(
                         chat_message.variables[i],
                         `stat_data`,
