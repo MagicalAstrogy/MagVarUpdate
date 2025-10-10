@@ -21,6 +21,11 @@ const Settings = z
                 额外模型解析中: z.boolean().default(true),
             })
             .prefault({}),
+        internal: z
+            .object({
+                已提醒新配置界面: z.boolean().default(false),
+            })
+            .prefault({}),
     })
     .prefault({});
 
