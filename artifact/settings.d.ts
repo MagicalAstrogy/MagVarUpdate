@@ -13,6 +13,9 @@ export declare const useSettingsStore: import("pinia").StoreDefinition<"settings
             变量更新出错: boolean;
             额外模型解析中: boolean;
         };
+        internal: {
+            已提醒新配置界面: boolean;
+        };
     }, {
         更新方式: "随AI输出" | "额外模型解析";
         额外模型解析配置: {
@@ -27,6 +30,9 @@ export declare const useSettingsStore: import("pinia").StoreDefinition<"settings
             变量更新出错: boolean;
             额外模型解析中: boolean;
         };
+        internal: {
+            已提醒新配置界面: boolean;
+        };
     } | {
         更新方式: "随AI输出" | "额外模型解析";
         额外模型解析配置: {
@@ -40,6 +46,9 @@ export declare const useSettingsStore: import("pinia").StoreDefinition<"settings
         通知: {
             变量更新出错: boolean;
             额外模型解析中: boolean;
+        };
+        internal: {
+            已提醒新配置界面: boolean;
         };
     }>;
 }, "settings">, Pick<{
@@ -57,6 +66,9 @@ export declare const useSettingsStore: import("pinia").StoreDefinition<"settings
             变量更新出错: boolean;
             额外模型解析中: boolean;
         };
+        internal: {
+            已提醒新配置界面: boolean;
+        };
     }, {
         更新方式: "随AI输出" | "额外模型解析";
         额外模型解析配置: {
@@ -71,6 +83,9 @@ export declare const useSettingsStore: import("pinia").StoreDefinition<"settings
             变量更新出错: boolean;
             额外模型解析中: boolean;
         };
+        internal: {
+            已提醒新配置界面: boolean;
+        };
     } | {
         更新方式: "随AI输出" | "额外模型解析";
         额外模型解析配置: {
@@ -84,6 +99,9 @@ export declare const useSettingsStore: import("pinia").StoreDefinition<"settings
         通知: {
             变量更新出错: boolean;
             额外模型解析中: boolean;
+        };
+        internal: {
+            已提醒新配置界面: boolean;
         };
     }>;
 }, never>, Pick<{
@@ -101,6 +119,9 @@ export declare const useSettingsStore: import("pinia").StoreDefinition<"settings
             变量更新出错: boolean;
             额外模型解析中: boolean;
         };
+        internal: {
+            已提醒新配置界面: boolean;
+        };
     }, {
         更新方式: "随AI输出" | "额外模型解析";
         额外模型解析配置: {
@@ -115,6 +136,9 @@ export declare const useSettingsStore: import("pinia").StoreDefinition<"settings
             变量更新出错: boolean;
             额外模型解析中: boolean;
         };
+        internal: {
+            已提醒新配置界面: boolean;
+        };
     } | {
         更新方式: "随AI输出" | "额外模型解析";
         额外模型解析配置: {
@@ -128,6 +152,9 @@ export declare const useSettingsStore: import("pinia").StoreDefinition<"settings
         通知: {
             变量更新出错: boolean;
             额外模型解析中: boolean;
+        };
+        internal: {
+            已提醒新配置界面: boolean;
         };
     }>;
 }, never>>;

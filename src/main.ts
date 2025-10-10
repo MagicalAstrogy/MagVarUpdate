@@ -290,9 +290,13 @@ $(async () => {
 
     const store = useSettingsStore();
     if (store.settings.internal.已提醒新配置界面 === false) {
-        toastr.info('配置界面位于酒馆扩展界面-「正则」下方, 请点开了解新功能或自定义配置', '[MVU]已更新独立配置界面', {
-            timeOut: 5000,
-        });
+        toastr.info(
+            '配置界面位于酒馆扩展界面-「正则」下方, 请点开了解新功能或自定义配置',
+            '[MVU]已更新独立配置界面',
+            {
+                timeOut: 5000,
+            }
+        );
         store.settings.internal.已提醒新配置界面 = true;
     }
 
