@@ -265,7 +265,7 @@ export const buttons: Button[] = [
                 );
                 return;
             }
-            SillyTavern.chat.slice(0, -depth).forEach(chat_message => {
+            SillyTavern.chat.slice(1, -depth).forEach(chat_message => {
                 if (chat_message.variables === undefined) {
                     return;
                 }
@@ -273,7 +273,6 @@ export const buttons: Button[] = [
                     if (chat_message?.variables?.[i] === undefined) {
                         return {};
                     }
-                    if (chat_message.message_id === 0) return chat_message.variables[i];
                     if (_.get(chat_message.variables[i], 'snapshot') === true)
                         return chat_message.variables[i];
                     return _.omit(
