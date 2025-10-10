@@ -265,7 +265,7 @@ export const buttons: Button[] = [
                 );
                 return;
             }
-            SillyTavern.chat.slice(1, -depth).forEach(chat_message => {
+            SillyTavern.chat.slice(1, -depth - 1).forEach(chat_message => {
                 if (chat_message.variables === undefined) {
                     return;
                 }
