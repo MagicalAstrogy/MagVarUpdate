@@ -153,13 +153,14 @@ export const buttons: Button[] = [
                 return;
             }
             let message_id = parseInt(result);
+            if (message_id === -1) {
+                message_id = getLastMessageId();
+            }
             if (isNaN(message_id) || SillyTavern.chat[message_id] === undefined) {
                 toastr.error(`请输入有效的楼层数, 你输入的是 '${result}'`, '[MVU]楼层重演失败');
                 return;
             }
-            if (message_id === -1) {
-                message_id = getLastMessageId();
-            }
+
             const fnd_message = _(SillyTavern.chat)
                 .slice(0, message_id) // 不包括那个下标
                 .findLastIndex(chat_message => {
@@ -211,18 +212,22 @@ export const buttons: Button[] = [
                 return;
             }
             let counter = 0;
-            _(SillyTavern.chat)
-                .slice(final_message_id + 1, message_id + 1)
-                .forEach(async (chat_message, index) => {
-                    console.log(`正在重演 ${index}, 内容 ${chat_message.mes}`);
-                    await updateVariables(chat_message.mes, final_variable_data);
-                    if (counter % 50 === 0)
-                        toastr.info(
-                            `处理变量中 (${counter} / ${message_id - final_message_id - 1})`,
-                            `[MVU]楼层重演`
-                        );
-                    counter++;
-                });
+            for (let i = final_message_id + 1; i <= message_id; i++) {
+                const chat_message = SillyTavern.chat[i];
+                const index = i - (final_message_id + 1);
+
+                console.log(`正在重演 ${index}, 内容 ${chat_message.mes}`);
+                await updateVariables(chat_message.mes, final_variable_data);
+
+                counter++;
+                if (counter % 50 === 0) {
+                    toastr.info(
+                        `处理变量中 (${counter} / ${message_id - final_message_id})`,
+                        `[MVU]楼层重演`
+                    );
+                }
+            }
+
             const updater = (data: Record<string, any>) => {
                 data.stat_data = final_variable_data.stat_data;
                 data.display_data = final_variable_data.display_data;
