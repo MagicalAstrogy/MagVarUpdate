@@ -3,6 +3,7 @@ import { cleanUpMetadata, reconcileAndApplySchema } from '@/schema';
 import { updateDescriptions } from '@/update_descriptions';
 import { MvuData } from '@/variable_def';
 import { createEmptyGameData, loadInitVarData } from '@/variable_init';
+import { useSettingsStore } from '@/settings';
 
 interface Button {
     name: string;
@@ -249,8 +250,9 @@ export const buttons: Button[] = [
     {
         name: '清除旧楼层变量',
         function: async () => {
+            const snapshot_interval = useSettingsStore().settings.快照保留间隔;
             const result = (await SillyTavern.callGenericPopup(
-                '<h4>清除旧楼层变量信息以减小聊天文件大小避免手机崩溃</h4>请填写要保留变量信息的楼层数 (如 10 为保留最后 10 层)<br><strong>注意: 你将不能正常回退游玩到没保留变量信息的楼层</strong>',
+                `<h4>清除旧楼层变量信息以减小聊天文件大小避免手机崩溃</h4>请填写要保留变量信息的楼层数 (如 10 为保留最后 10 层，每 [${snapshot_interval}] 层保留一层作为快照)，每 <br><strong>注意: 你需要通过重演才能回退游玩到没保留变量信息的楼层</strong>`,
                 SillyTavern.POPUP_TYPE.INPUT,
                 '10'
             )) as string | undefined;
@@ -265,7 +267,7 @@ export const buttons: Button[] = [
                 );
                 return;
             }
-            SillyTavern.chat.slice(1, -depth - 1).forEach(chat_message => {
+            SillyTavern.chat.slice(1, -depth - 1).forEach(((chat_message, index) => {
                 if (chat_message.variables === undefined) {
                     return;
                 }
@@ -275,6 +277,11 @@ export const buttons: Button[] = [
                     }
                     if (_.get(chat_message.variables[i], 'snapshot') === true)
                         return chat_message.variables[i];
+                    if (((index + 1) % snapshot_interval) === 0) {
+                        chat_message.variables[i].snapshot = true;
+                        console.log(`将 [${index + 1}] 层作为快照楼层`);
+                        return chat_message.variables[i];
+                    }
                     return _.omit(
                         chat_message.variables[i],
                         `stat_data`,
