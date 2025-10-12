@@ -23,7 +23,7 @@ const Settings = z
             .prefault({}),
         internal: z
             .object({
-                已提醒新配置界面: z.boolean().default(false),
+                已提醒更新了配置界面: z.boolean().default(false),
             })
             .prefault({}),
     })
