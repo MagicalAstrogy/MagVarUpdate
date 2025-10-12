@@ -289,16 +289,6 @@ $(async () => {
     initPanel();
 
     const store = useSettingsStore();
-    if (store.settings.internal.已提醒新配置界面 === false) {
-        toastr.info(
-            '配置界面位于酒馆扩展界面-「正则」下方, 请点开了解新功能或自定义配置',
-            '[MVU]已更新独立配置界面',
-            {
-                timeOut: 5000,
-            }
-        );
-        store.settings.internal.已提醒新配置界面 = true;
-    }
 
     exportGlobals();
     registerButtons();
@@ -321,6 +311,13 @@ $(async () => {
     _.set(window.parent, 'handleVariablesInMessage', handleVariablesInMessage);
     registerFunction();
 
+    if (store.settings.internal.已提醒更新了配置界面 === false) {
+        toastr.info(
+            '配置界面位于酒馆扩展界面-「正则」下方, 请点开了解新功能或自定义配置',
+            '[MVU]已更新独立配置界面'
+        );
+        store.settings.internal.已提醒更新了配置界面 = true;
+    }
     toastr.info(
         `构建信息: ${__BUILD_DATE__ ?? 'Unknown'} (${__COMMIT_ID__ ?? 'Unknown'})`,
         '[MVU]脚本加载成功'
