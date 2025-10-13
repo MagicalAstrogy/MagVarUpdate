@@ -151,7 +151,7 @@ export async function initCheck() {
                 variables.initialized_lorebooks ?? {}
             )
                 .map(([key, value]) => `- ${key}: ${JSON.stringify(value)}`)
-                .join('<br>')}}`,
+                .join('<br>')}`,
             '[MVU]变量初始化成功',
             {
                 escapeHtml: false,
