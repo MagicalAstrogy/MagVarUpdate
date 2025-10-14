@@ -1,6 +1,11 @@
 import { registerButtons } from '@/button';
 import { exportGlobals } from '@/export_globals';
-import { handleVariablesInCallback, handleVariablesInMessage, updateVariable } from '@/function';
+import {
+    cleanupVariablesInMessages,
+    handleVariablesInCallback,
+    handleVariablesInMessage,
+    updateVariable,
+} from '@/function';
 import {
     MVU_FUNCTION_NAME,
     overrideToolRequest,
@@ -276,6 +281,10 @@ async function onMessageReceived(message_id: number) {
     await handleVariablesInMessage(message_id);
 }
 
+const 要保留变量的最近楼层数 = 20;
+const 触发恢复变量的最近楼层数 = 10;
+const 快照间隔 = 50;
+
 $(async () => {
     if (compare(await getTavernHelperVersion(), '3.4.17', '<')) {
         toastr.warning(
@@ -292,6 +301,46 @@ $(async () => {
 
     exportGlobals();
     registerButtons();
+
+    // 对于旧聊天文件, 清理过早楼层的变量
+    if (
+        SillyTavern.chat.length > 要保留变量的最近楼层数 &&
+        _.has(SillyTavern.chat, [1, 'variables', 0, 'stat_data'])
+    ) {
+        cleanupVariablesInMessages(
+            0,
+            SillyTavern.chat.length - 1 - 要保留变量的最近楼层数,
+            快照间隔
+        );
+    }
+    eventOn(tavern_events.MESSAGE_RECEIVED, message_id => {
+        const old_message_id = message_id - 要保留变量的最近楼层数;
+        if (old_message_id > 0) {
+            cleanupVariablesInMessages(
+                Math.max(1, old_message_id - 2), // 因为没有监听 MESSAGE_SENT
+                old_message_id,
+                快照间隔
+            );
+        }
+    });
+    eventOn(tavern_events.MESSAGE_DELETED, () => {
+        const last_message_id = SillyTavern.chat.length - 1;
+        if (last_message_id < 要保留变量的最近楼层数) {
+            return;
+        }
+        if (
+            _.has(SillyTavern.chat, [
+                last_message_id - 触发恢复变量的最近楼层数,
+                'variables',
+                0,
+                'stat_data',
+            ])
+        ) {
+            return;
+        }
+        // TODO: 恢复 `要保留变量的最近楼层数` 内最近楼层的变量
+    });
+
     eventOn(tavern_events.GENERATION_STARTED, initCheck);
     eventOn(tavern_events.MESSAGE_SENT, initCheck);
     eventOn(tavern_events.MESSAGE_SENT, handleVariablesInMessage);

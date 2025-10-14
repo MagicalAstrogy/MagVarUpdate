@@ -1,22 +1,22 @@
 import {
-    variable_events,
-    VariableData,
-    MvuData,
-    TemplateType,
-    assertVWD,
-    isArraySchema,
-    isObjectSchema,
-    isValueWithDescriptionStatData,
-} from '@/variable_def';
-import * as math from 'mathjs';
-
-import {
     cleanUpMetadata,
     generateSchema,
     getSchemaForPath,
     reconcileAndApplySchema,
 } from '@/schema';
 import { useSettingsStore } from '@/settings';
+import { saveChatDebounced } from '@/util';
+import {
+    assertVWD,
+    isArraySchema,
+    isObjectSchema,
+    isValueWithDescriptionStatData,
+    MvuData,
+    TemplateType,
+    variable_events,
+    VariableData,
+} from '@/variable_def';
+import * as math from 'mathjs';
 
 export function trimQuotesAndBackslashes(str: string): string {
     if (!_.isString(str)) return str;
@@ -1301,4 +1301,34 @@ export async function handleVariablesInCallback(
     //如果没有修改，则不产生 newVariable
     if (!modified) delete in_out_variable_info.new_variables;
     return;
+}
+
+/** 清理 `[start_message_id, end_message_id]` 内, 楼层号不为 `snap_interval` 倍数的楼层变量 */
+export function cleanupVariablesInMessages(
+    start_message_id: number,
+    end_message_id: number,
+    snap_interval: number
+) {
+    _(SillyTavern.chat)
+        .slice(start_message_id, end_message_id + 1)
+        .reject((_chat_message, index) => (start_message_id + index) % snap_interval === 0)
+        .forEach(chat_message => {
+            if (chat_message.variables === undefined) {
+                return;
+            }
+            chat_message.variables = _.range(0, chat_message.swipes?.length ?? 1).map(i => {
+                if (chat_message?.variables?.[i] === undefined) {
+                    return {};
+                }
+                return _.omit(
+                    chat_message.variables[i],
+                    `stat_data`,
+                    `display_data`,
+                    `delta_data`,
+                    `schema`
+                );
+            });
+        })
+        .value();
+    saveChatDebounced();
 }

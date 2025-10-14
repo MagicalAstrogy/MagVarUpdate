@@ -24,3 +24,5 @@ export const is_jest_environment =
     typeof jest !== 'undefined' ||
     // @ts-expect-error maybe undefined
     (typeof process !== 'undefined' && process.env?.NODE_ENV === 'test');
+
+export const saveChatDebounced = _.debounce(SillyTavern.saveChat, 1000);
