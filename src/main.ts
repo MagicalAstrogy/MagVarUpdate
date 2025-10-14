@@ -367,6 +367,13 @@ $(async () => {
         );
         store.settings.internal.已提醒更新了配置界面 = true;
     }
+    if (store.settings.internal.已提醒自动清理旧变量功能 === false) {
+        toastr.info(
+            'MVU 现在会自动清理旧变量来减少聊天文件大小; 这不会影响你回退游玩以前的楼层',
+            '[MVU]已更新自动清理旧变量功能'
+        );
+        store.settings.internal.已提醒自动清理旧变量功能 = true;
+    }
     toastr.info(
         `构建信息: ${__BUILD_DATE__ ?? 'Unknown'} (${__COMMIT_ID__ ?? 'Unknown'})`,
         '[MVU]脚本加载成功'
