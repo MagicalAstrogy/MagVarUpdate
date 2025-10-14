@@ -323,23 +323,26 @@ $(async () => {
             );
         }
     });
-    eventOn(tavern_events.MESSAGE_DELETED, () => {
-        const last_message_id = SillyTavern.chat.length - 1;
-        if (last_message_id < 要保留变量的最近楼层数) {
-            return;
-        }
-        if (
-            _.has(SillyTavern.chat, [
-                last_message_id - 触发恢复变量的最近楼层数,
-                'variables',
-                0,
-                'stat_data',
-            ])
-        ) {
-            return;
-        }
-        // TODO: 恢复 `要保留变量的最近楼层数` 内最近楼层的变量
-    });
+    eventOn(
+        tavern_events.MESSAGE_DELETED,
+        _.debounce(() => {
+            const last_message_id = SillyTavern.chat.length - 1;
+            if (last_message_id < 要保留变量的最近楼层数) {
+                return;
+            }
+            if (
+                _.has(SillyTavern.chat, [
+                    last_message_id - 触发恢复变量的最近楼层数,
+                    'variables',
+                    0,
+                    'stat_data',
+                ])
+            ) {
+                return;
+            }
+            // TODO: 恢复 `要保留变量的最近楼层数` 内最近楼层的变量
+        }, 1000)
+    );
 
     eventOn(tavern_events.GENERATION_STARTED, initCheck);
     eventOn(tavern_events.MESSAGE_SENT, initCheck);
