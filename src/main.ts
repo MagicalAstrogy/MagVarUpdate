@@ -5,6 +5,7 @@ import {
     handleVariablesInCallback,
     handleVariablesInMessage,
     updateVariable,
+    updateVariables,
 } from '@/function';
 import {
     MVU_FUNCTION_NAME,
@@ -22,7 +23,7 @@ import {
     is_jest_environment,
     isFunctionCallingSupported,
 } from '@/util';
-import { exported_events, ExtraLLMRequestContent } from '@/variable_def';
+import { exported_events, ExtraLLMRequestContent, MvuData } from '@/variable_def';
 import { initCheck } from '@/variable_init';
 import { compare } from 'compare-versions';
 
@@ -325,22 +326,48 @@ $(async () => {
     });
     eventOn(
         tavern_events.MESSAGE_DELETED,
-        _.debounce(() => {
+        _.debounce(async () => {
             const last_message_id = SillyTavern.chat.length - 1;
-            if (last_message_id < 要保留变量的最近楼层数) {
+            const least_message_id = Math.max(1, last_message_id - 要保留变量的最近楼层数);
+            const most_message_id = SillyTavern.chat.findLastIndex(
+                chat_message => !_.has(chat_message, ['variables', 0, 'stat_data'])
+            );
+            if (least_message_id > most_message_id) {
                 return;
             }
-            if (
-                _.has(SillyTavern.chat, [
-                    last_message_id - 触发恢复变量的最近楼层数,
-                    'variables',
-                    0,
-                    'stat_data',
-                ])
-            ) {
+
+            const snapshot_message_id = Math.floor(least_message_id / 快照间隔) * 快照间隔;
+            if (!_.has(SillyTavern.chat, [snapshot_message_id, 'variables', 0, 'stat_data'])) {
                 return;
             }
-            // TODO: 恢复 `要保留变量的最近楼层数` 内最近楼层的变量
+            const snapshot_chat_message = SillyTavern.chat[snapshot_message_id];
+
+            let message = SillyTavern.chat
+                .slice(snapshot_message_id + 1, least_message_id + 1)
+                .map(chat_message => chat_message.mes)
+                .join('\n');
+            let variables = _.cloneDeep(
+                snapshot_chat_message.variables![snapshot_chat_message.swipe_id ?? 0] as MvuData
+            );
+            for (let i = least_message_id; i <= most_message_id; i++) {
+                await updateVariables(message, variables);
+                message = SillyTavern.chat[i].mes;
+                variables = (await updateVariablesWith(
+                    data => {
+                        data.initialized_lorebooks = variables.initialized_lorebooks;
+                        data.stat_data = variables.stat_data;
+                        if (variables.schema !== undefined) {
+                            data.schema = variables.schema;
+                        } else {
+                            _.unset(data, 'schema');
+                        }
+                        data.display_data = variables.display_data;
+                        data.delta_data = variables.delta_data;
+                        return data;
+                    },
+                    { type: 'message', message_id: i }
+                )) as MvuData;
+            }
         }, 1000)
     );
 
