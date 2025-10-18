@@ -13,6 +13,7 @@ export declare const useSettingsStore: import("pinia").StoreDefinition<"settings
             变量更新出错: boolean;
             额外模型解析中: boolean;
         };
+        快照保留间隔: number;
         internal: {
             已提醒更新了配置界面: boolean;
         };
@@ -30,6 +31,7 @@ export declare const useSettingsStore: import("pinia").StoreDefinition<"settings
             变量更新出错: boolean;
             额外模型解析中: boolean;
         };
+        快照保留间隔: number;
         internal: {
             已提醒更新了配置界面: boolean;
         };
@@ -47,6 +49,7 @@ export declare const useSettingsStore: import("pinia").StoreDefinition<"settings
             变量更新出错: boolean;
             额外模型解析中: boolean;
         };
+        快照保留间隔: number;
         internal: {
             已提醒更新了配置界面: boolean;
         };
@@ -66,6 +69,7 @@ export declare const useSettingsStore: import("pinia").StoreDefinition<"settings
             变量更新出错: boolean;
             额外模型解析中: boolean;
         };
+        快照保留间隔: number;
         internal: {
             已提醒更新了配置界面: boolean;
         };
@@ -83,6 +87,7 @@ export declare const useSettingsStore: import("pinia").StoreDefinition<"settings
             变量更新出错: boolean;
             额外模型解析中: boolean;
         };
+        快照保留间隔: number;
         internal: {
             已提醒更新了配置界面: boolean;
         };
@@ -100,6 +105,7 @@ export declare const useSettingsStore: import("pinia").StoreDefinition<"settings
             变量更新出错: boolean;
             额外模型解析中: boolean;
         };
+        快照保留间隔: number;
         internal: {
             已提醒更新了配置界面: boolean;
         };
@@ -119,6 +125,7 @@ export declare const useSettingsStore: import("pinia").StoreDefinition<"settings
             变量更新出错: boolean;
             额外模型解析中: boolean;
         };
+        快照保留间隔: number;
         internal: {
             已提醒更新了配置界面: boolean;
         };
@@ -136,6 +143,7 @@ export declare const useSettingsStore: import("pinia").StoreDefinition<"settings
             变量更新出错: boolean;
             额外模型解析中: boolean;
         };
+        快照保留间隔: number;
         internal: {
             已提醒更新了配置界面: boolean;
         };
@@ -153,6 +161,7 @@ export declare const useSettingsStore: import("pinia").StoreDefinition<"settings
             变量更新出错: boolean;
             额外模型解析中: boolean;
         };
+        快照保留间隔: number;
         internal: {
             已提醒更新了配置界面: boolean;
         };
