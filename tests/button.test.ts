@@ -3,7 +3,7 @@ import { EXTENSIBLE_MARKER } from '@/schema';
 import { getLastValidVariable } from '@/function';
 import { createEmptyGameData, loadInitVarData } from '@/variable_init';
 import _ from 'lodash';
-import { MvuData } from '@/variable_def';
+import { MvuData, variable_events } from '@/variable_def';
 
 // Mock only external dependencies
 jest.mock('@/function', () => ({
@@ -541,6 +541,25 @@ describe('RecurVariable function', () => {
             return undefined;
         });
 
+        const replayTrace: number[] = [];
+        (global.eventOn as jest.Mock)(
+            variable_events.VARIABLE_UPDATE_ENDED,
+            (variables: any) => {
+                const nextCount = (variables.stat_data.replayCount ?? 0) + 1;
+                variables.stat_data.replayCount = nextCount;
+                const existingTrace = Array.isArray(variables.stat_data.replayTrace)
+                    ? variables.stat_data.replayTrace
+                    : [];
+                variables.stat_data.replayTrace = [...existingTrace, nextCount];
+                replayTrace.push(nextCount);
+
+                if (!variables.display_data) {
+                    variables.display_data = {};
+                }
+                variables.display_data.replayCount = nextCount;
+            }
+        );
+
         registerButtons();
         const recurVariable = getRecurVariableCallback();
         expect(typeof recurVariable).toBe('function');
@@ -555,6 +574,7 @@ describe('RecurVariable function', () => {
         });
         expect(updateVariablesSpy).toHaveBeenCalledTimes(2);
         expect(updateVariablesSpy.mock.calls[0][1]).toBe(updateVariablesSpy.mock.calls[1][1]);
+        expect(replayTrace).toEqual([1, 2]);
 
         expect(global.updateVariablesWith as jest.Mock).toHaveBeenCalledTimes(1);
         const [updater, options] = (global.updateVariablesWith as jest.Mock).mock.calls[0];
@@ -566,10 +586,16 @@ describe('RecurVariable function', () => {
             initialized_lorebooks: {},
             schema: {},
         });
-        expect(applied.stat_data).toEqual({ health: 80, mana: 30 });
-        expect(applied.display_data).toEqual({
+        expect(applied.stat_data).toMatchObject({
+            health: 80,
+            mana: 30,
+            replayCount: 2,
+            replayTrace: [1, 2],
+        });
+        expect(applied.display_data).toMatchObject({
             health: 80,
             mana: '50->30 (施法消耗)',
+            replayCount: 2,
         });
         expect(applied.delta_data).toEqual({
             mana: '50->30 (施法消耗)',
@@ -582,6 +608,11 @@ describe('RecurVariable function', () => {
                 mana: expect.objectContaining({ type: 'number' }),
             },
         });
+
+        const endedCalls = (global.eventEmit as jest.Mock).mock.calls.filter(
+            ([event]) => event === variable_events.VARIABLE_UPDATE_ENDED
+        );
+        expect(endedCalls).toHaveLength(2);
 
         const saveChatMock = silly.saveChat as jest.Mock;
         expect(saveChatMock).toHaveBeenCalledTimes(1);
