@@ -612,6 +612,15 @@ describe('RecurVariable function', () => {
         );
         expect(endedCalls).toHaveLength(2);
 
+        expect(global.setChatMessages as jest.Mock).toHaveBeenCalledWith(
+            [
+                {
+                    message_id: 2,
+                },
+            ],
+            { refresh: 'affected' }
+        );
+
         const saveChatMock = silly.saveChat as jest.Mock;
         expect(saveChatMock).toHaveBeenCalledTimes(1);
         await saveChatMock.mock.results[0].value;

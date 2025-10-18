@@ -106,6 +106,16 @@ async function RecurVariable() {
             '[MVU]楼层重演'
         )
     );
+    await setChatMessages(
+        [
+            {
+                message_id: message_id,
+            },
+        ],
+        {
+            refresh: 'affected',
+        }
+    );
 }
 
 export const buttons: Button[] = [

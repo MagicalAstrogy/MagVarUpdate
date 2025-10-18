@@ -79,6 +79,7 @@ beforeEach(() => {
 (globalThis as any).getLastMessageId = jest.fn();
 (globalThis as any).replaceVariables = jest.fn();
 (globalThis as any).setChatMessage = jest.fn();
+(globalThis as any).setChatMessages = jest.fn();
 (globalThis as any).getCurrentCharPrimaryLorebook = jest.fn();
 (globalThis as any).getAvailableLorebooks = jest.fn();
 (globalThis as any).substitudeMacros = jest.fn(input => input);
