@@ -10,6 +10,103 @@ interface Button {
     function: (() => void) | (() => Promise<void>);
 }
 
+async function RecurVariable() {
+    const result = (await SillyTavern.callGenericPopup(
+        '<h4>当变量更新出现 required/extensible 相关问题时，可以尝试通过从过去的楼层重演解决</h4>请填写要进行重演的楼层 (如 10 为第 10 层, -1 为最新楼层)<br><strong>也就是出现问题的楼层</strong>',
+        SillyTavern.POPUP_TYPE.INPUT,
+        '-1'
+    )) as string | undefined;
+    if (!result) {
+        return;
+    }
+    let message_id = parseInt(result);
+    if (message_id === -1) {
+        message_id = getLastMessageId();
+    }
+    if (isNaN(message_id) || SillyTavern.chat[message_id] === undefined) {
+        toastr.error(`请输入有效的楼层数, 你输入的是 '${result}'`, '[MVU]楼层重演失败');
+        return;
+    }
+
+    const fnd_message = _(SillyTavern.chat)
+        .slice(0, message_id) // 不包括那个下标
+        .findLastIndex(chat_message => {
+            return (
+                _.get(chat_message, ['variables', chat_message.swipe_id ?? 0, 'stat_data']) !==
+                    undefined &&
+                _.get(chat_message, ['variables', chat_message.swipe_id ?? 0, 'schema']) !==
+                    undefined
+            ); //需要同时有 schema 和 stat_data
+        });
+    if (fnd_message === -1) {
+        toastr.error(`无法找到可以进行重演的楼层`, '[MVU]楼层重演失败');
+        return;
+    }
+    //让用户输入从哪个楼层开始重演
+    const result2 = (await SillyTavern.callGenericPopup(
+        `请填写从哪个楼层开始重演，找到最近的支持重演楼层为 [${fnd_message}]`,
+        SillyTavern.POPUP_TYPE.INPUT,
+        fnd_message.toString()
+    )) as string | undefined;
+    if (!result2) {
+        return;
+    }
+    const final_message_id = parseInt(result2);
+    if (isNaN(final_message_id)) {
+        toastr.error(`请输入有效的楼层数, 你输入的是 '${result2}'`, '[MVU]楼层重演失败');
+        return;
+    }
+
+    //进行重演
+    const final_variable_data = structuredClone(
+        getVariables({
+            type: 'message',
+            message_id: final_message_id,
+        })
+    );
+    if (
+        final_variable_data === undefined ||
+        !_.has(final_variable_data, 'stat_data') ||
+        !_.has(final_variable_data, 'schema')
+    ) {
+        toastr.error(`请输入含变量信息的楼层, 你输入的是 '${result2}'`, '[MVU]楼层重演失败');
+        return;
+    }
+    let counter = 0;
+    for (let i = final_message_id + 1; i <= message_id; i++) {
+        const chat_message = SillyTavern.chat[i];
+        const index = i - (final_message_id + 1);
+
+        console.log(`正在重演 ${index}, 内容 ${chat_message.mes}`);
+        await updateVariables(chat_message.mes, final_variable_data);
+
+        counter++;
+        if (counter % 50 === 0) {
+            toastr.info(
+                `处理变量中 (${counter} / ${message_id - final_message_id})`,
+                `[MVU]楼层重演`
+            );
+        }
+    }
+
+    const updater = (data: Record<string, any>) => {
+        data.stat_data = final_variable_data.stat_data;
+        data.display_data = final_variable_data.display_data;
+        data.delta_data = final_variable_data.delta_data;
+        data.initialized_lorebooks = final_variable_data.initialized_lorebooks;
+        data.schema = final_variable_data.schema;
+        return data;
+    };
+    await updateVariablesWith(updater, { type: 'message', message_id: message_id });
+
+    SillyTavern.saveChat().then(() =>
+        toastr.success(
+            `已将 ${message_id} 层变量状态重演完毕，共重演 ${counter} 楼`,
+            '[MVU]楼层重演'
+        )
+    );
+}
+
 export const buttons: Button[] = [
     {
         name: '重新处理变量',
@@ -144,108 +241,7 @@ export const buttons: Button[] = [
     },
     {
         name: '重演楼层',
-        function: async () => {
-            const result = (await SillyTavern.callGenericPopup(
-                '<h4>当变量更新出现 required/extensible 相关问题时，可以尝试通过从过去的楼层重演解决</h4>请填写要进行重演的楼层 (如 10 为第 10 层, -1 为最新楼层)<br><strong>也就是出现问题的楼层</strong>',
-                SillyTavern.POPUP_TYPE.INPUT,
-                '-1'
-            )) as string | undefined;
-            if (!result) {
-                return;
-            }
-            let message_id = parseInt(result);
-            if (message_id === -1) {
-                message_id = getLastMessageId();
-            }
-            if (isNaN(message_id) || SillyTavern.chat[message_id] === undefined) {
-                toastr.error(`请输入有效的楼层数, 你输入的是 '${result}'`, '[MVU]楼层重演失败');
-                return;
-            }
-
-            const fnd_message = _(SillyTavern.chat)
-                .slice(0, message_id) // 不包括那个下标
-                .findLastIndex(chat_message => {
-                    return (
-                        _.get(chat_message, [
-                            'variables',
-                            chat_message.swipe_id ?? 0,
-                            'stat_data',
-                        ]) !== undefined &&
-                        _.get(chat_message, ['variables', chat_message.swipe_id ?? 0, 'schema']) !==
-                            undefined
-                    ); //需要同时有 schema 和 stat_data
-                });
-            if (fnd_message === -1) {
-                toastr.error(`无法找到可以进行重演的楼层`, '[MVU]楼层重演失败');
-                return;
-            }
-            //让用户输入从哪个楼层开始重演
-            const result2 = (await SillyTavern.callGenericPopup(
-                `请填写从哪个楼层开始重演，找到最近的支持重演楼层为 [${fnd_message}]`,
-                SillyTavern.POPUP_TYPE.INPUT,
-                fnd_message.toString()
-            )) as string | undefined;
-            if (!result2) {
-                return;
-            }
-            const final_message_id = parseInt(result2);
-            if (isNaN(final_message_id)) {
-                toastr.error(`请输入有效的楼层数, 你输入的是 '${result2}'`, '[MVU]楼层重演失败');
-                return;
-            }
-
-            //进行重演
-            const final_variable_data = structuredClone(
-                getVariables({
-                    type: 'message',
-                    message_id: final_message_id,
-                })
-            );
-            if (
-                final_variable_data === undefined ||
-                !_.has(final_variable_data, 'stat_data') ||
-                !_.has(final_variable_data, 'schema')
-            ) {
-                toastr.error(
-                    `请输入含变量信息的楼层, 你输入的是 '${result2}'`,
-                    '[MVU]楼层重演失败'
-                );
-                return;
-            }
-            let counter = 0;
-            for (let i = final_message_id + 1; i <= message_id; i++) {
-                const chat_message = SillyTavern.chat[i];
-                const index = i - (final_message_id + 1);
-
-                console.log(`正在重演 ${index}, 内容 ${chat_message.mes}`);
-                await updateVariables(chat_message.mes, final_variable_data);
-
-                counter++;
-                if (counter % 50 === 0) {
-                    toastr.info(
-                        `处理变量中 (${counter} / ${message_id - final_message_id})`,
-                        `[MVU]楼层重演`
-                    );
-                }
-            }
-
-            const updater = (data: Record<string, any>) => {
-                data.stat_data = final_variable_data.stat_data;
-                data.display_data = final_variable_data.display_data;
-                data.delta_data = final_variable_data.delta_data;
-                data.initialized_lorebooks = final_variable_data.initialized_lorebooks;
-                data.schema = final_variable_data.schema;
-                return data;
-            };
-            await updateVariablesWith(updater, { type: 'message', message_id: message_id });
-
-            SillyTavern.saveChat().then(() =>
-                toastr.success(
-                    `已将 ${message_id} 层变量状态重演完毕，共重演 ${counter} 楼`,
-                    '[MVU]楼层重演'
-                )
-            );
-        },
+        function: RecurVariable,
     },
     {
         name: '清除旧楼层变量',
@@ -267,7 +263,7 @@ export const buttons: Button[] = [
                 );
                 return;
             }
-            SillyTavern.chat.slice(1, -depth - 1).forEach(((chat_message, index) => {
+            SillyTavern.chat.slice(1, -depth - 1).forEach((chat_message, index) => {
                 if (chat_message.variables === undefined) {
                     return;
                 }
@@ -277,7 +273,7 @@ export const buttons: Button[] = [
                     }
                     if (_.get(chat_message.variables[i], 'snapshot') === true)
                         return chat_message.variables[i];
-                    if (((index + 1) % snapshot_interval) === 0) {
+                    if ((index + 1) % snapshot_interval === 0) {
                         chat_message.variables[i].snapshot = true;
                         console.log(`将 [${index + 1}] 层作为快照楼层`);
                         return chat_message.variables[i];
