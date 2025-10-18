@@ -21,6 +21,7 @@ const Settings = z
                 额外模型解析中: z.boolean().default(true),
             })
             .prefault({}),
+        快照保留间隔: z.number().default(50),
         internal: z
             .object({
                 已提醒更新了配置界面: z.boolean().default(false),

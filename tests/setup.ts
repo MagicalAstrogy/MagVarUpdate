@@ -28,6 +28,8 @@ import * as _ from 'lodash';
 (globalThis as any).getButtonEvent = jest.fn((button_name: string) => button_name);
 (globalThis as any).eventOnButton = jest.fn();
 
+const __eventHandlers = new Map<string, Array<(...args: unknown[]) => unknown>>();
+
 // Mock window object
 (globalThis as any).window = globalThis;
 
@@ -46,21 +48,38 @@ import * as _ from 'lodash';
 // Ensure each test runs with a fresh Pinia instance
 beforeEach(() => {
     setActivePinia(createPinia());
+    __eventHandlers.clear();
 });
 
 // Mock functions that are not available in test environment
-(globalThis as any).eventOn = jest.fn((event: string, handler: (...args: unknown[]) => unknown) => {
-    const bridged = (globalThis as any).eventOnButton;
-    if (typeof bridged === 'function') {
-        bridged(event, handler);
+(globalThis as any).eventOn = jest.fn(
+    (event: string, handler: (...args: unknown[]) => unknown) => {
+        const bridged = (globalThis as any).eventOnButton;
+        if (typeof bridged === 'function') {
+            bridged(event, handler);
+        }
+
+        if (!__eventHandlers.has(event)) {
+            __eventHandlers.set(event, []);
+        }
+        __eventHandlers.get(event)!.push(handler);
+    }
+);
+(globalThis as any).eventEmit = jest.fn(async (event: string, ...args: unknown[]) => {
+    const handlers = __eventHandlers.get(event) ?? [];
+    for (const handler of handlers) {
+        const result = handler(...args);
+        if (result && typeof (result as Promise<unknown>).then === 'function') {
+            await result;
+        }
     }
 });
-(globalThis as any).eventEmit = jest.fn();
 (globalThis as any).getChatMessages = jest.fn();
 (globalThis as any).getVariables = jest.fn();
 (globalThis as any).getLastMessageId = jest.fn();
 (globalThis as any).replaceVariables = jest.fn();
 (globalThis as any).setChatMessage = jest.fn();
+(globalThis as any).setChatMessages = jest.fn();
 (globalThis as any).getCurrentCharPrimaryLorebook = jest.fn();
 (globalThis as any).getAvailableLorebooks = jest.fn();
 (globalThis as any).substitudeMacros = jest.fn(input => input);
