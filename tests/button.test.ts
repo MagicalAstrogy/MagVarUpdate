@@ -3,6 +3,7 @@ import { EXTENSIBLE_MARKER } from '@/schema';
 import { getLastValidVariable } from '@/function';
 import { createEmptyGameData, loadInitVarData } from '@/variable_init';
 import _ from 'lodash';
+import { MvuData } from '@/variable_def';
 
 // Mock only external dependencies
 jest.mock('@/function', () => ({
@@ -41,7 +42,9 @@ global.getScriptId = jest.fn();
 global.replaceScriptButtons = jest.fn();
 global.eventOnButton = jest.fn();
 global.deleteVariable = jest.fn();
-//@ts-ignore
+global.getVariables = jest.fn();
+global.updateVariablesWith = jest.fn();
+//@ts-expect-error mocked global
 global.SillyTavern = {
     chat: [],
     callGenericPopup: jest.fn(),
@@ -54,6 +57,12 @@ function getReloadInitCallback() {
     const calls = (global.eventOnButton as jest.Mock).mock.calls;
     const reloadInitCall = calls.find(call => call[0] === '重新读取初始变量');
     return reloadInitCall ? reloadInitCall[1] : null;
+}
+
+function getRecurVariableCallback() {
+    const calls = (global.eventOnButton as jest.Mock).mock.calls;
+    const recurCall = calls.find(call => call[0] === '重演楼层');
+    return recurCall ? recurCall[1] : null;
 }
 
 describe('reloadInit function', () => {
@@ -329,7 +338,9 @@ describe('reloadInit function', () => {
                 type: 'chat',
             });
 
-            expect(toastr.success).toHaveBeenCalledWith('InitVar描述已更新', '[MVU]', { timeOut: 3000 });
+            expect(toastr.success).toHaveBeenCalledWith('InitVar描述已更新', '[MVU]', {
+                timeOut: 3000,
+            });
         });
 
         test('should create new object instead of using structuredClone', async () => {
@@ -449,5 +460,163 @@ describe('reloadInit function', () => {
             expect(mergedData.schema.properties).toHaveProperty('game');
             expect(mergedData.schema.properties).toHaveProperty('npcs');
         });
+    });
+});
+
+describe('RecurVariable function', () => {
+    let updateVariablesSpy: jest.SpyInstance;
+
+    beforeEach(() => {
+        jest.clearAllMocks();
+
+        const functionModule = require('@/function');
+        updateVariablesSpy = jest.spyOn(functionModule, 'updateVariables');
+
+        (getScriptId as jest.Mock).mockReturnValue('test-script');
+        (getScriptButtons as jest.Mock).mockReturnValue([]);
+
+        const silly = (globalThis as any).SillyTavern as any;
+        silly.chat = [];
+        silly.POPUP_TYPE = { INPUT: 'input' };
+        silly.callGenericPopup = jest.fn();
+        silly.saveChat = jest.fn().mockResolvedValue(undefined);
+
+        (global.getVariables as jest.Mock).mockReset();
+        (global.updateVariablesWith as jest.Mock).mockReset();
+        (global.getVariables as jest.Mock).mockReturnValue(undefined);
+        (global.updateVariablesWith as jest.Mock).mockResolvedValue(undefined);
+    });
+
+    afterEach(() => {
+        updateVariablesSpy.mockRestore();
+    });
+
+    test('should replay variable updates from the selected floor', async () => {
+        const baseVariables: MvuData = {
+            stat_data: { health: 100, mana: 50 },
+            display_data: {},
+            delta_data: {},
+            initialized_lorebooks: { base: [true] },
+            schema: {
+                type: 'object',
+                properties: {
+                    health: { type: 'number' },
+                    mana: { type: 'number' },
+                },
+            },
+        };
+
+        const silly = (globalThis as any).SillyTavern as any;
+        silly.chat = [
+            {
+                mes: '初始变量',
+                swipe_id: 0,
+                variables: [
+                    {
+                        stat_data: _.cloneDeep(baseVariables.stat_data),
+                        schema: _.cloneDeep(baseVariables.schema),
+                    },
+                ],
+            },
+            {
+                mes: "_.set('health', 100, 80);//战斗伤害",
+                swipe_id: 0,
+                variables: [],
+            },
+            {
+                mes: "_.set('mana', 50, 30);//施法消耗",
+                swipe_id: 0,
+                variables: [],
+            },
+        ];
+
+        const callGenericPopupMock = silly.callGenericPopup as jest.Mock;
+        callGenericPopupMock.mockResolvedValueOnce('-1').mockResolvedValueOnce('0');
+        (global.getLastMessageId as jest.Mock).mockReturnValue(2);
+
+        (global.getVariables as jest.Mock).mockImplementation(options => {
+            if (options?.type === 'message' && options.message_id === 0) {
+                return structuredClone(baseVariables);
+            }
+            return undefined;
+        });
+
+        registerButtons();
+        const recurVariable = getRecurVariableCallback();
+        expect(typeof recurVariable).toBe('function');
+
+        await recurVariable();
+
+        expect(toastr.error).not.toHaveBeenCalled();
+        expect(callGenericPopupMock).toHaveBeenCalledTimes(2);
+        expect(global.getVariables as jest.Mock).toHaveBeenCalledWith({
+            type: 'message',
+            message_id: 0,
+        });
+        expect(updateVariablesSpy).toHaveBeenCalledTimes(2);
+        expect(updateVariablesSpy.mock.calls[0][1]).toBe(updateVariablesSpy.mock.calls[1][1]);
+
+        expect(global.updateVariablesWith as jest.Mock).toHaveBeenCalledTimes(1);
+        const [updater, options] = (global.updateVariablesWith as jest.Mock).mock.calls[0];
+        expect(options).toEqual({ type: 'message', message_id: 2 });
+        const applied = updater({
+            stat_data: {},
+            display_data: {},
+            delta_data: {},
+            initialized_lorebooks: {},
+            schema: {},
+        });
+        expect(applied.stat_data).toEqual({ health: 80, mana: 30 });
+        expect(applied.display_data).toEqual({
+            health: 80,
+            mana: '50->30 (施法消耗)',
+        });
+        expect(applied.delta_data).toEqual({
+            mana: '50->30 (施法消耗)',
+        });
+        expect(applied.initialized_lorebooks).toEqual({ base: [true] });
+        expect(applied.schema).toMatchObject({
+            type: 'object',
+            properties: {
+                health: expect.objectContaining({ type: 'number' }),
+                mana: expect.objectContaining({ type: 'number' }),
+            },
+        });
+
+        const saveChatMock = silly.saveChat as jest.Mock;
+        expect(saveChatMock).toHaveBeenCalledTimes(1);
+        await saveChatMock.mock.results[0].value;
+        expect(toastr.success).toHaveBeenCalledWith(
+            '已将 2 层变量状态重演完毕，共重演 2 楼',
+            '[MVU]楼层重演'
+        );
+    });
+
+    test('should report error when no valid replay source exists', async () => {
+        const silly = (globalThis as any).SillyTavern as any;
+        silly.chat = [
+            { mes: '0', swipe_id: 0, variables: [] },
+            { mes: '1', swipe_id: 0, variables: [] },
+            { mes: '2', swipe_id: 0, variables: [] },
+        ];
+
+        const callGenericPopupMock = silly.callGenericPopup as jest.Mock;
+        callGenericPopupMock.mockResolvedValueOnce('2');
+
+        registerButtons();
+        const recurVariable = getRecurVariableCallback();
+        expect(typeof recurVariable).toBe('function');
+
+        await recurVariable();
+
+        expect(toastr.error).toHaveBeenCalledWith(
+            '无法找到可以进行重演的楼层',
+            '[MVU]楼层重演失败'
+        );
+        expect(callGenericPopupMock).toHaveBeenCalledTimes(1);
+        expect(global.getVariables as jest.Mock).not.toHaveBeenCalled();
+        expect(updateVariablesSpy).not.toHaveBeenCalled();
+        expect(global.updateVariablesWith as jest.Mock).not.toHaveBeenCalled();
+        expect(silly.saveChat as jest.Mock).not.toHaveBeenCalled();
     });
 });
