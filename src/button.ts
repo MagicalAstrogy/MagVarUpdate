@@ -51,50 +51,51 @@ async function RecurVariable() {
     if (!result2) {
         return;
     }
-    const final_message_id = parseInt(result2);
-    if (isNaN(final_message_id)) {
+    const recur_intial_message_id = parseInt(result2);
+    if (isNaN(recur_intial_message_id)) {
         toastr.error(`请输入有效的楼层数, 你输入的是 '${result2}'`, '[MVU]楼层重演失败');
         return;
     }
 
     //进行重演
-    const final_variable_data = structuredClone(
+    //这个变量将会在每次重演的过程一直更新。
+    const recur_variable_data = structuredClone(
         getVariables({
             type: 'message',
-            message_id: final_message_id,
+            message_id: recur_intial_message_id,
         })
     );
     if (
-        final_variable_data === undefined ||
-        !_.has(final_variable_data, 'stat_data') ||
-        !_.has(final_variable_data, 'schema')
+        recur_variable_data === undefined ||
+        !_.has(recur_variable_data, 'stat_data') ||
+        !_.has(recur_variable_data, 'schema')
     ) {
         toastr.error(`请输入含变量信息的楼层, 你输入的是 '${result2}'`, '[MVU]楼层重演失败');
         return;
     }
     let counter = 0;
-    for (let i = final_message_id + 1; i <= message_id; i++) {
+    for (let i = recur_intial_message_id + 1; i <= message_id; i++) {
         const chat_message = SillyTavern.chat[i];
-        const index = i - (final_message_id + 1);
+        const index = i - (recur_intial_message_id + 1);
 
         console.log(`正在重演 ${index}, 内容 ${chat_message.mes}`);
-        await updateVariables(chat_message.mes, final_variable_data);
+        await updateVariables(chat_message.mes, recur_variable_data);
 
         counter++;
         if (counter % 50 === 0) {
             toastr.info(
-                `处理变量中 (${counter} / ${message_id - final_message_id})`,
+                `处理变量中 (${counter} / ${message_id - recur_intial_message_id})`,
                 `[MVU]楼层重演`
             );
         }
     }
 
     const updater = (data: Record<string, any>) => {
-        data.stat_data = final_variable_data.stat_data;
-        data.display_data = final_variable_data.display_data;
-        data.delta_data = final_variable_data.delta_data;
-        data.initialized_lorebooks = final_variable_data.initialized_lorebooks;
-        data.schema = final_variable_data.schema;
+        data.stat_data = recur_variable_data.stat_data;
+        data.display_data = recur_variable_data.display_data;
+        data.delta_data = recur_variable_data.delta_data;
+        data.initialized_lorebooks = recur_variable_data.initialized_lorebooks;
+        data.schema = recur_variable_data.schema;
         return data;
     };
     await updateVariablesWith(updater, { type: 'message', message_id: message_id });

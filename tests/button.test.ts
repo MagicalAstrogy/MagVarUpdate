@@ -469,6 +469,7 @@ describe('RecurVariable function', () => {
     beforeEach(() => {
         jest.clearAllMocks();
 
+        // eslint-disable-next-line @typescript-eslint/no-require-imports
         const functionModule = require('@/function');
         updateVariablesSpy = jest.spyOn(functionModule, 'updateVariables');
 
@@ -542,23 +543,20 @@ describe('RecurVariable function', () => {
         });
 
         const replayTrace: number[] = [];
-        (global.eventOn as jest.Mock)(
-            variable_events.VARIABLE_UPDATE_ENDED,
-            (variables: any) => {
-                const nextCount = (variables.stat_data.replayCount ?? 0) + 1;
-                variables.stat_data.replayCount = nextCount;
-                const existingTrace = Array.isArray(variables.stat_data.replayTrace)
-                    ? variables.stat_data.replayTrace
-                    : [];
-                variables.stat_data.replayTrace = [...existingTrace, nextCount];
-                replayTrace.push(nextCount);
+        (global.eventOn as jest.Mock)(variable_events.VARIABLE_UPDATE_ENDED, (variables: any) => {
+            const nextCount = (variables.stat_data.replayCount ?? 0) + 1;
+            variables.stat_data.replayCount = nextCount;
+            const existingTrace = Array.isArray(variables.stat_data.replayTrace)
+                ? variables.stat_data.replayTrace
+                : [];
+            variables.stat_data.replayTrace = [...existingTrace, nextCount];
+            replayTrace.push(nextCount);
 
-                if (!variables.display_data) {
-                    variables.display_data = {};
-                }
-                variables.display_data.replayCount = nextCount;
+            if (!variables.display_data) {
+                variables.display_data = {};
             }
-        );
+            variables.display_data.replayCount = nextCount;
+        });
 
         registerButtons();
         const recurVariable = getRecurVariableCallback();
