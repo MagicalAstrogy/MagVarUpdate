@@ -1,22 +1,22 @@
 import {
-    variable_events,
-    VariableData,
-    MvuData,
-    TemplateType,
-    assertVWD,
-    isArraySchema,
-    isObjectSchema,
-    isValueWithDescriptionStatData,
-} from '@/variable_def';
-import * as math from 'mathjs';
-
-import {
     cleanUpMetadata,
     generateSchema,
     getSchemaForPath,
     reconcileAndApplySchema,
 } from '@/schema';
 import { useSettingsStore } from '@/settings';
+import { saveChatDebounced } from '@/util';
+import {
+    assertVWD,
+    isArraySchema,
+    isObjectSchema,
+    isValueWithDescriptionStatData,
+    MvuData,
+    TemplateType,
+    variable_events,
+    VariableData,
+} from '@/variable_def';
+import * as math from 'mathjs';
 
 export function trimQuotesAndBackslashes(str: string): string {
     if (!_.isString(str)) return str;
@@ -544,10 +544,10 @@ export async function updateVariables(
     // 使用重构后的 extractCommands 提取所有命令
     const commands = extractCommands(processed_message_content);
     // 触发变量更新开始事件，通知外部系统
-    variables.stat_data.$internal = {
+    _.set(variables.stat_data, '$internal', {
         display_data: out_status.stat_data,
         delta_data: delta_status.stat_data || {},
-    };
+    });
     //@ts-expect-error 这里会有一个variables类型的不一致，一个内部类型，一个外部类型。
     await eventEmit(variable_events.VARIABLE_UPDATE_STARTED, variables);
     let variable_modified = false;
@@ -1213,7 +1213,7 @@ export async function updateVariables(
     //@ts-expect-error 这里会有一个variables类型的不一致，一个内部类型，一个外部类型。
     await eventEmit(variable_events.VARIABLE_UPDATE_ENDED, variables);
     //在结束事件中也可能设置变量
-    delete variables.stat_data.$internal;
+    _.unset(variables.stat_data, '$internal');
 
     // 在所有命令执行完毕后，如果数据有任何变动，则执行一次 Schema 调和
     if (variable_modified) {
@@ -1241,9 +1241,9 @@ export async function handleVariablesInMessage(message_id: number) {
 
     let message_content = chat_message.message;
 
-    if (message_content.length < 5)
-        //MESSAGE_RECEIVED会递交一个 "..." 的消息
+    if (chat_message.role === 'assistant' && message_content.length < 5) {
         return;
+    }
     const request_message_id = message_id === 0 ? 0 : message_id - 1;
     const variables = await getLastValidVariable(request_message_id);
     if (!_.has(variables, 'stat_data')) {
@@ -1253,15 +1253,15 @@ export async function handleVariablesInMessage(message_id: number) {
 
     const has_variable_modified = await updateVariables(message_content, variables);
     const updater = (data: Record<string, any>) => {
-        data.stat_data = variables.stat_data;
-        data.display_data = variables.display_data;
-        data.delta_data = variables.delta_data;
         data.initialized_lorebooks = variables.initialized_lorebooks;
+        data.stat_data = variables.stat_data;
         if (variables.schema !== undefined) {
             data.schema = variables.schema;
         } else {
-            delete data.schema;
+            _.unset(data, 'schema');
         }
+        data.display_data = variables.display_data;
+        data.delta_data = variables.delta_data;
         return data;
     };
     if (has_variable_modified) {
@@ -1299,6 +1299,38 @@ export async function handleVariablesInCallback(
 
     const modified = await updateVariables(message_content, variables);
     //如果没有修改，则不产生 newVariable
-    if (!modified) delete in_out_variable_info.new_variables;
+    if (!modified) {
+        _.unset(in_out_variable_info, 'new_variables');
+    }
     return;
+}
+
+/** 清理 `[start_message_id, end_message_id]` 内, 楼层号不为 `snap_interval` 倍数的楼层变量 */
+export function cleanupVariablesInMessages(
+    start_message_id: number,
+    end_message_id: number,
+    snap_interval: number
+) {
+    _(SillyTavern.chat)
+        .slice(start_message_id, end_message_id + 1)
+        .reject((_chat_message, index) => (start_message_id + index) % snap_interval === 0)
+        .forEach(chat_message => {
+            if (chat_message.variables === undefined) {
+                return;
+            }
+            chat_message.variables = _.range(0, chat_message.swipes?.length ?? 1).map(i => {
+                if (chat_message?.variables?.[i] === undefined) {
+                    return {};
+                }
+                return _.omit(
+                    chat_message.variables[i],
+                    `initialized_lorebooks`,
+                    `stat_data`,
+                    `display_data`,
+                    `delta_data`,
+                    `schema`
+                );
+            });
+        });
+    saveChatDebounced();
 }

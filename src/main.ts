@@ -1,6 +1,12 @@
 import { registerButtons } from '@/button';
 import { exportGlobals } from '@/export_globals';
-import { handleVariablesInCallback, handleVariablesInMessage, updateVariable } from '@/function';
+import {
+    cleanupVariablesInMessages,
+    handleVariablesInCallback,
+    handleVariablesInMessage,
+    updateVariable,
+    updateVariables,
+} from '@/function';
 import {
     MVU_FUNCTION_NAME,
     overrideToolRequest,
@@ -17,7 +23,7 @@ import {
     is_jest_environment,
     isFunctionCallingSupported,
 } from '@/util';
-import { exported_events, ExtraLLMRequestContent } from '@/variable_def';
+import { exported_events, ExtraLLMRequestContent, MvuData } from '@/variable_def';
 import { initCheck } from '@/variable_init';
 import { compare } from 'compare-versions';
 
@@ -276,6 +282,10 @@ async function onMessageReceived(message_id: number) {
     await handleVariablesInMessage(message_id);
 }
 
+const 要保留变量的最近楼层数 = 20;
+const 触发恢复变量的最近楼层数 = 10;
+const 快照间隔 = 50;
+
 $(async () => {
     if (compare(await getTavernHelperVersion(), '3.4.17', '<')) {
         toastr.warning(
@@ -292,6 +302,75 @@ $(async () => {
 
     exportGlobals();
     registerButtons();
+
+    // 对于旧聊天文件, 清理过早楼层的变量
+    if (
+        SillyTavern.chat.length > 要保留变量的最近楼层数 &&
+        _.has(SillyTavern.chat, [1, 'variables', 0, 'stat_data'])
+    ) {
+        cleanupVariablesInMessages(
+            0,
+            SillyTavern.chat.length - 1 - 要保留变量的最近楼层数,
+            快照间隔
+        );
+    }
+    eventOn(tavern_events.MESSAGE_RECEIVED, message_id => {
+        const old_message_id = message_id - 要保留变量的最近楼层数;
+        if (old_message_id > 0) {
+            cleanupVariablesInMessages(
+                Math.max(1, old_message_id - 2), // 因为没有监听 MESSAGE_SENT
+                old_message_id,
+                快照间隔
+            );
+        }
+    });
+    eventOn(
+        tavern_events.MESSAGE_DELETED,
+        _.debounce(async () => {
+            const last_message_id = SillyTavern.chat.length - 1;
+            const least_message_id = Math.max(1, last_message_id - 要保留变量的最近楼层数);
+            const most_message_id = SillyTavern.chat.findLastIndex(
+                chat_message => !_.has(chat_message, ['variables', 0, 'stat_data'])
+            );
+            if (least_message_id > most_message_id) {
+                return;
+            }
+
+            const snapshot_message_id = Math.floor(least_message_id / 快照间隔) * 快照间隔;
+            if (!_.has(SillyTavern.chat, [snapshot_message_id, 'variables', 0, 'stat_data'])) {
+                return;
+            }
+            const snapshot_chat_message = SillyTavern.chat[snapshot_message_id];
+
+            let message = SillyTavern.chat
+                .slice(snapshot_message_id + 1, least_message_id + 1)
+                .map(chat_message => chat_message.mes)
+                .join('\n');
+            let variables = _.cloneDeep(
+                snapshot_chat_message.variables![snapshot_chat_message.swipe_id ?? 0] as MvuData
+            );
+            for (let i = least_message_id; i <= most_message_id; i++) {
+                await updateVariables(message, variables);
+                message = SillyTavern.chat[i].mes;
+                variables = (await updateVariablesWith(
+                    data => {
+                        data.initialized_lorebooks = variables.initialized_lorebooks;
+                        data.stat_data = variables.stat_data;
+                        if (variables.schema !== undefined) {
+                            data.schema = variables.schema;
+                        } else {
+                            _.unset(data, 'schema');
+                        }
+                        data.display_data = variables.display_data;
+                        data.delta_data = variables.delta_data;
+                        return data;
+                    },
+                    { type: 'message', message_id: i }
+                )) as MvuData;
+            }
+        }, 1000)
+    );
+
     eventOn(tavern_events.GENERATION_STARTED, initCheck);
     eventOn(tavern_events.MESSAGE_SENT, initCheck);
     eventOn(tavern_events.MESSAGE_SENT, handleVariablesInMessage);
@@ -317,6 +396,13 @@ $(async () => {
             '[MVU]已更新独立配置界面'
         );
         store.settings.internal.已提醒更新了配置界面 = true;
+    }
+    if (store.settings.internal.已提醒自动清理旧变量功能 === false) {
+        toastr.info(
+            'MVU 现在会自动清理旧变量来减少聊天文件大小; 这不会影响你回退游玩以前的楼层',
+            '[MVU]已更新自动清理旧变量功能'
+        );
+        store.settings.internal.已提醒自动清理旧变量功能 = true;
     }
     toastr.info(
         `构建信息: ${__BUILD_DATE__ ?? 'Unknown'} (${__COMMIT_ID__ ?? 'Unknown'})`,
