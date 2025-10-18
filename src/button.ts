@@ -1,12 +1,121 @@
-import { getLastValidVariable, handleVariablesInMessage } from '@/function';
+import { getLastValidVariable, handleVariablesInMessage, updateVariables } from '@/function';
 import { cleanUpMetadata, reconcileAndApplySchema } from '@/schema';
 import { updateDescriptions } from '@/update_descriptions';
 import { MvuData } from '@/variable_def';
 import { createEmptyGameData, loadInitVarData } from '@/variable_init';
+import { useSettingsStore } from '@/settings';
 
 interface Button {
     name: string;
     function: (() => void) | (() => Promise<void>);
+}
+
+async function RecurVariable() {
+    const result = (await SillyTavern.callGenericPopup(
+        '<h4>当变量更新出现 required/extensible 相关问题时，可以尝试通过从过去的楼层重演解决</h4>请填写要进行重演的楼层 (如 10 为第 10 层, -1 为最新楼层)<br><strong>也就是出现问题的楼层</strong>',
+        SillyTavern.POPUP_TYPE.INPUT,
+        '-1'
+    )) as string | undefined;
+    if (!result) {
+        return;
+    }
+    let message_id = parseInt(result);
+    if (message_id === -1) {
+        message_id = getLastMessageId();
+    }
+    if (isNaN(message_id) || SillyTavern.chat[message_id] === undefined) {
+        toastr.error(`请输入有效的楼层数, 你输入的是 '${result}'`, '[MVU]楼层重演失败');
+        return;
+    }
+
+    const fnd_message = _(SillyTavern.chat)
+        .slice(0, message_id) // 不包括那个下标
+        .findLastIndex(chat_message => {
+            return (
+                _.get(chat_message, ['variables', chat_message.swipe_id ?? 0, 'stat_data']) !==
+                    undefined &&
+                _.get(chat_message, ['variables', chat_message.swipe_id ?? 0, 'schema']) !==
+                    undefined
+            ); //需要同时有 schema 和 stat_data
+        });
+    if (fnd_message === -1) {
+        toastr.error(`无法找到可以进行重演的楼层`, '[MVU]楼层重演失败');
+        return;
+    }
+    //让用户输入从哪个楼层开始重演
+    const result2 = (await SillyTavern.callGenericPopup(
+        `请填写从哪个楼层开始重演，找到最近的支持重演楼层为 [${fnd_message}]`,
+        SillyTavern.POPUP_TYPE.INPUT,
+        fnd_message.toString()
+    )) as string | undefined;
+    if (!result2) {
+        return;
+    }
+    const recur_intial_message_id = parseInt(result2);
+    if (isNaN(recur_intial_message_id)) {
+        toastr.error(`请输入有效的楼层数, 你输入的是 '${result2}'`, '[MVU]楼层重演失败');
+        return;
+    }
+
+    //进行重演
+    //这个变量将会在每次重演的过程一直更新。
+    const recur_variable_data = structuredClone(
+        getVariables({
+            type: 'message',
+            message_id: recur_intial_message_id,
+        })
+    );
+    if (
+        recur_variable_data === undefined ||
+        !_.has(recur_variable_data, 'stat_data') ||
+        !_.has(recur_variable_data, 'schema')
+    ) {
+        toastr.error(`请输入含变量信息的楼层, 你输入的是 '${result2}'`, '[MVU]楼层重演失败');
+        return;
+    }
+    let counter = 0;
+    for (let i = recur_intial_message_id + 1; i <= message_id; i++) {
+        const chat_message = SillyTavern.chat[i];
+        const index = i - (recur_intial_message_id + 1);
+
+        console.log(`正在重演 ${index}, 内容 ${chat_message.mes}`);
+        await updateVariables(chat_message.mes, recur_variable_data);
+
+        counter++;
+        if (counter % 50 === 0) {
+            toastr.info(
+                `处理变量中 (${counter} / ${message_id - recur_intial_message_id})`,
+                `[MVU]楼层重演`
+            );
+        }
+    }
+
+    const updater = (data: Record<string, any>) => {
+        data.stat_data = recur_variable_data.stat_data;
+        data.display_data = recur_variable_data.display_data;
+        data.delta_data = recur_variable_data.delta_data;
+        data.initialized_lorebooks = recur_variable_data.initialized_lorebooks;
+        data.schema = recur_variable_data.schema;
+        return data;
+    };
+    await updateVariablesWith(updater, { type: 'message', message_id: message_id });
+
+    SillyTavern.saveChat().then(() =>
+        toastr.success(
+            `已将 ${message_id} 层变量状态重演完毕，共重演 ${counter} 楼`,
+            '[MVU]楼层重演'
+        )
+    );
+    await setChatMessages(
+        [
+            {
+                message_id: message_id,
+            },
+        ],
+        {
+            refresh: 'affected',
+        }
+    );
 }
 
 export const buttons: Button[] = [
@@ -107,6 +216,94 @@ export const buttons: Button[] = [
 
             console.info('InitVar更新完成');
             toastr.success('InitVar描述已更新', '[MVU]', { timeOut: 3000 });
+        },
+    },
+    {
+        name: '快照楼层',
+        function: async () => {
+            const result = (await SillyTavern.callGenericPopup(
+                '<h4>设置快照楼层可以避免指定的楼层在清理操作中被移除变量信息</h4>请填写要保留变量信息的楼层 (如 10 为第 10 层)<br><strong>后续楼层的重演将可以从这一层开始</strong>',
+                SillyTavern.POPUP_TYPE.INPUT,
+                '10'
+            )) as string | undefined;
+            if (!result) {
+                return;
+            }
+            const message_id = parseInt(result);
+            if (isNaN(message_id)) {
+                toastr.error(`请输入有效的楼层数, 你输入的是 '${result}'`, '[MVU]配置楼层快照失败');
+                return;
+            }
+            const chat_message = SillyTavern.chat[message_id];
+            if (chat_message === undefined) {
+                toastr.error(`无效的楼层 '${result}'`, '[MVU]配置楼层快照失败');
+                return;
+            }
+            _.range(0, chat_message.swipes?.length ?? 1).forEach(i => {
+                if (chat_message?.variables?.[i] === undefined) {
+                    return;
+                }
+                chat_message.variables[i].snapshot = true;
+            });
+            SillyTavern.saveChat().then(() =>
+                toastr.success(`已将 ${message_id} 层配置为快照楼层`, '[MVU]配置楼层快照')
+            );
+        },
+    },
+    {
+        name: '重演楼层',
+        function: RecurVariable,
+    },
+    {
+        name: '清除旧楼层变量',
+        function: async () => {
+            const snapshot_interval = useSettingsStore().settings.快照保留间隔;
+            const result = (await SillyTavern.callGenericPopup(
+                `<h4>清除旧楼层变量信息以减小聊天文件大小避免手机崩溃</h4>请填写要保留变量信息的楼层数 (如 10 为保留最后 10 层，每 [${snapshot_interval}] 层保留一层作为快照)，每 <br><strong>注意: 你需要通过重演才能回退游玩到没保留变量信息的楼层</strong>`,
+                SillyTavern.POPUP_TYPE.INPUT,
+                '10'
+            )) as string | undefined;
+            if (!result) {
+                return;
+            }
+            const depth = parseInt(result);
+            if (isNaN(depth)) {
+                toastr.error(
+                    `请输入有效的楼层数, 你输入的是 '${result}'`,
+                    '[MVU]清理旧楼层变量失败'
+                );
+                return;
+            }
+            SillyTavern.chat.slice(1, -depth - 1).forEach((chat_message, index) => {
+                if (chat_message.variables === undefined) {
+                    return;
+                }
+                chat_message.variables = _.range(0, chat_message.swipes?.length ?? 1).map(i => {
+                    if (chat_message?.variables?.[i] === undefined) {
+                        return {};
+                    }
+                    if (_.get(chat_message.variables[i], 'snapshot') === true)
+                        return chat_message.variables[i];
+                    if ((index + 1) % snapshot_interval === 0) {
+                        chat_message.variables[i].snapshot = true;
+                        console.log(`将 [${index + 1}] 层作为快照楼层`);
+                        return chat_message.variables[i];
+                    }
+                    return _.omit(
+                        chat_message.variables[i],
+                        `stat_data`,
+                        `display_data`,
+                        `delta_data`,
+                        `schema`
+                    );
+                });
+            });
+            SillyTavern.saveChat().then(() =>
+                toastr.success(
+                    `已清理旧变量, 保留了最后 ${depth} 层的变量`,
+                    '[MVU]清理旧楼层变量成功'
+                )
+            );
         },
     },
 ];

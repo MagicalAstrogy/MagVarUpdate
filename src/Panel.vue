@@ -115,6 +115,25 @@
                 </template>
             </div>
 
+            <div class="flex-container flexFlowColumn">
+                <div>
+                    <strong>杂项配置</strong>
+                </div>
+
+                <div class="flex-container flexFlowColumn">
+                    <label for="mvu_snapshot_interval">快照保留间隔</label>
+                    <input
+                        id="mvu_snapshot_interval"
+                        v-model.number="store.settings.快照保留间隔"
+                        type="number"
+                        min="1"
+                        step="1"
+                        class="text_pole"
+                        placeholder="50"
+                    />
+                </div>
+            </div>
+
             <hr />
 
             <div class="flex-container flexFlowColumn">
