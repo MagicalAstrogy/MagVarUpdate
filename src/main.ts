@@ -1,4 +1,4 @@
-import { registerButtons } from '@/button';
+import { registerButtons, SetExtraModelSupported, SetReceivedCallbackFn } from '@/button';
 import { exportGlobals } from '@/export_globals';
 import { handleVariablesInCallback, handleVariablesInMessage, updateVariable } from '@/function';
 import {
@@ -94,6 +94,7 @@ async function onMessageReceived(message_id: number) {
     const settings = useSettingsStore().settings;
     duringExtraCall = false;
 
+    SetExtraModelSupported(isExtraModelSupported);
     if (
         settings.更新方式 === '随AI输出' ||
         (settings.额外模型解析配置.使用函数调用 && !isFunctionCallingSupported()) || //与上面相同的退化情况。
@@ -188,6 +189,7 @@ async function onMessageReceived(message_id: number) {
                               model: settings.额外模型解析配置.模型名称,
                           },
                           injects: promptInjects,
+                          max_chat_history: 2,
                           should_stream: settings.额外模型解析配置.使用函数调用,
                       }
             );
@@ -253,6 +255,8 @@ async function onMessageReceived(message_id: number) {
         SillyTavern.unregisterMacro('lastUserMessage');
         setFunctionCallEnabled(false);
         duringExtraCall = false;
+        //因为 generate 过程中会使得这个变量变为 false，影响重试。
+        isExtraModelSupported = true;
     }
 
     if (result !== '') {
@@ -303,6 +307,7 @@ $(async () => {
         tavern_events.MESSAGE_RECEIVED,
         is_jest_environment ? onMessageReceived : _.throttle(onMessageReceived, 3000)
     );
+    SetReceivedCallbackFn(onMessageReceived);
 
     eventOn(exported_events.INVOKE_MVU_PROCESS, handleVariablesInCallback);
     eventOn(exported_events.UPDATE_VARIABLE, updateVariable);
