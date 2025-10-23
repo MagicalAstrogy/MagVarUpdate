@@ -19,8 +19,9 @@ export function isFunctionCallingSupported() {
     return true;
 }
 
+declare const jest: any;
+declare const process: any;
+
 export const is_jest_environment =
-    // @ts-expect-error maybe undefined
     typeof jest !== 'undefined' ||
-    // @ts-expect-error maybe undefined
     (typeof process !== 'undefined' && process.env?.NODE_ENV === 'test');
