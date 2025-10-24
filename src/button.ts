@@ -2,6 +2,7 @@ import { getLastValidVariable, handleVariablesInMessage, updateVariables } from 
 import { cleanUpMetadata, reconcileAndApplySchema } from '@/schema';
 import { useSettingsStore } from '@/settings';
 import { updateDescriptions } from '@/update_descriptions';
+import { isFunctionCallingSupported } from '@/util';
 import { MvuData } from '@/variable_def';
 import { createEmptyGameData, loadInitVarData } from '@/variable_init';
 import { klona } from 'klona';
@@ -9,6 +10,73 @@ import { klona } from 'klona';
 interface Button {
     name: string;
     function: (() => void) | (() => Promise<void>);
+}
+
+type OnMessageReceived = (message_id: number) => Promise<void>;
+
+let msg_received_callback: OnMessageReceived;
+let is_extra_model_support: boolean;
+
+export function SetReceivedCallbackFn(fn: OnMessageReceived) {
+    msg_received_callback = fn;
+}
+export function SetExtraModelSupported(is_support: boolean) {
+    is_extra_model_support = is_support;
+}
+
+async function EmitVariableAnalysisJob() {
+    const settings = useSettingsStore().settings;
+    if (settings.更新方式 === '随AI输出') {
+        toastr.info(`当前配置没有启用额外模型解析，不需要进行此操作`, '[MVU]重试额外模型解析', {
+            timeOut: 3000,
+        });
+        return;
+    } else if (settings.额外模型解析配置.使用函数调用 && !isFunctionCallingSupported()) {
+        toastr.info(`当前配置指定的LLM不支持函数调用，不需要进行此操作`, '[MVU]重试额外模型解析', {
+            timeOut: 3000,
+        });
+        return;
+    } else if (!is_extra_model_support) {
+        toastr.info(
+            `当前角色卡不支持额外模型解析，或是刚刚刷新页面，无法进行此操作`,
+            '[MVU]重试额外模型解析',
+            {
+                timeOut: 3000,
+            }
+        );
+        return;
+    }
+    const last_msg = getLastMessageId();
+    const current_chatmsg = getChatMessages(last_msg).at(-1);
+    const current_chat_content = current_chatmsg?.message ?? '';
+    const begin_pos = current_chat_content.lastIndexOf('<UpdateVariable>');
+    if (begin_pos >= 0) {
+        //裁剪掉已有的变量更新块
+        const end_pos = current_chat_content.lastIndexOf('</UpdateVariable>');
+        let filtered_string = '';
+        if (end_pos === -1) {
+            //没有找到，裁剪掉后面的所有内容
+            filtered_string = current_chat_content.slice(0, begin_pos);
+        } else {
+            //找到了，还需要拼接 </UpdateVariable> 后的内容
+            filtered_string =
+                current_chat_content.slice(0, begin_pos) + current_chat_content.slice(end_pos + 17);
+        }
+        //更新聊天记录
+        await setChatMessages(
+            [
+                {
+                    message_id: last_msg,
+                    message: filtered_string,
+                },
+            ],
+            {
+                refresh: 'none',
+            }
+        );
+    }
+    await msg_received_callback(last_msg);
+    toastr.info(`解析完成`, '[MVU]重试额外模型解析');
 }
 
 async function RecurVariable() {
@@ -254,6 +322,10 @@ export const buttons: Button[] = [
     {
         name: '重演楼层',
         function: RecurVariable,
+    },
+    {
+        name: '重试额外模型解析',
+        function: EmitVariableAnalysisJob,
     },
     {
         name: '清除旧楼层变量',
