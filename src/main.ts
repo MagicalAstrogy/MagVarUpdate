@@ -314,6 +314,8 @@ $(async () => {
             快照间隔
         );
     }
+
+    // 清理旧楼层变量
     eventOn(tavern_events.MESSAGE_RECEIVED, message_id => {
         const old_message_id = message_id - 要保留变量的最近楼层数;
         if (old_message_id > 0) {
@@ -324,32 +326,38 @@ $(async () => {
             );
         }
     });
+
+    // 删除时恢复旧楼层变量
     eventOn(
         tavern_events.MESSAGE_DELETED,
         _.debounce(async () => {
             const last_message_id = SillyTavern.chat.length - 1;
-            const least_message_id = Math.max(1, last_message_id - 要保留变量的最近楼层数);
-            const most_message_id = SillyTavern.chat.findLastIndex(
+
+            const last_10th_message_id = Math.max(1, last_message_id - 触发恢复变量的最近楼层数);
+            const last_not_has_variable_message_id = SillyTavern.chat.findLastIndex(
                 chat_message => !_.has(chat_message, ['variables', 0, 'stat_data'])
             );
-            if (least_message_id > most_message_id) {
+            if (last_10th_message_id > last_not_has_variable_message_id) {
+                // 最近 10 楼都还有楼层变量
                 return;
             }
 
-            const snapshot_message_id = Math.floor(least_message_id / 快照间隔) * 快照间隔;
+            const last_20th_message_id = Math.max(1, last_message_id - 要保留变量的最近楼层数);
+            const snapshot_message_id = Math.floor(last_20th_message_id / 快照间隔) * 快照间隔;
             if (!_.has(SillyTavern.chat, [snapshot_message_id, 'variables', 0, 'stat_data'])) {
+                // 无法恢复
                 return;
             }
             const snapshot_chat_message = SillyTavern.chat[snapshot_message_id];
 
             let message = SillyTavern.chat
-                .slice(snapshot_message_id + 1, least_message_id + 1)
+                .slice(snapshot_message_id + 1, last_20th_message_id + 1)
                 .map(chat_message => chat_message.mes)
                 .join('\n');
             let variables = _.cloneDeep(
                 snapshot_chat_message.variables![snapshot_chat_message.swipe_id ?? 0] as MvuData
             );
-            for (let i = least_message_id; i <= most_message_id; i++) {
+            for (let i = last_20th_message_id; i <= last_not_has_variable_message_id; i++) {
                 await updateVariables(message, variables);
                 message = SillyTavern.chat[i].mes;
                 variables = (await updateVariablesWith(
