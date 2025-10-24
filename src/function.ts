@@ -16,6 +16,7 @@ import {
     variable_events,
     VariableData,
 } from '@/variable_def';
+import { klona } from 'klona';
 import * as math from 'mathjs';
 
 export function trimQuotesAndBackslashes(str: string): string {
@@ -417,7 +418,7 @@ export function parseParameters(paramsString: string): string[] {
 }
 
 export async function getLastValidVariable(message_id: number): Promise<MvuData> {
-    return (structuredClone(
+    return (klona(
         _(SillyTavern.chat)
             .slice(0, message_id + 1)
             .map(chat_message => _.get(chat_message, ['variables', chat_message.swipe_id ?? 0]))
@@ -480,7 +481,7 @@ export async function updateVariable(
         const currentValue = _.get(stat_data, path);
         if (Array.isArray(currentValue) && currentValue.length === 2) {
             //VWD 处理
-            const oldValue = _.cloneDeep(currentValue[0]);
+            const oldValue = klona(currentValue[0]);
             currentValue[0] = new_value;
             _.set(stat_data, path, currentValue);
             const reason_str = reason ? `(${reason})` : '';
@@ -500,7 +501,7 @@ export async function updateVariable(
                 );
             return true;
         } else {
-            const oldValue = _.cloneDeep(currentValue);
+            const oldValue = klona(currentValue);
             _.set(stat_data, path, new_value);
             const reason_str = reason ? `(${reason})` : '';
             const stringNewValue = trimQuotesAndBackslashes(JSON.stringify(new_value));
@@ -534,7 +535,7 @@ export async function updateVariables(
 ): Promise<boolean> {
     const out_is_modifed = false;
     // 深拷贝变量对象，生成状态快照，用于记录显示数据
-    const out_status: MvuData = _.cloneDeep(variables);
+    const out_status: MvuData = klona(variables);
     // 初始化增量状态对象，记录变化详情
     const delta_status: Partial<MvuData> = { stat_data: {} };
 
@@ -624,7 +625,7 @@ export async function updateVariables(
                     // 处理 ValueWithDescription<T> 类型，更新数组第一个元素
                     // 仅当旧值为数字且新值不为 null 时，才强制转换为数字
                     // 这允许将数字字段设置为 null (例如角色死亡后好感度变为 null)
-                    const oldValueCopy = _.cloneDeep(oldValue[0]);
+                    const oldValueCopy = klona(oldValue[0]);
                     oldValue[0] =
                         typeof oldValue[0] === 'number' && newValue !== null
                             ? Number(newValue)
@@ -744,7 +745,7 @@ export async function updateVariables(
                 // --- 所有验证通过，现在可以安全执行 ---
 
                 // 深拷贝旧值，防止直接修改影响后续比较
-                const oldValue = _.cloneDeep(_.get(variables.stat_data, path));
+                const oldValue = klona(_.get(variables.stat_data, path));
                 let successful = false; // 标记插入是否成功
 
                 if (command.args.length === 2) {
@@ -890,7 +891,7 @@ export async function updateVariables(
                     );
                     try {
                         //对新应用的 template 立刻处理模板。
-                        const currentDataClone = structuredClone(newValue);
+                        const currentDataClone = klona(newValue);
 
                         const newSchema = generateSchema(currentDataClone, targetSchema!);
                         _.merge(targetSchema, newSchema);
@@ -1017,7 +1018,7 @@ export async function updateVariables(
 
                     if (Array.isArray(collection)) {
                         // 目标是数组，删除指定元素
-                        const originalArray = _.cloneDeep(collection);
+                        const originalArray = klona(collection);
                         let indexToRemove = -1;
                         if (typeof targetToRemove === 'number') {
                             indexToRemove = targetToRemove;
@@ -1084,7 +1085,7 @@ export async function updateVariables(
                     continue;
                 }
                 // 获取当前值
-                const initialValue = _.cloneDeep(_.get(variables.stat_data, path));
+                const initialValue = klona(_.get(variables.stat_data, path));
                 const oldValue = _.get(variables.stat_data, path);
                 let valueToAdd = oldValue;
                 const isVWD =
@@ -1294,7 +1295,7 @@ export async function handleVariablesInCallback(
     if (in_out_variable_info.old_variables === undefined) {
         return;
     }
-    in_out_variable_info.new_variables = _.cloneDeep(in_out_variable_info.old_variables);
+    in_out_variable_info.new_variables = klona(in_out_variable_info.old_variables);
     const variables = in_out_variable_info.new_variables;
 
     const modified = await updateVariables(message_content, variables);

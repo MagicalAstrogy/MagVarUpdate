@@ -26,6 +26,7 @@ import {
 import { exported_events, ExtraLLMRequestContent, MvuData } from '@/variable_def';
 import { initCheck } from '@/variable_init';
 import { compare } from 'compare-versions';
+import { klona } from 'klona';
 
 /**
  * 标记是否处于额外模型解析
@@ -354,7 +355,7 @@ $(async () => {
                 .slice(snapshot_message_id + 1, last_20th_message_id + 1)
                 .map(chat_message => chat_message.mes)
                 .join('\n');
-            let variables = _.cloneDeep(
+            let variables = klona(
                 snapshot_chat_message.variables![snapshot_chat_message.swipe_id ?? 0] as MvuData
             );
             for (let i = last_20th_message_id; i <= last_not_has_variable_message_id; i++) {
