@@ -290,8 +290,6 @@ async function initialize() {
 
     await initSillyTavernVersion();
 
-    initPanel();
-
     const store = useSettingsStore();
 
     registerButtons();
@@ -334,16 +332,19 @@ async function destroy() {
         SillyTavern.ToolManager.parseToolCalls = vanilla_parseToolCalls;
         vanilla_parseToolCalls = null;
     }
-    destroyPanel();
     unregisterFunction();
     eventClearAll();
 }
 
 $(() => {
     exportGlobals();
+    initPanel();
     initialize();
 });
-$(window).on('pagehide', destroy);
+$(window).on('pagehide', async () => {
+    destroyPanel();
+    destroy();
+});
 let current_chat_id = SillyTavern.getCurrentChatId();
 function reloadScript(chat_id: string) {
     if (current_chat_id !== chat_id) {
