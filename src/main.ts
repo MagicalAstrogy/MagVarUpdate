@@ -280,15 +280,7 @@ async function onMessageReceived(message_id: number) {
     await handleVariablesInMessage(message_id);
 }
 
-let current_chat_id = SillyTavern.getCurrentChatId();
-function reloadScript(chat_id: string) {
-    if (current_chat_id !== chat_id) {
-        current_chat_id = chat_id;
-        window.location.reload();
-    }
-}
-
-$(async () => {
+async function initialize() {
     if (compare(await getTavernHelperVersion(), '3.4.17', '<')) {
         toastr.warning(
             '酒馆助手版本过低, 无法正常处理, 请更新至 3.4.17 或更高版本（建议保持酒馆助手最新）',
@@ -302,7 +294,6 @@ $(async () => {
 
     const store = useSettingsStore();
 
-    exportGlobals();
     registerButtons();
     eventOn(tavern_events.GENERATION_STARTED, initCheck);
     eventOn(tavern_events.MESSAGE_SENT, initCheck);
@@ -336,13 +327,28 @@ $(async () => {
         `构建信息: ${__BUILD_DATE__ ?? 'Unknown'} (${__COMMIT_ID__ ?? 'Unknown'})`,
         '[MVU]脚本加载成功'
     );
-});
+}
 
-$(window).on('pagehide', () => {
+async function destroy() {
     if (vanilla_parseToolCalls !== null) {
         SillyTavern.ToolManager.parseToolCalls = vanilla_parseToolCalls;
         vanilla_parseToolCalls = null;
     }
     destroyPanel();
     unregisterFunction();
+    eventClearAll();
+}
+
+$(() => {
+    exportGlobals();
+    initialize();
 });
+$(window).on('pagehide', destroy);
+let current_chat_id = SillyTavern.getCurrentChatId();
+function reloadScript(chat_id: string) {
+    if (current_chat_id !== chat_id) {
+        current_chat_id = chat_id;
+        destroy();
+        initialize();
+    }
+}
