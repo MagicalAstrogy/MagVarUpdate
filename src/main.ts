@@ -280,6 +280,14 @@ async function onMessageReceived(message_id: number) {
     await handleVariablesInMessage(message_id);
 }
 
+let current_chat_id = SillyTavern.getCurrentChatId();
+function reloadScript(chat_id: string) {
+    if (current_chat_id !== chat_id) {
+        current_chat_id = chat_id;
+        window.location.reload();
+    }
+}
+
 $(async () => {
     if (compare(await getTavernHelperVersion(), '3.4.17', '<')) {
         toastr.warning(
@@ -312,6 +320,7 @@ $(async () => {
     eventOn(exported_events.INVOKE_MVU_PROCESS, handleVariablesInCallback);
     eventOn(exported_events.UPDATE_VARIABLE, updateVariable);
     eventOn(tavern_events.CHAT_COMPLETION_SETTINGS_READY, overrideToolRequest);
+    eventOn(tavern_events.CHAT_CHANGED, reloadScript);
 
     _.set(window.parent, 'handleVariablesInMessage', handleVariablesInMessage);
     registerFunction();
