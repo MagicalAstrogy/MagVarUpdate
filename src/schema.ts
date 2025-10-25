@@ -1,14 +1,15 @@
 import {
-    SchemaNode,
-    StatData,
+    ArraySchemaNode,
     isArraySchema,
     isObjectSchema,
-    ObjectSchemaNode,
     MvuData,
-    ArraySchemaNode,
-    TemplateType,
+    ObjectSchemaNode,
     RootAdditionalProps,
+    SchemaNode,
+    StatData,
+    TemplateType,
 } from '@/variable_def';
+import { klona } from 'klona';
 
 // 定义魔法字符串为常量，便于管理和引用
 export const EXTENSIBLE_MARKER = '$__META_EXTENSIBLE__$';
@@ -240,7 +241,7 @@ export function reconcileAndApplySchema(variables: MvuData) {
     console.log('Reconciling schema with current data state...');
 
     // 1. 深拷贝数据，以防 generateSchema 修改原始数据（例如删除 $meta）
-    const currentDataClone = _.cloneDeep(variables.stat_data);
+    const currentDataClone = klona(variables.stat_data);
 
     // 2. 使用改进后的 generateSchema 生成一个与当前数据完全匹配的新 Schema，
     //    并在此过程中从旧 Schema 继承元数据。

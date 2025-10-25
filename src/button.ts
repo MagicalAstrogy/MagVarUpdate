@@ -1,10 +1,11 @@
 import { getLastValidVariable, handleVariablesInMessage, updateVariables } from '@/function';
 import { cleanUpMetadata, reconcileAndApplySchema } from '@/schema';
+import { useSettingsStore } from '@/settings';
 import { updateDescriptions } from '@/update_descriptions';
+import { isFunctionCallingSupported } from '@/util';
 import { MvuData } from '@/variable_def';
 import { createEmptyGameData, loadInitVarData } from '@/variable_init';
-import { useSettingsStore } from '@/settings';
-import { isFunctionCallingSupported } from '@/util';
+import { klona } from 'klona';
 
 interface Button {
     name: string;
@@ -51,7 +52,7 @@ async function EmitVariableAnalysisJob() {
     const begin_pos = current_chat_content.lastIndexOf('<UpdateVariable>');
     if (begin_pos >= 0) {
         //裁剪掉已有的变量更新块
-        let end_pos = current_chat_content.lastIndexOf('</UpdateVariable>');
+        const end_pos = current_chat_content.lastIndexOf('</UpdateVariable>');
         let filtered_string = '';
         if (end_pos === -1) {
             //没有找到，裁剪掉后面的所有内容
@@ -127,7 +128,7 @@ async function RecurVariable() {
 
     //进行重演
     //这个变量将会在每次重演的过程一直更新。
-    const recur_variable_data = structuredClone(
+    const recur_variable_data = klona(
         getVariables({
             type: 'message',
             message_id: recur_intial_message_id,
@@ -245,7 +246,7 @@ export const buttons: Button[] = [
             }
 
             // 3. 产生新变量，以 latest_init_data 为基础，合并入 latest_msg_data 的内容
-            //此处 latest_init_data 内不存在复杂类型，因此可以采用 structuredClone
+            //此处 latest_init_data 内不存在复杂类型，因此可以采用 klona
             const merged_data: Record<string, any> = { stat_data: undefined, schema: undefined };
             merged_data.stat_data = _.merge(
                 {},
@@ -258,7 +259,7 @@ export const buttons: Button[] = [
                 latest_init_data.initialized_lorebooks,
                 latest_msg_data.initialized_lorebooks
             );
-            merged_data.display_data = structuredClone(merged_data.stat_data);
+            merged_data.display_data = klona(merged_data.stat_data);
             merged_data.delta_data = latest_msg_data.delta_data;
 
             // 4-5. 遍历并更新描述字段
