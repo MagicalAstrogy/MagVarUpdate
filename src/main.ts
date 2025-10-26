@@ -18,6 +18,7 @@ import {
 import { destroyPanel, initPanel } from '@/panel';
 import { useSettingsStore } from '@/settings';
 import {
+    findLastValidMessage,
     getSillyTavernVersion,
     initSillyTavernVersion,
     is_jest_environment,
@@ -286,11 +287,6 @@ async function onMessageReceived(message_id: number) {
     }
     await handleVariablesInMessage(message_id);
 }
-
-const 要保留变量的最近楼层数 = 20;
-const 触发恢复变量的最近楼层数 = 10;
-const 快照间隔 = 50;
-
 async function initialize() {
     if (compare(await getTavernHelperVersion(), '3.4.17', '<')) {
         toastr.warning(
@@ -304,81 +300,106 @@ async function initialize() {
     const store = useSettingsStore();
 
     registerButtons();
+    const { 要保留变量的最近楼层数, 启用 } = store.settings.auto_cleanup;
 
     // 对于旧聊天文件, 清理过早楼层的变量
     if (
+        启用 &&
         SillyTavern.chat.length > 要保留变量的最近楼层数 &&
         _.has(SillyTavern.chat, [1, 'variables', 0, 'stat_data'])
     ) {
-        cleanupVariablesInMessages(
-            0,
+        const counter = cleanupVariablesInMessages(
+            1, //0 层永不清理，以保证始终有快照能力。
             SillyTavern.chat.length - 1 - 要保留变量的最近楼层数,
-            快照间隔
+            store.settings.快照保留间隔
         );
-    }
-
-    // 清理旧楼层变量
-    eventOn(tavern_events.MESSAGE_RECEIVED, message_id => {
-        const old_message_id = message_id - 要保留变量的最近楼层数;
-        if (old_message_id > 0) {
-            cleanupVariablesInMessages(
-                Math.max(1, old_message_id - 2), // 因为没有监听 MESSAGE_SENT
-                old_message_id,
-                快照间隔
-            );
+        if (counter > 0) {
+            toastr.info(`已清理老聊天记录中的 ${counter} 条消息`, '[MVU]自动清理', {
+                timeOut: 1000,
+            });
         }
-    });
+    }
 
     // 删除时恢复旧楼层变量
     eventOn(
         tavern_events.MESSAGE_DELETED,
         _.debounce(async () => {
+            //默认参数下，debounce 是尾触发的，在这个场景意味着所有删除操作结束后，才会进行恢复操作
             const last_message_id = SillyTavern.chat.length - 1;
+
+            const store = useSettingsStore();
+            const { 触发恢复变量的最近楼层数 } = store.settings.auto_cleanup;
 
             const last_10th_message_id = Math.max(1, last_message_id - 触发恢复变量的最近楼层数);
             const last_not_has_variable_message_id = SillyTavern.chat.findLastIndex(
-                chat_message => !_.has(chat_message, ['variables', 0, 'stat_data'])
+                chat_message =>
+                    !_.has(chat_message, ['variables', chat_message.swipe_id ?? 0, 'stat_data']) ||
+                    !_.has(chat_message, ['variables', chat_message.swipe_id ?? 0, 'schema'])
             );
             if (last_10th_message_id > last_not_has_variable_message_id) {
                 // 最近 10 楼都还有楼层变量
+                console.info(`最近 ${触发恢复变量的最近楼层数} 层都包含变量数据，不需要进行恢复。`);
                 return;
             }
 
             const last_20th_message_id = Math.max(1, last_message_id - 要保留变量的最近楼层数);
-            const snapshot_message_id = Math.floor(last_20th_message_id / 快照间隔) * 快照间隔;
-            if (!_.has(SillyTavern.chat, [snapshot_message_id, 'variables', 0, 'stat_data'])) {
+            const snapshot_message_id = findLastValidMessage(last_20th_message_id);
+            if (
+                snapshot_message_id === -1 ||
+                !_.has(SillyTavern.chat, [snapshot_message_id, 'variables', 0, 'stat_data'])
+            ) {
                 // 无法恢复
+                toastr.warning(
+                    `在 0 ~ ${last_20th_message_id} 层找不到有效的变量信息，无法进行楼层变量恢复`,
+                    '[MVU]恢复旧楼层变量'
+                );
                 return;
             }
             const snapshot_chat_message = SillyTavern.chat[snapshot_message_id];
 
-            let message = SillyTavern.chat
-                .slice(snapshot_message_id + 1, last_20th_message_id + 1)
-                .map(chat_message => chat_message.mes)
-                .join('\n');
+            toastr.info(`恢复变量内容中...`, '[MVU]恢复旧楼层变量', { timeOut: 1000 });
+
+            //需要一条一条的进行重演，才能保证 start/end 事件符合预期地触发，保证 "同一轮次内最多增加10" 类逻辑能正常运行。
+            let message = SillyTavern.chat[snapshot_message_id + 1].mes;
             let variables = klona(
                 snapshot_chat_message.variables![snapshot_chat_message.swipe_id ?? 0] as MvuData
             );
-            for (let i = last_20th_message_id; i <= last_not_has_variable_message_id; i++) {
-                await updateVariables(message, variables);
+            for (let i = snapshot_message_id + 1; i <= last_not_has_variable_message_id; i++) {
                 message = SillyTavern.chat[i].mes;
-                variables = (await updateVariablesWith(
-                    data => {
-                        data.initialized_lorebooks = variables.initialized_lorebooks;
-                        data.stat_data = variables.stat_data;
-                        if (variables.schema !== undefined) {
-                            data.schema = variables.schema;
-                        } else {
-                            _.unset(data, 'schema');
-                        }
-                        data.display_data = variables.display_data;
-                        data.delta_data = variables.delta_data;
-                        return data;
-                    },
-                    { type: 'message', message_id: i }
-                )) as MvuData;
+                //每一层被赋值的变量状态是当前层的变量更新已处理的状态
+                await updateVariables(message, variables);
+                const chat_message = SillyTavern.chat[i];
+                const is_valid_message =
+                    _.has(chat_message, ['variables', chat_message.swipe_id ?? 0, 'stat_data']) &&
+                    _.has(chat_message, ['variables', chat_message.swipe_id ?? 0, 'schema']);
+
+                //如果原本当前 message_id 是一个快照，那么不对它进行变更。
+                //原因是如果一切逻辑正常运行，assert这个楼层的内容应该是与重演一致的。
+                //在这里不进行修改，之后如果出现问题了，可以通过传递聊天记录，来比较轻松的定位到。
+                if (i >= last_20th_message_id && !is_valid_message) {
+                    await updateVariablesWith(
+                        data => {
+                            data.initialized_lorebooks = variables.initialized_lorebooks;
+                            data.stat_data = variables.stat_data;
+                            if (variables.schema !== undefined) {
+                                data.schema = variables.schema;
+                            } else {
+                                _.unset(data, 'schema');
+                            }
+                            data.display_data = variables.display_data;
+                            data.delta_data = variables.delta_data;
+                            return data;
+                        },
+                        { type: 'message', message_id: i }
+                    );
+                    //因为原本variables 里面的对象引用，已经用在对应楼层的变量中了，所以需要重新进行一次深复制。
+                    variables = klona(variables);
+                }
+                // 在没有进行 update 的场合，也就不需要重新进行深复制了
             }
-        }, 1000)
+
+            toastr.info(`恢复完成。`, '[MVU]恢复旧楼层变量', { timeOut: 3000 });
+        }, 2000)
     );
 
     eventOn(tavern_events.GENERATION_STARTED, initCheck);
@@ -402,6 +423,27 @@ async function initialize() {
     _.set(window.parent, 'handleVariablesInMessage', handleVariablesInMessage);
     registerFunction();
 
+    // 清理旧楼层变量，这个操作的优先级需要比更新操作低，保证在所有事情做完之后，再进行变量的清理。
+    eventOn(tavern_events.MESSAGE_RECEIVED, message_id => {
+        const store = useSettingsStore();
+        const { 启用 } = store.settings.auto_cleanup;
+        if (!启用) {
+            return;
+        }
+        if (SillyTavern.chat.length % 5 !== 0) {
+            return; // 每 5 层执行一次清理。
+        }
+        const old_message_id = message_id - 要保留变量的最近楼层数;
+        if (old_message_id > 0) {
+            const counter = cleanupVariablesInMessages(
+                Math.max(1, old_message_id - 2), // 因为没有监听 MESSAGE_SENT
+                old_message_id,
+                store.settings.快照保留间隔
+            );
+            console.log(`[MVU]已清理 ${counter} 层的消息`);
+        }
+    });
+
     if (store.settings.internal.已提醒更新了配置界面 === false) {
         toastr.info(
             '配置界面位于酒馆扩展界面-「正则」下方, 请点开了解新功能或自定义配置',
@@ -411,7 +453,7 @@ async function initialize() {
     }
     if (store.settings.internal.已提醒自动清理旧变量功能 === false) {
         toastr.info(
-            'MVU 现在会自动清理旧变量来减少聊天文件大小; 这不会影响你回退游玩以前的楼层',
+            'MVU 现在可以自动清理旧变量来减少聊天文件大小; 这不会影响你回退游玩以前的楼层；在设置中开启 `变量自动清理` 启用',
             '[MVU]已更新自动清理旧变量功能'
         );
         store.settings.internal.已提醒自动清理旧变量功能 = true;

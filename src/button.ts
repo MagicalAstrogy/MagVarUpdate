@@ -2,7 +2,7 @@ import { getLastValidVariable, handleVariablesInMessage, updateVariables } from 
 import { cleanUpMetadata, reconcileAndApplySchema } from '@/schema';
 import { useSettingsStore } from '@/settings';
 import { updateDescriptions } from '@/update_descriptions';
-import { isFunctionCallingSupported } from '@/util';
+import { findLastValidMessage, isFunctionCallingSupported } from '@/util';
 import { MvuData } from '@/variable_def';
 import { createEmptyGameData, loadInitVarData } from '@/variable_init';
 import { klona } from 'klona';
@@ -97,16 +97,7 @@ async function RecurVariable() {
         return;
     }
 
-    const fnd_message = _(SillyTavern.chat)
-        .slice(0, message_id) // 不包括那个下标
-        .findLastIndex(chat_message => {
-            return (
-                _.get(chat_message, ['variables', chat_message.swipe_id ?? 0, 'stat_data']) !==
-                    undefined &&
-                _.get(chat_message, ['variables', chat_message.swipe_id ?? 0, 'schema']) !==
-                    undefined
-            ); //需要同时有 schema 和 stat_data
-        });
+    const fnd_message = findLastValidMessage(message_id);
     if (fnd_message === -1) {
         toastr.error(`无法找到可以进行重演的楼层`, '[MVU]楼层重演失败');
         return;
@@ -143,6 +134,12 @@ async function RecurVariable() {
         return;
     }
     let counter = 0;
+    /**
+     * 对输入的楼层变量进行重演，进行重演的消息内容为 (recur_intial_message_id, recur_end_message_id]
+     * @param recur_variable_data 楼层变量(MvuData)
+     * @param recur_intial_message_id 开始重演的楼层id(重演过程不会重演这个楼层的变动)
+     * @param message_id 结束重演的楼层id(重演过程中会重演这个楼层的变动)
+     */
     for (let i = recur_intial_message_id + 1; i <= message_id; i++) {
         const chat_message = SillyTavern.chat[i];
         const index = i - (recur_intial_message_id + 1);

@@ -115,6 +115,8 @@
                 </template>
             </div>
 
+            <hr />
+
             <div class="flex-container flexFlowColumn">
                 <div>
                     <strong>杂项配置</strong>
@@ -132,6 +134,41 @@
                         placeholder="50"
                     />
                 </div>
+
+                <div class="flex-container flexFlowColumn">
+                    <label for="mvu_snapshot_interval">要保留变量的最近楼层数</label>
+                    <input
+                        id="mvu_snapshot_interval"
+                        v-model.number="store.settings.auto_cleanup.要保留变量的最近楼层数"
+                        type="number"
+                        min="1"
+                        step="1"
+                        class="text_pole"
+                        placeholder="50"
+                    />
+                </div>
+
+                <div class="flex-container flexFlowColumn">
+                    <label for="mvu_snapshot_interval">触发恢复变量的最近楼层数</label>
+                    <input
+                        id="mvu_snapshot_interval"
+                        v-model.number="store.settings.auto_cleanup.触发恢复变量的最近楼层数"
+                        type="number"
+                        min="1"
+                        step="1"
+                        class="text_pole"
+                        placeholder="50"
+                    />
+                </div>
+
+                <label class="checkbox_label" for="mvu_auto_clean_checkbox">
+                    <input
+                        id="mvu_auto_clean_checkbox"
+                        v-model="store.settings.auto_cleanup.启用"
+                        type="checkbox"
+                    />
+                    <span>变量自动清理</span>
+                </label>
             </div>
 
             <hr />
