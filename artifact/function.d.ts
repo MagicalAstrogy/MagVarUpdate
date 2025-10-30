@@ -1,4 +1,4 @@
-import { VariableData, MvuData, TemplateType } from '@/variable_def';
+import { MvuData, TemplateType, VariableData } from '@/variable_def';
 export declare function trimQuotesAndBackslashes(str: string): string;
 /**
  * 应用模板到值上，值的属性优先级高于模板
@@ -61,4 +61,6 @@ export declare function updateVariable(stat_data: Record<string, any>, path: str
 export declare function updateVariables(current_message_content: string, variables: MvuData): Promise<boolean>;
 export declare function handleVariablesInMessage(message_id: number): Promise<void>;
 export declare function handleVariablesInCallback(message_content: string, in_out_variable_info: VariableData): Promise<void>;
+/** 清理 `[start_message_id, end_message_id]` 内, 楼层号不为 `snap_interval` 倍数的楼层变量 */
+export declare function cleanupVariablesInMessages(start_message_id: number, end_message_id: number, snap_interval: number): number;
 export {};

@@ -1,4 +1,4 @@
-import { SchemaNode, MvuData } from '@/variable_def';
+import { MvuData, SchemaNode } from '@/variable_def';
 export declare const EXTENSIBLE_MARKER = "$__META_EXTENSIBLE__$";
 /**
  * 递归地为数据对象生成一个模式。
