@@ -3,6 +3,7 @@ import { getLastValidVariable, updateVariables } from '@/function';
 import { cleanUpMetadata, EXTENSIBLE_MARKER, generateSchema } from '@/schema';
 import { isObjectSchema, MvuData, RootAdditionalProps, SchemaNode } from '@/variable_def';
 import JSON5 from 'json5';
+import { klona } from 'klona';
 import TOML from 'toml';
 
 type LorebookEntry = {
@@ -84,7 +85,7 @@ export async function initCheck() {
     // 在所有 lorebook 初始化完成后，生成最终的模式
     if (is_updated || !variables.schema || _.isEmpty(variables.schema)) {
         // 1. 克隆数据用于 Schema 生成
-        const dataForSchema = structuredClone(variables.stat_data);
+        const dataForSchema = klona(variables.stat_data);
         // 2. generateSchema 会读取并移除克隆体中的标记，生成正确的 schema
         // 对于增量场景，会以之前的 schema 为基础生成。
         const generated_schema: SchemaNode & RootAdditionalProps = generateSchema(
@@ -128,8 +129,15 @@ export async function initCheck() {
                 // last_msg 不一定存在 message_id
                 message_id: 0,
                 swipes_data: await Promise.all(
-                    last_msg.swipes!.map(async swipe => {
-                        const current_data = structuredClone(variables);
+                    last_msg.swipes!.map(async (swipe, index) => {
+                        let vanilla_variable_data: Record<string, any> = klona(
+                            last_msg.swipes_data[index]
+                        );
+                        if (vanilla_variable_data === undefined) {
+                            vanilla_variable_data = {};
+                        }
+
+                        const current_data = _.merge(vanilla_variable_data, variables);
                         // 此处调用的是新版 updateVariables，它将支持更多命令
                         // 不再需要手动调用 substitudeMacros，updateVariables 会处理
                         await updateVariables(swipe, current_data);

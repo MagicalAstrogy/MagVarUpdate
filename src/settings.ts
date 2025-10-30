@@ -22,9 +22,17 @@ const Settings = z
             })
             .prefault({}),
         快照保留间隔: z.number().default(50),
+        auto_cleanup: z
+            .object({
+                启用: z.boolean().default(false),
+                要保留变量的最近楼层数: z.number().default(20),
+                触发恢复变量的最近楼层数: z.number().default(10),
+            })
+            .prefault({}),
         internal: z
             .object({
                 已提醒更新了配置界面: z.boolean().default(false),
+                已提醒自动清理旧变量功能: z.boolean().default(false),
             })
             .prefault({}),
     })

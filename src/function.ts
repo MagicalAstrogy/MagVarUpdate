@@ -1,22 +1,23 @@
 import {
-    variable_events,
-    VariableData,
-    MvuData,
-    TemplateType,
-    assertVWD,
-    isArraySchema,
-    isObjectSchema,
-    isValueWithDescriptionStatData,
-} from '@/variable_def';
-import * as math from 'mathjs';
-
-import {
     cleanUpMetadata,
     generateSchema,
     getSchemaForPath,
     reconcileAndApplySchema,
 } from '@/schema';
 import { useSettingsStore } from '@/settings';
+import { saveChatDebounced } from '@/util';
+import {
+    assertVWD,
+    isArraySchema,
+    isObjectSchema,
+    isValueWithDescriptionStatData,
+    MvuData,
+    TemplateType,
+    variable_events,
+    VariableData,
+} from '@/variable_def';
+import { klona } from 'klona';
+import * as math from 'mathjs';
 
 export function trimQuotesAndBackslashes(str: string): string {
     if (!_.isString(str)) return str;
@@ -417,7 +418,7 @@ export function parseParameters(paramsString: string): string[] {
 }
 
 export async function getLastValidVariable(message_id: number): Promise<MvuData> {
-    return (structuredClone(
+    return (klona(
         _(SillyTavern.chat)
             .slice(0, message_id + 1)
             .map(chat_message => _.get(chat_message, ['variables', chat_message.swipe_id ?? 0]))
@@ -480,7 +481,7 @@ export async function updateVariable(
         const currentValue = _.get(stat_data, path);
         if (Array.isArray(currentValue) && currentValue.length === 2) {
             //VWD 处理
-            const oldValue = _.cloneDeep(currentValue[0]);
+            const oldValue = klona(currentValue[0]);
             currentValue[0] = new_value;
             _.set(stat_data, path, currentValue);
             const reason_str = reason ? `(${reason})` : '';
@@ -500,7 +501,7 @@ export async function updateVariable(
                 );
             return true;
         } else {
-            const oldValue = _.cloneDeep(currentValue);
+            const oldValue = klona(currentValue);
             _.set(stat_data, path, new_value);
             const reason_str = reason ? `(${reason})` : '';
             const stringNewValue = trimQuotesAndBackslashes(JSON.stringify(new_value));
@@ -534,7 +535,7 @@ export async function updateVariables(
 ): Promise<boolean> {
     const out_is_modifed = false;
     // 深拷贝变量对象，生成状态快照，用于记录显示数据
-    const out_status: MvuData = _.cloneDeep(variables);
+    const out_status: MvuData = klona(variables);
     // 初始化增量状态对象，记录变化详情
     const delta_status: Partial<MvuData> = { stat_data: {} };
 
@@ -544,10 +545,10 @@ export async function updateVariables(
     // 使用重构后的 extractCommands 提取所有命令
     const commands = extractCommands(processed_message_content);
     // 触发变量更新开始事件，通知外部系统
-    variables.stat_data.$internal = {
+    _.set(variables.stat_data, '$internal', {
         display_data: out_status.stat_data,
         delta_data: delta_status.stat_data || {},
-    };
+    });
     //@ts-expect-error 这里会有一个variables类型的不一致，一个内部类型，一个外部类型。
     await eventEmit(variable_events.VARIABLE_UPDATE_STARTED, variables);
     let variable_modified = false;
@@ -624,7 +625,7 @@ export async function updateVariables(
                     // 处理 ValueWithDescription<T> 类型，更新数组第一个元素
                     // 仅当旧值为数字且新值不为 null 时，才强制转换为数字
                     // 这允许将数字字段设置为 null (例如角色死亡后好感度变为 null)
-                    const oldValueCopy = _.cloneDeep(oldValue[0]);
+                    const oldValueCopy = klona(oldValue[0]);
                     oldValue[0] =
                         typeof oldValue[0] === 'number' && newValue !== null
                             ? Number(newValue)
@@ -744,7 +745,7 @@ export async function updateVariables(
                 // --- 所有验证通过，现在可以安全执行 ---
 
                 // 深拷贝旧值，防止直接修改影响后续比较
-                const oldValue = _.cloneDeep(_.get(variables.stat_data, path));
+                const oldValue = klona(_.get(variables.stat_data, path));
                 let successful = false; // 标记插入是否成功
 
                 if (command.args.length === 2) {
@@ -890,7 +891,7 @@ export async function updateVariables(
                     );
                     try {
                         //对新应用的 template 立刻处理模板。
-                        const currentDataClone = structuredClone(newValue);
+                        const currentDataClone = klona(newValue);
 
                         const newSchema = generateSchema(currentDataClone, targetSchema!);
                         _.merge(targetSchema, newSchema);
@@ -1017,7 +1018,7 @@ export async function updateVariables(
 
                     if (Array.isArray(collection)) {
                         // 目标是数组，删除指定元素
-                        const originalArray = _.cloneDeep(collection);
+                        const originalArray = klona(collection);
                         let indexToRemove = -1;
                         if (typeof targetToRemove === 'number') {
                             indexToRemove = targetToRemove;
@@ -1084,7 +1085,7 @@ export async function updateVariables(
                     continue;
                 }
                 // 获取当前值
-                const initialValue = _.cloneDeep(_.get(variables.stat_data, path));
+                const initialValue = klona(_.get(variables.stat_data, path));
                 const oldValue = _.get(variables.stat_data, path);
                 let valueToAdd = oldValue;
                 const isVWD =
@@ -1213,7 +1214,7 @@ export async function updateVariables(
     //@ts-expect-error 这里会有一个variables类型的不一致，一个内部类型，一个外部类型。
     await eventEmit(variable_events.VARIABLE_UPDATE_ENDED, variables);
     //在结束事件中也可能设置变量
-    delete variables.stat_data.$internal;
+    _.unset(variables.stat_data, '$internal');
 
     // 在所有命令执行完毕后，如果数据有任何变动，则执行一次 Schema 调和
     if (variable_modified) {
@@ -1241,9 +1242,9 @@ export async function handleVariablesInMessage(message_id: number) {
 
     let message_content = chat_message.message;
 
-    if (message_content.length < 5)
-        //MESSAGE_RECEIVED会递交一个 "..." 的消息
+    if (chat_message.role === 'assistant' && message_content.length < 5) {
         return;
+    }
     const request_message_id = message_id === 0 ? 0 : message_id - 1;
     const variables = await getLastValidVariable(request_message_id);
     if (!_.has(variables, 'stat_data')) {
@@ -1253,15 +1254,15 @@ export async function handleVariablesInMessage(message_id: number) {
 
     const has_variable_modified = await updateVariables(message_content, variables);
     const updater = (data: Record<string, any>) => {
-        data.stat_data = variables.stat_data;
-        data.display_data = variables.display_data;
-        data.delta_data = variables.delta_data;
         data.initialized_lorebooks = variables.initialized_lorebooks;
+        data.stat_data = variables.stat_data;
         if (variables.schema !== undefined) {
             data.schema = variables.schema;
         } else {
-            delete data.schema;
+            _.unset(data, 'schema');
         }
+        data.display_data = variables.display_data;
+        data.delta_data = variables.delta_data;
         return data;
     };
     if (has_variable_modified) {
@@ -1294,11 +1295,59 @@ export async function handleVariablesInCallback(
     if (in_out_variable_info.old_variables === undefined) {
         return;
     }
-    in_out_variable_info.new_variables = _.cloneDeep(in_out_variable_info.old_variables);
+    in_out_variable_info.new_variables = klona(in_out_variable_info.old_variables);
     const variables = in_out_variable_info.new_variables;
 
     const modified = await updateVariables(message_content, variables);
     //如果没有修改，则不产生 newVariable
-    if (!modified) delete in_out_variable_info.new_variables;
+    if (!modified) {
+        _.unset(in_out_variable_info, 'new_variables');
+    }
     return;
+}
+
+/** 清理 `[start_message_id, end_message_id]` 内, 楼层号不为 `snap_interval` 倍数的楼层变量 */
+export function cleanupVariablesInMessages(
+    start_message_id: number,
+    end_message_id: number,
+    snap_interval: number
+) {
+    let counter = 0;
+    _(SillyTavern.chat)
+        .slice(start_message_id, end_message_id + 1)
+        .forEach((chat_message, msg_index) => {
+            if (chat_message.variables === undefined) {
+                return;
+            }
+            //每个楼层只在counter 中统计一次。
+            let chat_flag = false;
+            chat_message.variables = _.range(0, chat_message.swipes?.length ?? 1).map(i => {
+                if (chat_message?.variables?.[i] === undefined) {
+                    return {};
+                }
+                if (_.get(chat_message?.variables?.[i], 'snapshot') === true) {
+                    return chat_message.variables[i];
+                }
+                if ((start_message_id + msg_index) % snap_interval === 0) {
+                    //需要对已经忽略的snapshot 楼层进行标记
+                    //原因是考虑到用户会修改楼层间隔，比如从 50-> 70 ，因为最小公倍数的原因，会导致之前的楼层实质上 350 层一个快照，有较大风险
+                    _.set(chat_message, ['variables', i, 'snapshot'], true);
+                    return chat_message.variables[i];
+                }
+                if (!chat_flag) {
+                    chat_flag = true;
+                    ++counter;
+                }
+                return _.omit(
+                    chat_message.variables[i],
+                    `initialized_lorebooks`,
+                    `stat_data`,
+                    `display_data`,
+                    `delta_data`,
+                    `schema`
+                );
+            });
+        });
+    saveChatDebounced();
+    return counter;
 }
