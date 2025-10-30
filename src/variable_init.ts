@@ -129,8 +129,15 @@ export async function initCheck() {
                 // last_msg 不一定存在 message_id
                 message_id: 0,
                 swipes_data: await Promise.all(
-                    last_msg.swipes!.map(async swipe => {
-                        const current_data = klona(variables);
+                    last_msg.swipes!.map(async (swipe, index) => {
+                        let vanilla_variable_data: Record<string, any> = klona(
+                            last_msg.swipes_data[index]
+                        );
+                        if (vanilla_variable_data === undefined) {
+                            vanilla_variable_data = {};
+                        }
+
+                        const current_data = _.merge(vanilla_variable_data, variables);
                         // 此处调用的是新版 updateVariables，它将支持更多命令
                         // 不再需要手动调用 substitudeMacros，updateVariables 会处理
                         await updateVariables(swipe, current_data);
