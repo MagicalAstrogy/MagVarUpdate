@@ -56,6 +56,11 @@ export type CommandInfo = {
     };
 }[CommandNames];
 
+export type UpdateContext = {
+    variables: MvuData;
+    message_content: string;
+};
+
 function createMVU() {
     const mvu = {
         /**
@@ -98,18 +103,39 @@ function createMVU() {
          * - 典型用途:
          *   - 对变量的值进行回滚
          *   - 根据变量的变更更新事件触发、变量取值（如日替后更新每日任务等）
+         * @property {string} VARIABLE_INITIALIZED - 'mag_variable_initialized'
+         * 在进行 0 层消息初始化时会触发的事件
+         * - 事件值: 'mag_variable_initialized'
+         * - 回调签名: (variables: Record<string, any> & MvuData, swipe_id: number) => void
+         *   - variables: 完成初始化后的完整变量信息，包含 [initvar] 中的信息，以及在 mvu 初始化之前已存在的变量信息。
+         *   - swipe_id: 当前正在处理的 swipe 编号
+         * - 触发时机: 在进行 0 层的变量初始化时，对每一个开场白(swipe) 都会调用一次。
+         * - 典型用途:
+         *   - 在初始化时，设置非 stat_data 的变量
          *
          * @property {string} COMMAND_PARSED - 'mag_command_parsed'
          * 解析完指令后，开始处理之前触发的事件
          * - 事件值: 'mag_command_parsed'
-         * - 回调签名: (variables: MvuData, commands: CommandInfo[]) => void
+         * - 回调签名: (variables: MvuData, commands: CommandInfo[], message_content: string) => void
          *   - variables: 当前上下文的完整数据
          *   - commands: 待处理的指令列表
+         *   - message_content: 目前完整的消息内容，你可以通过这个参数来收集自己的变量更新范式，将其填入commands。
          * - 触发时机: 解析完指令后，开始处理之前
          * - 典型用途:
          *   - 保护特定变量：扫描 Command 列表中，是否有对特定变量进行修改的，删除它们
          *   - 兜底错误的llm输入：如 Gemini 在变量里面加横杠了 悠-纪.好感度 可以通过在这个回调里面调整 Path 来修改为正确的
          *   - 给角色增加别名：如角色 雪莲 有时候 llm 飙繁体 雪蓮，可以通过这个回调，给角色增加若干个别名，保证各种情况都能正确更新变量。
+         *   - 实现自定义的变量更新范式解析规则：可以通过对 message_content 的内容进行处理，解析出 JSON Patch 等其他形式的变量更新语句，放入 commands 中。
+         * @property {string} BEFORE_MESSAGE_UPDATE - 'mag_before_message_update'
+         * 在 MVU 即将对楼层变量进行更新的场合触发的事件
+         * - 事件值: 'mag_before_message_update'
+         * - 回调签名: (context: UpdateContext) => void;
+         *   - UpdateContext: 当前上下文的完整数据
+         *   - UpdateContext.variables: 当前轮次更新完成时的变量状态
+         *   - UpdateContext.message_content: 最初对应于此次变量更新的消息内容，对齐进行更改可以影响最终输出的内容 (**注意反复执行该回调时，结果需要相同，因为存在重演的场景**)
+         * - 触发时机: 完成变量更新操作，即将插入 <StatusPlaceHolderImpl/> 前（仅 assistant 消息会触发，仅发生了变量更新操作时会触发）
+         * - 典型用途:
+         *   - 把部分格式化输出暂存在变量中，然后原样输出，如 “剧情总结会存放在变量 stat_data.story_misc 中，之后通过这个接口重新展开为 summary 块，并清空 story_misc 内容”
          *
          * @example
          * // 1. 监听单个变量更新 - 实现变量联动
