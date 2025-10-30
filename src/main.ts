@@ -1,5 +1,5 @@
 import { registerButtons, SetExtraModelSupported, SetReceivedCallbackFn } from '@/button';
-import { exportGlobals } from '@/export_globals';
+import { exportGlobals, unsetGlobals } from '@/export_globals';
 import {
     cleanupVariablesInMessages,
     handleVariablesInCallback,
@@ -520,6 +520,7 @@ $(() => {
 $(window).on('pagehide', async () => {
     destroyPanel();
     destroy();
+    unsetGlobals();
 });
 let current_chat_id = SillyTavern.getCurrentChatId();
 function reloadScript(chat_id: string) {

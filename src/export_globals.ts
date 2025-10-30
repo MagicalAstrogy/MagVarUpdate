@@ -358,3 +358,7 @@ export function exportGlobals() {
     _.set(window.parent, 'Mvu', mvu);
     eventEmit('global_Mvu_initialized');
 }
+
+export function unsetGlobals() {
+    _.unset(window.parent, 'Mvu');
+}
