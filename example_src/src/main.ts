@@ -1,10 +1,13 @@
 import MvuData = Mvu.MvuData;
 import { CommandInfo } from '../../artifact/export_globals';
+import { UpdateContext } from '../../artifact/export_globals';
 
 eventOn('mag_variable_update_started', variableUpdateStarted);
 eventOn('mag_variable_updated', variableUpdated);
 eventOn('mag_variable_update_ended', variableUpdateEnded);
 eventOn('mag_command_parsed', commandParsed);
+eventOn('mag_variable_initialized', variableInitialized);
+eventOn('mag_before_message_update', beforeMessageUpdate);
 
 /**
  * Represents the last date in a specific context or operation.
@@ -20,7 +23,17 @@ let last_date = '';
  */
 let is_day_passed = false;
 
-function commandParsed(_variables: MvuData, commands: CommandInfo[]) {
+function beforeMessageUpdate(context: UpdateContext) {
+    const data: Record<string, any> = context.variables;
+    context.message_content += `\n\n理现在心里想着:${data.理.当前所想[0]}`;
+}
+
+function variableInitialized(variables: Record<string, any> & MvuData, swipe_id: number) {
+    //将不同开局的 test_data 变量，设置为那个开局对应的 swipe_id
+    variables['test_data'] = swipe_id;
+}
+
+function commandParsed(_variables: MvuData, commands: CommandInfo[], message_content: string) {
     // 移除所有对 教堂.desc1 的修改
     _.remove(commands, cmd => {
         if (cmd.type == 'set') {
@@ -28,6 +41,9 @@ function commandParsed(_variables: MvuData, commands: CommandInfo[]) {
         }
         return false;
     });
+
+    if (message_content) {
+    }
 }
 
 /**
