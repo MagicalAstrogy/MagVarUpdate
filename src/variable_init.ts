@@ -1,7 +1,13 @@
 // 整体游戏数据类型
 import { getLastValidVariable, updateVariables } from '@/function';
 import { cleanUpMetadata, EXTENSIBLE_MARKER, generateSchema } from '@/schema';
-import { isObjectSchema, MvuData, RootAdditionalProps, SchemaNode } from '@/variable_def';
+import {
+    isObjectSchema,
+    MvuData,
+    RootAdditionalProps,
+    SchemaNode,
+    variable_events,
+} from '@/variable_def';
 import JSON5 from 'json5';
 import { klona } from 'klona';
 import TOML from 'toml';
@@ -138,6 +144,8 @@ export async function initCheck() {
                         }
 
                         const current_data = _.merge(vanilla_variable_data, variables);
+
+                        await eventEmit(variable_events.VARIABLE_INITIALIZED, current_data, index);
                         // 此处调用的是新版 updateVariables，它将支持更多命令
                         // 不再需要手动调用 substitudeMacros，updateVariables 会处理
                         await updateVariables(swipe, current_data);

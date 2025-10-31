@@ -13,6 +13,7 @@ import {
     isValueWithDescriptionStatData,
     MvuData,
     TemplateType,
+    UpdateContext,
     variable_events,
     VariableData,
 } from '@/variable_def';
@@ -579,7 +580,7 @@ export async function updateVariables(
         }
     }
 
-    await eventEmit(variable_events.COMMAND_PARSED, variables, commands);
+    await eventEmit(variable_events.COMMAND_PARSED, variables, commands, current_message_content);
 
     for (const command of commands) {
         // 遍历所有命令，逐一处理
@@ -1253,6 +1254,14 @@ export async function handleVariablesInMessage(message_id: number) {
     }
 
     const has_variable_modified = await updateVariables(message_content, variables);
+    if (has_variable_modified && chat_message.role !== 'user') {
+        const context: UpdateContext = {
+            variables: variables,
+            message_content: message_content,
+        };
+        await eventEmit(variable_events.BEFORE_MESSAGE_UPDATE, context);
+        message_content = context.message_content;
+    }
     const updater = (data: Record<string, any>) => {
         data.initialized_lorebooks = variables.initialized_lorebooks;
         data.stat_data = variables.stat_data;

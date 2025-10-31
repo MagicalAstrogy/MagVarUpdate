@@ -1,10 +1,13 @@
 import MvuData = Mvu.MvuData;
 import { CommandInfo } from '../../artifact/export_globals';
+import { UpdateContext } from '../../artifact/export_globals';
 
 eventOn('mag_variable_update_started', variableUpdateStarted);
 eventOn('mag_variable_updated', variableUpdated);
 eventOn('mag_variable_update_ended', variableUpdateEnded);
 eventOn('mag_command_parsed', commandParsed);
+eventOn('mag_variable_initialized', variableInitialized);
+eventOn('mag_before_message_update', beforeMessageUpdate);
 
 /**
  * Represents the last date in a specific context or operation.
@@ -20,7 +23,17 @@ let last_date = '';
  */
 let is_day_passed = false;
 
-function commandParsed(_variables: MvuData, commands: CommandInfo[]) {
+function beforeMessageUpdate(context: UpdateContext) {
+    const data: Record<string, any> = context.variables;
+    context.message_content += `\n\n理现在心里想着:${data.stat_data.理.当前所想[0]}`;
+}
+
+function variableInitialized(variables: Record<string, any> & MvuData, swipe_id: number) {
+    //将不同开局的 test_data 变量，设置为那个开局对应的 swipe_id
+    variables['test_data'] = swipe_id;
+}
+
+function commandParsed(_variables: MvuData, commands: CommandInfo[], message_content: string) {
     // 移除所有对 教堂.desc1 的修改
     _.remove(commands, cmd => {
         if (cmd.type == 'set') {
@@ -28,6 +41,143 @@ function commandParsed(_variables: MvuData, commands: CommandInfo[]) {
         }
         return false;
     });
+
+    if (message_content) {
+        //解析所有 <JsonPatch> 块内的内容，视为一个有效的json
+        // 免责声明：下面代码仅供功能演示用，不对健壮性做保证。
+        const jsonPatchRegex = /<JsonPatch>([\s\S]*?)<\/JsonPatch>/gi;
+        const decodePointerSegment = (segment: string): string =>
+            segment.replace(/~1/g, '/').replace(/~0/g, '~');
+        const pointerToSegments = (pointer: string): string[] => {
+            const normalized = pointer.startsWith('/') ? pointer.slice(1) : pointer;
+            if (!normalized) return [];
+            return normalized.split('/').map(decodePointerSegment);
+        };
+        const segmentsToPath = (segments: string[]): string => {
+            if (segments.length === 0) return '';
+            return segments.reduce((acc, segment, index) => {
+                const isIndex = /^\d+$/.test(segment);
+                if (index === 0) {
+                    return isIndex ? segment : segment;
+                }
+                return acc + (isIndex ? `[${segment}]` : `.${segment}`);
+            }, '');
+        };
+        const toJSONString = (value: unknown): string | undefined => JSON.stringify(value);
+
+        let match: RegExpExecArray | null;
+        while ((match = jsonPatchRegex.exec(message_content)) !== null) {
+            const rawContent = match[1].trim();
+            if (!rawContent) continue;
+
+            let operations: any[] = [];
+            try {
+                const parsed = JSON.parse(rawContent);
+                operations = Array.isArray(parsed) ? parsed : [parsed];
+            } catch (error) {
+                console.warn('[JsonPatch] Failed to parse patch block:', error);
+                continue;
+            }
+
+            for (const op of operations) {
+                if (!op || typeof op !== 'object') continue;
+                const {
+                    op: opcode,
+                    path,
+                    value,
+                    reason,
+                    comment,
+                } = op as {
+                    op?: string;
+                    path?: string;
+                    value?: unknown;
+                    reason?: string;
+                    comment?: string;
+                };
+                if (!opcode) continue;
+                const segments = pointerToSegments(path ?? '');
+                const normalizedSegments =
+                    segments[0] === 'stat_data' ? segments.slice(1) : segments;
+                const fullPath = segmentsToPath(normalizedSegments);
+                const opReason =
+                    typeof reason === 'string'
+                        ? reason
+                        : typeof comment === 'string'
+                          ? comment
+                          : 'JsonPatch';
+                const fullMatch = `<JsonPatch>${rawContent}</JsonPatch>`;
+
+                switch (opcode) {
+                    case 'replace': {
+                        if (!path || normalizedSegments.length === 0) continue;
+                        const pathLiteral = toJSONString(fullPath);
+                        const valueLiteral = substitudeMacros(toJSONString(value) ?? '');
+                        if (pathLiteral === undefined || valueLiteral === undefined) continue;
+                        commands.push({
+                            type: 'set',
+                            full_match: fullMatch,
+                            args: [pathLiteral, valueLiteral],
+                            reason: opReason,
+                        });
+                        break;
+                    }
+                    case 'add': {
+                        if (!path || normalizedSegments.length === 0) continue;
+                        const lastSegment = normalizedSegments[normalizedSegments.length - 1];
+                        const parentSegments =
+                            lastSegment === undefined
+                                ? normalizedSegments
+                                : normalizedSegments.slice(0, -1);
+                        const parentPath = segmentsToPath(parentSegments);
+                        const parentLiteral = toJSONString(parentPath);
+                        const valueLiteral = toJSONString(value);
+                        if (parentLiteral === undefined || valueLiteral === undefined) continue;
+
+                        if (lastSegment === '-') {
+                            commands.push({
+                                type: 'insert',
+                                full_match: fullMatch,
+                                args: [parentLiteral, valueLiteral],
+                                reason: opReason,
+                            });
+                        } else if (/^\d+$/.test(lastSegment ?? '')) {
+                            const indexLiteral = JSON.stringify(Number(lastSegment));
+                            commands.push({
+                                type: 'insert',
+                                full_match: fullMatch,
+                                args: [parentLiteral, indexLiteral, valueLiteral],
+                                reason: opReason,
+                            });
+                        } else {
+                            const keyLiteral = toJSONString(lastSegment ?? '');
+                            if (keyLiteral === undefined) continue;
+                            commands.push({
+                                type: 'insert',
+                                full_match: fullMatch,
+                                args: [parentLiteral, keyLiteral, valueLiteral],
+                                reason: opReason,
+                            });
+                        }
+                        break;
+                    }
+                    case 'remove': {
+                        if (!path || normalizedSegments.length === 0) continue;
+                        const pathLiteral = toJSONString(fullPath);
+                        if (pathLiteral === undefined) continue;
+                        commands.push({
+                            type: 'unset',
+                            full_match: fullMatch,
+                            args: [pathLiteral],
+                            reason: opReason,
+                        } as unknown as CommandInfo);
+                        break;
+                    }
+                    default:
+                        break;
+                }
+            }
+        }
+    }
 }
 
 /**

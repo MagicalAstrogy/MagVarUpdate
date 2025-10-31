@@ -148,10 +148,12 @@ export interface VariableData {
 }
 
 export const variable_events = {
+    VARIABLE_INITIALIZED: 'mag_variable_initialized',
     SINGLE_VARIABLE_UPDATED: 'mag_variable_updated',
     VARIABLE_UPDATE_ENDED: 'mag_variable_update_ended',
     VARIABLE_UPDATE_STARTED: 'mag_variable_update_started',
     COMMAND_PARSED: 'mag_command_parsed',
+    BEFORE_MESSAGE_UPDATE: 'mag_before_message_update',
 } as const;
 export const exported_events = {
     INVOKE_MVU_PROCESS: 'mag_invoke_mvu',
@@ -161,6 +163,11 @@ export const exported_events = {
 export type InternalData = {
     display_data: Record<string, any>;
     delta_data: Record<string, any>;
+};
+
+export type UpdateContext = {
+    variables: MvuData;
+    message_content: string;
 };
 
 export type ExtendedListenerType = {
@@ -175,7 +182,13 @@ export type ExtendedListenerType = {
         out_is_updated: boolean
     ) => void;
     [variable_events.VARIABLE_UPDATE_ENDED]: (variables: MvuData, out_is_updated: boolean) => void;
-    [variable_events.COMMAND_PARSED]: (variables: MvuData, commands: any) => void;
+    [variable_events.VARIABLE_INITIALIZED]: (variables: MvuData, swipe_id: number) => void;
+    [variable_events.COMMAND_PARSED]: (
+        variables: MvuData,
+        commands: any,
+        message_content: string
+    ) => void;
+    [variable_events.BEFORE_MESSAGE_UPDATE]: (context: UpdateContext) => void;
     [exported_events.INVOKE_MVU_PROCESS]: (
         message_content: string,
         variable_info: VariableData

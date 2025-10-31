@@ -1,3 +1,46 @@
+# 2025-10-26
+## 新增事件
+### `VARIABLE_INITIALIZED` - 'mag_variable_initialized'
+在进行 0 层消息初始化时会触发的事件
+ - 事件值: 'mag_variable_initialized'
+ - 回调签名: (variables: Record<string, any> & MvuData, swipe_id: number) => void
+    - variables: 完成初始化后的完整变量信息，包含 [initvar] 中的信息，以及在 mvu 初始化之前已存在的变量信息。
+    - swipe_id: 当前正在处理的 swipe 编号
+ - 触发时机: 在进行 0 层的变量初始化时，对每一个开场白(swipe) 都会调用一次。
+ - 典型用途:
+    - 在初始化时，设置非 stat_data 的变量
+### `BEFORE_MESSAGE_UPDATE` - 'mag_before_message_update'
+在 MVU 即将对楼层变量进行更新的场合触发的事件
+ - 事件值: 'mag_before_message_update'
+ - 回调签名: (context: UpdateContext) => void;
+    - context(UpdateContext): 当前上下文的完整数据
+    - UpdateContext.variables: 当前轮次更新完成时的变量状态
+    - UpdateContext.message_content: 最初对应于此次变量更新的消息内容，对齐进行更改可以影响最终输出的内容 (**注意反复执行该回调时，结果需要相同，因为存在重演的场景**)
+ - 触发时机: 完成变量更新操作，即将插入 <StatusPlaceHolderImpl/> 前（仅 assistant 消息会触发，仅发生了变量更新操作时会触发）
+ - 典型用途:
+    - 把部分格式化输出暂存在变量中，然后原样输出，如 “剧情总结会存放在变量 stat_data.story_misc 中，之后通过这个接口重新展开为 summary 块，并清空 story_misc 内容”
+
+## 更改事件
+### `COMMAND_PARSED` - 'mag_command_parsed'
+解析完指令后，开始处理之前触发的事件
+ - 事件值: 'mag_command_parsed'
+ - 回调签名: (variables: MvuData, commands: CommandInfo[], message_content: string) => void
+    - variables: 当前上下文的完整数据
+    - commands: 待处理的指令列表
+    - **message_content: 目前完整的消息内容，你可以通过这个参数来收集自己的变量更新范式，将其填入commands。** <- 新增
+ - 触发时机: 解析完指令后，开始处理之前
+ - 典型用途:
+    - 保护特定变量：扫描 Command 列表中，是否有对特定变量进行修改的，删除它们
+    - 兜底错误的llm输入：如 Gemini 在变量里面加横杠了 悠-纪.好感度 可以通过在这个回调里面调整 Path 来修改为正确的
+    - 给角色增加别名：如角色 雪莲 有时候 llm 飙繁体 雪蓮，可以通过这个回调，给角色增加若干个别名，保证各种情况都能正确更新变量。
+    - **实现自定义的变量更新范式解析规则：可以通过对 message_content 的内容进行处理，解析出 JSON Patch 等其他形式的变量更新语句，放入 commands 中。**  <- 新增
+
+## 样例新增
+在 [圣女理理](https://github.com/MagicalAstrogy/MagVarUpdate/blob/beta/example_src/src/main.ts) 样例卡的源代码中，增加了上述三个事件的样例，分别实现了：
+ - 在 0 层初始化非 stat_data 内的自定义变量 `test_data`
+ - 在每一层聊天内容的最后，追加 `\n\n理现在心里想着:${data.stat_data.理.当前所想[0]}` 字符串。
+ - 支持对 JSON Patch 格式更新范式的解析（同时变更了第四个开局，现在那个开局中有一部分变量是通过 Json Patch 形式进行的赋值）
+
 # 2025-10-25
 ## 自动清理功能
 新增自动清理功能，可以自动将较老楼层中的变量信息清楚，以控制聊天文件大小。
