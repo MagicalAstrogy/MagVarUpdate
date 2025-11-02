@@ -171,7 +171,7 @@
                                 type="number"
                                 class="text_pole"
                                 min="0"
-                                step="0.01"
+                                step="128"
                                 placeholder="1000"
                             />
                         </div>
