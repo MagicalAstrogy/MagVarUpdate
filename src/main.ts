@@ -21,6 +21,7 @@ import {
     findLastValidMessage,
     getSillyTavernVersion,
     initSillyTavernVersion,
+    initTavernHelperVersion,
     is_jest_environment,
     isFunctionCallingSupported,
 } from '@/util';
@@ -195,6 +196,10 @@ async function onMessageReceived(message_id: number) {
                               apiurl: settings.额外模型解析配置.api地址,
                               key: settings.额外模型解析配置.密钥,
                               model: settings.额外模型解析配置.模型名称,
+                              temperature: settings.额外模型解析配置.温度,
+                              frequency_penalty: settings.额外模型解析配置.频率惩罚,
+                              presence_penalty: settings.额外模型解析配置.存在惩罚,
+                              max_tokens: settings.额外模型解析配置.最大回复token数,
                           },
                           injects: promptInjects,
                           max_chat_history: 2,
@@ -288,14 +293,15 @@ async function onMessageReceived(message_id: number) {
     await handleVariablesInMessage(message_id);
 }
 async function initialize() {
-    if (compare(await getTavernHelperVersion(), '3.4.17', '<')) {
+    await initSillyTavernVersion();
+    await initTavernHelperVersion();
+
+    if (compare(getTavernHelperVersion(), '3.4.17', '<')) {
         toastr.warning(
             '酒馆助手版本过低, 无法正常处理, 请更新至 3.4.17 或更高版本（建议保持酒馆助手最新）',
             '[MVU]不支持当前酒馆助手版本'
         );
     }
-
-    await initSillyTavernVersion();
 
     const store = useSettingsStore();
 
@@ -496,6 +502,13 @@ async function initialize() {
             '[MVU]已更新自动清理旧变量功能'
         );
         store.settings.internal.已提醒自动清理旧变量功能 = true;
+    }
+    if (store.settings.internal.已提醒更新了API温度等配置 === false) {
+        toastr.info(
+            'MVU 现在可以自定义 API 的温度、频率惩罚、存在惩罚、最大回复 token 数；需要酒馆助手版本 >= 4.0.14',
+            '[MVU]已更新更多自定义API配置'
+        );
+        store.settings.internal.已提醒更新了API温度等配置 = true;
     }
     toastr.info(
         `构建信息: ${__BUILD_DATE__ ?? 'Unknown'} (${__COMMIT_ID__ ?? 'Unknown'})`,

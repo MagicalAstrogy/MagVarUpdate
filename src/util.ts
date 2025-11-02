@@ -9,6 +9,14 @@ export function getSillyTavernVersion(): string {
     return sillytavern_version;
 }
 
+let tavernhelper_version: string = '1.0.0';
+export async function initTavernHelperVersion(): Promise<void> {
+    tavernhelper_version = await getTavernHelperVersion();
+}
+export function getTavernHelperVersion(): string {
+    return tavernhelper_version;
+}
+
 export function isFunctionCallingSupported() {
     if (!SillyTavern.ToolManager.isToolCallingSupported()) {
         return false;

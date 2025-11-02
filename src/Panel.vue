@@ -111,6 +111,70 @@
                                 placeholder="gemini-2.5-flash"
                             />
                         </div>
+
+                        <div v-if="!additional_extra_configuration_supported">
+                            <hr />
+                            ⚠️酒馆助手版本过低, 不支持以下配置⚠️
+                        </div>
+
+                        <div class="flex-container flexFlowColumn">
+                            <label for="mvu_temperature">温度</label>
+                            <input
+                                id="mvu_temperature"
+                                v-model="store.settings.额外模型解析配置.温度"
+                                :disabled="!additional_extra_configuration_supported"
+                                type="number"
+                                class="text_pole"
+                                min="0"
+                                max="2"
+                                step="0.01"
+                                placeholder="1.0"
+                            />
+                        </div>
+
+                        <div class="flex-container flexFlowColumn">
+                            <label for="mvu_frequency_penalty">频率惩罚</label>
+                            <input
+                                id="mvu_frequency_penalty"
+                                v-model="store.settings.额外模型解析配置.频率惩罚"
+                                :disabled="!additional_extra_configuration_supported"
+                                type="number"
+                                class="text_pole"
+                                min="-2"
+                                max="2"
+                                step="0.01"
+                                placeholder="0.0"
+                            />
+                        </div>
+
+                        <div class="flex-container flexFlowColumn">
+                            <label for="mvu_presence_penalty">存在惩罚</label>
+                            <input
+                                id="mvu_presence_penalty"
+                                v-model="store.settings.额外模型解析配置.存在惩罚"
+                                :disabled="!additional_extra_configuration_supported"
+                                type="number"
+                                class="text_pole"
+                                min="-2"
+                                max="2"
+                                step="0.01"
+                                placeholder="0.0"
+                            />
+                        </div>
+
+                        <div class="flex-container flexFlowColumn">
+                            <label for="mvu_max_tokens">最大回复token数</label>
+                            <input
+                                id="mvu_max_tokens"
+                                v-model="store.settings.额外模型解析配置.最大回复token数"
+                                :disabled="!additional_extra_configuration_supported"
+                                type="number"
+                                class="text_pole"
+                                min="0"
+                                step="0.01"
+                                placeholder="1000"
+                            />
+                        </div>
                     </template>
                 </template>
             </div>
@@ -120,45 +184,6 @@
             <div class="flex-container flexFlowColumn">
                 <div>
                     <strong>杂项配置</strong>
-                </div>
-
-                <div class="flex-container flexFlowColumn">
-                    <label for="mvu_snapshot_interval">快照保留间隔</label>
-                    <input
-                        id="mvu_snapshot_interval"
-                        v-model.number="store.settings.快照保留间隔"
-                        type="number"
-                        min="1"
-                        step="1"
-                        class="text_pole"
-                        placeholder="50"
-                    />
-                </div>
-
-                <div class="flex-container flexFlowColumn">
-                    <label for="mvu_snapshot_interval">要保留变量的最近楼层数</label>
-                    <input
-                        id="mvu_snapshot_interval"
-                        v-model.number="store.settings.auto_cleanup.要保留变量的最近楼层数"
-                        type="number"
-                        min="1"
-                        step="1"
-                        class="text_pole"
-                        placeholder="50"
-                    />
-                </div>
-
-                <div class="flex-container flexFlowColumn">
-                    <label for="mvu_snapshot_interval">触发恢复变量的最近楼层数</label>
-                    <input
-                        id="mvu_snapshot_interval"
-                        v-model.number="store.settings.auto_cleanup.触发恢复变量的最近楼层数"
-                        type="number"
-                        min="1"
-                        step="1"
-                        class="text_pole"
-                        placeholder="50"
-                    />
                 </div>
 
                 <label class="checkbox_label" for="mvu_auto_clean_checkbox">
@@ -202,6 +227,8 @@ import { compare } from 'compare-versions';
 import { watch } from 'vue';
 
 const store = useSettingsStore();
+
+const additional_extra_configuration_supported = compare(getTavernHelperVersion(), '4.0.14', '>=');
 
 watch(
     () => store.settings.更新方式,

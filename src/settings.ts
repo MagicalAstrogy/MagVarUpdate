@@ -13,6 +13,22 @@ const Settings = z
                 api地址: z.string().default('http://localhost:1234/v1'),
                 密钥: z.string().default(''),
                 模型名称: z.string().default('gemini-2.5-flash'),
+                温度: z.coerce
+                    .number()
+                    .default(1)
+                    .transform(value => _.clamp(value, 0, 2)),
+                频率惩罚: z.coerce
+                    .number()
+                    .default(0.0)
+                    .transform(value => _.clamp(value, -2, 2)),
+                存在惩罚: z.coerce
+                    .number()
+                    .default(0.0)
+                    .transform(value => _.clamp(value, -2, 2)),
+                最大回复token数: z.coerce
+                    .number()
+                    .default(4096)
+                    .transform(value => Math.max(0, value)),
             })
             .prefault({}),
         通知: z
@@ -33,6 +49,7 @@ const Settings = z
             .object({
                 已提醒更新了配置界面: z.boolean().default(false),
                 已提醒自动清理旧变量功能: z.boolean().default(false),
+                已提醒更新了API温度等配置: z.boolean().default(false),
             })
             .prefault({}),
     })
