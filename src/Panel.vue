@@ -185,6 +185,58 @@
                 <div>
                     <strong>杂项配置</strong>
                 </div>
+                <div class="collapse-container">
+                    <button @click="is_open = !is_open" style="background: transparent">
+                        {{ is_open ? '收起-变量清理配置' : '展开-变量清理配置' }}
+                    </button>
+
+                    <Transition name="collapse">
+                        <div v-show="is_open" class="collapse-content">
+                            <div class="flex-container flexFlowColumn">
+                                <label for="mvu_snapshot_interval">快照保留间隔</label>
+                                <input
+                                    id="mvu_snapshot_interval"
+                                    v-model.number="store.settings.快照保留间隔"
+                                    type="number"
+                                    min="1"
+                                    step="1"
+                                    class="text_pole"
+                                    placeholder="50"
+                                />
+                            </div>
+
+                            <div class="flex-container flexFlowColumn">
+                                <label for="mvu_snapshot_interval">要保留变量的最近楼层数</label>
+                                <input
+                                    id="mvu_snapshot_interval"
+                                    v-model.number="
+                                        store.settings.auto_cleanup.要保留变量的最近楼层数
+                                    "
+                                    type="number"
+                                    min="1"
+                                    step="1"
+                                    class="text_pole"
+                                    placeholder="50"
+                                />
+                            </div>
+
+                            <div class="flex-container flexFlowColumn">
+                                <label for="mvu_snapshot_interval">触发恢复变量的最近楼层数</label>
+                                <input
+                                    id="mvu_snapshot_interval"
+                                    v-model.number="
+                                        store.settings.auto_cleanup.触发恢复变量的最近楼层数
+                                    "
+                                    type="number"
+                                    min="1"
+                                    step="1"
+                                    class="text_pole"
+                                    placeholder="50"
+                                />
+                            </div>
+                        </div>
+                    </Transition>
+                </div>
 
                 <label class="checkbox_label" for="mvu_auto_clean_checkbox">
                     <input
@@ -222,13 +274,15 @@ import { buttons } from '@/button';
 import panel_extra_mode_help from '@/panel_extra_mode_help.md';
 import panel_method_help from '@/panel_method_help.md';
 import { useSettingsStore } from '@/settings';
-import { getSillyTavernVersion } from '@/util';
+import { getSillyTavernVersion, getTavernHelperVersion } from '@/util';
 import { compare } from 'compare-versions';
-import { watch } from 'vue';
+import { watch, ref } from 'vue';
 
 const store = useSettingsStore();
 
 const additional_extra_configuration_supported = compare(getTavernHelperVersion(), '4.0.14', '>=');
+
+const is_open = ref(false);
 
 watch(
     () => store.settings.更新方式,
@@ -283,3 +337,38 @@ async function showExtraModeHelp() {
     });
 }
 </script>
+
+<style scoped>
+.collapse-container {
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    padding: 2px;
+    background: transparent;
+}
+
+/* 过渡动画定义 */
+.collapse-enter-from,
+.collapse-leave-to {
+    max-height: 0;
+    opacity: 0;
+    overflow: hidden;
+}
+
+.collapse-enter-to,
+.collapse-leave-from {
+    max-height: 240px; /* 根据内容调整 */
+    opacity: 1;
+}
+
+.collapse-enter-active,
+.collapse-leave-active {
+    transition: all 0.3s ease;
+}
+
+.collapse-content {
+    margin-top: 2px;
+    padding: 2px;
+    background-color: transparent;
+    border-radius: 4px;
+}
+</style>

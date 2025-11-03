@@ -1,3 +1,5 @@
+import TavernHelper = globalThis.TavernHelper;
+
 let sillytavern_version: string = '1.0.0';
 export async function initSillyTavernVersion(): Promise<void> {
     sillytavern_version = await fetch('/version')
@@ -11,7 +13,7 @@ export function getSillyTavernVersion(): string {
 
 let tavernhelper_version: string = '1.0.0';
 export async function initTavernHelperVersion(): Promise<void> {
-    tavernhelper_version = await getTavernHelperVersion();
+    tavernhelper_version = await TavernHelper.getTavernHelperVersion();
 }
 export function getTavernHelperVersion(): string {
     return tavernhelper_version;

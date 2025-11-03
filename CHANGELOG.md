@@ -1,3 +1,12 @@
+# 2025-11-04
+## 新增配置项
+在 `模型来源` 为 `自定义` 的场合，可以对下面的配置进行调整：
+ - 温度
+ - 频率惩罚
+ - 存在惩罚
+ - 最大回复 Token 数
+感谢 @StageDog 的贡献。
+
 # 2025-10-26
 ## 新增事件
 ### `VARIABLE_INITIALIZED` - 'mag_variable_initialized'

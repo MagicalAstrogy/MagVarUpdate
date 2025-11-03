@@ -22,6 +22,7 @@ import {
     getSillyTavernVersion,
     initSillyTavernVersion,
     initTavernHelperVersion,
+    getTavernHelperVersion,
     is_jest_environment,
     isFunctionCallingSupported,
 } from '@/util';
@@ -293,9 +294,6 @@ async function onMessageReceived(message_id: number) {
     await handleVariablesInMessage(message_id);
 }
 async function initialize() {
-    await initSillyTavernVersion();
-    await initTavernHelperVersion();
-
     if (compare(getTavernHelperVersion(), '3.4.17', '<')) {
         toastr.warning(
             '酒馆助手版本过低, 无法正常处理, 请更新至 3.4.17 或更高版本（建议保持酒馆助手最新）',
@@ -525,10 +523,12 @@ async function destroy() {
     eventClearAll();
 }
 
-$(() => {
+$(async () => {
+    await initSillyTavernVersion();
+    await initTavernHelperVersion();
     exportGlobals();
-    initPanel();
-    initialize();
+    await initPanel();
+    await initialize();
 });
 $(window).on('pagehide', async () => {
     destroyPanel();
