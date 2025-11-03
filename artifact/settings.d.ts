@@ -8,6 +8,10 @@ export declare const useSettingsStore: import("pinia").StoreDefinition<"settings
             api地址: string;
             密钥: string;
             模型名称: string;
+            温度: number;
+            频率惩罚: number;
+            存在惩罚: number;
+            最大回复token数: number;
         };
         通知: {
             变量更新出错: boolean;
@@ -22,6 +26,7 @@ export declare const useSettingsStore: import("pinia").StoreDefinition<"settings
         internal: {
             已提醒更新了配置界面: boolean;
             已提醒自动清理旧变量功能: boolean;
+            已提醒更新了API温度等配置: boolean;
         };
     }, {
         更新方式: "随AI输出" | "额外模型解析";
@@ -32,6 +37,10 @@ export declare const useSettingsStore: import("pinia").StoreDefinition<"settings
             api地址: string;
             密钥: string;
             模型名称: string;
+            温度: number;
+            频率惩罚: number;
+            存在惩罚: number;
+            最大回复token数: number;
         };
         通知: {
             变量更新出错: boolean;
@@ -46,6 +55,7 @@ export declare const useSettingsStore: import("pinia").StoreDefinition<"settings
         internal: {
             已提醒更新了配置界面: boolean;
             已提醒自动清理旧变量功能: boolean;
+            已提醒更新了API温度等配置: boolean;
         };
     } | {
         更新方式: "随AI输出" | "额外模型解析";
@@ -56,6 +66,10 @@ export declare const useSettingsStore: import("pinia").StoreDefinition<"settings
             api地址: string;
             密钥: string;
             模型名称: string;
+            温度: number;
+            频率惩罚: number;
+            存在惩罚: number;
+            最大回复token数: number;
         };
         通知: {
             变量更新出错: boolean;
@@ -70,6 +84,7 @@ export declare const useSettingsStore: import("pinia").StoreDefinition<"settings
         internal: {
             已提醒更新了配置界面: boolean;
             已提醒自动清理旧变量功能: boolean;
+            已提醒更新了API温度等配置: boolean;
         };
     }>;
 }, "settings">, Pick<{
@@ -82,6 +97,10 @@ export declare const useSettingsStore: import("pinia").StoreDefinition<"settings
             api地址: string;
             密钥: string;
             模型名称: string;
+            温度: number;
+            频率惩罚: number;
+            存在惩罚: number;
+            最大回复token数: number;
         };
         通知: {
             变量更新出错: boolean;
@@ -96,6 +115,7 @@ export declare const useSettingsStore: import("pinia").StoreDefinition<"settings
         internal: {
             已提醒更新了配置界面: boolean;
             已提醒自动清理旧变量功能: boolean;
+            已提醒更新了API温度等配置: boolean;
         };
     }, {
         更新方式: "随AI输出" | "额外模型解析";
@@ -106,6 +126,10 @@ export declare const useSettingsStore: import("pinia").StoreDefinition<"settings
             api地址: string;
             密钥: string;
             模型名称: string;
+            温度: number;
+            频率惩罚: number;
+            存在惩罚: number;
+            最大回复token数: number;
         };
         通知: {
             变量更新出错: boolean;
@@ -120,6 +144,7 @@ export declare const useSettingsStore: import("pinia").StoreDefinition<"settings
         internal: {
             已提醒更新了配置界面: boolean;
             已提醒自动清理旧变量功能: boolean;
+            已提醒更新了API温度等配置: boolean;
         };
     } | {
         更新方式: "随AI输出" | "额外模型解析";
@@ -130,6 +155,10 @@ export declare const useSettingsStore: import("pinia").StoreDefinition<"settings
             api地址: string;
             密钥: string;
             模型名称: string;
+            温度: number;
+            频率惩罚: number;
+            存在惩罚: number;
+            最大回复token数: number;
         };
         通知: {
             变量更新出错: boolean;
@@ -144,6 +173,7 @@ export declare const useSettingsStore: import("pinia").StoreDefinition<"settings
         internal: {
             已提醒更新了配置界面: boolean;
             已提醒自动清理旧变量功能: boolean;
+            已提醒更新了API温度等配置: boolean;
         };
     }>;
 }, never>, Pick<{
@@ -156,6 +186,10 @@ export declare const useSettingsStore: import("pinia").StoreDefinition<"settings
             api地址: string;
             密钥: string;
             模型名称: string;
+            温度: number;
+            频率惩罚: number;
+            存在惩罚: number;
+            最大回复token数: number;
         };
         通知: {
             变量更新出错: boolean;
@@ -170,6 +204,7 @@ export declare const useSettingsStore: import("pinia").StoreDefinition<"settings
         internal: {
             已提醒更新了配置界面: boolean;
             已提醒自动清理旧变量功能: boolean;
+            已提醒更新了API温度等配置: boolean;
         };
     }, {
         更新方式: "随AI输出" | "额外模型解析";
@@ -180,6 +215,10 @@ export declare const useSettingsStore: import("pinia").StoreDefinition<"settings
             api地址: string;
             密钥: string;
             模型名称: string;
+            温度: number;
+            频率惩罚: number;
+            存在惩罚: number;
+            最大回复token数: number;
         };
         通知: {
             变量更新出错: boolean;
@@ -194,6 +233,7 @@ export declare const useSettingsStore: import("pinia").StoreDefinition<"settings
         internal: {
             已提醒更新了配置界面: boolean;
             已提醒自动清理旧变量功能: boolean;
+            已提醒更新了API温度等配置: boolean;
         };
     } | {
         更新方式: "随AI输出" | "额外模型解析";
@@ -204,6 +244,10 @@ export declare const useSettingsStore: import("pinia").StoreDefinition<"settings
             api地址: string;
             密钥: string;
             模型名称: string;
+            温度: number;
+            频率惩罚: number;
+            存在惩罚: number;
+            最大回复token数: number;
         };
         通知: {
             变量更新出错: boolean;
@@ -218,6 +262,7 @@ export declare const useSettingsStore: import("pinia").StoreDefinition<"settings
         internal: {
             已提醒更新了配置界面: boolean;
             已提醒自动清理旧变量功能: boolean;
+            已提醒更新了API温度等配置: boolean;
         };
     }>;
 }, never>>;

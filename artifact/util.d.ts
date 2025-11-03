@@ -1,5 +1,7 @@
 export declare function initSillyTavernVersion(): Promise<void>;
 export declare function getSillyTavernVersion(): string;
+export declare function initTavernHelperVersion(): Promise<void>;
+export declare function getTavernHelperVersion(): string;
 export declare function isFunctionCallingSupported(): boolean;
 export declare const is_jest_environment: boolean;
 export declare const saveChatDebounced: import("lodash").DebouncedFunc<() => Promise<void>>;
