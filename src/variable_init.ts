@@ -125,6 +125,7 @@ export async function initCheck() {
     }
 
     console.info(`Init chat variables.`);
+    //@ts-expect-error old fn
     await updateVariablesWith(data => _.assign(data, variables));
 
     if (getLastMessageId() == 0) {
