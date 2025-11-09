@@ -20,9 +20,9 @@ import { useSettingsStore } from '@/settings';
 import {
     findLastValidMessage,
     getSillyTavernVersion,
+    getTavernHelperVersion,
     initSillyTavernVersion,
     initTavernHelperVersion,
-    getTavernHelperVersion,
     is_jest_environment,
     isFunctionCallingSupported,
 } from '@/util';
@@ -503,6 +503,9 @@ async function initialize() {
         }
     });
 
+    if (store.settings.internal.已默认开启自动清理旧变量功能 === false) {
+        store.settings.auto_cleanup.启用 = true;
+    }
     showNotifications();
     toastr.info(
         `构建信息: ${__BUILD_DATE__ ?? 'Unknown'} (${__COMMIT_ID__ ?? 'Unknown'})`,
