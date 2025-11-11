@@ -18,6 +18,7 @@ export declare const useSettingsStore: import("pinia").StoreDefinition<"settings
             额外模型解析中: boolean;
         };
         快照保留间隔: number;
+        更新到聊天变量: boolean;
         auto_cleanup: {
             启用: boolean;
             要保留变量的最近楼层数: number;
@@ -47,6 +48,7 @@ export declare const useSettingsStore: import("pinia").StoreDefinition<"settings
             额外模型解析中: boolean;
         };
         快照保留间隔: number;
+        更新到聊天变量: boolean;
         auto_cleanup: {
             启用: boolean;
             要保留变量的最近楼层数: number;
@@ -76,6 +78,7 @@ export declare const useSettingsStore: import("pinia").StoreDefinition<"settings
             额外模型解析中: boolean;
         };
         快照保留间隔: number;
+        更新到聊天变量: boolean;
         auto_cleanup: {
             启用: boolean;
             要保留变量的最近楼层数: number;
@@ -107,6 +110,7 @@ export declare const useSettingsStore: import("pinia").StoreDefinition<"settings
             额外模型解析中: boolean;
         };
         快照保留间隔: number;
+        更新到聊天变量: boolean;
         auto_cleanup: {
             启用: boolean;
             要保留变量的最近楼层数: number;
@@ -136,6 +140,7 @@ export declare const useSettingsStore: import("pinia").StoreDefinition<"settings
             额外模型解析中: boolean;
         };
         快照保留间隔: number;
+        更新到聊天变量: boolean;
         auto_cleanup: {
             启用: boolean;
             要保留变量的最近楼层数: number;
@@ -165,6 +170,7 @@ export declare const useSettingsStore: import("pinia").StoreDefinition<"settings
             额外模型解析中: boolean;
         };
         快照保留间隔: number;
+        更新到聊天变量: boolean;
         auto_cleanup: {
             启用: boolean;
             要保留变量的最近楼层数: number;
@@ -196,6 +202,7 @@ export declare const useSettingsStore: import("pinia").StoreDefinition<"settings
             额外模型解析中: boolean;
         };
         快照保留间隔: number;
+        更新到聊天变量: boolean;
         auto_cleanup: {
             启用: boolean;
             要保留变量的最近楼层数: number;
@@ -225,6 +232,7 @@ export declare const useSettingsStore: import("pinia").StoreDefinition<"settings
             额外模型解析中: boolean;
         };
         快照保留间隔: number;
+        更新到聊天变量: boolean;
         auto_cleanup: {
             启用: boolean;
             要保留变量的最近楼层数: number;
@@ -254,6 +262,7 @@ export declare const useSettingsStore: import("pinia").StoreDefinition<"settings
             额外模型解析中: boolean;
         };
         快照保留间隔: number;
+        更新到聊天变量: boolean;
         auto_cleanup: {
             启用: boolean;
             要保留变量的最近楼层数: number;
