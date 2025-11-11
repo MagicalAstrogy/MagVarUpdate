@@ -1251,6 +1251,7 @@ export async function handleVariablesInMessage(message_id: number) {
     }
     const request_message_id = message_id === 0 ? 0 : message_id - 1;
     const variables = await getLastValidVariable(request_message_id);
+    const settings = useSettingsStore().settings;
     if (!_.has(variables, 'stat_data')) {
         console.error(`cannot found stat_data for ${request_message_id}`);
         return;
@@ -1277,7 +1278,7 @@ export async function handleVariablesInMessage(message_id: number) {
         data.delta_data = variables.delta_data;
         return data;
     };
-    if (has_variable_modified) {
+    if (has_variable_modified && settings.更新到聊天变量 === true) {
         await updateVariablesWith(updater, { type: 'chat' });
     }
     await updateVariablesWith(updater, { type: 'message', message_id: message_id });

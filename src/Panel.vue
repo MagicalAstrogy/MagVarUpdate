@@ -186,12 +186,15 @@
                     <strong>杂项配置</strong>
                 </div>
                 <div class="collapse-container">
-                    <button @click="is_open = !is_open" style="background: transparent">
-                        {{ is_open ? '收起-变量清理配置' : '展开-变量清理配置' }}
+                    <button
+                        style="background: transparent"
+                        @click="cleanup_is_open = !cleanup_is_open"
+                    >
+                        {{ cleanup_is_open ? '收起-变量清理配置' : '展开-变量清理配置' }}
                     </button>
 
                     <Transition name="collapse">
-                        <div v-show="is_open" class="collapse-content">
+                        <div v-show="cleanup_is_open" class="collapse-content">
                             <div class="flex-container flexFlowColumn">
                                 <label for="mvu_snapshot_interval">快照保留间隔</label>
                                 <input
@@ -238,6 +241,32 @@
                     </Transition>
                 </div>
 
+                <div class="collapse-container">
+                    <button
+                        style="background: transparent"
+                        @click="compatibility_is_open = !compatibility_is_open"
+                    >
+                        {{ compatibility_is_open ? '收起-兼容配置' : '展开-兼容配置' }}
+                    </button>
+                    <Transition name="collapse">
+                        <div v-show="compatibility_is_open" class="collapse-content">
+                            <label class="checkbox_label" for="mvu_update_to_chat">
+                                <input
+                                    id="mvu_update_to_chat"
+                                    v-model="store.settings.更新到聊天变量"
+                                    type="checkbox"
+                                />
+                                <span>变量更新到聊天变量</span>
+                                <i
+                                    class="fa-solid fa-circle-question fa-sm note-link-span"
+                                    style="cursor: pointer"
+                                    @click="showChatVarHelp"
+                                />
+                            </label>
+                        </div>
+                    </Transition>
+                </div>
+
                 <label class="checkbox_label" for="mvu_auto_clean_checkbox">
                     <input
                         id="mvu_auto_clean_checkbox"
@@ -273,16 +302,18 @@
 import { buttons } from '@/button';
 import panel_extra_mode_help from '@/panel_extra_mode_help.md';
 import panel_method_help from '@/panel_method_help.md';
+import chat_variable_help from '@/chat_variable_help.md';
 import { useSettingsStore } from '@/settings';
 import { getSillyTavernVersion, getTavernHelperVersion } from '@/util';
 import { compare } from 'compare-versions';
-import { watch, ref } from 'vue';
+import { ref, watch } from 'vue';
 
 const store = useSettingsStore();
 
 const additional_extra_configuration_supported = compare(getTavernHelperVersion(), '4.0.14', '>=');
 
-const is_open = ref(false);
+const cleanup_is_open = ref(false);
+const compatibility_is_open = ref(false);
 
 watch(
     () => store.settings.更新方式,
@@ -323,6 +354,14 @@ watch(
 
 async function showMethodHelp() {
     SillyTavern.callGenericPopup(panel_method_help, SillyTavern.POPUP_TYPE.TEXT, '', {
+        allowVerticalScrolling: true,
+        leftAlign: true,
+        wide: true,
+    });
+}
+
+async function showChatVarHelp() {
+    SillyTavern.callGenericPopup(chat_variable_help, SillyTavern.POPUP_TYPE.TEXT, '', {
         allowVerticalScrolling: true,
         leftAlign: true,
         wide: true,
