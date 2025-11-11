@@ -248,22 +248,23 @@
                     >
                         {{ compatibility_is_open ? '收起-兼容配置' : '展开-兼容配置' }}
                     </button>
-                    <label
-                        class="checkbox_label"
-                        for="mvu_update_to_chat"
-                    >
-                        <input
-                            id="mvu_update_to_chat"
-                            v-model="store.settings.更新到聊天变量"
-                            type="checkbox"
-                        />
-                        <span>变量更新到聊天变量</span>
-                        <i
-                            class="fa-solid fa-circle-question fa-sm note-link-span"
-                            style="cursor: pointer"
-                            @click="showChatVarHelp"
-                        />
-                    </label>
+                    <Transition name="collapse">
+                        <div v-show="compatibility_is_open" class="collapse-content">
+                            <label class="checkbox_label" for="mvu_update_to_chat">
+                                <input
+                                    id="mvu_update_to_chat"
+                                    v-model="store.settings.更新到聊天变量"
+                                    type="checkbox"
+                                />
+                                <span>变量更新到聊天变量</span>
+                                <i
+                                    class="fa-solid fa-circle-question fa-sm note-link-span"
+                                    style="cursor: pointer"
+                                    @click="showChatVarHelp"
+                                />
+                            </label>
+                        </div>
+                    </Transition>
                 </div>
 
                 <label class="checkbox_label" for="mvu_auto_clean_checkbox">
