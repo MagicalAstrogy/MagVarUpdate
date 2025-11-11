@@ -250,15 +250,19 @@
                     </button>
                     <label
                         class="checkbox_label"
-                        for="mvu_auto_clean_checkbox"
-                        title="启用后，所有变量更新结果也会输出到聊天变量中。如果部分老角色卡无法正常游玩，可以开启这个开关。"
+                        for="mvu_update_to_chat"
                     >
                         <input
-                            id="mvu_auto_clean_checkbox"
+                            id="mvu_update_to_chat"
                             v-model="store.settings.更新到聊天变量"
                             type="checkbox"
                         />
                         <span>变量更新到聊天变量</span>
+                        <i
+                            class="fa-solid fa-circle-question fa-sm note-link-span"
+                            style="cursor: pointer"
+                            @click="showChatVarHelp"
+                        />
                     </label>
                 </div>
 
@@ -297,6 +301,7 @@
 import { buttons } from '@/button';
 import panel_extra_mode_help from '@/panel_extra_mode_help.md';
 import panel_method_help from '@/panel_method_help.md';
+import chat_variable_help from '@/chat_variable_help.md';
 import { useSettingsStore } from '@/settings';
 import { getSillyTavernVersion, getTavernHelperVersion } from '@/util';
 import { compare } from 'compare-versions';
@@ -348,6 +353,14 @@ watch(
 
 async function showMethodHelp() {
     SillyTavern.callGenericPopup(panel_method_help, SillyTavern.POPUP_TYPE.TEXT, '', {
+        allowVerticalScrolling: true,
+        leftAlign: true,
+        wide: true,
+    });
+}
+
+async function showChatVarHelp() {
+    SillyTavern.callGenericPopup(chat_variable_help, SillyTavern.POPUP_TYPE.TEXT, '', {
         allowVerticalScrolling: true,
         leftAlign: true,
         wide: true,
