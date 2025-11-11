@@ -30,6 +30,7 @@ import { exported_events, ExtraLLMRequestContent, MvuData } from '@/variable_def
 import { initCheck } from '@/variable_init';
 import { compare } from 'compare-versions';
 import { klona } from 'klona';
+import { showNotifications } from '@/notifications';
 
 /**
  * 标记是否处于额外模型解析
@@ -294,14 +295,17 @@ async function onMessageReceived(message_id: number) {
     await handleVariablesInMessage(message_id);
 }
 async function removeChatVariables() {
-    updateVariablesWith(variables => {
-        _.unset(variables, 'initialized_lorebooks');
-        _.unset(variables, 'stat_data');
-        _.unset(variables, 'schema');
-        _.unset(variables, 'display_data');
-        _.unset(variables, 'delta_data');
-        return variables;
-    }, {type: 'chat'});
+    updateVariablesWith(
+        variables => {
+            _.unset(variables, 'initialized_lorebooks');
+            _.unset(variables, 'stat_data');
+            _.unset(variables, 'schema');
+            _.unset(variables, 'display_data');
+            _.unset(variables, 'delta_data');
+            return variables;
+        },
+        { type: 'chat' }
+    );
 }
 async function initialize() {
     if (compare(getTavernHelperVersion(), '3.4.17', '<')) {
@@ -315,7 +319,7 @@ async function initialize() {
 
     registerButtons();
 
-    await removeChatVariables();
+    if (store.settings.更新到聊天变量 === false) await removeChatVariables();
 
     const { 要保留变量的最近楼层数, 启用 } = store.settings.auto_cleanup;
     // 对于旧聊天文件, 清理过早楼层的变量
@@ -499,27 +503,7 @@ async function initialize() {
         }
     });
 
-    if (store.settings.internal.已提醒更新了配置界面 === false) {
-        toastr.info(
-            '配置界面位于酒馆扩展界面-「正则」下方, 请点开了解新功能或自定义配置',
-            '[MVU]已更新独立配置界面'
-        );
-        store.settings.internal.已提醒更新了配置界面 = true;
-    }
-    if (store.settings.internal.已提醒自动清理旧变量功能 === false) {
-        toastr.info(
-            'MVU 现在可以自动清理旧变量来减少聊天文件大小; 这不会影响你回退游玩以前的楼层；在设置中开启 `变量自动清理` 启用',
-            '[MVU]已更新自动清理旧变量功能'
-        );
-        store.settings.internal.已提醒自动清理旧变量功能 = true;
-    }
-    if (store.settings.internal.已提醒更新了API温度等配置 === false) {
-        toastr.info(
-            'MVU 现在可以自定义 API 的温度、频率惩罚、存在惩罚、最大回复 token 数；需要酒馆助手版本 >= 4.0.14',
-            '[MVU]已更新更多自定义API配置'
-        );
-        store.settings.internal.已提醒更新了API温度等配置 = true;
-    }
+    showNotifications();
     toastr.info(
         `构建信息: ${__BUILD_DATE__ ?? 'Unknown'} (${__COMMIT_ID__ ?? 'Unknown'})`,
         '[MVU]脚本加载成功'

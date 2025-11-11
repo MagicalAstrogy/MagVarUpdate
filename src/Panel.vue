@@ -246,6 +246,18 @@
                     />
                     <span>变量自动清理</span>
                 </label>
+                <label
+                    class="checkbox_label"
+                    for="mvu_auto_clean_checkbox"
+                    title="启用后，所有变量更新结果也会输出到聊天变量中。如果部分老角色卡无法正常游玩，可以开启这个开关。"
+                >
+                    <input
+                        id="mvu_auto_clean_checkbox"
+                        v-model="store.settings.更新到聊天变量"
+                        type="checkbox"
+                    />
+                    <span>变量更新到聊天变量</span>
+                </label>
             </div>
 
             <hr />

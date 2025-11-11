@@ -1251,6 +1251,7 @@ export async function handleVariablesInMessage(message_id: number) {
     }
     const request_message_id = message_id === 0 ? 0 : message_id - 1;
     const variables = await getLastValidVariable(request_message_id);
+    const settings = useSettingsStore().settings;
     if (!_.has(variables, 'stat_data')) {
         console.error(`cannot found stat_data for ${request_message_id}`);
         return;
@@ -1265,21 +1266,22 @@ export async function handleVariablesInMessage(message_id: number) {
         await eventEmit(variable_events.BEFORE_MESSAGE_UPDATE, context);
         message_content = context.message_content;
     }
-    await updateVariablesWith(
-        (data: Record<string, any>) => {
-            data.initialized_lorebooks = variables.initialized_lorebooks;
-            data.stat_data = variables.stat_data;
-            if (variables.schema !== undefined) {
-                data.schema = variables.schema;
-            } else {
-                _.unset(data, 'schema');
-            }
-            data.display_data = variables.display_data;
-            data.delta_data = variables.delta_data;
-            return data;
-        },
-        { type: 'message', message_id: message_id }
-    );
+    const updater = (data: Record<string, any>) => {
+        data.initialized_lorebooks = variables.initialized_lorebooks;
+        data.stat_data = variables.stat_data;
+        if (variables.schema !== undefined) {
+            data.schema = variables.schema;
+        } else {
+            _.unset(data, 'schema');
+        }
+        data.display_data = variables.display_data;
+        data.delta_data = variables.delta_data;
+        return data;
+    };
+    if (has_variable_modified && settings.更新到聊天变量 === true) {
+        await updateVariablesWith(updater, { type: 'chat' });
+    }
+    await updateVariablesWith(updater, { type: 'message', message_id: message_id });
 
     if (chat_message.role !== 'user') {
         if (!message_content.includes('<StatusPlaceHolderImpl/>')) {

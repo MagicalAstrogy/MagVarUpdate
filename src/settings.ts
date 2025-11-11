@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia';
 import { ref, toRaw, watch } from 'vue';
 import * as z from 'zod';
+import { is_jest_environment } from '@/util';
 
 const Settings = z
     .object({
@@ -38,6 +39,7 @@ const Settings = z
             })
             .prefault({}),
         快照保留间隔: z.number().default(50),
+        更新到聊天变量: z.boolean().default(false),
         auto_cleanup: z
             .object({
                 启用: z.boolean().default(false),
@@ -61,7 +63,7 @@ export const useSettingsStore = defineStore('settings', () => {
         settings,
         new_settings => {
             _.set(SillyTavern.extensionSettings, 'mvu_settings', toRaw(new_settings));
-            SillyTavern.saveSettingsDebounced();
+            if (!is_jest_environment) SillyTavern.saveSettingsDebounced();
         },
         { deep: true }
     );
