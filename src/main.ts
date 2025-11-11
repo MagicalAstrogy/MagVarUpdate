@@ -293,6 +293,16 @@ async function onMessageReceived(message_id: number) {
     }
     await handleVariablesInMessage(message_id);
 }
+async function removeChatVariables() {
+    updateVariablesWith(variables => {
+        _.unset(variables, 'initialized_lorebooks');
+        _.unset(variables, 'stat_data');
+        _.unset(variables, 'schema');
+        _.unset(variables, 'display_data');
+        _.unset(variables, 'delta_data');
+        return variables;
+    }, {type: 'chat'});
+}
 async function initialize() {
     if (compare(getTavernHelperVersion(), '3.4.17', '<')) {
         toastr.warning(
@@ -304,8 +314,10 @@ async function initialize() {
     const store = useSettingsStore();
 
     registerButtons();
-    const { 要保留变量的最近楼层数, 启用 } = store.settings.auto_cleanup;
 
+    await removeChatVariables();
+
+    const { 要保留变量的最近楼层数, 启用 } = store.settings.auto_cleanup;
     // 对于旧聊天文件, 清理过早楼层的变量
     if (
         启用 &&

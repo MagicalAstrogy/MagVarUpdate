@@ -1265,22 +1265,21 @@ export async function handleVariablesInMessage(message_id: number) {
         await eventEmit(variable_events.BEFORE_MESSAGE_UPDATE, context);
         message_content = context.message_content;
     }
-    const updater = (data: Record<string, any>) => {
-        data.initialized_lorebooks = variables.initialized_lorebooks;
-        data.stat_data = variables.stat_data;
-        if (variables.schema !== undefined) {
-            data.schema = variables.schema;
-        } else {
-            _.unset(data, 'schema');
-        }
-        data.display_data = variables.display_data;
-        data.delta_data = variables.delta_data;
-        return data;
-    };
-    if (has_variable_modified) {
-        await updateVariablesWith(updater, { type: 'chat' });
-    }
-    await updateVariablesWith(updater, { type: 'message', message_id: message_id });
+    await updateVariablesWith(
+        (data: Record<string, any>) => {
+            data.initialized_lorebooks = variables.initialized_lorebooks;
+            data.stat_data = variables.stat_data;
+            if (variables.schema !== undefined) {
+                data.schema = variables.schema;
+            } else {
+                _.unset(data, 'schema');
+            }
+            data.display_data = variables.display_data;
+            data.delta_data = variables.delta_data;
+            return data;
+        },
+        { type: 'message', message_id: message_id }
+    );
 
     if (chat_message.role !== 'user') {
         if (!message_content.includes('<StatusPlaceHolderImpl/>')) {
