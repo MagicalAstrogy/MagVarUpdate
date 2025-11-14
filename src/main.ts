@@ -15,22 +15,24 @@ import {
     ToolCallBatches,
     unregisterFunction,
 } from '@/function_call';
+import { showNotifications } from '@/notifications';
 import { destroyPanel, initPanel } from '@/panel';
 import { useSettingsStore } from '@/settings';
 import {
+    clearStoppableEvent,
     findLastValidMessage,
     getSillyTavernVersion,
+    getTavernHelperVersion,
     initSillyTavernVersion,
     initTavernHelperVersion,
-    getTavernHelperVersion,
     is_jest_environment,
     isFunctionCallingSupported,
+    stoppableEventOn,
 } from '@/util';
 import { exported_events, ExtraLLMRequestContent, MvuData } from '@/variable_def';
 import { initCheck } from '@/variable_init';
 import { compare } from 'compare-versions';
 import { klona } from 'klona';
-import { showNotifications } from '@/notifications';
 
 /**
  * 标记是否处于额外模型解析
@@ -379,7 +381,7 @@ async function initialize() {
     }
 
     // 删除时恢复旧楼层变量
-    eventOn(
+    stoppableEventOn(
         tavern_events.MESSAGE_DELETED,
         _.debounce(async () => {
             //默认参数下，debounce 是尾触发的，在这个场景意味着所有删除操作结束后，才会进行恢复操作
@@ -460,29 +462,28 @@ async function initialize() {
         }, 2000)
     );
 
-    eventOn(tavern_events.GENERATION_STARTED, initCheck);
-    eventOn(tavern_events.MESSAGE_SENT, initCheck);
-    eventOn(tavern_events.MESSAGE_SENT, handleVariablesInMessage);
+    stoppableEventOn(tavern_events.GENERATION_STARTED, initCheck);
+    stoppableEventOn(tavern_events.MESSAGE_SENT, initCheck);
+    stoppableEventOn(tavern_events.MESSAGE_SENT, handleVariablesInMessage);
 
     // 3.6.5 版本以上酒馆助手的 `tavern_events` 才存在这个字段, 因此直接用字符串
-    eventOn('worldinfo_entries_loaded', handlePromptFilter);
+    stoppableEventOn('worldinfo_entries_loaded', handlePromptFilter);
 
-    eventOn(
+    stoppableEventOn(
         tavern_events.MESSAGE_RECEIVED,
         is_jest_environment ? onMessageReceived : _.throttle(onMessageReceived, 3000)
     );
     SetReceivedCallbackFn(onMessageReceived);
 
-    eventOn(exported_events.INVOKE_MVU_PROCESS, handleVariablesInCallback);
-    eventOn(exported_events.UPDATE_VARIABLE, updateVariable);
-    eventOn(tavern_events.CHAT_COMPLETION_SETTINGS_READY, overrideToolRequest);
-    eventOn(tavern_events.CHAT_CHANGED, reloadScript);
+    stoppableEventOn(exported_events.INVOKE_MVU_PROCESS, handleVariablesInCallback);
+    stoppableEventOn(exported_events.UPDATE_VARIABLE, updateVariable);
+    stoppableEventOn(tavern_events.CHAT_COMPLETION_SETTINGS_READY, overrideToolRequest);
 
     _.set(window.parent, 'handleVariablesInMessage', handleVariablesInMessage);
     registerFunction();
 
     // 清理旧楼层变量，这个操作的优先级需要比更新操作低，保证在所有事情做完之后，再进行变量的清理。
-    eventOn(tavern_events.MESSAGE_RECEIVED, message_id => {
+    stoppableEventOn(tavern_events.MESSAGE_RECEIVED, message_id => {
         const store = useSettingsStore();
         const { 启用 } = store.settings.auto_cleanup;
         if (!启用) {
@@ -516,7 +517,7 @@ async function destroy() {
         vanilla_parseToolCalls = null;
     }
     unregisterFunction();
-    eventClearAll();
+    clearStoppableEvent();
 }
 
 $(async () => {
@@ -524,6 +525,7 @@ $(async () => {
     await initTavernHelperVersion();
     exportGlobals();
     await initPanel();
+    eventOn(tavern_events.CHAT_CHANGED, reloadScript);
     await initialize();
 });
 $(window).on('pagehide', async () => {
