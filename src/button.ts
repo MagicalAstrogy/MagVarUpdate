@@ -2,7 +2,7 @@ import { getLastValidVariable, handleVariablesInMessage, updateVariables } from 
 import { cleanUpMetadata, reconcileAndApplySchema } from '@/schema';
 import { useSettingsStore } from '@/settings';
 import { updateDescriptions } from '@/update_descriptions';
-import { findLastValidMessage, isFunctionCallingSupported, stoppableEventOn } from '@/util';
+import { findLastValidMessage, isFunctionCallingSupported, scopedEventOn } from '@/util';
 import { MvuData } from '@/variable_def';
 import { createEmptyGameData, loadInitVarData } from '@/variable_init';
 import { klona } from 'klona';
@@ -381,6 +381,6 @@ export const buttons: Button[] = [
 export function registerButtons() {
     appendInexistentScriptButtons(buttons.map(b => ({ name: b.name, visible: false })));
     buttons.forEach(b => {
-        stoppableEventOn(getButtonEvent(b.name), b.function);
+        scopedEventOn(getButtonEvent(b.name), b.function);
     });
 }
