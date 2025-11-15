@@ -15,6 +15,7 @@ import {
     ToolCallBatches,
     unregisterFunction,
 } from '@/function_call';
+import { showNotifications } from '@/notifications';
 import { destroyPanel, initPanel } from '@/panel';
 import { useSettingsStore } from '@/settings';
 import {
@@ -30,7 +31,6 @@ import { exported_events, ExtraLLMRequestContent, MvuData } from '@/variable_def
 import { initCheck } from '@/variable_init';
 import { compare } from 'compare-versions';
 import { klona } from 'klona';
-import { showNotifications } from '@/notifications';
 
 /**
  * 标记是否处于额外模型解析
@@ -325,7 +325,7 @@ async function initialize() {
     // 对于旧聊天文件, 清理过早楼层的变量
     if (
         启用 &&
-        SillyTavern.chat.length > 要保留变量的最近楼层数 &&
+        SillyTavern.chat.length > 要保留变量的最近楼层数 + 5 &&
         _.has(SillyTavern.chat, [1, 'variables', 0, 'stat_data'])
     ) {
         toastr.info('即将开始清理就聊天记录的变量，自动生成备份...', '[MVU]自动清理');
