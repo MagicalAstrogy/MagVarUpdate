@@ -24,4 +24,12 @@ export function showNotifications() {
         );
         store.settings.internal.已提醒更新了API温度等配置 = true;
     }
+
+    if (store.settings.internal.已默认开启自动清理旧变量功能 === false) {
+        toastr.info(
+            'MVU 现在会自动清理较老楼层上的变量信息，以降低聊天文件大小。',
+            '[MVU]已更新自动清理配置'
+        );
+        //会在 main.ts 中进行具体的设置操作，所以提醒部分不需更新。
+    }
 }
