@@ -323,10 +323,9 @@ async function initialize() {
 
     if (store.settings.更新到聊天变量 === false) await removeChatVariables();
 
-    const { 要保留变量的最近楼层数, 启用 } = store.settings.auto_cleanup;
+    const { 要保留变量的最近楼层数 } = store.settings.auto_cleanup;
     // 对于旧聊天文件, 清理过早楼层的变量
     if (
-        启用 &&
         SillyTavern.chat.length > 要保留变量的最近楼层数 + 5 &&
         _.has(SillyTavern.chat, [1, 'variables', 0, 'stat_data'])
     ) {
@@ -485,10 +484,6 @@ async function initialize() {
     // 清理旧楼层变量，这个操作的优先级需要比更新操作低，保证在所有事情做完之后，再进行变量的清理。
     scopedEventOn(tavern_events.MESSAGE_RECEIVED, message_id => {
         const store = useSettingsStore();
-        const { 启用 } = store.settings.auto_cleanup;
-        if (!启用) {
-            return;
-        }
         if (SillyTavern.chat.length % 5 !== 0) {
             return; // 每 5 层执行一次清理。
         }
@@ -505,10 +500,6 @@ async function initialize() {
     });
 
     showNotifications();
-    if (store.settings.internal.已默认开启自动清理旧变量功能 === false) {
-        store.settings.internal.已默认开启自动清理旧变量功能 = true;
-        store.settings.auto_cleanup.启用 = true;
-    }
 
     toastr.info(
         `构建信息: ${__BUILD_DATE__ ?? 'Unknown'} (${__COMMIT_ID__ ?? 'Unknown'})`,

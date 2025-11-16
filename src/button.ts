@@ -285,38 +285,6 @@ export const buttons: Button[] = [
         },
     },
     {
-        name: '快照楼层',
-        function: async () => {
-            const result = (await SillyTavern.callGenericPopup(
-                '<h4>设置快照楼层可以避免指定的楼层在清理操作中被移除变量信息</h4>请填写要保留变量信息的楼层 (如 10 为第 10 层)<br><strong>后续楼层的重演将可以从这一层开始</strong>',
-                SillyTavern.POPUP_TYPE.INPUT,
-                '10'
-            )) as string | undefined;
-            if (!result) {
-                return;
-            }
-            const message_id = parseInt(result);
-            if (isNaN(message_id)) {
-                toastr.error(`请输入有效的楼层数, 你输入的是 '${result}'`, '[MVU]配置楼层快照失败');
-                return;
-            }
-            const chat_message = SillyTavern.chat[message_id];
-            if (chat_message === undefined) {
-                toastr.error(`无效的楼层 '${result}'`, '[MVU]配置楼层快照失败');
-                return;
-            }
-            _.range(0, chat_message.swipes?.length ?? 1).forEach(i => {
-                if (chat_message?.variables?.[i] === undefined) {
-                    return;
-                }
-                chat_message.variables[i].snapshot = true;
-            });
-            SillyTavern.saveChat().then(() =>
-                toastr.success(`已将 ${message_id} 层配置为快照楼层`, '[MVU]配置楼层快照')
-            );
-        },
-    },
-    {
         name: '重演楼层',
         function: RecurVariable,
     },
@@ -327,53 +295,7 @@ export const buttons: Button[] = [
     {
         name: '清除旧楼层变量',
         function: async () => {
-            const snapshot_interval = useSettingsStore().settings.快照保留间隔;
-            const result = (await SillyTavern.callGenericPopup(
-                `<h4>清除旧楼层变量信息以减小聊天文件大小避免手机崩溃</h4>请填写要保留变量信息的楼层数 (如 10 为保留最后 10 层，每 [${snapshot_interval}] 层保留一层作为快照)，每 <br><strong>注意: 你需要通过重演才能回退游玩到没保留变量信息的楼层</strong>`,
-                SillyTavern.POPUP_TYPE.INPUT,
-                '10'
-            )) as string | undefined;
-            if (!result) {
-                return;
-            }
-            const depth = parseInt(result);
-            if (isNaN(depth)) {
-                toastr.error(
-                    `请输入有效的楼层数, 你输入的是 '${result}'`,
-                    '[MVU]清理旧楼层变量失败'
-                );
-                return;
-            }
-            SillyTavern.chat.slice(1, -depth - 1).forEach((chat_message, index) => {
-                if (chat_message.variables === undefined) {
-                    return;
-                }
-                chat_message.variables = _.range(0, chat_message.swipes?.length ?? 1).map(i => {
-                    if (chat_message?.variables?.[i] === undefined) {
-                        return {};
-                    }
-                    if (_.get(chat_message.variables[i], 'snapshot') === true)
-                        return chat_message.variables[i];
-                    if ((index + 1) % snapshot_interval === 0) {
-                        chat_message.variables[i].snapshot = true;
-                        console.log(`将 [${index + 1}] 层作为快照楼层`);
-                        return chat_message.variables[i];
-                    }
-                    return _.omit(
-                        chat_message.variables[i],
-                        `stat_data`,
-                        `display_data`,
-                        `delta_data`,
-                        `schema`
-                    );
-                });
-            });
-            SillyTavern.saveChat().then(() =>
-                toastr.success(
-                    `已清理旧变量, 保留了最后 ${depth} 层的变量`,
-                    '[MVU]清理旧楼层变量成功'
-                )
-            );
+            toastr.info('请在变量框架中勾选自动清理变量功能', '[MVU]该按钮已弃用')
         },
     },
 ];
