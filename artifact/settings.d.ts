@@ -28,6 +28,7 @@ export declare const useSettingsStore: import("pinia").StoreDefinition<"settings
             已提醒更新了配置界面: boolean;
             已提醒自动清理旧变量功能: boolean;
             已提醒更新了API温度等配置: boolean;
+            已默认开启自动清理旧变量功能: boolean;
         };
     }, {
         更新方式: "随AI输出" | "额外模型解析";
@@ -58,6 +59,7 @@ export declare const useSettingsStore: import("pinia").StoreDefinition<"settings
             已提醒更新了配置界面: boolean;
             已提醒自动清理旧变量功能: boolean;
             已提醒更新了API温度等配置: boolean;
+            已默认开启自动清理旧变量功能: boolean;
         };
     } | {
         更新方式: "随AI输出" | "额外模型解析";
@@ -88,6 +90,7 @@ export declare const useSettingsStore: import("pinia").StoreDefinition<"settings
             已提醒更新了配置界面: boolean;
             已提醒自动清理旧变量功能: boolean;
             已提醒更新了API温度等配置: boolean;
+            已默认开启自动清理旧变量功能: boolean;
         };
     }>;
 }, "settings">, Pick<{
@@ -120,6 +123,7 @@ export declare const useSettingsStore: import("pinia").StoreDefinition<"settings
             已提醒更新了配置界面: boolean;
             已提醒自动清理旧变量功能: boolean;
             已提醒更新了API温度等配置: boolean;
+            已默认开启自动清理旧变量功能: boolean;
         };
     }, {
         更新方式: "随AI输出" | "额外模型解析";
@@ -150,6 +154,7 @@ export declare const useSettingsStore: import("pinia").StoreDefinition<"settings
             已提醒更新了配置界面: boolean;
             已提醒自动清理旧变量功能: boolean;
             已提醒更新了API温度等配置: boolean;
+            已默认开启自动清理旧变量功能: boolean;
         };
     } | {
         更新方式: "随AI输出" | "额外模型解析";
@@ -180,6 +185,7 @@ export declare const useSettingsStore: import("pinia").StoreDefinition<"settings
             已提醒更新了配置界面: boolean;
             已提醒自动清理旧变量功能: boolean;
             已提醒更新了API温度等配置: boolean;
+            已默认开启自动清理旧变量功能: boolean;
         };
     }>;
 }, never>, Pick<{
@@ -212,6 +218,7 @@ export declare const useSettingsStore: import("pinia").StoreDefinition<"settings
             已提醒更新了配置界面: boolean;
             已提醒自动清理旧变量功能: boolean;
             已提醒更新了API温度等配置: boolean;
+            已默认开启自动清理旧变量功能: boolean;
         };
     }, {
         更新方式: "随AI输出" | "额外模型解析";
@@ -242,6 +249,7 @@ export declare const useSettingsStore: import("pinia").StoreDefinition<"settings
             已提醒更新了配置界面: boolean;
             已提醒自动清理旧变量功能: boolean;
             已提醒更新了API温度等配置: boolean;
+            已默认开启自动清理旧变量功能: boolean;
         };
     } | {
         更新方式: "随AI输出" | "额外模型解析";
@@ -272,6 +280,7 @@ export declare const useSettingsStore: import("pinia").StoreDefinition<"settings
             已提醒更新了配置界面: boolean;
             已提醒自动清理旧变量功能: boolean;
             已提醒更新了API温度等配置: boolean;
+            已默认开启自动清理旧变量功能: boolean;
         };
     }>;
 }, never>>;
