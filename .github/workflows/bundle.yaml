@@ -54,7 +54,7 @@ jobs:
 
   bump_tag:
     runs-on: ubuntu-latest
-    needs: sync
+    needs: compile
     steps:
       - uses: actions/checkout@v4
         with:
