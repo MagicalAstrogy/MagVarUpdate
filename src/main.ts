@@ -505,6 +505,7 @@ async function initialize() {
 
     showNotifications();
     if (store.settings.internal.已默认开启自动清理旧变量功能 === false) {
+        store.settings.internal.已默认开启自动清理旧变量功能 = true;
         store.settings.auto_cleanup.启用 = true;
     }
 
