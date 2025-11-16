@@ -327,7 +327,7 @@ async function initialize() {
     // 对于旧聊天文件, 清理过早楼层的变量
     if (
         启用 &&
-        SillyTavern.chat.length > 要保留变量的最近楼层数 &&
+        SillyTavern.chat.length > 要保留变量的最近楼层数 + 5 &&
         _.has(SillyTavern.chat, [1, 'variables', 0, 'stat_data'])
     ) {
         toastr.info('即将开始清理就聊天记录的变量，自动生成备份...', '[MVU]自动清理');
@@ -505,6 +505,11 @@ async function initialize() {
     });
 
     showNotifications();
+    if (store.settings.internal.已默认开启自动清理旧变量功能 === false) {
+        store.settings.internal.已默认开启自动清理旧变量功能 = true;
+        store.settings.auto_cleanup.启用 = true;
+    }
+
     toastr.info(
         `构建信息: ${__BUILD_DATE__ ?? 'Unknown'} (${__COMMIT_ID__ ?? 'Unknown'})`,
         '[MVU]脚本加载成功'
