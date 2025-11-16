@@ -10,3 +10,5 @@ export declare const saveChatDebounced: import("lodash").DebouncedFunc<() => Pro
  * @param end_message_id 从哪一条消息开始倒序搜索(不含那一条)
  */
 export declare function findLastValidMessage(end_message_id: number): number;
+export declare function scopedEventOn<T extends EventType>(event_type: T, listener: ListenerType[T]): void;
+export declare function clearScopedEvent(): void;
