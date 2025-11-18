@@ -328,45 +328,65 @@ async function initialize() {
     if (
         启用 &&
         SillyTavern.chat.length > 要保留变量的最近楼层数 + 5 &&
-        _.has(SillyTavern.chat, [1, 'variables', 0, 'stat_data'])
+        _.has(SillyTavern.chat, [1, 'variables', 0, 'stat_data']) &&
+        !_.has(SillyTavern.chat, [1, 'variables', 0, 'ignore_cleanup'])
     ) {
-        toastr.info('即将开始清理就聊天记录的变量，自动生成备份...', '[MVU]自动清理');
-        let is_backup_success = false;
-        try {
-            const body = {
-                is_group: false,
-                avatar_url: SillyTavern.characters[Number(SillyTavern.characterId)]?.avatar,
-                file: `${SillyTavern.getCurrentChatId()}.jsonl`,
-                exportfilename: `${SillyTavern.getCurrentChatId()}.jsonl`,
-                format: 'jsonl',
-            };
-
-            const response = await fetch('/api/chats/export', {
-                method: 'POST',
-                body: JSON.stringify(body),
-                headers: SillyTavern.getRequestHeaders(),
-            });
-            const data = await response.json();
-            if (!response.ok) {
-                toastr.error(`聊天记录导出失败，放弃清理: ${data.message}`, '[MVU]自动清理');
-            } else {
-                toastr.success(data.message);
-                //自动发起一个下载
-                const serialized = data.result;
-                const blob = new Blob([serialized], { type: 'text/plain' });
-                const url = URL.createObjectURL(blob);
-                const link = document.createElement('a');
-                link.href = url;
-                link.download = body.exportfilename;
-                link.click();
-                URL.revokeObjectURL(url);
-                is_backup_success = true;
+        const result = await SillyTavern.callGenericPopup(
+            '检测可以清理本聊天文件的旧变量从而减少文件体积, 是否清理?',
+            SillyTavern.POPUP_TYPE.CONFIRM,
+            '',
+            {
+                okButton: '仅清理',
+                cancelButton: '取消',
+                customButtons: ['备份并清理'],
             }
-        } catch (error) {
-            // display error message
-            toastr.error(`聊天记录导出失败，放弃清理: ${error}`, '[MVU]自动清理');
+        );
+        if (result === SillyTavern.POPUP_RESULT.CANCELLED) {
+            _.set(SillyTavern.chat, [1, 'variables', 0, 'ignore_cleanup'], true);
+            return;
         }
-        if (is_backup_success) {
+        toastr.info(
+            `即将开始清理就聊天记录的变量${result === SillyTavern.POPUP_RESULT.CUSTOM1 ? '，自动生成备份' : ''}...`,
+            '[MVU]自动清理'
+        );
+        let is_backup_success = false;
+        if (result === SillyTavern.POPUP_RESULT.CUSTOM1) {
+            try {
+                const body = {
+                    is_group: false,
+                    avatar_url: SillyTavern.characters[Number(SillyTavern.characterId)]?.avatar,
+                    file: `${SillyTavern.getCurrentChatId()}.jsonl`,
+                    exportfilename: `${SillyTavern.getCurrentChatId()}.jsonl`,
+                    format: 'jsonl',
+                };
+
+                const response = await fetch('/api/chats/export', {
+                    method: 'POST',
+                    body: JSON.stringify(body),
+                    headers: SillyTavern.getRequestHeaders(),
+                });
+                const data = await response.json();
+                if (!response.ok) {
+                    toastr.error(`聊天记录导出失败，放弃清理: ${data.message}`, '[MVU]自动清理');
+                } else {
+                    toastr.success(data.message);
+                    //自动发起一个下载
+                    const serialized = data.result;
+                    const blob = new Blob([serialized], { type: 'text/plain' });
+                    const url = URL.createObjectURL(blob);
+                    const link = document.createElement('a');
+                    link.href = url;
+                    link.download = body.exportfilename;
+                    link.click();
+                    URL.revokeObjectURL(url);
+                    is_backup_success = true;
+                }
+            } catch (error) {
+                // display error message
+                toastr.error(`聊天记录导出失败，放弃清理: ${error}`, '[MVU]自动清理');
+            }
+        }
+        if (result === SillyTavern.POPUP_RESULT.AFFIRMATIVE || is_backup_success) {
             const counter = cleanupVariablesInMessages(
                 1, //0 层永不清理，以保证始终有快照能力。
                 SillyTavern.chat.length - 1 - 要保留变量的最近楼层数,
