@@ -200,7 +200,15 @@ export function parseCommandValue(valStr: string): any {
  * - 'remove': Represents a command to remove an item or data.
  * - 'add': Represents a command to add an item or data.
  */
-type CommandNames = 'set' | 'insert' | 'assign' | 'remove' | 'unset' | 'delete' | 'add';
+type CommandNames =
+    | 'set'
+    | 'insert'
+    | 'assign'
+    | 'remove'
+    | 'unset'
+    | 'delete'
+    | 'add'
+    | 'json_patch';
 
 /**
  * 从大字符串中提取所有 .set(${path}, ${new_value});//${reason} 格式的模式
@@ -229,6 +237,25 @@ interface Command {
  */
 // 将 extractSetCommands 扩展为 extractCommands 以支持多种命令
 export function extractCommands(inputText: string): Command[] {
+    const jsonPatchMatch = inputText.match(/<JSONPatch>([\s\S]*?)<\/JSONPatch>/);
+    if (jsonPatchMatch && jsonPatchMatch[1]) {
+        try {
+            const patch = JSON.parse(jsonPatchMatch[1]);
+            if (isJsonPatch(patch)) {
+                return [
+                    {
+                        type: 'json_patch',
+                        full_match: jsonPatchMatch[0],
+                        args: [jsonPatchMatch[1]],
+                        reason: '',
+                    },
+                ];
+            }
+        } catch (e) {
+            console.error('Failed to parse content of <JSONPatch> tag:', e);
+        }
+    }
+
     const results: Command[] = [];
     let i = 0;
 
@@ -560,264 +587,75 @@ export async function updateVariables(
     // 重构新增：统一处理宏替换，确保命令中的宏（如 ${variable}）被替换，提升一致性
     const processed_message_content = substitudeMacros(current_message_content);
 
-    const jsonPatchMatch = processed_message_content.match(/<JSONPatch>([\s\S]*?)<\/JSONPatch>/);
-    if (jsonPatchMatch && jsonPatchMatch[1]) {
+    // 使用重构后的 extractCommands 提取所有命令
+    const commands = extractCommands(processed_message_content);
+
+    if (commands.length === 1 && commands[0].type === 'json_patch') {
         try {
-            const patch = JSON.parse(jsonPatchMatch[1]);
+            const patch = JSON.parse(commands[0].args[0]);
             if (isJsonPatch(patch)) {
-                // Fire COMMAND_PARSED event
-                const pseudo_commands = patch.map(op => ({
-                    type: op.op,
-                    full_match: JSON.stringify(op),
-                    args: [op.path, (op as any).value ?? (op as any).from],
-                    reason: '',
-                }));
-                await (eventEmit as any)(
-                    variable_events.COMMAND_PARSED,
-                    variables,
-                    pseudo_commands,
-                    current_message_content
-                );
-
-                const validatedPatch: jsonpatch.Operation[] = [];
-                const outError = (message: string, operation: jsonpatch.Operation) => {
-                    console.warn(
-                        `[MVU] JSON Patch Validation Error: ${message}`,
-                        JSON.stringify(operation)
-                    );
-                };
-
-                for (const operation of patch) {
-                    let is_valid = true;
-                    const path = operation.path;
-
-                    switch (operation.op) {
+                // This is a simplified version that translates JSON Patch to existing command structures.
+                const translated_commands: Command[] = [];
+                for (const op of patch) {
+                    const path = op.path.substring(1).replace(/\//g, '.');
+                    switch (op.op) {
+                        case 'replace':
+                            translated_commands.push({
+                                type: 'set',
+                                full_match: JSON.stringify(op),
+                                args: [path, JSON.stringify((op as any).value)],
+                                reason: 'json_patch',
+                            });
+                            break;
                         case 'add':
-                        case 'copy': {
-                            const parent_path = path.substring(0, path.lastIndexOf('/'));
-                            const parent_lodash_path = parent_path.substring(1).replace(/\//g, '.');
-                            const parent_schema = getSchemaForPath(
-                                variables.schema,
-                                parent_lodash_path
-                            );
-
-                            if (parent_schema && isObjectSchema(parent_schema)) {
-                                if (parent_schema.extensible !== true) {
-                                    const new_key = path.substring(path.lastIndexOf('/') + 1);
-                                    if (!parent_schema.properties[new_key]) {
-                                        outError(
-                                            `Cannot add new property '${new_key}' to non-extensible object at path '${parent_path}'.`,
-                                            operation
-                                        );
-                                        is_valid = false;
-                                    }
-                                }
-                            } else if (parent_schema && isArraySchema(parent_schema)) {
-                                if (parent_schema.extensible !== true) {
-                                    outError(
-                                        `Cannot add element to non-extensible array at path '${parent_path}'.`,
-                                        operation
-                                    );
-                                    is_valid = false;
-                                }
-                            } else if (parent_schema) {
-                                outError(
-                                    `Cannot add property to non-container type '${parent_schema.type}' at path '${parent_path}'.`,
-                                    operation
-                                );
-                                is_valid = false;
-                            }
+                            translated_commands.push({
+                                type: 'insert',
+                                full_match: JSON.stringify(op),
+                                args: [path, JSON.stringify((op as any).value)],
+                                reason: 'json_patch',
+                            });
                             break;
-                        }
                         case 'remove':
-                        case 'move': {
-                            const source_path =
-                                operation.op === 'move' ? (operation as any).from : path;
-                            const source_parent_path = source_path.substring(
-                                0,
-                                source_path.lastIndexOf('/')
-                            );
-                            const source_parent_lodash_path = source_parent_path
-                                .substring(1)
-                                .replace(/\//g, '.');
-                            const key_to_remove = source_path.substring(
-                                source_path.lastIndexOf('/') + 1
-                            );
-
-                            const parent_schema = getSchemaForPath(
-                                variables.schema,
-                                source_parent_lodash_path
-                            );
-
-                            if (parent_schema && isObjectSchema(parent_schema)) {
-                                if (parent_schema.properties[key_to_remove]?.required === true) {
-                                    outError(
-                                        `Cannot remove required property '${key_to_remove}' from object at path '${source_parent_path}'.`,
-                                        operation
-                                    );
-                                    is_valid = false;
-                                }
-                            } else if (parent_schema && isArraySchema(parent_schema)) {
-                                if (parent_schema.extensible !== true) {
-                                    outError(
-                                        `Cannot remove element from non-extensible array at path '${source_parent_path}'.`,
-                                        operation
-                                    );
-                                    is_valid = false;
-                                }
-                            }
-                            if (operation.op === 'move' && is_valid) {
-                                const dest_parent_path = path.substring(0, path.lastIndexOf('/'));
-                                const dest_parent_lodash_path = dest_parent_path
-                                    .substring(1)
-                                    .replace(/\//g, '.');
-                                const dest_parent_schema = getSchemaForPath(
-                                    variables.schema,
-                                    dest_parent_lodash_path
-                                );
-                                if (dest_parent_schema && isObjectSchema(dest_parent_schema)) {
-                                    if (dest_parent_schema.extensible !== true) {
-                                        const new_key = path.substring(path.lastIndexOf('/') + 1);
-                                        if (!dest_parent_schema.properties[new_key]) {
-                                            outError(
-                                                `(Move) Cannot add new property '${new_key}' to non-extensible object at path '${dest_parent_path}'.`,
-                                                operation
-                                            );
-                                            is_valid = false;
-                                        }
-                                    }
-                                } else if (dest_parent_schema && isArraySchema(dest_parent_schema)) {
-                                    if (dest_parent_schema.extensible !== true) {
-                                        outError(
-                                            `(Move) Cannot add element to non-extensible array at path '${dest_parent_path}'.`,
-                                            operation
-                                        );
-                                        is_valid = false;
-                                    }
-                                } else if (dest_parent_schema) {
-                                    outError(
-                                        `(Move) Cannot add property to non-container type '${dest_parent_schema.type}' at path '${dest_parent_path}'.`,
-                                        operation
-                                    );
-                                    is_valid = false;
-                                }
-                            }
+                            translated_commands.push({
+                                type: 'delete',
+                                full_match: JSON.stringify(op),
+                                args: [path],
+                                reason: 'json_patch',
+                            });
                             break;
-                        }
-                    }
-                    if (is_valid) {
-                        validatedPatch.push(operation);
+                        case 'move':
+                            const from_path = (op as any).from.substring(1).replace(/\//g, '.');
+                            const value = _.get(variables.stat_data, from_path);
+                            translated_commands.push({
+                                type: 'delete',
+                                full_match: JSON.stringify(op),
+                                args: [from_path],
+                                reason: 'json_patch:move_source',
+                            });
+                            translated_commands.push({
+                                type: 'insert',
+                                full_match: JSON.stringify(op),
+                                args: [path, JSON.stringify(value)],
+                                reason: 'json_patch:move_dest',
+                            });
+                            break;
+                        case 'copy':
+                            const copy_value = _.get(variables.stat_data, (op as any).from.substring(1).replace(/\//g, '.'));
+                            translated_commands.push({
+                                type: 'set',
+                                full_match: JSON.stringify(op),
+                                args: [path, JSON.stringify(copy_value)],
+                                reason: 'json_patch:copy',
+                            });
+                            break;
                     }
                 }
-
-                if (validatedPatch.length === 0) {
-                    return false;
-                }
-
-                console.log('Applying validated JSON Patch...');
-                const original_data = klona(variables.stat_data);
-                const errors = jsonpatch.applyPatch(variables.stat_data, validatedPatch, true, true);
-
-                if (errors.every(x => x === null)) {
-                    // Fire SINGLE_VARIABLE_UPDATED events and build display data
-                    for (const operation of validatedPatch) {
-                        const path = operation.path.substring(1).replace(/\//g, '.');
-                        let display_str = '';
-                        let oldValue, newValue;
-
-                        switch (operation.op) {
-                            case 'replace':
-                                oldValue = _.get(original_data, path);
-                                newValue = (operation as any).value;
-                                display_str = `${trimQuotesAndBackslashes(JSON.stringify(oldValue))}->${trimQuotesAndBackslashes(JSON.stringify(newValue))}`;
-                                await eventEmit(
-                                    variable_events.SINGLE_VARIABLE_UPDATED,
-                                    variables.stat_data,
-                                    path,
-                                    oldValue,
-                                    newValue
-                                );
-                                break;
-                            case 'add':
-                                oldValue = undefined;
-                                newValue = (operation as any).value;
-                                display_str = `ADDED ${trimQuotesAndBackslashes(JSON.stringify(newValue))} to '${path}'`;
-                                await eventEmit(
-                                    variable_events.SINGLE_VARIABLE_UPDATED,
-                                    variables.stat_data,
-                                    path,
-                                    oldValue,
-                                    newValue
-                                );
-                                break;
-                            case 'remove':
-                                oldValue = _.get(original_data, path);
-                                newValue = undefined;
-                                display_str = `REMOVED ${trimQuotesAndBackslashes(JSON.stringify(oldValue))} from '${path}'`;
-                                await eventEmit(
-                                    variable_events.SINGLE_VARIABLE_UPDATED,
-                                    variables.stat_data,
-                                    path,
-                                    oldValue,
-                                    newValue
-                                );
-                                break;
-                            case 'move':
-                                const from_path = (operation as any).from.substring(1).replace(/\//g, '.');
-                                oldValue = _.get(original_data, from_path);
-                                newValue = _.get(variables.stat_data, path);
-                                display_str = `MOVED from '${from_path}' to '${path}'`;
-                                // Fire two events to represent move
-                                await eventEmit(
-                                    variable_events.SINGLE_VARIABLE_UPDATED,
-                                    variables.stat_data,
-                                    from_path,
-                                    oldValue,
-                                    undefined
-                                );
-                                await eventEmit(
-                                    variable_events.SINGLE_VARIABLE_UPDATED,
-                                    variables.stat_data,
-                                    path,
-                                    undefined,
-                                    newValue
-                                );
-                                break;
-                            case 'copy':
-                                oldValue = _.get(original_data, path);
-                                newValue = _.get(variables.stat_data, path);
-                                display_str = `COPIED from '${(operation as any).from.substring(1).replace(/\//g, '.')}' to '${path}'`;
-                                await eventEmit(
-                                    variable_events.SINGLE_VARIABLE_UPDATED,
-                                    variables.stat_data,
-                                    path,
-                                    oldValue,
-                                    newValue
-                                );
-                                break;
-                        }
-
-                        if (display_str) {
-                            _.set(out_status.stat_data, path, display_str);
-                            _.set(delta_status.stat_data!, path, display_str);
-                        }
-                    }
-
-                    variables.display_data = out_status.stat_data;
-                    variables.delta_data = delta_status.stat_data!;
-                    reconcileAndApplySchema(variables);
-                    return true;
-                } else {
-                    console.error('Failed to apply JSON Patch:', errors);
-                }
+                commands.push(...translated_commands);
             }
         } catch (e) {
             console.error('Failed to parse or apply JSON Patch:', e);
         }
     }
-
-    // 使用重构后的 extractCommands 提取所有命令
-    const commands = extractCommands(processed_message_content);
     // 触发变量更新开始事件，通知外部系统
     _.set(variables.stat_data, '$internal', {
         display_data: out_status.stat_data,
