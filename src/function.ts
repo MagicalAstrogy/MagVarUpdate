@@ -688,6 +688,7 @@ export async function updateVariables(
                     args: [op.path, (op as any).value ?? (op as any).from],
                     reason: '',
                 }));
+                //@ts-expect-error
                 await eventEmit(
                     variable_events.COMMAND_PARSED,
                     variables,
