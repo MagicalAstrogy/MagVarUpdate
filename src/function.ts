@@ -565,13 +565,127 @@ export async function updateVariables(
         try {
             const patch = JSON.parse(jsonPatchMatch[1]);
             if (isJsonPatch(patch)) {
-                console.log('JSON Patch detected, applying patch...');
-                const original_data = klona(variables.stat_data);
+                let is_valid = true;
+                const outError = (message: string) => {
+                    console.warn(`[MVU] JSON Patch Validation Error: ${message}`);
+                    is_valid = false;
+                };
 
-                // Apply patch in-place. Returns an array of errors if any.
+                for (const operation of patch) {
+                    if (!is_valid) break;
+
+                    const path = operation.path;
+
+                    switch (operation.op) {
+                        case 'add':
+                        case 'copy': {
+                            const parent_path = path.substring(0, path.lastIndexOf('/'));
+                            const parent_lodash_path = parent_path.substring(1).replace(/\//g, '.');
+                            const parent_schema = getSchemaForPath(
+                                variables.schema,
+                                parent_lodash_path
+                            );
+
+                            if (parent_schema && isObjectSchema(parent_schema)) {
+                                if (parent_schema.extensible !== true) {
+                                    const new_key = path.substring(path.lastIndexOf('/') + 1);
+                                    if (!parent_schema.properties[new_key]) {
+                                        outError(
+                                            `Cannot add new property '${new_key}' to non-extensible object at path '${parent_path}'.`
+                                        );
+                                    }
+                                }
+                            } else if (parent_schema && isArraySchema(parent_schema)) {
+                                if (parent_schema.extensible !== true) {
+                                    outError(
+                                        `Cannot add element to non-extensible array at path '${parent_path}'.`
+                                    );
+                                }
+                            } else if (parent_schema) {
+                                outError(
+                                    `Cannot add property to non-container type '${parent_schema.type}' at path '${parent_path}'.`
+                                );
+                            }
+                            break;
+                        }
+                        case 'remove':
+                        case 'move': {
+                            const source_path =
+                                operation.op === 'move' ? (operation as any).from : path;
+                            const source_parent_path = source_path.substring(
+                                0,
+                                source_path.lastIndexOf('/')
+                            );
+                            const source_parent_lodash_path = source_parent_path
+                                .substring(1)
+                                .replace(/\//g, '.');
+                            const key_to_remove = source_path.substring(
+                                source_path.lastIndexOf('/') + 1
+                            );
+
+                            const parent_schema = getSchemaForPath(
+                                variables.schema,
+                                source_parent_lodash_path
+                            );
+
+                            if (parent_schema && isObjectSchema(parent_schema)) {
+                                if (parent_schema.properties[key_to_remove]?.required === true) {
+                                    outError(
+                                        `Cannot remove required property '${key_to_remove}' from object at path '${source_parent_path}'.`
+                                    );
+                                }
+                            } else if (parent_schema && isArraySchema(parent_schema)) {
+                                if (parent_schema.extensible !== true) {
+                                    outError(
+                                        `Cannot remove element from non-extensible array at path '${source_parent_path}'.`
+                                    );
+                                }
+                            }
+                            if (operation.op === 'move') {
+                                const dest_parent_path = path.substring(0, path.lastIndexOf('/'));
+                                const dest_parent_lodash_path = dest_parent_path
+                                    .substring(1)
+                                    .replace(/\//g, '.');
+                                const dest_parent_schema = getSchemaForPath(
+                                    variables.schema,
+                                    dest_parent_lodash_path
+                                );
+                                if (dest_parent_schema && isObjectSchema(dest_parent_schema)) {
+                                    if (dest_parent_schema.extensible !== true) {
+                                        const new_key = path.substring(path.lastIndexOf('/') + 1);
+                                        if (!dest_parent_schema.properties[new_key]) {
+                                            outError(
+                                                `(Move) Cannot add new property '${new_key}' to non-extensible object at path '${dest_parent_path}'.`
+                                            );
+                                        }
+                                    }
+                                } else if (dest_parent_schema && isArraySchema(dest_parent_schema)) {
+                                    if (dest_parent_schema.extensible !== true) {
+                                        outError(
+                                            `(Move) Cannot add element to non-extensible array at path '${dest_parent_path}'.`
+                                        );
+                                    }
+                                } else if (dest_parent_schema) {
+                                    outError(
+                                        `(Move) Cannot add property to non-container type '${dest_parent_schema.type}' at path '${dest_parent_path}'.`
+                                    );
+                                }
+                            }
+                            break;
+                        }
+                    }
+                }
+
+                if (!is_valid) {
+                    console.error('JSON Patch failed schema validation. Aborting update.');
+                    return false;
+                }
+
+                console.log('JSON Patch validation passed, applying patch...');
+                const original_data = klona(variables.stat_data);
                 const errors = jsonpatch.applyPatch(variables.stat_data, patch, true, true);
 
-                if (errors.length === 0) {
+                if (errors.every(x => x === null)) {
                     const diff = jsonpatch.compare(original_data, variables.stat_data);
 
                     for (const operation of diff) {
@@ -605,7 +719,6 @@ export async function updateVariables(
             }
         } catch (e) {
             console.error('Failed to parse or apply JSON Patch:', e);
-            // Not a valid JSON or not a JSON patch, proceed to legacy command parsing.
         }
     }
 

@@ -707,6 +707,7 @@ rule:
         <JSONPatch>
     [
       { "op": "replace", "path": "/path/to/variable", "value": "new_value" },
+      { "op": "move", "from": "/source/list/0", "path": "/dest/list/-" },
       { "op": "add", "path": "/path/to/array/-", "value": "item_to_append" },
       { "op": "remove", "path": "/path/to/array/0" },
       { "op": "add", "path": "/path/to/object/newKey", "value": "content" }
@@ -717,7 +718,7 @@ rule:
     <UpdateVariable>
         <Analysis>
             当前时间: Time passes 10 mins. Update to 16:30. (replace)
-            主线任务: Task completed. Remove from '进行中' (index 0) and add to '已完成'.
+            主线任务: Task completed. MOVE from '进行中' (index 0) to '已完成'. (move)
             玲奈.亲密度: Old(0.500) + 0.007 = 0.507. (replace)
             玲奈.重要成就(New): Today is a new date, so add a new key. (add)
             玲奈.重要成就(Update): A new event happened later, so update the existing key. (replace)
@@ -727,8 +728,7 @@ rule:
         <JSONPatch>
     [
       { "op": "replace", "path": "/当前时间", "value": "2022-10-17T16:30:00" },
-      { "op": "add", "path": "/主线任务/已完成/-", "value": "在2022年10月21日周五前，与一位同学组队完成量子态叠加原理的课题报告。" },
-      { "op": "remove", "path": "/主线任务/进行中/0" },
+      { "op": "move", "from": "/主线任务/进行中/0", "path": "/主线任务/已完成/-" },
       { "op": "replace", "path": "/玲奈/亲密度", "value": 0.507 },
       { "op": "add", "path": "/玲奈/重要成就/2022年10月18日", "value": "玲奈与<user>相遇。" },
       { "op": "replace", "path": "/玲奈/重要成就/2022年10月18日", "value": "玲奈与<user>相遇，并交换了手机号。" },
