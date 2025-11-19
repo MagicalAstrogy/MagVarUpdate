@@ -681,26 +681,101 @@ export async function updateVariables(
                     return false;
                 }
 
+                // Fire COMMAND_PARSED event
+                const pseudo_commands = patch.map(op => ({
+                    type: op.op,
+                    full_match: JSON.stringify(op),
+                    args: [op.path, (op as any).value ?? (op as any).from],
+                    reason: '',
+                }));
+                await eventEmit(
+                    variable_events.COMMAND_PARSED,
+                    variables,
+                    pseudo_commands,
+                    current_message_content
+                );
+
                 console.log('JSON Patch validation passed, applying patch...');
                 const original_data = klona(variables.stat_data);
                 const errors = jsonpatch.applyPatch(variables.stat_data, patch, true, true);
 
                 if (errors.every(x => x === null)) {
-                    const diff = jsonpatch.compare(original_data, variables.stat_data);
-
-                    for (const operation of diff) {
+                    // Fire SINGLE_VARIABLE_UPDATED events and build display data
+                    for (const operation of patch) {
                         const path = operation.path.substring(1).replace(/\//g, '.');
                         let display_str = '';
+                        let oldValue, newValue;
 
-                        if (operation.op === 'replace') {
-                            const oldValue = _.get(original_data, path);
-                            const newValue = operation.value;
-                            display_str = `${trimQuotesAndBackslashes(JSON.stringify(oldValue))}->${trimQuotesAndBackslashes(JSON.stringify(newValue))}`;
-                        } else if (operation.op === 'add') {
-                            display_str = `ADDED ${trimQuotesAndBackslashes(JSON.stringify(operation.value))} to '${path}'`;
-                        } else if (operation.op === 'remove') {
-                            const oldValue = _.get(original_data, path);
-                            display_str = `REMOVED ${trimQuotesAndBackslashes(JSON.stringify(oldValue))} from '${path}'`;
+                        switch (operation.op) {
+                            case 'replace':
+                                oldValue = _.get(original_data, path);
+                                newValue = (operation as any).value;
+                                display_str = `${trimQuotesAndBackslashes(JSON.stringify(oldValue))}->${trimQuotesAndBackslashes(JSON.stringify(newValue))}`;
+                                await eventEmit(
+                                    variable_events.SINGLE_VARIABLE_UPDATED,
+                                    variables.stat_data,
+                                    path,
+                                    oldValue,
+                                    newValue
+                                );
+                                break;
+                            case 'add':
+                                oldValue = undefined;
+                                newValue = (operation as any).value;
+                                display_str = `ADDED ${trimQuotesAndBackslashes(JSON.stringify(newValue))} to '${path}'`;
+                                await eventEmit(
+                                    variable_events.SINGLE_VARIABLE_UPDATED,
+                                    variables.stat_data,
+                                    path,
+                                    oldValue,
+                                    newValue
+                                );
+                                break;
+                            case 'remove':
+                                oldValue = _.get(original_data, path);
+                                newValue = undefined;
+                                display_str = `REMOVED ${trimQuotesAndBackslashes(JSON.stringify(oldValue))} from '${path}'`;
+                                await eventEmit(
+                                    variable_events.SINGLE_VARIABLE_UPDATED,
+                                    variables.stat_data,
+                                    path,
+                                    oldValue,
+                                    newValue
+                                );
+                                break;
+                            case 'move':
+                                const from_path = (operation as any).from.substring(1).replace(/\//g, '.');
+                                oldValue = _.get(original_data, from_path);
+                                newValue = _.get(variables.stat_data, path);
+                                display_str = `MOVED from '${from_path}' to '${path}'`;
+                                // Fire two events to represent move
+                                await eventEmit(
+                                    variable_events.SINGLE_VARIABLE_UPDATED,
+                                    variables.stat_data,
+                                    from_path,
+                                    oldValue,
+                                    undefined
+                                );
+                                await eventEmit(
+                                    variable_events.SINGLE_VARIABLE_UPDATED,
+                                    variables.stat_data,
+                                    path,
+                                    undefined,
+                                    newValue
+                                );
+                                break;
+                            case 'copy':
+                                oldValue = _.get(original_data, path);
+                                newValue = _.get(variables.stat_data, path);
+                                display_str = `COPIED from '${(operation as any).from.substring(1).replace(/\//g, '.')}' to '${path}'`;
+                                await eventEmit(
+                                    variable_events.SINGLE_VARIABLE_UPDATED,
+                                    variables.stat_data,
+                                    path,
+                                    oldValue,
+                                    newValue
+                                );
+                                break;
                         }
 
                         if (display_str) {
