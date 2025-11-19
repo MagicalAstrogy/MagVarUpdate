@@ -3897,6 +3897,13 @@ __metadata:
   languageName: node
   linkType: hard
 
+"fast-json-patch@npm:^3.1.1":
+  version: 3.1.1
+  resolution: "fast-json-patch@npm:3.1.1"
+  checksum: c4525b61b2471df60d4b025b4118b036d99778a93431aa44d1084218182841d82ce93056f0f3bbd731a24e6a8e69820128adf1873eb2199a26c62ef58d137833
+  languageName: node
+  linkType: hard
+
 "fast-json-stable-stringify@npm:2.x, fast-json-stable-stringify@npm:^2.0.0, fast-json-stable-stringify@npm:^2.1.0":
   version: 2.1.0
   resolution: "fast-json-stable-stringify@npm:2.1.0"
@@ -5623,6 +5630,7 @@ __metadata:
     eslint-plugin-pinia: ^0.4.1
     eslint-plugin-vue: ^10.5.0
     eslint-webpack-plugin: ^5.0.2
+    fast-json-patch: ^3.1.1
     globals: ^16.4.0
     html-loader: ^5.1.0
     html-webpack-plugin: ^5.6.3

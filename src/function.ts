@@ -17,8 +17,23 @@ import {
     variable_events,
     VariableData,
 } from '@/variable_def';
+import * as jsonpatch from 'fast-json-patch';
 import { klona } from 'klona';
 import * as math from 'mathjs';
+
+function isJsonPatch(patch: any): patch is jsonpatch.Operation[] {
+    if (!Array.isArray(patch)) {
+        return false;
+    }
+    // An empty array is a valid patch.
+    if (patch.length === 0) {
+        return true;
+    }
+    // Check if all operations have 'op' and 'path'.
+    return patch.every(
+        op => typeof op === 'object' && op !== null && typeof op.op === 'string' && typeof op.path === 'string'
+    );
+}
 
 export function trimQuotesAndBackslashes(str: string): string {
     if (!_.isString(str)) return str;
@@ -544,6 +559,55 @@ export async function updateVariables(
 
     // 重构新增：统一处理宏替换，确保命令中的宏（如 ${variable}）被替换，提升一致性
     const processed_message_content = substitudeMacros(current_message_content);
+
+    const jsonPatchMatch = processed_message_content.match(/<JSONPatch>([\s\S]*?)<\/JSONPatch>/);
+    if (jsonPatchMatch && jsonPatchMatch[1]) {
+        try {
+            const patch = JSON.parse(jsonPatchMatch[1]);
+            if (isJsonPatch(patch)) {
+                console.log('JSON Patch detected, applying patch...');
+                const original_data = klona(variables.stat_data);
+
+                // Apply patch in-place. Returns an array of errors if any.
+                const errors = jsonpatch.applyPatch(variables.stat_data, patch, true, true);
+
+                if (errors.length === 0) {
+                    const diff = jsonpatch.compare(original_data, variables.stat_data);
+
+                    for (const operation of diff) {
+                        const path = operation.path.substring(1).replace(/\//g, '.');
+                        let display_str = '';
+
+                        if (operation.op === 'replace') {
+                            const oldValue = _.get(original_data, path);
+                            const newValue = operation.value;
+                            display_str = `${trimQuotesAndBackslashes(JSON.stringify(oldValue))}->${trimQuotesAndBackslashes(JSON.stringify(newValue))}`;
+                        } else if (operation.op === 'add') {
+                            display_str = `ADDED ${trimQuotesAndBackslashes(JSON.stringify(operation.value))} to '${path}'`;
+                        } else if (operation.op === 'remove') {
+                            const oldValue = _.get(original_data, path);
+                            display_str = `REMOVED ${trimQuotesAndBackslashes(JSON.stringify(oldValue))} from '${path}'`;
+                        }
+
+                        if (display_str) {
+                            _.set(out_status.stat_data, path, display_str);
+                            _.set(delta_status.stat_data!, path, display_str);
+                        }
+                    }
+
+                    variables.display_data = out_status.stat_data;
+                    variables.delta_data = delta_status.stat_data!;
+                    reconcileAndApplySchema(variables);
+                    return true;
+                } else {
+                    console.error('Failed to apply JSON Patch:', errors);
+                }
+            }
+        } catch (e) {
+            console.error('Failed to parse or apply JSON Patch:', e);
+            // Not a valid JSON or not a JSON patch, proceed to legacy command parsing.
+        }
+    }
 
     // 使用重构后的 extractCommands 提取所有命令
     const commands = extractCommands(processed_message_content);

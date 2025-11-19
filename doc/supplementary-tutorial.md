@@ -684,6 +684,60 @@ rule:
         _.remove('悠纪.着装[0]', '粉色缎带');//悠纪脱下粉色缎带
     </UpdateVariable>
 ```
+另外，如果你打算让LLM采用JSON Patch形式的变量更新模式，则请使用这个规则：
+```yaml
+rule:
+  description:
+    - You should output the update analysis in the end of the next response, following the variables list.
+    - The update command must strictly follow the **JSON Patch (RFC 6902)** standard.
+    - The output must be a valid JSON array containing operation objects.
+  analysis:
+    - You must rethink what variables are defined, and analyze how to update each of them accordingly.
+    - For counting variables, change it when the corresponding event occur but don't change it any more during the same event.
+  format: |-
+    <UpdateVariable>
+        <Analysis>$(IN ENGLISH$)
+            - calculate time passed: ...
+            - list every variable node that acts as a candidate for update...
+            - [Numerical Calculation]: Old Value (X) + Delta (Y) = New Value (Z). (Use 'replace')
+            - [Array Modification]: Identify index to remove (e.g., 0 for first item) or use `/-` to append.
+            - [Object Modification]: Check if key exists. New key = 'add', Existing key = 'replace'.
+            ...
+        </Analysis>
+        <JSONPatch>
+    [
+      { "op": "replace", "path": "/path/to/variable", "value": "new_value" },
+      { "op": "add", "path": "/path/to/array/-", "value": "item_to_append" },
+      { "op": "remove", "path": "/path/to/array/0" },
+      { "op": "add", "path": "/path/to/object/newKey", "value": "content" }
+    ]
+        </JSONPatch>
+    </UpdateVariable>
+  example: |-
+    <UpdateVariable>
+        <Analysis>
+            当前时间: Time passes 10 mins. Update to 16:30. (replace)
+            主线任务: Task completed. Remove from '进行中' (index 0) and add to '已完成'.
+            玲奈.亲密度: Old(0.500) + 0.007 = 0.507. (replace)
+            玲奈.重要成就(New): Today is a new date, so add a new key. (add)
+            玲奈.重要成就(Update): A new event happened later, so update the existing key. (replace)
+            玲奈.余额: Old(100.0) - 10.0 = 90.0. (replace)
+            玲奈.着装: She took off '外套' (index 0). (remove)
+        </Analysis>
+        <JSONPatch>
+    [
+      { "op": "replace", "path": "/当前时间", "value": "2022-10-17T16:30:00" },
+      { "op": "add", "path": "/主线任务/已完成/-", "value": "在2022年10月21日周五前，与一位同学组队完成量子态叠加原理的课题报告。" },
+      { "op": "remove", "path": "/主线任务/进行中/0" },
+      { "op": "replace", "path": "/玲奈/亲密度", "value": 0.507 },
+      { "op": "add", "path": "/玲奈/重要成就/2022年10月18日", "value": "玲奈与<user>相遇。" },
+      { "op": "replace", "path": "/玲奈/重要成就/2022年10月18日", "value": "玲奈与<user>相遇，并交换了手机号。" },
+      { "op": "replace", "path": "/玲奈/余额", "value": 90.0 },
+      { "op": "remove", "path": "/玲奈/着装/0" }
+    ]
+        </JSONPatch>
+    </UpdateVariable>
+```
 
 
 ## 杂项变更

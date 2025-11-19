@@ -28,6 +28,7 @@
     "dependencies": {
         "compare-versions": "^6.1.1",
         "corepack": "^0.32.0",
+        "fast-json-patch": "^3.1.1",
         "json5": "^2.2.3",
         "jszip": "^3.10.1",
         "klona": "^2.0.6",
