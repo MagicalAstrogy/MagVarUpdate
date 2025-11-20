@@ -1,5 +1,7 @@
 import { extractCommands, parseCommandValue, updateVariables } from '../src/function';
 import { MvuData } from '@/variable_def';
+import { CommandInfo } from '@/export_globals';
+import { commandParsed } from '@/json_patch_support';
 
 // 命令别名定义
 const ASSIGN_ALIASES = ['assign', 'insert'] as const;
@@ -788,6 +790,21 @@ describe('高等数学与高级运算测试', () => {
             expect(variables.stat_data.game.inventory).toEqual(['sword']);
             expect(variables.stat_data.game.enemies).toEqual(['dragon']);
             expect(variables.stat_data.game.quests).toEqual(['main_quest', 'side_quest_2']);
+        });
+
+        test('mytest', async () => {
+            const content = `<JsonPatch>
+[
+  {"op": "replace", "path":"/理/情绪状态/dominance", "value": "1"},
+  {"op": "replace", "path":"/理/当前所想/0", "value": "要鼓起勇气啊理，这次一定要跟 <user> 告白！"}
+]
+</JsonPatch>`;
+            let commands: CommandInfo[] = [];
+            const obj: MvuData = { stat_data: {} };
+            //commandParsed通过事件注册进入事件解析流程，后续可以被pathFix或是用户自定义的兜底方案处理
+            //scopedEventOn(variable_events.COMMAND_PARSED, commandParsed);
+            commandParsed(obj, commands, content);
+            expect(commands).toHaveLength(2);
         });
     });
 });
