@@ -23,7 +23,7 @@ export declare function parseCommandValue(valStr: string): any;
  * - 'remove': Represents a command to remove an item or data.
  * - 'add': Represents a command to add an item or data.
  */
-type CommandNames = 'set' | 'insert' | 'assign' | 'remove' | 'unset' | 'delete' | 'add';
+type CommandNames = 'set' | 'insert' | 'assign' | 'remove' | 'unset' | 'delete' | 'add' | 'json_patch';
 /**
  * 从大字符串中提取所有 .set(${path}, ${new_value});//${reason} 格式的模式
  * 并解析出每个匹配项的路径、新值和原因部分
@@ -49,6 +49,7 @@ interface Command {
 export declare function extractCommands(inputText: string): Command[];
 export declare function parseParameters(paramsString: string): string[];
 export declare function getLastValidVariable(message_id: number): Promise<MvuData>;
+export declare function pathFix(path: string): string;
 /**
  * MVU 风格的变量更新操作，同时会更新 display_data/delta_data
  * @param stat_data 当前的变量状态，来源应当是 mag_variable_updated 回调中提供的 stat_data。其他来源则不会修改 display_data 等。
@@ -58,6 +59,7 @@ export declare function getLastValidVariable(message_id: number): Promise<MvuDat
  * @param is_recursive 此次修改是否允许触发 mag_variable_updated 回调（默认不允许）
  */
 export declare function updateVariable(stat_data: Record<string, any>, path: string, new_value: any, reason?: string, is_recursive?: boolean): Promise<boolean>;
+export declare function pathFixPass(_unused_data: MvuData, commands: Command[], _unused_content: string): void;
 export declare function updateVariables(current_message_content: string, variables: MvuData): Promise<boolean>;
 export declare function handleVariablesInMessage(message_id: number): Promise<void>;
 export declare function handleVariablesInCallback(message_content: string, in_out_variable_info: VariableData): Promise<void>;

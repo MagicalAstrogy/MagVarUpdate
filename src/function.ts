@@ -31,7 +31,11 @@ function isJsonPatch(patch: any): patch is jsonpatch.Operation[] {
     }
     // Check if all operations have 'op' and 'path'.
     return patch.every(
-        op => typeof op === 'object' && op !== null && typeof op.op === 'string' && typeof op.path === 'string'
+        op =>
+            typeof op === 'object' &&
+            op !== null &&
+            typeof op.op === 'string' &&
+            typeof op.path === 'string'
     );
 }
 
