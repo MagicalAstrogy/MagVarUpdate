@@ -429,38 +429,82 @@ export async function getLastValidVariable(message_id: number): Promise<MvuData>
     ) ?? getVariables()) as MvuData;
 }
 
-function pathFix(path: string): string {
-    const segments = [];
-    let currentSegment = '';
-    let inQuotes = false;
-    let quoteChar = '';
+export function pathFix(path: string): string {
+    if (!path) return path;
 
-    for (let i = 0; i < path.length; i++) {
-        const char = path[i];
-
-        // Handle quotes
-        if ((char === '"' || char === "'") && (i === 0 || path[i - 1] !== '\\')) {
-            if (!inQuotes) {
-                inQuotes = true;
-                quoteChar = char;
-            } else if (char === quoteChar) {
-                inQuotes = false;
-            } else {
-                currentSegment += char;
-            }
-        } else if (char === '.' && !inQuotes) {
-            segments.push(currentSegment);
-            currentSegment = '';
-        } else {
-            currentSegment += char;
+    // 1. 处理 [] 内的内容，区分数字索引 / 字符串 key
+    const fixedBrackets = path.replace(/\[([^\]]*)\]/g, (_match, rawInner: string) => {
+        let inner = rawInner.trim();
+        if (!inner) {
+            return '[]';
         }
-    }
 
-    if (currentSegment) {
-        segments.push(currentSegment);
-    }
+        let wasQuoted = false;
+        const first = inner[0];
+        const last = inner[inner.length - 1];
 
-    return segments.join('.');
+        if (inner.length >= 2 && (first === '"' || first === "'") && first === last) {
+            wasQuoted = true;
+            inner = inner.slice(1, -1);
+        }
+
+        const isPureDigits = /^\d+$/.test(inner);
+        const hasWhitespace = /\s/.test(inner);
+
+        // 纯数字
+        if (isPureDigits) {
+            if (!wasQuoted) {
+                // 裸数字 → 视为数组索引
+                return `[${inner}]`;
+            } else {
+                // 有引号的数字 → 视为字符串 key
+                const escaped = inner.replace(/"/g, '\\"');
+                return `["${escaped}"]`;
+            }
+        }
+
+        // 非纯数字 → 字符串 key
+        if (hasWhitespace) {
+            const escaped = inner.replace(/"/g, '\\"');
+            return `["${escaped}"]`;
+        } else {
+            return `[${inner}]`;
+        }
+    });
+
+    // 2. 处理点分段中被整体引号包裹的字段
+    //
+    // 规则：
+    //   - 无空白 / . / [] → 简单字段，去引号： ["武器栏"] → [武器栏]
+    //   - 含空白或特殊字符 → 复杂字段，改写为 bracket：
+    //       foo."a b".c    → foo["a b"].c
+    //       root.'字段 名'.子 → root["字段 名"].子
+    //       foo[喵.呜].c    →  foo["喵.呜"].c
+    const fixedDots = fixedBrackets.replace(
+        /(^|\.)(["'])([^"']*)\2(?=\.|\[|$)/g,
+        (_match, prefix: string, _quote: string, name: string) => {
+            const hasWhitespace = /\s/.test(name);
+            const hasSpecial = /[.[\]]/.test(name);
+
+            if (!hasWhitespace && !hasSpecial) {
+                // 简单标识符：保留点
+                // 例如 foo."武器栏" → foo.武器栏
+                return prefix + name;
+            } else {
+                // 复杂字段：改成 bracket 形式，并去掉多余的点
+                const escaped = name.replace(/"/g, '\\"');
+                if (prefix === '.') {
+                    // foo."a b" → foo["a b"]
+                    return `["${escaped}"]`;
+                } else {
+                    // 行首的情况："字段 名".子 → ["字段 名"].子
+                    return `${prefix}["${escaped}"]`;
+                }
+            }
+        }
+    );
+
+    return fixedDots;
 }
 
 /**
@@ -531,6 +575,16 @@ type ErrorInfo = {
     error_command: Command;
 };
 
+export function pathFixPass(
+    _unused_data: MvuData,
+    commands: Command[],
+    _unused_content: string
+): void {
+    for (let command of commands) {
+        command.args[0] = pathFix(trimQuotesAndBackslashes(command.args[0]));
+    }
+}
+
 // 重构 updateVariables 以处理更多命令
 export async function updateVariables(
     current_message_content: string,
@@ -585,10 +639,12 @@ export async function updateVariables(
     //@ts-expect-error old fn
     await eventEmit(variable_events.COMMAND_PARSED, variables, commands, current_message_content);
 
+    pathFixPass(variables, commands, current_message_content);
+
     for (const command of commands) {
         // 遍历所有命令，逐一处理
         // 修正路径格式，去除首尾引号和反斜杠，确保路径有效
-        const path = pathFix(trimQuotesAndBackslashes(command.args[0]));
+        const path = command.args[0];
         // 生成原因字符串，用于日志和显示
         const reason_str = command.reason ? `(${command.reason})` : '';
         let display_str = ''; // 初始化显示字符串，记录操作详情

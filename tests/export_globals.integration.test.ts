@@ -200,7 +200,7 @@ _.set('悠纪.当前所想[0]', "", "……狐狸？嗯…她的用词很精准�
         expect(commands[0]).toMatchObject({
             type: 'set',
             full_match: "_.set('player.health', 100, 90);//Test reason",
-            args: ["'player.health'", '100', '90'],
+            args: ['player.health', '100', '90'], //在这个版本中变动的原因是，commands[] 数组是 by ref 的，在pathFixPass中进行了变动
             reason: 'Test reason',
         });
     });
