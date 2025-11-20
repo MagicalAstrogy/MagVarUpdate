@@ -17,8 +17,23 @@ import {
     variable_events,
     VariableData,
 } from '@/variable_def';
+import * as jsonpatch from 'fast-json-patch';
 import { klona } from 'klona';
 import * as math from 'mathjs';
+
+function isJsonPatch(patch: any): patch is jsonpatch.Operation[] {
+    if (!Array.isArray(patch)) {
+        return false;
+    }
+    // An empty array is a valid patch.
+    if (patch.length === 0) {
+        return true;
+    }
+    // Check if all operations have 'op' and 'path'.
+    return patch.every(
+        op => typeof op === 'object' && op !== null && typeof op.op === 'string' && typeof op.path === 'string'
+    );
+}
 
 export function trimQuotesAndBackslashes(str: string): string {
     if (!_.isString(str)) return str;
@@ -185,7 +200,15 @@ export function parseCommandValue(valStr: string): any {
  * - 'remove': Represents a command to remove an item or data.
  * - 'add': Represents a command to add an item or data.
  */
-type CommandNames = 'set' | 'insert' | 'assign' | 'remove' | 'unset' | 'delete' | 'add';
+type CommandNames =
+    | 'set'
+    | 'insert'
+    | 'assign'
+    | 'remove'
+    | 'unset'
+    | 'delete'
+    | 'add'
+    | 'json_patch';
 
 /**
  * 从大字符串中提取所有 .set(${path}, ${new_value});//${reason} 格式的模式
@@ -214,6 +237,25 @@ interface Command {
  */
 // 将 extractSetCommands 扩展为 extractCommands 以支持多种命令
 export function extractCommands(inputText: string): Command[] {
+    const jsonPatchMatch = inputText.match(/<JSONPatch>([\s\S]*?)<\/JSONPatch>/);
+    if (jsonPatchMatch && jsonPatchMatch[1]) {
+        try {
+            const patch = JSON.parse(jsonPatchMatch[1]);
+            if (isJsonPatch(patch)) {
+                return [
+                    {
+                        type: 'json_patch',
+                        full_match: jsonPatchMatch[0],
+                        args: [jsonPatchMatch[1]],
+                        reason: '',
+                    },
+                ];
+            }
+        } catch (e) {
+            console.error('Failed to parse content of <JSONPatch> tag:', e);
+        }
+    }
+
     const results: Command[] = [];
     let i = 0;
 
@@ -547,6 +589,80 @@ export async function updateVariables(
 
     // 使用重构后的 extractCommands 提取所有命令
     const commands = extractCommands(processed_message_content);
+
+    if (commands.length === 1 && commands[0].type === 'json_patch') {
+        try {
+            const original_patch = JSON.parse(commands[0].args[0]);
+            if (isJsonPatch(original_patch)) {
+                const stat_data_clone = klona(variables.stat_data);
+                let any_op_successful = false;
+
+                for (const op of original_patch) {
+                    try {
+                        // Use applyPatch with a single operation array.
+                        // The function modifies stat_data_clone in place.
+                        jsonpatch.applyPatch(stat_data_clone, [op], true);
+                        any_op_successful = true;
+                    } catch (e) {
+                        console.warn(
+                            `Skipping invalid JSON Patch operation: ${JSON.stringify(op)}`,
+                            e
+                        );
+                    }
+                }
+
+                if (any_op_successful) {
+                    const resolved_patch = jsonpatch.compare(variables.stat_data, stat_data_clone);
+                    const translated_commands: Command[] = [];
+
+                    for (const op of resolved_patch) {
+                        const path = op.path.substring(1).replace(/\//g, '.');
+                        switch (op.op) {
+                            case 'replace':
+                                translated_commands.push({
+                                    type: 'set',
+                                    full_match: JSON.stringify(op),
+                                    args: [path, JSON.stringify((op as any).value)],
+                                    reason: 'json_patch',
+                                });
+                                break;
+                            case 'add': {
+                                const pathParts = _.toPath(path);
+                                const lastPart = pathParts[pathParts.length - 1];
+                                const containerPath = pathParts.slice(0, -1).join('.');
+                                const keyOrIndexArg = /^\d+$/.test(lastPart)
+                                    ? lastPart
+                                    : `'${lastPart}'`;
+                                translated_commands.push({
+                                    type: 'insert',
+                                    full_match: JSON.stringify(op),
+                                    args: [
+                                        containerPath,
+                                        keyOrIndexArg,
+                                        JSON.stringify((op as any).value),
+                                    ],
+                                    reason: 'json_patch',
+                                });
+                                break;
+                            }
+                            case 'remove':
+                                translated_commands.push({
+                                    type: 'delete',
+                                    full_match: JSON.stringify(op),
+                                    args: [path],
+                                    reason: 'json_patch',
+                                });
+                                break;
+                        }
+                    }
+                    // Replace the original json_patch command with the translated commands
+                    commands.splice(0, 1, ...translated_commands);
+                }
+            }
+        } catch (e) {
+            console.error('Failed to parse or apply JSON Patch:', e);
+        }
+    }
     // 触发变量更新开始事件，通知外部系统
     _.set(variables.stat_data, '$internal', {
         display_data: out_status.stat_data,
@@ -921,6 +1037,33 @@ export async function updateVariables(
             case 'unset':
             case 'delete':
             case 'remove': {
+                // --- handle array element removal correctly ---
+                const pathParts = _.toPath(path);
+                const lastPart = pathParts[pathParts.length - 1];
+                const isArrayElementPath = /^\d+$/.test(lastPart);
+
+                if (command.args.length === 1 && isArrayElementPath) {
+                    const containerPath = pathParts.slice(0, -1).join('.');
+                    const container = _.get(variables.stat_data, containerPath);
+                    const indexToRemove = parseInt(lastPart, 10);
+
+                    if (Array.isArray(container) && indexToRemove < container.length) {
+                        const originalArray = klona(container);
+                        container.splice(indexToRemove, 1);
+                        variable_modified = true;
+                        display_str = `REMOVED item from '${containerPath}' at index ${indexToRemove} ${reason_str}`;
+                        console.info(display_str);
+                        await eventEmit(
+                            variable_events.SINGLE_VARIABLE_UPDATED,
+                            variables.stat_data,
+                            containerPath,
+                            originalArray,
+                            container
+                        );
+                        continue; // Skip to next command
+                    }
+                }
+
                 // 验证路径存在，防止无效删除
                 if (!_.has(variables.stat_data, path)) {
                     outError(`undefined Path: ${path} in _.remove command`);
