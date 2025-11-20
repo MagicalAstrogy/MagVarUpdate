@@ -592,65 +592,66 @@ export async function updateVariables(
 
     if (commands.length === 1 && commands[0].type === 'json_patch') {
         try {
-            const patch = JSON.parse(commands[0].args[0]);
-            if (isJsonPatch(patch)) {
-                // This is a simplified version that translates JSON Patch to existing command structures.
-                const translated_commands: Command[] = [];
-                for (const op of patch) {
-                    const path = op.path.substring(1).replace(/\//g, '.');
-                    switch (op.op) {
-                        case 'replace':
-                            translated_commands.push({
-                                type: 'set',
-                                full_match: JSON.stringify(op),
-                                args: [path, JSON.stringify((op as any).value)],
-                                reason: 'json_patch',
-                            });
-                            break;
-                        case 'add':
-                            translated_commands.push({
-                                type: 'insert',
-                                full_match: JSON.stringify(op),
-                                args: [path, JSON.stringify((op as any).value)],
-                                reason: 'json_patch',
-                            });
-                            break;
-                        case 'remove':
-                            translated_commands.push({
-                                type: 'delete',
-                                full_match: JSON.stringify(op),
-                                args: [path],
-                                reason: 'json_patch',
-                            });
-                            break;
-                        case 'move':
-                            const from_path = (op as any).from.substring(1).replace(/\//g, '.');
-                            const value = _.get(variables.stat_data, from_path);
-                            translated_commands.push({
-                                type: 'delete',
-                                full_match: JSON.stringify(op),
-                                args: [from_path],
-                                reason: 'json_patch:move_source',
-                            });
-                            translated_commands.push({
-                                type: 'insert',
-                                full_match: JSON.stringify(op),
-                                args: [path, JSON.stringify(value)],
-                                reason: 'json_patch:move_dest',
-                            });
-                            break;
-                        case 'copy':
-                            const copy_value = _.get(variables.stat_data, (op as any).from.substring(1).replace(/\//g, '.'));
-                            translated_commands.push({
-                                type: 'set',
-                                full_match: JSON.stringify(op),
-                                args: [path, JSON.stringify(copy_value)],
-                                reason: 'json_patch:copy',
-                            });
-                            break;
+            const original_patch = JSON.parse(commands[0].args[0]);
+            if (isJsonPatch(original_patch)) {
+                const stat_data_clone = klona(variables.stat_data);
+                const patch_result = jsonpatch.applyPatch(stat_data_clone, original_patch, true);
+
+                if (patch_result) {
+                    const resolved_patch = jsonpatch.compare(variables.stat_data, stat_data_clone);
+                    const translated_commands: Command[] = [];
+
+                    for (const op of resolved_patch) {
+                        const path = op.path.substring(1).replace(/\//g, '.');
+                        switch (op.op) {
+                            case 'replace':
+                                translated_commands.push({
+                                    type: 'set',
+                                    full_match: JSON.stringify(op),
+                                    args: [path, JSON.stringify((op as any).value)],
+                                    reason: 'json_patch',
+                                });
+                                break;
+                            case 'add': {
+                                const pathParts = _.toPath(path);
+                                const lastPart = pathParts[pathParts.length - 1];
+                                if (/^\d+$/.test(lastPart)) {
+                                    // Array insertion: _.insert('array.path', index, value)
+                                    const containerPath = pathParts.slice(0, -1).join('.');
+                                    translated_commands.push({
+                                        type: 'insert',
+                                        full_match: JSON.stringify(op),
+                                        args: [
+                                            containerPath,
+                                            lastPart,
+                                            JSON.stringify((op as any).value),
+                                        ],
+                                        reason: 'json_patch',
+                                    });
+                                } else {
+                                    // Object property addition: _.insert('object.path', '{"key":"value"}')
+                                    translated_commands.push({
+                                        type: 'insert',
+                                        full_match: JSON.stringify(op),
+                                        args: [path, JSON.stringify((op as any).value)],
+                                        reason: 'json_patch',
+                                    });
+                                }
+                                break;
+                            }
+                            case 'remove':
+                                translated_commands.push({
+                                    type: 'delete',
+                                    full_match: JSON.stringify(op),
+                                    args: [path],
+                                    reason: 'json_patch',
+                                });
+                                break;
+                        }
                     }
+                    // Replace the original json_patch command with the translated commands
+                    commands.splice(0, 1, ...translated_commands);
                 }
-                commands.push(...translated_commands);
             }
         } catch (e) {
             console.error('Failed to parse or apply JSON Patch:', e);
@@ -1030,6 +1031,33 @@ export async function updateVariables(
             case 'unset':
             case 'delete':
             case 'remove': {
+                // --- handle array element removal correctly ---
+                const pathParts = _.toPath(path);
+                const lastPart = pathParts[pathParts.length - 1];
+                const isArrayElementPath = /^\d+$/.test(lastPart);
+
+                if (command.args.length === 1 && isArrayElementPath) {
+                    const containerPath = pathParts.slice(0, -1).join('.');
+                    const container = _.get(variables.stat_data, containerPath);
+                    const indexToRemove = parseInt(lastPart, 10);
+
+                    if (Array.isArray(container) && indexToRemove < container.length) {
+                        const originalArray = klona(container);
+                        container.splice(indexToRemove, 1);
+                        variable_modified = true;
+                        display_str = `REMOVED item from '${containerPath}' at index ${indexToRemove} ${reason_str}`;
+                        console.info(display_str);
+                        await eventEmit(
+                            variable_events.SINGLE_VARIABLE_UPDATED,
+                            variables.stat_data,
+                            containerPath,
+                            originalArray,
+                            container
+                        );
+                        continue; // Skip to next command
+                    }
+                }
+
                 // 验证路径存在，防止无效删除
                 if (!_.has(variables.stat_data, path)) {
                     outError(`undefined Path: ${path} in _.remove command`);
