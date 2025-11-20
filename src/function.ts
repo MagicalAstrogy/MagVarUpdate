@@ -595,9 +595,23 @@ export async function updateVariables(
             const original_patch = JSON.parse(commands[0].args[0]);
             if (isJsonPatch(original_patch)) {
                 const stat_data_clone = klona(variables.stat_data);
-                const patch_result = jsonpatch.applyPatch(stat_data_clone, original_patch, true);
+                let any_op_successful = false;
 
-                if (patch_result) {
+                for (const op of original_patch) {
+                    try {
+                        // Use applyPatch with a single operation array.
+                        // The function modifies stat_data_clone in place.
+                        jsonpatch.applyPatch(stat_data_clone, [op], true);
+                        any_op_successful = true;
+                    } catch (e) {
+                        console.warn(
+                            `Skipping invalid JSON Patch operation: ${JSON.stringify(op)}`,
+                            e
+                        );
+                    }
+                }
+
+                if (any_op_successful) {
                     const resolved_patch = jsonpatch.compare(variables.stat_data, stat_data_clone);
                     const translated_commands: Command[] = [];
 
@@ -615,28 +629,20 @@ export async function updateVariables(
                             case 'add': {
                                 const pathParts = _.toPath(path);
                                 const lastPart = pathParts[pathParts.length - 1];
-                                if (/^\d+$/.test(lastPart)) {
-                                    // Array insertion: _.insert('array.path', index, value)
-                                    const containerPath = pathParts.slice(0, -1).join('.');
-                                    translated_commands.push({
-                                        type: 'insert',
-                                        full_match: JSON.stringify(op),
-                                        args: [
-                                            containerPath,
-                                            lastPart,
-                                            JSON.stringify((op as any).value),
-                                        ],
-                                        reason: 'json_patch',
-                                    });
-                                } else {
-                                    // Object property addition: _.insert('object.path', '{"key":"value"}')
-                                    translated_commands.push({
-                                        type: 'insert',
-                                        full_match: JSON.stringify(op),
-                                        args: [path, JSON.stringify((op as any).value)],
-                                        reason: 'json_patch',
-                                    });
-                                }
+                                const containerPath = pathParts.slice(0, -1).join('.');
+                                const keyOrIndexArg = /^\d+$/.test(lastPart)
+                                    ? lastPart
+                                    : `'${lastPart}'`;
+                                translated_commands.push({
+                                    type: 'insert',
+                                    full_match: JSON.stringify(op),
+                                    args: [
+                                        containerPath,
+                                        keyOrIndexArg,
+                                        JSON.stringify((op as any).value),
+                                    ],
+                                    reason: 'json_patch',
+                                });
                                 break;
                             }
                             case 'remove':
