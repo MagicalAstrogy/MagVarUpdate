@@ -5,6 +5,7 @@ import {
     getLastValidVariable,
     updateVariables,
     handleVariablesInMessage,
+    pathFix,
 } from '@/function';
 import { assertVWD, MvuData, VariableData } from '@/variable_def';
 import _ from 'lodash';
@@ -90,6 +91,134 @@ describe('parseParameters', () => {
                 '[{id: 1, values: [1, 2]}, {id: 2, values: [3, 4]}]',
                 '"newData"',
             ]);
+        });
+    });
+
+    describe('pathFix', () => {
+        test('baseline: keep correct path unchanged', () => {
+            const input = `测试员.物品&装备.武器栏[衔尾蛇OICW原型].弹药系统["7.62mm ETC弹匣"].载弹量`;
+            const out = pathFix(input);
+            expect(out).toEqual(input);
+        });
+
+        // ----------------------------------------------------------------------
+        // 点分字段（.xxx）去掉外层引号
+        // ----------------------------------------------------------------------
+        test('dot segment: remove extra quotes on simple identifier', () => {
+            expect(pathFix(`foo."bar".baz`)).toBe(`foo.bar.baz`);
+
+            expect(pathFix(`foo.'bar'.baz`)).toBe(`foo.bar.baz`);
+        });
+
+        test('dot segment: quoted segment with whitespace becomes bracket string', () => {
+            expect(pathFix(`foo."a b".c`)).toBe(`foo["a b"].c`);
+
+            expect(pathFix(`root.'字段 名'.子`)).toBe(`root["字段 名"].子`);
+        });
+
+        // ----------------------------------------------------------------------
+        // [] 数字索引
+        // ----------------------------------------------------------------------
+        test('bracket: numeric index - pure number without quotes', () => {
+            expect(pathFix(`foo[0]`)).toBe(`foo[0]`);
+            expect(pathFix(`foo[  12  ]`)).toBe(`foo[12]`);
+            expect(pathFix(`foo[000]`)).toBe(`foo[000]`);
+        });
+
+        test('bracket: numeric string with quotes should NOT be treated as index', () => {
+            expect(pathFix(`foo["0"]`)).toBe(`foo["0"]`); // 当前规则：内外引号剥掉 → 纯数字
+            expect(pathFix(`foo['123']`)).toBe(`foo["123"]`);
+        });
+
+        // ----------------------------------------------------------------------
+        // [] 字符串 key：无空白 → 使用裸形式
+        // ----------------------------------------------------------------------
+        test('bracket string: simple identifier without whitespace kept bare', () => {
+            expect(pathFix(`武器栏[衔尾蛇]`)).toBe(`武器栏[衔尾蛇]`);
+            expect(pathFix(`武器栏["衔尾蛇"]`)).toBe(`武器栏[衔尾蛇]`);
+            expect(pathFix(`武器栏['衔尾蛇']`)).toBe(`武器栏[衔尾蛇]`);
+        });
+
+        // ----------------------------------------------------------------------
+        // [] 字符串 key：含空白 → 强制 ["..."]
+        // ----------------------------------------------------------------------
+        test('bracket string: whitespace forces quoted form', () => {
+            expect(pathFix(`foo[hello world]`)).toBe(`foo["hello world"]`);
+
+            expect(pathFix(`foo["hello world"]`)).toBe(`foo["hello world"]`);
+
+            expect(pathFix(`foo['hello world']`)).toBe(`foo["hello world"]`);
+        });
+
+        test('bracket string: internal whitespace with Chinese', () => {
+            expect(pathFix(`弹药系统[7.62mm ETC弹匣]`)).toBe(`弹药系统["7.62mm ETC弹匣"]`);
+        });
+
+        // ----------------------------------------------------------------------
+        // Escape 双引号
+        // ----------------------------------------------------------------------
+        test('bracket string: escape double quotes inside string', () => {
+            const input = 'foo[a"b c]';
+            const result = pathFix(input);
+
+            // 实际字符串是：foo["a\"b c"]
+            expect(result).toBe('foo["a\\"b c"]');
+        });
+
+        test('bracket string: backslash is kept as-is, only double quotes are escaped', () => {
+            const input = 'foo[a\\b c]'; // 实际内容 a\b c
+            const result = pathFix(input);
+
+            // 输出应是 foo["a\b c"]，在 TS 字符串里写成：
+            expect(result).toBe('foo["a\\b c"]');
+        });
+
+        test('bracket string: escape double quotes from unquoted input', () => {
+            expect(pathFix(`foo[a"b c]`)).toBe(`foo["a\\"b c"]`);
+        });
+
+        // ----------------------------------------------------------------------
+        // 空 bracket + trim
+        // ----------------------------------------------------------------------
+        test('empty or whitespace-only bracket', () => {
+            expect(pathFix(`foo[]`)).toBe(`foo[]`);
+            expect(pathFix(`foo[   ]`)).toBe(`foo[]`);
+        });
+
+        // ----------------------------------------------------------------------
+        // 多层嵌套
+        // ----------------------------------------------------------------------
+        test('multiple brackets chain', () => {
+            expect(pathFix(`root.a["x y"][0]['z z']`)).toBe(`root.a["x y"][0]["z z"]`);
+        });
+
+        // ----------------------------------------------------------------------
+        // 前后空白
+        // ----------------------------------------------------------------------
+        test('trim inside brackets', () => {
+            expect(pathFix(`foo[   abc   ]`)).toBe(`foo[abc]`);
+
+            expect(pathFix(`foo[   a b   ]`)).toBe(`foo["a b"]`);
+        });
+
+        // ----------------------------------------------------------------------
+        // 混合复杂场景
+        // ----------------------------------------------------------------------
+        test('complex: Chinese, digits, whitespace, quoted-dot segment', () => {
+            const input = `测试员."物品&装备".武器栏[衔尾蛇OICW原型].弹药系统[ 7.62mm ETC弹匣 ].载弹量`;
+            const result = pathFix(input);
+
+            expect(result).toBe(
+                `测试员.物品&装备.武器栏[衔尾蛇OICW原型].弹药系统["7.62mm ETC弹匣"].载弹量`
+            );
+        });
+
+        // ----------------------------------------------------------------------
+        // 特殊字符 escape，比如反斜杠、双引号交替出现
+        // ----------------------------------------------------------------------
+
+        test('escape: multiple internal quotes', () => {
+            expect(pathFix(`foo[a"b"c d]`)).toBe(`foo["a\\"b\\"c d"]`);
         });
     });
 
