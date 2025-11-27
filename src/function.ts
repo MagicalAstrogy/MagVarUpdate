@@ -241,7 +241,7 @@ interface Command {
  */
 // 将 extractSetCommands 扩展为 extractCommands 以支持多种命令
 export function extractCommands(inputText: string): Command[] {
-    const jsonPatchMatch = inputText.match(/<JSONPatch>([\s\S]*?)<\/JSONPatch>/);
+    const jsonPatchMatch = inputText.match(/<json_?patch>([\s\S]*?)<\/json_?patch>/i);
     if (jsonPatchMatch && jsonPatchMatch[1]) {
         try {
             const patch = JSON.parse(jsonPatchMatch[1]);
