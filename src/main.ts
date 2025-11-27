@@ -254,7 +254,7 @@ async function onMessageReceived(message_id: number) {
                     /_\.(?:set|insert|assign|remove|unset|delete|add)\s*\([\s\S]*?\)\s*;/.test(
                         last_content
                     );
-                const json_patch_pattern = /jsonpatch/i;
+                const json_patch_pattern = /json_?patch/i;
                 const json_patch_match = last_content.match(json_patch_pattern);
                 if (fn_call_match || json_patch_match !== null) {
                     result = `<UpdateVariable>${last_content}</UpdateVariable>`;
