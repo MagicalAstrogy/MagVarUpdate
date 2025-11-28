@@ -32,4 +32,13 @@ export function showNotifications() {
         );
         //会在 main.ts 中进行具体的设置操作，所以提醒部分不需更新。
     }
+
+    if (store.settings.internal.已提醒额外模型解析不再需要适配 === false) {
+        toastr.info(
+            '额外模型解析已默认对所有角色卡生效，而且一般不需要额外适配；<br>如果世界书较为复杂，你可以用 `[mvu_plot]` 和 `[mvu_update]` 来区分剧情和变量更新，具体请点击“配置界面-变量更新方式”旁边的问号',
+            '[MVU]额外模型解析不再需要角色卡适配',
+            { escapeHtml: false }
+        );
+        store.settings.internal.已提醒额外模型解析不再需要适配 = true;
+    }
 }

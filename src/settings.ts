@@ -53,6 +53,7 @@ const Settings = z
                 已提醒自动清理旧变量功能: z.boolean().default(false),
                 已提醒更新了API温度等配置: z.boolean().default(false),
                 已默认开启自动清理旧变量功能: z.boolean().default(false),
+                已提醒额外模型解析不再需要适配: z.boolean().default(false),
             })
             .prefault({}),
     })
