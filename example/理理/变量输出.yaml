@@ -1,4 +1,4 @@
-<status_description>//do not output following content
+<status_current_variable>//do not output following content
     {{get_message_variable::stat_data}},
-</status_description>//do not output content below directly
+</status_current_variable>//do not output content below directly
 
