@@ -15,13 +15,9 @@ interface Button {
 type OnMessageReceived = (message_id: number) => Promise<void>;
 
 let msg_received_callback: OnMessageReceived;
-let is_extra_model_support: boolean;
 
 export function SetReceivedCallbackFn(fn: OnMessageReceived) {
     msg_received_callback = fn;
-}
-export function SetExtraModelSupported(is_support: boolean) {
-    is_extra_model_support = is_support;
 }
 
 async function EmitVariableAnalysisJob() {
@@ -35,15 +31,6 @@ async function EmitVariableAnalysisJob() {
         toastr.info(`当前配置指定的LLM不支持函数调用，不需要进行此操作`, '[MVU]重试额外模型解析', {
             timeOut: 3000,
         });
-        return;
-    } else if (!is_extra_model_support) {
-        toastr.info(
-            `当前角色卡不支持额外模型解析，或是刚刚刷新页面，无法进行此操作`,
-            '[MVU]重试额外模型解析',
-            {
-                timeOut: 3000,
-            }
-        );
         return;
     }
     const last_msg = getLastMessageId();

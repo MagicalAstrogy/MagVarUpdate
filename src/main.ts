@@ -1,4 +1,4 @@
-import { registerButtons, SetExtraModelSupported, SetReceivedCallbackFn } from '@/button';
+import { registerButtons, SetReceivedCallbackFn } from '@/button';
 import { exportGlobals, unsetGlobals } from '@/export_globals';
 import {
     cleanupVariablesInMessages,
@@ -39,11 +39,6 @@ import { klona } from 'klona';
  */
 let duringExtraCall = false;
 
-/**
- * 记录世界书是否支持额外模型
- */
-let isExtraModelSupported = false;
-
 async function handlePromptFilter(lores: {
     globalLore: Record<string, any>[];
     characterLore: Record<string, any>[];
@@ -51,9 +46,6 @@ async function handlePromptFilter(lores: {
     personaLore: Record<string, any>[];
 }) {
     const settings = useSettingsStore().settings;
-
-    //每次开始解析时都进行重置。
-    isExtraModelSupported = false;
 
     //在这个回调中，会将所有lore的条目传入，此处可以去除所有 [mvu_update] 相关的条目，避免在非更新的轮次中输出相关内容。
     if (settings.更新方式 === '随AI输出') {
@@ -73,16 +65,13 @@ async function handlePromptFilter(lores: {
     const update_regex = /\[mvu_update\]/i;
     const plot_regex = /\[mvu_plot\]/i;
     const remove_and_check = (lore: Record<string, any>[]) => {
-        const filtered = _.remove(lore, entry => {
+        _.remove(lore, entry => {
             const is_update_regex = entry.comment.match(update_regex);
             const is_plot_regex = entry.comment.match(plot_regex);
             return duringExtraCall
                 ? is_plot_regex && !is_update_regex
                 : !is_plot_regex && is_update_regex;
         });
-        if (filtered.length > 0) {
-            isExtraModelSupported = true;
-        }
     };
     remove_and_check(lores.globalLore);
     remove_and_check(lores.characterLore);
@@ -107,11 +96,9 @@ async function onMessageReceived(message_id: number) {
     const settings = useSettingsStore().settings;
     duringExtraCall = false;
 
-    SetExtraModelSupported(isExtraModelSupported);
     if (
         settings.更新方式 === '随AI输出' ||
-        (settings.额外模型解析配置.使用函数调用 && !isFunctionCallingSupported()) || //与上面相同的退化情况。
-        isExtraModelSupported === false // 角色卡未适配时, 依旧使用 "随AI输出"
+        (settings.额外模型解析配置.使用函数调用 && !isFunctionCallingSupported()) //与上面相同的退化情况。
     ) {
         await handleVariablesInMessage(message_id);
         return;
@@ -274,8 +261,6 @@ async function onMessageReceived(message_id: number) {
         SillyTavern.unregisterMacro('lastUserMessage');
         setFunctionCallEnabled(false);
         duringExtraCall = false;
-        //因为 generate 过程中会使得这个变量变为 false，影响重试。
-        isExtraModelSupported = true;
     }
 
     if (result !== '') {
