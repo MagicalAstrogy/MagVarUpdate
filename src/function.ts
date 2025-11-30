@@ -631,6 +631,10 @@ export function pathFixPass(
     }
 }
 
+function isNullOrWhiteSpace(str: string): boolean {
+    return str == null || str.trim().length === 0;
+}
+
 // 重构 updateVariables 以处理更多命令
 export async function updateVariables(
     current_message_content: string,
@@ -925,7 +929,7 @@ export async function updateVariables(
                 // --- 所有验证通过，现在可以安全执行 ---
 
                 // 深拷贝旧值，防止直接修改影响后续比较
-                const oldValue = klona(_.get(variables.stat_data, path));
+                const oldValue = klona(existingValue);
                 let successful = false; // 标记插入是否成功
 
                 if (command.args.length === 2) {
@@ -1059,7 +1063,9 @@ export async function updateVariables(
 
                 if (successful) {
                     // 插入成功，获取新值并触发事件
-                    const newValue = _.get(variables.stat_data, path);
+                    const newValue = isNullOrWhiteSpace(path)
+                        ? variables.stat_data
+                        : _.get(variables.stat_data, path);
                     variable_modified = true;
                     console.info(display_str);
                     await eventEmit(
@@ -1104,6 +1110,7 @@ export async function updateVariables(
 
                 if (command.args.length === 1 && isArrayElementPath) {
                     const containerPath = pathParts.slice(0, -1).join('.');
+                    //根对象必不是一个数组，在下面 isArray 部分会失败
                     const container = _.get(variables.stat_data, containerPath);
                     const indexToRemove = parseInt(lastPart, 10);
 
@@ -1125,6 +1132,7 @@ export async function updateVariables(
                 }
 
                 // 验证路径存在，防止无效删除
+                // 不允许 _.remove('', 'val');
                 if (!_.has(variables.stat_data, path)) {
                     outError(`undefined Path: ${path} in _.remove command`);
                     continue;
