@@ -1,5 +1,18 @@
-import { generateSchema, getSchemaForPath, reconcileAndApplySchema, EXTENSIBLE_MARKER } from '@/schema';
-import {MvuData, StatData, SchemaNode, ObjectSchemaNode, isArraySchema, ArraySchemaNode} from '@/variable_def';
+import {
+    generateSchema,
+    getSchemaForPath,
+    reconcileAndApplySchema,
+    EXTENSIBLE_MARKER,
+} from '@/schema';
+import {
+    MvuData,
+    StatData,
+    SchemaNode,
+    ObjectSchemaNode,
+    isArraySchema,
+    ArraySchemaNode,
+} from '@/variable_def';
+import { updateVariables } from '@/function';
 
 describe('generateSchema', () => {
     describe('基本类型生成', () => {
@@ -78,10 +91,7 @@ describe('generateSchema', () => {
         });
 
         test('父节点的 recursiveExtensible 影响数组子节点', () => {
-            const data = [
-                ['child1', 'child2'],
-                EXTENSIBLE_MARKER
-            ];
+            const data = [['child1', 'child2'], EXTENSIBLE_MARKER];
             const oldSchema: SchemaNode = {
                 type: 'array',
                 extensible: false,
@@ -172,7 +182,7 @@ describe('generateSchema', () => {
                 requiredField: 'value2',
                 $meta: {
                     extensible: true,
-                    required: ['requiredField']
+                    required: ['requiredField'],
                 },
             };
             const result = generateSchema(data) as ObjectSchemaNode;
@@ -181,7 +191,7 @@ describe('generateSchema', () => {
             // 1. 对象是 extensible: true，所以属性默认是 required: false
             // 2. requiredField 在 $meta.required 数组中，所以强制为 required: true
             expect(result.extensible).toBe(true);
-            expect(result.properties.requiredField?.required).toBe(true);  // 被 $meta.required 覆盖
+            expect(result.properties.requiredField?.required).toBe(true); // 被 $meta.required 覆盖
             expect(result.properties.optionalField?.required).toBe(false); // 遵循默认规则
         });
 
@@ -190,12 +200,12 @@ describe('generateSchema', () => {
                 root: {
                     child: {
                         grandChild: {
-                            field: 'value'
+                            field: 'value',
                         },
-                        field: 'value'
+                        field: 'value',
                     },
-                    $meta: { recursiveExtensible: true }
-                }
+                    $meta: { recursiveExtensible: true },
+                },
             };
             const result = generateSchema(data) as ObjectSchemaNode;
             const rootSchema = result.properties.root as ObjectSchemaNode;
@@ -214,8 +224,8 @@ describe('generateSchema', () => {
         test('继承旧 schema 的 recursiveExtensible 属性', () => {
             const data: StatData = {
                 root: {
-                    child: { field: 'value' }
-                }
+                    child: { field: 'value' },
+                },
             };
             const oldSchema: SchemaNode = {
                 type: 'object',
@@ -226,9 +236,9 @@ describe('generateSchema', () => {
                         type: 'object',
                         extensible: true,
                         recursiveExtensible: true,
-                        properties: {}
-                    }
-                }
+                        properties: {},
+                    },
+                },
             };
             const result = generateSchema(data, oldSchema) as ObjectSchemaNode;
             const rootSchema = result.properties.root as ObjectSchemaNode;
@@ -243,9 +253,9 @@ describe('generateSchema', () => {
             const data: StatData = {
                 root: {
                     child: {
-                        grandchild: { field: 'value' }
-                    }
-                }
+                        grandchild: { field: 'value' },
+                    },
+                },
             };
             const oldSchema: SchemaNode = {
                 type: 'object',
@@ -257,11 +267,11 @@ describe('generateSchema', () => {
                         properties: {
                             child: {
                                 type: 'object',
-                                properties: {}
-                            }
-                        }
-                    }
-                }
+                                properties: {},
+                            },
+                        },
+                    },
+                },
             };
             const result = generateSchema(data, oldSchema) as ObjectSchemaNode;
             const rootSchema = result.properties.root as ObjectSchemaNode;
@@ -365,7 +375,13 @@ describe('generateSchema', () => {
 
         test('处理嵌套数组的 ValueWithDescription', () => {
             const data = {
-                matrix: [[[1, 2], [3, 4]], '2x2 矩阵数据'],
+                matrix: [
+                    [
+                        [1, 2],
+                        [3, 4],
+                    ],
+                    '2x2 矩阵数据',
+                ],
                 tags: [['tag1', 'tag2', 'tag3'], '标签列表'],
             };
             const result = generateSchema(data) as ObjectSchemaNode;
@@ -380,9 +396,9 @@ describe('generateSchema', () => {
         test('处理混合类型数组（不符合 ValueWithDescription 格式）', () => {
             const data = {
                 // 这些不是标准的 ValueWithDescription 格式
-                invalidFormat1: ['value'],  // 只有一个元素
-                invalidFormat2: ['value', 'description', 'extra'],  // 超过两个元素
-                invalidFormat3: ['value', 123],  // 第二个元素不是字符串
+                invalidFormat1: ['value'], // 只有一个元素
+                invalidFormat2: ['value', 'description', 'extra'], // 超过两个元素
+                invalidFormat3: ['value', 123], // 第二个元素不是字符串
             };
             const result = generateSchema(data) as ObjectSchemaNode;
 
@@ -419,7 +435,7 @@ describe('generateSchema', () => {
             });
 
             const statsSchema = charSchema.properties.stats as ObjectSchemaNode;
-            const hpProp = statsSchema.properties["hp"];
+            const hpProp = statsSchema.properties['hp'];
             expect(isArraySchema(hpProp)).toBe(true);
             expect((hpProp as ArraySchemaNode).elementType).toEqual({ type: 'number' });
         });
@@ -585,7 +601,7 @@ describe('reconcileAndApplySchema', () => {
                         otherField: 'otherValue',
                         $meta: {
                             extensible: true,
-                            required: ['field']
+                            required: ['field'],
                         },
                     },
                     otherLevel2: {},
@@ -621,8 +637,8 @@ describe('reconcileAndApplySchema', () => {
             initialized_lorebooks: {},
             stat_data: {
                 root: {
-                    child: { field: 'value' }
-                }
+                    child: { field: 'value' },
+                },
             },
             display_data: {},
             delta_data: {},
@@ -635,10 +651,10 @@ describe('reconcileAndApplySchema', () => {
                         type: 'object',
                         extensible: true,
                         recursiveExtensible: true,
-                        properties: {}
-                    }
-                }
-            }
+                        properties: {},
+                    },
+                },
+            },
         };
 
         reconcileAndApplySchema(variables);
@@ -651,25 +667,25 @@ describe('reconcileAndApplySchema', () => {
         expect(childSchema.recursiveExtensible).toBe(true);
     });
 
-    test('处理新节点继承 recursiveExtensible', () => {
+    test('测试部分导致 schema 丢失的情况。', async () => {
         const variables: MvuData = {
             initialized_lorebooks: {},
             stat_data: {
-                "/": {
+                '/': {
                     home: {
-                        alice: { "notes.txt": "document" },
-                        bob: {} // New node
-                    }
-                }
+                        alice: { 'notes.txt': 'document' },
+                        bob: {}, // New node
+                    },
+                },
             },
             display_data: {},
             delta_data: {},
             schema: {
                 type: 'object',
-                extensible: false,
+                extensible: true,
                 recursiveExtensible: true,
                 properties: {
-                    "/": {
+                    '/': {
                         type: 'object',
                         extensible: true,
                         recursiveExtensible: true,
@@ -684,15 +700,89 @@ describe('reconcileAndApplySchema', () => {
                                         extensible: true,
                                         recursiveExtensible: true,
                                         properties: {
-                                            "notes.txt": { type: 'string', required: false }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
+                                            'notes.txt': { type: 'string', required: false },
+                                        },
+                                    },
+                                },
+                            },
+                        },
+                    },
+                },
+            },
+        };
+
+        reconcileAndApplySchema(variables);
+
+        {
+            const rootSchema = variables.schema?.properties['/'] as ObjectSchemaNode;
+            const homeSchema = rootSchema.properties.home as ObjectSchemaNode;
+            const bobSchema = homeSchema.properties.bob as ObjectSchemaNode;
+            expect(rootSchema.recursiveExtensible).toBe(true);
+            expect(homeSchema.recursiveExtensible).toBe(true);
+            expect(bobSchema.extensible).toBe(true); // Inherited from home.recursiveExtensible
+            expect(bobSchema.recursiveExtensible).toBe(true);
+            expect(bobSchema.properties).toEqual({});
+        }
+
+        const messageContent = "_.insert('', 'element', [15, '增强的物品数量']);//root";
+        const result = await updateVariables(messageContent, variables);
+        expect(result).toBe(true);
+
+        {
+            // 这些状态不应变更。
+            const rootSchema = variables.schema?.properties['/'] as ObjectSchemaNode;
+            const homeSchema = rootSchema.properties.home as ObjectSchemaNode;
+            const bobSchema = homeSchema.properties.bob as ObjectSchemaNode;
+            expect(rootSchema.recursiveExtensible).toBe(true);
+            expect(homeSchema.recursiveExtensible).toBe(true);
+            expect(bobSchema.extensible).toBe(true); // Inherited from home.recursiveExtensible
+            expect(bobSchema.recursiveExtensible).toBe(true);
+            expect(bobSchema.properties).toEqual({});
+        }
+    });
+
+    test('处理新节点继承 recursiveExtensible', () => {
+        const variables: MvuData = {
+            initialized_lorebooks: {},
+            stat_data: {
+                '/': {
+                    home: {
+                        alice: { 'notes.txt': 'document' },
+                        bob: {}, // New node
+                    },
+                },
+            },
+            display_data: {},
+            delta_data: {},
+            schema: {
+                type: 'object',
+                extensible: false,
+                recursiveExtensible: true,
+                properties: {
+                    '/': {
+                        type: 'object',
+                        extensible: true,
+                        recursiveExtensible: true,
+                        properties: {
+                            home: {
+                                type: 'object',
+                                extensible: true,
+                                recursiveExtensible: true,
+                                properties: {
+                                    alice: {
+                                        type: 'object',
+                                        extensible: true,
+                                        recursiveExtensible: true,
+                                        properties: {
+                                            'notes.txt': { type: 'string', required: false },
+                                        },
+                                    },
+                                },
+                            },
+                        },
+                    },
+                },
+            },
         };
 
         reconcileAndApplySchema(variables);
@@ -737,9 +827,7 @@ describe('边缘情况和错误处理', () => {
         const consoleSpy = jest.spyOn(console, 'error').mockImplementation();
         generateSchema({ field: 'value' }, arraySchema);
 
-        expect(consoleSpy).toHaveBeenCalledWith(
-            expect.stringContaining('Type mismatch')
-        );
+        expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('Type mismatch'));
         consoleSpy.mockRestore();
     });
 });
