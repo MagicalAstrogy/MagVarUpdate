@@ -654,72 +654,52 @@ export async function updateVariables(
 
     if (commands.length === 1 && commands[0].type === 'json_patch') {
         try {
-            const original_patch = JSON.parse(commands[0].args[0]);
-            if (isJsonPatch(original_patch)) {
-                const stat_data_clone = klona(variables.stat_data);
-                let any_op_successful = false;
+            const patch = JSON.parse(commands[0].args[0]);
+            if (isJsonPatch(patch)) {
+                const translated_commands: Command[] = [];
 
-                for (const op of original_patch) {
-                    try {
-                        // Use applyPatch with a single operation array.
-                        // The function modifies stat_data_clone in place.
-                        jsonpatch.applyPatch(stat_data_clone, [op], true);
-                        any_op_successful = true;
-                    } catch (e) {
-                        console.warn(
-                            `Skipping invalid JSON Patch operation: ${JSON.stringify(op)}`,
-                            e
-                        );
-                    }
-                }
-
-                if (any_op_successful) {
-                    const resolved_patch = jsonpatch.compare(variables.stat_data, stat_data_clone);
-                    const translated_commands: Command[] = [];
-
-                    for (const op of resolved_patch) {
-                        const path = op.path.substring(1).replace(/\//g, '.');
-                        switch (op.op) {
-                            case 'replace':
-                                translated_commands.push({
-                                    type: 'set',
-                                    full_match: JSON.stringify(op),
-                                    args: [path, JSON.stringify((op as any).value)],
-                                    reason: 'json_patch',
-                                });
-                                break;
-                            case 'add': {
-                                const pathParts = _.toPath(path);
-                                const lastPart = pathParts[pathParts.length - 1];
-                                const containerPath = pathParts.slice(0, -1).join('.');
-                                const keyOrIndexArg = /^\d+$/.test(lastPart)
-                                    ? lastPart
-                                    : `'${lastPart}'`;
-                                translated_commands.push({
-                                    type: 'insert',
-                                    full_match: JSON.stringify(op),
-                                    args: [
-                                        containerPath,
-                                        keyOrIndexArg,
-                                        JSON.stringify((op as any).value),
-                                    ],
-                                    reason: 'json_patch',
-                                });
-                                break;
-                            }
-                            case 'remove':
-                                translated_commands.push({
-                                    type: 'delete',
-                                    full_match: JSON.stringify(op),
-                                    args: [path],
-                                    reason: 'json_patch',
-                                });
-                                break;
+                for (const op of patch) {
+                    const path = op.path.substring(1).replace(/\//g, '.');
+                    switch (op.op) {
+                        case 'replace':
+                            translated_commands.push({
+                                type: 'set',
+                                full_match: JSON.stringify(op),
+                                args: [path, JSON.stringify((op as any).value)],
+                                reason: 'json_patch',
+                            });
+                            break;
+                        case 'add': {
+                            const pathParts = _.toPath(path);
+                            const lastPart = pathParts[pathParts.length - 1];
+                            const containerPath = pathParts.slice(0, -1).join('.');
+                            const keyOrIndexArg = /^\d+$/.test(lastPart)
+                                ? lastPart
+                                : `'${lastPart}'`;
+                            translated_commands.push({
+                                type: 'insert',
+                                full_match: JSON.stringify(op),
+                                args: [
+                                    containerPath,
+                                    keyOrIndexArg,
+                                    JSON.stringify((op as any).value),
+                                ],
+                                reason: 'json_patch',
+                            });
+                            break;
                         }
+                        case 'remove':
+                            translated_commands.push({
+                                type: 'delete',
+                                full_match: JSON.stringify(op),
+                                args: [path],
+                                reason: 'json_patch',
+                            });
+                            break;
                     }
-                    // Replace the original json_patch command with the translated commands
-                    commands.splice(0, 1, ...translated_commands);
                 }
+                // Replace the original json_patch command with the translated commands
+                commands.splice(0, 1, ...translated_commands);
             }
         } catch (e) {
             console.error('Failed to parse or apply JSON Patch:', e);
