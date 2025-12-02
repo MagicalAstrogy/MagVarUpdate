@@ -42,13 +42,13 @@ import 'https://gcore.jsdelivr.net/gh/MagicalAstrogy/MagVarUpdate@master/artifac
 
 3. 在你的角色使用的世界书中，新增下面的 `蓝灯 D1` 条目，作用是将变量列表输出给 llm，并说明变量更新的规则:
 ```ejs
-<status_description>//do not output following content
+<status_current_variable>//do not output following content
     {{get_message_variable::stat_data}},
-</status_description>//do not output content below directly
+</status_current_variable>//do not output content below directly
 <Analysis>$(IN ENGLISH$)
     - calculate time passed: ...
     - decide whether dramatic updates are allowed as it's in a special case or the time passed is more than usual: yes or no
-    - list every variable in `<status_description>` section before actual variable analysis: ...
+    - list every variable in `<status_current_variable>` section before actual variable analysis: ...
     - Analyze whether this variable satisfies its change conditions, do not output reason:...
     - Ignore summary related content when evaluate.
 </Analysis>

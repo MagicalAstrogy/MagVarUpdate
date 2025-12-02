@@ -33,7 +33,7 @@
 ### 如何提供状态给 llm & 明确输出规则
 这部分是在世界书条目中实现，与前人的做法类似，通过 `get_message_variable` 输出一个格式化的数据，并描述变量更新规则。在我的实践中，采用了注释的方式，在同一行描述规则，整体效果符合预期。不过对于物品栏这样存在增加、减少的项目，形如 sonnet 3.7 的模型并不能正确地更新 减少 的情况。
 ``` json5
-<status_description>//do not output following content
+<status_current_variable>//do not output following content
 {
   '地点': '{{get_message_variable::stat_data.地点}}', //现在 <user> 所在的地点
   '场景人物': '{{get_message_variable::stat_data.场景人物}}', //现在 <user> 周围的人物
@@ -42,7 +42,7 @@
   ‘世界状态': '{{get_message_variable::stat_data.世界状态}}',
   重要物品: {{get_message_variable::stat_data.重要物品}}, //<user> 持有的重要物品，在增加时以逗号追加，减少时删去减少的那一个
 }
-</status_description>
+</status_current_variable>
 
 rule:
   description: You should output the update analysis in the end of the next reply
