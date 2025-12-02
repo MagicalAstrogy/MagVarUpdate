@@ -776,7 +776,11 @@ export async function updateVariables(
                             : newValue;
                     oldValue = oldValueCopy;
                     isPathVWD = true;
-                } else if (typeof oldValue === 'number' && newValue !== null) {
+                } else if (
+                    typeof oldValue === 'number' &&
+                    newValue !== null &&
+                    typeof newValue === 'string'
+                ) {
                     _.set(variables.stat_data, path, Number(newValue));
                 } else {
                     // 其他情况直接设置新值，支持任意类型
