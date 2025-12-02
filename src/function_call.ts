@@ -159,8 +159,7 @@ export function registerFunction() {
             delta: {
                 type: 'string',
                 minLength: 0,
-                description:
-                    "variable update block",
+                description: 'variable update block',
             },
         },
         required: ['delta'],
