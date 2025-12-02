@@ -1,3 +1,6 @@
 [submodule "slash-runner"]
 	path = slash-runner
 	url = https://github.com/N0VI028/JS-Slash-Runner.git
+[submodule "tests/json-patch-tests"]
+	path = tests/json-patch-tests
+	url = https://github.com/json-patch/json-patch-tests.git

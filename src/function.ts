@@ -227,6 +227,46 @@ interface Command {
     reason: string;
 }
 
+function extractJsonPatch(patch: any) {
+    const translated_commands: Command[] = [];
+
+    for (const op of patch) {
+        const path = op.path.substring(1).replace(/\//g, '.');
+        switch (op.op) {
+            case 'replace':
+                translated_commands.push({
+                    type: 'set',
+                    full_match: JSON.stringify(op),
+                    args: [path, JSON.stringify((op as any).value)],
+                    reason: 'json_patch',
+                });
+                break;
+            case 'add': {
+                const pathParts = _.toPath(path);
+                const lastPart = pathParts[pathParts.length - 1];
+                const containerPath = pathParts.slice(0, -1).join('.');
+                const keyOrIndexArg = /^\d+$/.test(lastPart) ? lastPart : `'${lastPart}'`;
+                translated_commands.push({
+                    type: 'insert',
+                    full_match: JSON.stringify(op),
+                    args: [containerPath, keyOrIndexArg, JSON.stringify((op as any).value)],
+                    reason: 'json_patch',
+                });
+                break;
+            }
+            case 'remove':
+                translated_commands.push({
+                    type: 'delete',
+                    full_match: JSON.stringify(op),
+                    args: [path],
+                    reason: 'json_patch',
+                });
+                break;
+        }
+    }
+    return translated_commands;
+}
+
 /**
  * 从输入文本中提取所有 _.set() 调用
  *
@@ -246,14 +286,7 @@ export function extractCommands(inputText: string): Command[] {
         try {
             const patch = JSON.parse(jsonPatchMatch[1]);
             if (isJsonPatch(patch)) {
-                return [
-                    {
-                        type: 'json_patch',
-                        full_match: jsonPatchMatch[0],
-                        args: [jsonPatchMatch[1]],
-                        reason: '',
-                    },
-                ];
+                return extractJsonPatch(patch);
             }
         } catch (e) {
             console.error('Failed to parse content of <JSONPatch> tag:', e);
@@ -652,59 +685,6 @@ export async function updateVariables(
     // 使用重构后的 extractCommands 提取所有命令
     const commands = extractCommands(processed_message_content);
 
-    if (commands.length === 1 && commands[0].type === 'json_patch') {
-        try {
-            const patch = JSON.parse(commands[0].args[0]);
-            if (isJsonPatch(patch)) {
-                const translated_commands: Command[] = [];
-
-                for (const op of patch) {
-                    const path = op.path.substring(1).replace(/\//g, '.');
-                    switch (op.op) {
-                        case 'replace':
-                            translated_commands.push({
-                                type: 'set',
-                                full_match: JSON.stringify(op),
-                                args: [path, JSON.stringify((op as any).value)],
-                                reason: 'json_patch',
-                            });
-                            break;
-                        case 'add': {
-                            const pathParts = _.toPath(path);
-                            const lastPart = pathParts[pathParts.length - 1];
-                            const containerPath = pathParts.slice(0, -1).join('.');
-                            const keyOrIndexArg = /^\d+$/.test(lastPart)
-                                ? lastPart
-                                : `'${lastPart}'`;
-                            translated_commands.push({
-                                type: 'insert',
-                                full_match: JSON.stringify(op),
-                                args: [
-                                    containerPath,
-                                    keyOrIndexArg,
-                                    JSON.stringify((op as any).value),
-                                ],
-                                reason: 'json_patch',
-                            });
-                            break;
-                        }
-                        case 'remove':
-                            translated_commands.push({
-                                type: 'delete',
-                                full_match: JSON.stringify(op),
-                                args: [path],
-                                reason: 'json_patch',
-                            });
-                            break;
-                    }
-                }
-                // Replace the original json_patch command with the translated commands
-                commands.splice(0, 1, ...translated_commands);
-            }
-        } catch (e) {
-            console.error('Failed to parse or apply JSON Patch:', e);
-        }
-    }
     // 触发变量更新开始事件，通知外部系统
     _.set(variables.stat_data, '$internal', {
         display_data: out_status.stat_data,
