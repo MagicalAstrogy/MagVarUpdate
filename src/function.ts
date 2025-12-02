@@ -281,21 +281,21 @@ function extractJsonPatch(patch: any) {
  */
 // 将 extractSetCommands 扩展为 extractCommands 以支持多种命令
 export function extractCommands(inputText: string): Command[] {
-    const jsonPatchMatch = inputText.match(/<json_?patch>([\s\S]*?)<\/json_?patch>/i);
-    if (jsonPatchMatch && jsonPatchMatch[1]) {
-        try {
-            const patch = JSON.parse(jsonPatchMatch[1]);
-            if (isJsonPatch(patch)) {
-                return extractJsonPatch(patch);
+    const results: Command[] = [...inputText.matchAll(/<json_?patch>([\s\S]*?)<\/json_?patch>/gi)]
+        .map(match => match[1])
+        .flatMap(json_patch => {
+            try {
+                const patch = JSON.parse(json_patch);
+                if (isJsonPatch(patch)) {
+                    return extractJsonPatch(patch);
+                }
+            } catch {
+                /* ignore */
             }
-        } catch (e) {
-            console.error('Failed to parse content of <JSONPatch> tag:', e);
-        }
-    }
+            return [];
+        });
 
-    const results: Command[] = [];
     let i = 0;
-
     while (i < inputText.length) {
         // 循环处理整个输入文本，直到找不到更多命令
         // 使用正则匹配 _.set(、_.assign(、_.remove( 或 _.add(，重构后支持多种命令
@@ -659,7 +659,7 @@ export function pathFixPass(
     commands: Command[],
     _unused_content: string
 ): void {
-    for (let command of commands) {
+    for (const command of commands) {
         command.args[0] = pathFix(trimQuotesAndBackslashes(command.args[0]));
     }
 }
