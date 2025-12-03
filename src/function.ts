@@ -211,8 +211,7 @@ type CommandNames =
     | 'remove'
     | 'unset'
     | 'delete'
-    | 'add'
-    | 'json_patch';
+    | 'add';
 
 /**
  * 从大字符串中提取所有 .set(${path}, ${new_value});//${reason} 格式的模式
