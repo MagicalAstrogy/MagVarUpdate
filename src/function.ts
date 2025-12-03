@@ -5,7 +5,7 @@ import {
     reconcileAndApplySchema,
 } from '@/schema';
 import { useSettingsStore } from '@/settings';
-import { saveChatDebounced } from '@/util';
+import { parseString, saveChatDebounced } from '@/util';
 import {
     assertVWD,
     isArraySchema,
@@ -285,7 +285,7 @@ export function extractCommands(inputText: string): Command[] {
         .map(match => match[1])
         .flatMap(json_patch => {
             try {
-                const patch = JSON.parse(json_patch);
+                const patch = parseString(json_patch);
                 if (isJsonPatch(patch)) {
                     return extractJsonPatch(patch);
                 }

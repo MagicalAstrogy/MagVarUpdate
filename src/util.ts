@@ -1,3 +1,5 @@
+import JSON5 from 'json5';
+import TOML from 'toml';
 import TavernHelper = globalThis.TavernHelper;
 
 let sillytavern_version: string = '1.0.0';
@@ -63,4 +65,24 @@ export function scopedEventOn<T extends EventType>(event_type: T, listener: List
 }
 export function clearScopedEvent() {
     stop_lists.forEach(stop => stop());
+}
+
+export function parseString(content: string) {
+    // Try YAML first (which also handles JSON)
+    try {
+        return YAML.parseDocument(content, { merge: true }).toJS();
+    } catch (e) {
+        // Try JSON5
+        try {
+            // eslint-disable-next-line import-x/no-named-as-default-member
+            return JSON5.parse(content);
+        } catch (e2) {
+            // Try TOML
+            try {
+                return TOML.parse(content);
+            } catch (e3) {
+                throw new Error(`initvar 不是有效的 YAML/JSON/JSON5/TOML 格式: ${e3}`);
+            }
+        }
+    }
 }

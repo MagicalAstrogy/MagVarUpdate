@@ -1,6 +1,7 @@
 // 整体游戏数据类型
 import { getLastValidVariable, updateVariables } from '@/function';
 import { cleanUpMetadata, EXTENSIBLE_MARKER, generateSchema } from '@/schema';
+import { parseString } from '@/util';
 import {
     isObjectSchema,
     MvuData,
@@ -8,9 +9,7 @@ import {
     SchemaNode,
     variable_events,
 } from '@/variable_def';
-import JSON5 from 'json5';
 import { klona } from 'klona';
-import TOML from 'toml';
 
 type LorebookEntry = {
     content: string;
@@ -224,22 +223,9 @@ export async function loadInitVarData(
 
                 // Try YAML first (which also handles JSON)
                 try {
-                    parsedData = YAML.parseDocument(content, { merge: true }).toJS();
+                    parsedData = parseString(content);
                 } catch (e) {
-                    // Try JSON5
-                    try {
-                        // eslint-disable-next-line import-x/no-named-as-default-member
-                        parsedData = JSON5.parse(content);
-                    } catch (e2) {
-                        // Try TOML
-                        try {
-                            parsedData = TOML.parse(content);
-                        } catch (e3) {
-                            parseError = new Error(
-                                `initvar 不是有效的 YAML/JSON/JSON5/TOML 格式: ${e3}`
-                            );
-                        }
-                    }
+                    parseError = e as Error;
                 }
 
                 if (parseError) {
