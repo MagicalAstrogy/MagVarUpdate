@@ -181,7 +181,10 @@ export type ExtendedListenerType = {
         variables: MvuData,
         out_is_updated: boolean
     ) => void;
-    [variable_events.VARIABLE_UPDATE_ENDED]: (variables: MvuData, variables_before_update: MvuData) => void;
+    [variable_events.VARIABLE_UPDATE_ENDED]: (
+        variables: MvuData,
+        variables_before_update: MvuData
+    ) => void;
     [variable_events.VARIABLE_INITIALIZED]: (variables: MvuData, swipe_id: number) => void;
     [variable_events.COMMAND_PARSED]: (
         variables: MvuData,
