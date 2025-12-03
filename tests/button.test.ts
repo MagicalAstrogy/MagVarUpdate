@@ -506,6 +506,7 @@ describe('RecurVariable function', () => {
                 },
             },
         };
+        var old_stat = _.cloneDeep(baseVariables.stat_data);
 
         const silly = (globalThis as any).SillyTavern as any;
         silly.chat = [
@@ -543,20 +544,28 @@ describe('RecurVariable function', () => {
         });
 
         const replayTrace: number[] = [];
-        (global.eventOn as jest.Mock)(variable_events.VARIABLE_UPDATE_ENDED, (variables: any) => {
-            const nextCount = (variables.stat_data.replayCount ?? 0) + 1;
-            variables.stat_data.replayCount = nextCount;
-            const existingTrace = Array.isArray(variables.stat_data.replayTrace)
-                ? variables.stat_data.replayTrace
-                : [];
-            variables.stat_data.replayTrace = [...existingTrace, nextCount];
-            replayTrace.push(nextCount);
+        (global.eventOn as jest.Mock)(
+            variable_events.VARIABLE_UPDATE_ENDED,
+            (variables: any, variables_before_update: any) => {
+                const nextCount = (variables.stat_data.replayCount ?? 0) + 1;
+                variables.stat_data.replayCount = nextCount;
+                const existingTrace = Array.isArray(variables.stat_data.replayTrace)
+                    ? variables.stat_data.replayTrace
+                    : [];
+                variables.stat_data.replayTrace = [...existingTrace, nextCount];
+                replayTrace.push(nextCount);
 
-            if (!variables.display_data) {
-                variables.display_data = {};
+                if (!variables.display_data) {
+                    variables.display_data = {};
+                }
+                variables.display_data.replayCount = nextCount;
+                let ref_value = _.cloneDeep(variables_before_update.stat_data);
+                delete ref_value['$internal'];
+                expect(ref_value).toMatchObject(old_stat);
+                old_stat = _.cloneDeep(variables.stat_data);
+                delete old_stat['$internal'];
             }
-            variables.display_data.replayCount = nextCount;
-        });
+        );
 
         registerButtons();
         const recurVariable = getRecurVariableCallback();

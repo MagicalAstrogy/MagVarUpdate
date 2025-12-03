@@ -674,6 +674,9 @@ export async function updateVariables(
     variables: MvuData
 ): Promise<boolean> {
     const out_is_modifed = false;
+
+    // 拷贝一份变量，用于提供给 variable_ended
+    const variables_before_update: MvuData = klona(variables);
     // 深拷贝变量对象，生成状态快照，用于记录显示数据
     const out_status: MvuData = klona(variables);
     // 初始化增量状态对象，记录变化详情
@@ -1391,7 +1394,7 @@ export async function updateVariables(
     variables.delta_data = delta_status.stat_data!;
     // 触发变量更新结束事件
     //@ts-expect-error 这里会有一个variables类型的不一致，一个内部类型，一个外部类型。
-    await eventEmit(variable_events.VARIABLE_UPDATE_ENDED, variables);
+    await eventEmit(variable_events.VARIABLE_UPDATE_ENDED, variables, variables_before_update);
     //在结束事件中也可能设置变量
     _.unset(variables.stat_data, '$internal');
 
