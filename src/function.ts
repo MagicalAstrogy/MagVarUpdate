@@ -275,7 +275,7 @@ function extractJsonPatch(patch: any): Command[] {
 export function extractCommands(inputText: string): Command[] {
     // TODO: 应该按照消息中更新命令出现的顺序来排列 initvar、json_patch 和自定义命令
     const results: (Command & { $index: number })[] = _.concat(
-        [...inputText.matchAll(/<(initvar|json_?patch)>([\s\S]*?)<\/\1>/gi)]
+        [...inputText.matchAll(/<(initvar|json_?patch)>(?:```.*)?([\s\S]*?)(?:```)?<\/\1>/gmi)]
             .map(match => ({
                 index: match.index ?? 0,
                 type: match[1].replaceAll('_', '').toLowerCase(),
