@@ -204,14 +204,7 @@ export function parseCommandValue(valStr: string): any {
  * - 'remove': Represents a command to remove an item or data.
  * - 'add': Represents a command to add an item or data.
  */
-type CommandNames =
-    | 'set'
-    | 'insert'
-    | 'assign'
-    | 'remove'
-    | 'unset'
-    | 'delete'
-    | 'add';
+type CommandNames = 'set' | 'insert' | 'assign' | 'remove' | 'unset' | 'delete' | 'add';
 
 /**
  * 从大字符串中提取所有 .set(${path}, ${new_value});//${reason} 格式的模式
@@ -226,7 +219,7 @@ interface Command {
     reason: string;
 }
 
-function extractJsonPatch(patch: any) {
+function extractJsonPatch(patch: any): Command[] {
     const translated_commands: Command[] = [];
 
     for (const op of patch) {
@@ -281,16 +274,21 @@ function extractJsonPatch(patch: any) {
 // 将 extractSetCommands 扩展为 extractCommands 以支持多种命令
 export function extractCommands(inputText: string): Command[] {
     // TODO: 应该按照消息中更新命令出现的顺序来排列 initvar、json_patch 和自定义命令
-    const results: Command[] = _.concat(
+    const results: (Command & { $index: number })[] = _.concat(
         [...inputText.matchAll(/<(initvar|json_?patch)>([\s\S]*?)<\/\1>/gi)]
-            .map(match => ({ type: match[1].replaceAll('_', '').toLowerCase(), string: match[2] }))
-            .flatMap(({ type, string }): Command[] => {
+            .map(match => ({
+                index: match.index ?? 0,
+                type: match[1].replaceAll('_', '').toLowerCase(),
+                string: match[2],
+            }))
+            .flatMap(({ index, type, string }): (Command & { $index: number })[] => {
                 try {
                     const patch = parseString(string);
                     switch (type) {
                         case 'initvar':
                             return [
                                 {
+                                    $index: index,
                                     type: 'set',
                                     args: ['', JSON.stringify(patch)],
                                     full_match: string,
@@ -299,7 +297,10 @@ export function extractCommands(inputText: string): Command[] {
                             ];
                         case 'jsonpatch':
                             if (isJsonPatch(patch)) {
-                                return extractJsonPatch(patch);
+                                return extractJsonPatch(patch).map(command => ({
+                                    $index: index,
+                                    ...command,
+                                }));
                             }
                             break;
                     }
@@ -382,6 +383,7 @@ export function extractCommands(inputText: string): Command[] {
         if (isValid) {
             // 命令有效，添加到结果列表，包含命令类型、完整匹配、参数和注释
             results.push({
+                $index: setStart,
                 type: commandType,
                 full_match: fullMatch,
                 args: params,
@@ -394,7 +396,10 @@ export function extractCommands(inputText: string): Command[] {
     }
 
     // 返回所有解析出的有效命令
-    return results;
+    return _(results)
+        .sortBy('$index')
+        .map(command => _.omit(command, '$index'))
+        .value();
 }
 
 /**
