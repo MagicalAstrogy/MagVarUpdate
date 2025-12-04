@@ -266,15 +266,6 @@
                         </div>
                     </Transition>
                 </div>
-
-                <label class="checkbox_label" for="mvu_auto_clean_checkbox">
-                    <input
-                        id="mvu_auto_clean_checkbox"
-                        v-model="store.settings.auto_cleanup.启用"
-                        type="checkbox"
-                    />
-                    <span>变量自动清理</span>
-                </label>
             </div>
 
             <hr />
