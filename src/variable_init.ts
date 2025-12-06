@@ -217,6 +217,10 @@ export async function loadInitVarData(
 
         for (const entry of init_entries) {
             if (entry.comment?.toLowerCase().includes('[initvar]')) {
+                const codeblock_match = entry.content.trim().match(/```.*\n([\s\S]*)\n```/m);
+                if (codeblock_match) {
+                    entry.content = codeblock_match[1];
+                }
                 const content = substitudeMacros(entry.content);
                 let parsedData: any = null;
                 let parseError: Error | null = null;
