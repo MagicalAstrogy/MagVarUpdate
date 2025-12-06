@@ -7,6 +7,7 @@ import {
     MvuData,
     RootAdditionalProps,
     SchemaNode,
+    StatData,
     variable_events,
 } from '@/variable_def';
 import { klona } from 'klona';
@@ -142,19 +143,35 @@ export async function initCheck() {
                         if (vanilla_variable_data === undefined) {
                             vanilla_variable_data = {};
                         }
-                        let current_data = _.merge(vanilla_variable_data, variables);
+                        const current_data = _.merge(vanilla_variable_data, klona(variables));
 
                         const matched_init = swipe.matchAll(
                             /<(initvar)>(?:```.*)?([\s\S]*?)(?:```)?<\/\1>/gim
                         );
+                        // 对于在开场白中的 <initvar> 块的规则是：
+                        // 使用了这个块后，会以 <initvar> 块内的内容为基准，忽略角色世界书中 [initvar] 的内容
+                        let is_initvar_applied = false;
+                        const overrided_initvar: StatData = {};
                         for (const match of matched_init) {
                             const init_content = match[2];
                             try {
                                 const init_variables = parseString(substitudeMacros(init_content));
-                                _.merge(current_data.stat_data, init_variables);
+                                _.merge(overrided_initvar, init_variables);
+                                is_initvar_applied = true;
                             } catch (e) {
                                 console.error('failed to parse initvar block:' + e);
                             }
+                        }
+                        if (is_initvar_applied) {
+                            current_data.stat_data = overrided_initvar;
+                            const char_lorebook =
+                                getCharWorldbookNames('current').primary ?? 'unknown';
+                            //此处的含义是，将 角色卡世界书 以外的其他世界书进行重置
+                            //避免 <initvar> 的覆盖行为导致其他世界书无法正常加载
+                            current_data.initialized_lorebooks = {};
+                            current_data.initialized_lorebooks[char_lorebook] = [];
+                            //重新进行其他全局世界书的初始化。
+                            await loadInitVarData(current_data);
                         }
 
                         await eventEmit(variable_events.VARIABLE_INITIALIZED, current_data, index);
