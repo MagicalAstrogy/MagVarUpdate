@@ -1,6 +1,6 @@
 // Global test setup
 import { createPinia, setActivePinia } from 'pinia';
-import * as _ from 'lodash';
+import _ from 'lodash';
 
 // Make lodash available globally as it's used in the source code
 (globalThis as any)._ = _;
@@ -52,19 +52,17 @@ beforeEach(() => {
 });
 
 // Mock functions that are not available in test environment
-(globalThis as any).eventOn = jest.fn(
-    (event: string, handler: (...args: unknown[]) => unknown) => {
-        const bridged = (globalThis as any).eventOnButton;
-        if (typeof bridged === 'function') {
-            bridged(event, handler);
-        }
-
-        if (!__eventHandlers.has(event)) {
-            __eventHandlers.set(event, []);
-        }
-        __eventHandlers.get(event)!.push(handler);
+(globalThis as any).eventOn = jest.fn((event: string, handler: (...args: unknown[]) => unknown) => {
+    const bridged = (globalThis as any).eventOnButton;
+    if (typeof bridged === 'function') {
+        bridged(event, handler);
     }
-);
+
+    if (!__eventHandlers.has(event)) {
+        __eventHandlers.set(event, []);
+    }
+    __eventHandlers.get(event)!.push(handler);
+});
 (globalThis as any).eventEmit = jest.fn(async (event: string, ...args: unknown[]) => {
     const handlers = __eventHandlers.get(event) ?? [];
     for (const handler of handlers) {

@@ -5,7 +5,7 @@ import {
     reconcileAndApplySchema,
 } from '@/schema';
 import { useSettingsStore } from '@/settings';
-import { saveChatDebounced } from '@/util';
+import { parseString, saveChatDebounced } from '@/util';
 import {
     assertVWD,
     isArraySchema,
@@ -204,15 +204,7 @@ export function parseCommandValue(valStr: string): any {
  * - 'remove': Represents a command to remove an item or data.
  * - 'add': Represents a command to add an item or data.
  */
-type CommandNames =
-    | 'set'
-    | 'insert'
-    | 'assign'
-    | 'remove'
-    | 'unset'
-    | 'delete'
-    | 'add'
-    | 'json_patch';
+type CommandNames = 'set' | 'insert' | 'assign' | 'remove' | 'unset' | 'delete' | 'add';
 
 /**
  * 从大字符串中提取所有 .set(${path}, ${new_value});//${reason} 格式的模式
@@ -227,7 +219,7 @@ interface Command {
     reason: string;
 }
 
-function extractJsonPatch(patch: any) {
+function extractJsonPatch(patch: any): Command[] {
     const translated_commands: Command[] = [];
 
     for (const op of patch) {
@@ -281,19 +273,32 @@ function extractJsonPatch(patch: any) {
  */
 // 将 extractSetCommands 扩展为 extractCommands 以支持多种命令
 export function extractCommands(inputText: string): Command[] {
-    const results: Command[] = [...inputText.matchAll(/<json_?patch>([\s\S]*?)<\/json_?patch>/gi)]
-        .map(match => match[1])
-        .flatMap(json_patch => {
-            try {
-                const patch = JSON.parse(json_patch);
-                if (isJsonPatch(patch)) {
-                    return extractJsonPatch(patch);
+    // TODO: 应该按照消息中更新命令出现的顺序来排列 json_patch 和自定义命令
+    const results: (Command & { $index: number })[] = _.concat(
+        [...inputText.matchAll(/<(json_?patch)>(?:```.*)?([\s\S]*?)(?:```)?<\/\1>/gim)]
+            .map(match => ({
+                index: match.index ?? 0,
+                type: match[1].replaceAll('_', '').toLowerCase(),
+                string: match[2],
+            }))
+            //@ts-expect-error type 未使用
+            .flatMap(({ index, type, string }): (Command & { $index: number })[] => {
+                try {
+                    const patch = parseString(string);
+                    {
+                        if (isJsonPatch(patch)) {
+                            return extractJsonPatch(patch).map(command => ({
+                                $index: index,
+                                ...command,
+                            }));
+                        }
+                    }
+                } catch {
+                    /* ignore */
                 }
-            } catch {
-                /* ignore */
-            }
-            return [];
-        });
+                return [];
+            })
+    );
 
     let i = 0;
     while (i < inputText.length) {
@@ -367,6 +372,7 @@ export function extractCommands(inputText: string): Command[] {
         if (isValid) {
             // 命令有效，添加到结果列表，包含命令类型、完整匹配、参数和注释
             results.push({
+                $index: setStart,
                 type: commandType,
                 full_match: fullMatch,
                 args: params,
@@ -379,7 +385,10 @@ export function extractCommands(inputText: string): Command[] {
     }
 
     // 返回所有解析出的有效命令
-    return results;
+    return _(results)
+        .sortBy('$index')
+        .map(command => _.omit(command, '$index'))
+        .value();
 }
 
 /**
@@ -742,7 +751,7 @@ export async function updateVariables(
         ) {
             case 'set': {
                 // _.has 检查，确保路径存在
-                if (!_.has(variables.stat_data, path)) {
+                if (path !== '' && !_.has(variables.stat_data, path)) {
                     outError(
                         `Path '${path}' does not exist in stat_data, skipping set command ${reason_str}`
                     );
@@ -750,11 +759,12 @@ export async function updateVariables(
                 }
 
                 // 获取路径上的旧值，可能为 undefined（路径不存在）
-                let oldValue = _.get(variables.stat_data, path);
+                let oldValue =
+                    path === '' ? klona(variables.stat_data) : _.get(variables.stat_data, path);
+
                 // 支持两种格式：_.set(path, newValue) 或 _.set(path, oldValue, newValue)
-                const newValueStr = command.args.length >= 3 ? command.args[2] : command.args[1];
-                // 解析新值，支持字符串、数字、布尔值、JSON 对象等
-                let newValue = parseCommandValue(newValueStr);
+                //   解析新值，支持字符串、数字、布尔值、JSON 对象等
+                let newValue = parseCommandValue(command.args.at(-1)!);
 
                 // 在写入前，将 Date 对象序列化为 ISO 字符串
                 if (newValue instanceof Date) {
@@ -785,13 +795,15 @@ export async function updateVariables(
                     typeof newValue === 'string'
                 ) {
                     _.set(variables.stat_data, path, Number(newValue));
-                } else {
-                    // 其他情况直接设置新值，支持任意类型
+                } else if (path) {
                     _.set(variables.stat_data, path, newValue);
+                } else {
+                    variables.stat_data = newValue;
                 }
 
                 // 获取最终设置的新值，用于日志和事件
-                let finalNewValue = _.get(variables.stat_data, path);
+                let finalNewValue =
+                    path === '' ? variables.stat_data : _.get(variables.stat_data, path);
 
                 assertVWD(isPathVWD, finalNewValue);
 

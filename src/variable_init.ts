@@ -1,16 +1,16 @@
 // 整体游戏数据类型
 import { getLastValidVariable, updateVariables } from '@/function';
 import { cleanUpMetadata, EXTENSIBLE_MARKER, generateSchema } from '@/schema';
+import { parseString } from '@/util';
 import {
     isObjectSchema,
     MvuData,
     RootAdditionalProps,
     SchemaNode,
+    StatData,
     variable_events,
 } from '@/variable_def';
-import JSON5 from 'json5';
 import { klona } from 'klona';
-import TOML from 'toml';
 
 type LorebookEntry = {
     content: string;
@@ -143,8 +143,36 @@ export async function initCheck() {
                         if (vanilla_variable_data === undefined) {
                             vanilla_variable_data = {};
                         }
+                        const current_data = _.merge(vanilla_variable_data, klona(variables));
 
-                        const current_data = _.merge(vanilla_variable_data, variables);
+                        const matched_init = swipe.matchAll(
+                            /<(initvar)>(?:```.*)?([\s\S]*?)(?:```)?<\/\1>/gim
+                        );
+                        // 对于在开场白中的 <initvar> 块的规则是：
+                        // 使用了这个块后，会以 <initvar> 块内的内容为基准，忽略角色世界书中 [initvar] 的内容
+                        let is_initvar_applied = false;
+                        const overrided_initvar: StatData = {};
+                        for (const match of matched_init) {
+                            const init_content = match[2];
+                            try {
+                                const init_variables = parseString(substitudeMacros(init_content));
+                                _.merge(overrided_initvar, init_variables);
+                                is_initvar_applied = true;
+                            } catch (e) {
+                                console.error('failed to parse initvar block:' + e);
+                            }
+                        }
+                        if (is_initvar_applied) {
+                            current_data.stat_data = overrided_initvar;
+                            const char_lorebook =
+                                getCharWorldbookNames('current').primary ?? 'unknown';
+                            //此处的含义是，将 角色卡世界书 以外的其他世界书进行重置
+                            //避免 <initvar> 的覆盖行为导致其他世界书无法正常加载
+                            current_data.initialized_lorebooks = {};
+                            current_data.initialized_lorebooks[char_lorebook] = [];
+                            //重新进行其他全局世界书的初始化。
+                            await loadInitVarData(current_data);
+                        }
 
                         await eventEmit(variable_events.VARIABLE_INITIALIZED, current_data, index);
                         // 此处调用的是新版 updateVariables，它将支持更多命令
@@ -218,28 +246,19 @@ export async function loadInitVarData(
 
         for (const entry of init_entries) {
             if (entry.comment?.toLowerCase().includes('[initvar]')) {
+                const codeblock_match = entry.content.trim().match(/```.*\n([\s\S]*)\n```/m);
+                if (codeblock_match) {
+                    entry.content = codeblock_match[1];
+                }
                 const content = substitudeMacros(entry.content);
                 let parsedData: any = null;
                 let parseError: Error | null = null;
 
                 // Try YAML first (which also handles JSON)
                 try {
-                    parsedData = YAML.parseDocument(content, { merge: true }).toJS();
+                    parsedData = parseString(content);
                 } catch (e) {
-                    // Try JSON5
-                    try {
-                        // eslint-disable-next-line import-x/no-named-as-default-member
-                        parsedData = JSON5.parse(content);
-                    } catch (e2) {
-                        // Try TOML
-                        try {
-                            parsedData = TOML.parse(content);
-                        } catch (e3) {
-                            parseError = new Error(
-                                `initvar 不是有效的 YAML/JSON/JSON5/TOML 格式: ${e3}`
-                            );
-                        }
-                    }
+                    parseError = e as Error;
                 }
 
                 if (parseError) {
