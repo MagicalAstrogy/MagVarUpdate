@@ -23,7 +23,7 @@ export declare function parseCommandValue(valStr: string): any;
  * - 'remove': Represents a command to remove an item or data.
  * - 'add': Represents a command to add an item or data.
  */
-type CommandNames = 'set' | 'insert' | 'assign' | 'remove' | 'unset' | 'delete' | 'add' | 'json_patch';
+type CommandNames = 'set' | 'insert' | 'assign' | 'remove' | 'unset' | 'delete' | 'add';
 /**
  * 从大字符串中提取所有 .set(${path}, ${new_value});//${reason} 格式的模式
  * 并解析出每个匹配项的路径、新值和原因部分
