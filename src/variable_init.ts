@@ -142,8 +142,20 @@ export async function initCheck() {
                         if (vanilla_variable_data === undefined) {
                             vanilla_variable_data = {};
                         }
+                        let current_data = _.merge(vanilla_variable_data, variables);
 
-                        const current_data = _.merge(vanilla_variable_data, variables);
+                        const matched_init = swipe.matchAll(
+                            /<(initvar)>(?:```.*)?([\s\S]*?)(?:```)?<\/\1>/gim
+                        );
+                        for (const match of matched_init) {
+                            const init_content = match[2];
+                            try {
+                                const init_variables = parseString(substitudeMacros(init_content));
+                                _.merge(current_data.stat_data, init_variables);
+                            } catch (e) {
+                                console.error('failed to parse initvar block:' + e);
+                            }
+                        }
 
                         await eventEmit(variable_events.VARIABLE_INITIALIZED, current_data, index);
                         // 此处调用的是新版 updateVariables，它将支持更多命令

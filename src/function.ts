@@ -273,36 +273,25 @@ function extractJsonPatch(patch: any): Command[] {
  */
 // 将 extractSetCommands 扩展为 extractCommands 以支持多种命令
 export function extractCommands(inputText: string): Command[] {
-    // TODO: 应该按照消息中更新命令出现的顺序来排列 initvar、json_patch 和自定义命令
+    // TODO: 应该按照消息中更新命令出现的顺序来排列 json_patch 和自定义命令
     const results: (Command & { $index: number })[] = _.concat(
-        [...inputText.matchAll(/<(initvar|json_?patch)>(?:```.*)?([\s\S]*?)(?:```)?<\/\1>/gmi)]
+        [...inputText.matchAll(/<(json_?patch)>(?:```.*)?([\s\S]*?)(?:```)?<\/\1>/gim)]
             .map(match => ({
                 index: match.index ?? 0,
                 type: match[1].replaceAll('_', '').toLowerCase(),
                 string: match[2],
             }))
+            //@ts-expect-error type 未使用
             .flatMap(({ index, type, string }): (Command & { $index: number })[] => {
                 try {
                     const patch = parseString(string);
-                    switch (type) {
-                        case 'initvar':
-                            return [
-                                {
-                                    $index: index,
-                                    type: 'set',
-                                    args: ['', JSON.stringify(patch)],
-                                    full_match: string,
-                                    reason: 'initvar',
-                                },
-                            ];
-                        case 'jsonpatch':
-                            if (isJsonPatch(patch)) {
-                                return extractJsonPatch(patch).map(command => ({
-                                    $index: index,
-                                    ...command,
-                                }));
-                            }
-                            break;
+                    {
+                        if (isJsonPatch(patch)) {
+                            return extractJsonPatch(patch).map(command => ({
+                                $index: index,
+                                ...command,
+                            }));
+                        }
                     }
                 } catch {
                     /* ignore */
