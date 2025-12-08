@@ -275,14 +275,16 @@ function extractJsonPatch(patch: any): Command[] {
 export function extractCommands(inputText: string): Command[] {
     // TODO: 应该按照消息中更新命令出现的顺序来排列 json_patch 和自定义命令
     const results: (Command & { $index: number })[] = _.concat(
-        [...inputText.matchAll(/<(json_?patch)>(?:```.*)?([\s\S]*?)(?:```)?<\/\1>/gim)]
+        [
+            ...inputText.matchAll(
+                /<(json_?patch)>(?:\s*```.*)?((?:(?!<\1>)[\s\S])*?)(?:```\s*)?<\/\1>/gim
+            ),
+        ]
             .map(match => ({
                 index: match.index ?? 0,
-                type: match[1].replaceAll('_', '').toLowerCase(),
-                string: match[2],
+                string: match[2].trim(),
             }))
-            //@ts-expect-error type 未使用
-            .flatMap(({ index, type, string }): (Command & { $index: number })[] => {
+            .flatMap(({ index, string }): (Command & { $index: number })[] => {
                 try {
                     const patch = parseString(string);
                     {
