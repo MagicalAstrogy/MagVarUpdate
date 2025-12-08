@@ -1,9 +1,10 @@
 import fs from 'fs';
 import path from 'path';
 import _ from 'lodash';
-import { updateVariables } from '@/function';
+import { extractCommands, updateVariables } from '@/function';
 import { generateSchema } from '@/schema';
 import { isArraySchema, isObjectSchema, MvuData, SchemaNode } from '@/variable_def';
+import { describe, expect, it } from '@jest/globals';
 
 type PatchCase = {
     comment?: string;
@@ -74,5 +75,32 @@ describe('JSON Patch fixtures', () => {
         await updateVariables(message, variables);
 
         expect(variables.stat_data).toEqual(testCase.expected);
+    });
+});
+
+describe('JsonPatchMiscTest', () => {
+    describe('含有多个标签的场合', () => {
+        it('思考链测试', () => {
+            const value = `<JsonPatch> <JsonPatch>[{"op": "replace", "path": "/1", "value": ["bar", "baz"]}]</JsonPatch>
+<JsonPatch> <JsonPatch>[{"op": "replace", "path": "/2", "value": ["bar", "baz"]}]</JsonPatch>`;
+            const result = extractCommands(value);
+            expect(result.length).toEqual(2);
+        });
+    });
+    describe('含有多个标签的场合_别名', () => {
+        it('思考链测试', () => {
+            const value = `<json_patch> <JsonPatch>[{"op": "replace", "path": "/1", "value": ["bar", "baz"]}]</JsonPatch>
+<json_patch> <JsonPatch>[{"op": "replace", "path": "/2", "value": ["bar", "baz"]}]</JsonPatch>`;
+            const result = extractCommands(value);
+            expect(result.length).toEqual(2);
+        });
+    });
+    describe('含有多个标签的场合_空内容', () => {
+        it('思考链测试', () => {
+            const value = `<json_patch></json_patch> <JsonPatch>[{"op": "replace", "path": "/1", "value": ["bar", "baz"]}]</JsonPatch>
+<json_patch> <JsonPatch>[{"op": "replace", "path": "/2", "value": ["bar", "baz"]}]</JsonPatch>`;
+            const result = extractCommands(value);
+            expect(result.length).toEqual(2);
+        });
     });
 });
