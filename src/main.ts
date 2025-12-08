@@ -117,6 +117,11 @@ async function onMessageReceived(message_id: number) {
         return;
     }
 
+    if (SillyTavern.chat.length <= 1) {
+        console.log('[MVU] 对第一层永不进行额外模型解析');
+        return;
+    }
+
     duringExtraCall = true;
     let user_input = ExtraLLMRequestContent;
     if (settings.额外模型解析配置.使用函数调用) {
