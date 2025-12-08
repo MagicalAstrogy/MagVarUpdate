@@ -146,7 +146,7 @@ export async function initCheck() {
                         const current_data = _.merge(vanilla_variable_data, klona(variables));
 
                         const matched_init = swipe.matchAll(
-                            /<(initvar)>(?:```.*)?([\s\S]*?)(?:```)?<\/\1>/gim
+                            /<(initvar)>(?:\s*```.*)?([\s\S]*?)(?:```\s*)?<\/\1>/gim
                         );
                         // 对于在开场白中的 <initvar> 块的规则是：
                         // 使用了这个块后，会以 <initvar> 块内的内容为基准，忽略角色世界书中 [initvar] 的内容
