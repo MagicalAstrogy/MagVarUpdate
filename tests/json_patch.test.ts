@@ -97,8 +97,16 @@ describe('JsonPatchMiscTest', () => {
     });
     describe('含有多个标签的场合_空内容', () => {
         it('思考链测试', () => {
-            const value = `<json_patch></json_patch> <JsonPatch>[{"op": "replace", "path": "/1", "value": ["bar", "baz"]}]</JsonPatch>
-<json_patch> <JsonPatch>[{"op": "replace", "path": "/2", "value": ["bar", "baz"]}]</JsonPatch>`;
+            const value = `<json_patch></json_patch>456 <JsonPatch>[{"op": "replace", "path": "/1", "value": ["bar", "baz"]}]</JsonPatch>fg
+<json_patch> df<JsonPatch>[{"op": "replace", "path": "/2", "value": ["bar", "baz"]}]</JsonPatch>123`;
+            const result = extractCommands(value);
+            expect(result.length).toEqual(2);
+        });
+    });
+    describe('含有多个标签的场合_使用不对称标记', () => {
+        it('思考链测试', () => {
+            const value = `<JsonPatch>345456 <json_patch>[{"op": "replace", "path": "/1", "value": ["bar", "baz"]}]</json_patch>2345
+<JsonPatch>46 <json_patch>[{"op": "replace", "path": "/2", "value": ["bar", "baz"]}]</json_patch>123`;
             const result = extractCommands(value);
             expect(result.length).toEqual(2);
         });
