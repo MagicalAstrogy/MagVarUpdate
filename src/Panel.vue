@@ -118,6 +118,20 @@
                         </div>
 
                         <div class="flex-container flexFlowColumn">
+                            <label for="mvu_max_tokens">最大回复token数</label>
+                            <input
+                                id="mvu_max_tokens"
+                                v-model="store.settings.额外模型解析配置.最大回复token数"
+                                :disabled="!additional_extra_configuration_supported"
+                                type="number"
+                                class="text_pole"
+                                min="0"
+                                step="128"
+                                placeholder="1000"
+                            />
+                        </div>
+
+                        <div class="flex-container flexFlowColumn">
                             <label for="mvu_temperature">温度</label>
                             <input
                                 id="mvu_temperature"
@@ -163,16 +177,17 @@
                         </div>
 
                         <div class="flex-container flexFlowColumn">
-                            <label for="mvu_max_tokens">最大回复token数</label>
+                            <label for="mvu_presence_penalty">Top P</label>
                             <input
-                                id="mvu_max_tokens"
-                                v-model="store.settings.额外模型解析配置.最大回复token数"
+                                id="mvu_presence_penalty"
+                                v-model="store.settings.额外模型解析配置.top_p"
                                 :disabled="!additional_extra_configuration_supported"
                                 type="number"
                                 class="text_pole"
                                 min="0"
-                                step="128"
-                                placeholder="1000"
+                                max="1"
+                                step="0.01"
+                                placeholder="1.0"
                             />
                         </div>
                     </template>
@@ -300,9 +315,9 @@
 
 <script setup lang="ts">
 import { buttons } from '@/button';
+import chat_variable_help from '@/chat_variable_help.md';
 import panel_extra_mode_help from '@/panel_extra_mode_help.md';
 import panel_method_help from '@/panel_method_help.md';
-import chat_variable_help from '@/chat_variable_help.md';
 import { useSettingsStore } from '@/settings';
 import { getSillyTavernVersion, getTavernHelperVersion } from '@/util';
 import { compare } from 'compare-versions';
