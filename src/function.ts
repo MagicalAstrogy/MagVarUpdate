@@ -736,6 +736,13 @@ export async function updateVariables(
 
     //@ts-expect-error old fn
     await eventEmit(variable_events.COMMAND_PARSED, variables, commands, current_message_content);
+    //保证 MVU zod 在所有 COMMAND_PARSED 监听之后
+    await eventEmit(
+        variable_events.COMMAND_PARSED + '_for_zod',
+        variables,
+        commands,
+        current_message_content
+    );
 
     pathFixPass(variables, commands, current_message_content);
 
