@@ -277,7 +277,7 @@ export function extractCommands(inputText: string): Command[] {
     const results: (Command & { $index: number })[] = _.concat(
         [
             ...inputText.matchAll(
-                /<(json_?patch)>(?:\s*```.*)?((?:(?!<\1>)[\s\S])*?)(?:```\s*)?<\/\1>/gim
+                /<(json_?patch)>(?:\s*```.*)?((?:(?!<json_?patch>)[\s\S])*?)(?:```\s*)?<\/\1>/gim
             ),
         ]
             .map(match => ({
