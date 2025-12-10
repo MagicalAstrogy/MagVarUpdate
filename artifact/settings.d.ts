@@ -11,6 +11,7 @@ export declare const useSettingsStore: import("pinia").StoreDefinition<"settings
             温度: number;
             频率惩罚: number;
             存在惩罚: number;
+            top_p: number;
             最大回复token数: number;
         };
         通知: {
@@ -42,6 +43,7 @@ export declare const useSettingsStore: import("pinia").StoreDefinition<"settings
             温度: number;
             频率惩罚: number;
             存在惩罚: number;
+            top_p: number;
             最大回复token数: number;
         };
         通知: {
@@ -73,6 +75,7 @@ export declare const useSettingsStore: import("pinia").StoreDefinition<"settings
             温度: number;
             频率惩罚: number;
             存在惩罚: number;
+            top_p: number;
             最大回复token数: number;
         };
         通知: {
@@ -106,6 +109,7 @@ export declare const useSettingsStore: import("pinia").StoreDefinition<"settings
             温度: number;
             频率惩罚: number;
             存在惩罚: number;
+            top_p: number;
             最大回复token数: number;
         };
         通知: {
@@ -137,6 +141,7 @@ export declare const useSettingsStore: import("pinia").StoreDefinition<"settings
             温度: number;
             频率惩罚: number;
             存在惩罚: number;
+            top_p: number;
             最大回复token数: number;
         };
         通知: {
@@ -168,6 +173,7 @@ export declare const useSettingsStore: import("pinia").StoreDefinition<"settings
             温度: number;
             频率惩罚: number;
             存在惩罚: number;
+            top_p: number;
             最大回复token数: number;
         };
         通知: {
@@ -201,6 +207,7 @@ export declare const useSettingsStore: import("pinia").StoreDefinition<"settings
             温度: number;
             频率惩罚: number;
             存在惩罚: number;
+            top_p: number;
             最大回复token数: number;
         };
         通知: {
@@ -232,6 +239,7 @@ export declare const useSettingsStore: import("pinia").StoreDefinition<"settings
             温度: number;
             频率惩罚: number;
             存在惩罚: number;
+            top_p: number;
             最大回复token数: number;
         };
         通知: {
@@ -263,6 +271,7 @@ export declare const useSettingsStore: import("pinia").StoreDefinition<"settings
             温度: number;
             频率惩罚: number;
             存在惩罚: number;
+            top_p: number;
             最大回复token数: number;
         };
         通知: {
