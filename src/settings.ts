@@ -1,7 +1,7 @@
+import { is_jest_environment } from '@/util';
 import { defineStore } from 'pinia';
 import { ref, toRaw, watch } from 'vue';
 import * as z from 'zod';
-import { is_jest_environment } from '@/util';
 
 const Settings = z
     .object({
@@ -26,6 +26,10 @@ const Settings = z
                     .number()
                     .default(0.0)
                     .transform(value => _.clamp(value, -2, 2)),
+                top_p: z.coerce
+                    .number()
+                    .default(1)
+                    .transform(value => _.clamp(value, 0, 1)),
                 最大回复token数: z.coerce
                     .number()
                     .default(4096)

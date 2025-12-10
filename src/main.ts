@@ -191,6 +191,10 @@ async function onMessageReceived(message_id: number) {
                 );
             }
             collected_tool_calls = undefined;
+            const unset_if_equal = (value: number, expected: number) =>
+                compare(getTavernHelperVersion(), '4.3.9', '>=') && value === expected
+                    ? 'unset'
+                    : value;
             const current_result = await generateFn(
                 settings.额外模型解析配置.模型来源 === '与插头相同'
                     ? {
@@ -205,10 +209,17 @@ async function onMessageReceived(message_id: number) {
                               apiurl: settings.额外模型解析配置.api地址,
                               key: settings.额外模型解析配置.密钥,
                               model: settings.额外模型解析配置.模型名称,
-                              temperature: settings.额外模型解析配置.温度,
-                              frequency_penalty: settings.额外模型解析配置.频率惩罚,
-                              presence_penalty: settings.额外模型解析配置.存在惩罚,
                               max_tokens: settings.额外模型解析配置.最大回复token数,
+                              temperature: unset_if_equal(settings.额外模型解析配置.温度, 1),
+                              frequency_penalty: unset_if_equal(
+                                  settings.额外模型解析配置.频率惩罚,
+                                  0
+                              ),
+                              presence_penalty: unset_if_equal(
+                                  settings.额外模型解析配置.存在惩罚,
+                                  0
+                              ),
+                              top_p: unset_if_equal(settings.额外模型解析配置.top_p, 1),
                           },
                           injects: promptInjects,
                           max_chat_history: 2,

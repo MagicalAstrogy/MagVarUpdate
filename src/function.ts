@@ -1462,6 +1462,7 @@ export async function handleVariablesInMessage(message_id: number) {
             variables: variables,
             message_content: message_content,
         };
+        //@ts-expect-error 新老版本酒馆助手类型信息兼容
         await eventEmit(variable_events.BEFORE_MESSAGE_UPDATE, context);
         message_content = context.message_content;
     }
