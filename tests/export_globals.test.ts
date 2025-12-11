@@ -126,6 +126,7 @@ describe('exportGlobals', () => {
 
             mockHandleVariablesInCallback.mockImplementation(async (_message, variableData) => {
                 variableData.new_variables = newMvuData;
+                return newMvuData;
             });
 
             exportGlobals();
@@ -141,7 +142,9 @@ describe('exportGlobals', () => {
         });
 
         test('should return undefined when no new variables are set', async () => {
-            mockHandleVariablesInCallback.mockImplementation(async () => {});
+            mockHandleVariablesInCallback.mockImplementation(async () => {
+                return undefined;
+            });
 
             exportGlobals();
             const mvu = global.window.Mvu;

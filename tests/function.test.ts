@@ -939,7 +939,8 @@ describe('invokeVariableTest', () => {
             },
         };
         await handleVariablesInCallback('这是一个没有更新的文本。明天见是最好的预言。', inputData);
-        expect(inputData.new_variables).toBeUndefined();
+        //现在会始终产生了。
+        expect(inputData.new_variables).toBeDefined();
     });
 });
 
