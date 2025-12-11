@@ -1411,7 +1411,7 @@ export async function updateVariables(
     _.unset(variables.stat_data, '$internal');
 
     // 在所有命令执行完毕后，如果数据有任何变动，则执行一次 Schema 调和
-    const is_modified = _.isEqual(variables.stat_data, variables_before_update.stat_data);
+    const is_modified = !_.isEqual(variables.stat_data, variables_before_update.stat_data);
     if (is_modified) {
         reconcileAndApplySchema(variables);
     }
