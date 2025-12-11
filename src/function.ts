@@ -1500,8 +1500,7 @@ export async function handleVariablesInCallback(
         return;
     }
     in_out_variable_info.new_variables = klona(in_out_variable_info.old_variables);
-    const variables = in_out_variable_info.new_variables;
-    await updateVariables(message_content, variables);
+    await updateVariables(message_content, in_out_variable_info.new_variables);
     return in_out_variable_info.new_variables;
 }
 
