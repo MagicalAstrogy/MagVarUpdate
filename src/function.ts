@@ -1501,13 +1501,8 @@ export async function handleVariablesInCallback(
     }
     in_out_variable_info.new_variables = klona(in_out_variable_info.old_variables);
     const variables = in_out_variable_info.new_variables;
-
-    const modified = await updateVariables(message_content, variables);
-    //如果没有修改，则不产生 newVariable
-    if (!modified) {
-        _.unset(in_out_variable_info, 'new_variables');
-    }
-    return;
+    await updateVariables(message_content, variables);
+    return in_out_variable_info.new_variables;
 }
 
 /** 清理 `[start_message_id, end_message_id]` 内, 楼层号不为 `snap_interval` 倍数的楼层变量 */
