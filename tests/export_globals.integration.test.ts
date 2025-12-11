@@ -587,7 +587,8 @@ _.set('stats.gold', 500, "750");//获得金币
         const result = await mvu.parseMessage(updateMessage, testData);
 
         // 应该返回 undefined，因为没有实际的变更
-        expect(result).toBeUndefined();
+        // 行为修改为始终会有变更，始终会返回一个变量列表，没发生变动时
+        expect(result).toBeDefined();
     });
 
     test('Complex integration test with all Mvu methods', async () => {

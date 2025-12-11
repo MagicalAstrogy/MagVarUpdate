@@ -684,8 +684,6 @@ export async function updateVariables(
     current_message_content: string,
     variables: MvuData
 ): Promise<boolean> {
-    const out_is_modifed = false;
-
     // 拷贝一份变量，用于提供给 variable_ended
     const variables_before_update: MvuData = klona(variables);
     // 深拷贝变量对象，生成状态快照，用于记录显示数据
@@ -706,7 +704,6 @@ export async function updateVariables(
     });
     //@ts-expect-error 这里会有一个variables类型的不一致，一个内部类型，一个外部类型。
     await eventEmit(variable_events.VARIABLE_UPDATE_STARTED, variables);
-    let variable_modified = false;
 
     let error_info: ErrorInfo | undefined;
     let current_command: Command | undefined;
@@ -835,7 +832,6 @@ export async function updateVariables(
                     display_str = `${trimQuotesAndBackslashes(JSON.stringify(oldValue))}->${trimQuotesAndBackslashes(JSON.stringify(finalNewValue))} ${reason_str}`;
                 }
 
-                variable_modified = true; // 标记变量已修改
                 // 记录操作日志，便于调试
                 console.info(`Set '${path}' to '${JSON.stringify(finalNewValue)}' ${reason_str}`);
 
@@ -1054,7 +1050,6 @@ export async function updateVariables(
                     const newValue = isNullOrWhiteSpace(path)
                         ? variables.stat_data
                         : _.get(variables.stat_data, path);
-                    variable_modified = true;
                     console.info(display_str);
                     await eventEmit(
                         variable_events.SINGLE_VARIABLE_UPDATED,
@@ -1105,7 +1100,6 @@ export async function updateVariables(
                     if (Array.isArray(container) && indexToRemove < container.length) {
                         const originalArray = klona(container);
                         container.splice(indexToRemove, 1);
-                        variable_modified = true;
                         display_str = `REMOVED item from '${containerPath}' at index ${indexToRemove} ${reason_str}`;
                         console.info(display_str);
                         await eventEmit(
@@ -1269,7 +1263,6 @@ export async function updateVariables(
 
                 if (itemRemoved) {
                     // 删除成功，更新状态并记录日志
-                    variable_modified = true;
                     console.info(display_str);
                 } else {
                     // 删除失败，记录警告并继续
@@ -1343,7 +1336,6 @@ export async function updateVariables(
                         } else {
                             display_str = `${JSON.stringify(initialValue)}->${JSON.stringify(finalNewValue)} ${reason_str}`;
                         }
-                        variable_modified = true;
                         console.info(
                             `ADDED date '${path}' from '${potentialDate.toISOString()}' to '${newDate.toISOString()}' by delta '${delta}'ms ${reason_str}`
                         );
@@ -1376,7 +1368,6 @@ export async function updateVariables(
                         } else {
                             display_str = `${JSON.stringify(initialValue)}->${JSON.stringify(finalNewValue)} ${reason_str}`;
                         }
-                        variable_modified = true;
                         console.info(
                             `ADDED number '${path}' from '${valueToAdd}' to '${newValue}' by delta '${delta}' ${reason_str}`
                         );
@@ -1424,7 +1415,8 @@ export async function updateVariables(
     //在结束事件中也可能设置变量
     _.unset(variables.stat_data, '$internal');
     // 在所有命令执行完毕后，如果数据有任何变动，则执行一次 Schema 调和
-    if (variable_modified) {
+    const is_modified = !_.isEqual(variables.stat_data, variables_before_update.stat_data);
+    if (is_modified) {
         reconcileAndApplySchema(variables);
     }
     if (error_info && useSettingsStore().settings.通知.变量更新出错) {
@@ -1437,8 +1429,7 @@ export async function updateVariables(
             );
     }
 
-    // 返回是否修改了变量
-    return variable_modified || out_is_modifed;
+    return is_modified;
 }
 
 export async function handleVariablesInMessage(message_id: number) {
@@ -1513,14 +1504,8 @@ export async function handleVariablesInCallback(
         return;
     }
     in_out_variable_info.new_variables = klona(in_out_variable_info.old_variables);
-    const variables = in_out_variable_info.new_variables;
-
-    const modified = await updateVariables(message_content, variables);
-    //如果没有修改，则不产生 newVariable
-    if (!modified) {
-        _.unset(in_out_variable_info, 'new_variables');
-    }
-    return;
+    await updateVariables(message_content, in_out_variable_info.new_variables);
+    return in_out_variable_info.new_variables;
 }
 
 /** 清理 `[start_message_id, end_message_id]` 内, 楼层号不为 `snap_interval` 倍数的楼层变量 */
