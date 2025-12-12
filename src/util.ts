@@ -48,12 +48,15 @@ export function findLastValidMessage(end_message_id: number) {
     return _(SillyTavern.chat)
         .slice(0, end_message_id) // 不包括那个下标
         .findLastIndex(chat_message => {
+            const variable = _.get(chat_message, ['variables', chat_message.swipe_id ?? 0]);
             return (
-                _.get(chat_message, ['variables', chat_message.swipe_id ?? 0, 'stat_data']) !==
-                    undefined &&
-                _.get(chat_message, ['variables', chat_message.swipe_id ?? 0, 'schema']) !==
-                    undefined
-            ); //需要同时有 schema 和 stat_data
+                _.get(variable, 'stat_data') !== undefined &&
+                (_.get(variable, 'schema') !== undefined ||
+                    // hack for MVU zod
+                    (_.get(variable, 'schema') === undefined &&
+                        _.get(variable, 'display_data') === undefined &&
+                        _.get(variable, 'delta_data') === undefined))
+            );
         });
 }
 
