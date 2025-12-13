@@ -170,7 +170,7 @@ describe('reloadInit function', () => {
             // Verify cleanUpMetadata is called after first schema processing
             expect(cleanUpMetadataSpy).toHaveBeenNthCalledWith(1, init_data.stat_data);
 
-            const finalResult = (replaceVariables as jest.Mock).mock.calls[1][0] as any;
+            const finalResult = (replaceVariables as jest.Mock).mock.calls[0][0] as any;
             expect(finalResult.schema.extensible).toBe(true);
             expect(finalResult.stat_data.init).toBe('value');
             expect(finalResult.stat_data.msg).toBe('value');
