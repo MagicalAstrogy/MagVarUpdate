@@ -101,7 +101,7 @@ async function onVariableUpdatedCall(args: any): Promise<string> {
     }
 
     const has_variable_modified = await updateVariables(args.delta, variables);
-    if (has_variable_modified) {
+    if (has_variable_modified && useSettingsStore().settings.更新到聊天变量) {
         await replaceVariables(variables, { type: 'chat' });
     }
     await replaceVariables(variables, { type: 'message', message_id: message_id });

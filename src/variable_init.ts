@@ -1,6 +1,7 @@
 // 整体游戏数据类型
 import { getLastValidVariable, updateVariables } from '@/function';
 import { cleanUpMetadata, EXTENSIBLE_MARKER, generateSchema } from '@/schema';
+import { useSettingsStore } from '@/settings';
 import { parseString } from '@/util';
 import {
     isObjectSchema,
@@ -124,9 +125,10 @@ export async function initCheck() {
         return;
     }
 
-    console.info(`Init chat variables.`);
-    //@ts-expect-error old fn
-    await updateVariablesWith(data => _.assign(data, variables));
+    if (useSettingsStore().settings.更新到聊天变量) {
+        console.info(`Init chat variables.`);
+        await updateVariablesWith(data => _.assign(data, variables), { type: 'chat' });
+    }
 
     if (getLastMessageId() == 0) {
         const last_msg = getChatMessages(0, { include_swipes: true })[0];

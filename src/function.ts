@@ -1481,7 +1481,7 @@ export async function handleVariablesInMessage(message_id: number) {
         }
         return data;
     };
-    if (has_variable_modified && settings.更新到聊天变量 === true) {
+    if (has_variable_modified && settings.更新到聊天变量) {
         await updateVariablesWith(updater, { type: 'chat' });
     }
     await updateVariablesWith(updater, { type: 'message', message_id: message_id });

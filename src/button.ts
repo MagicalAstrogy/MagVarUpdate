@@ -278,7 +278,9 @@ export const buttons: Button[] = [
             // @ts-expect-error 该函数可用
             await setChatMessage({}, message_id);
 
-            await replaceVariables(merged_data, { type: 'chat' });
+            if (useSettingsStore().settings.更新到聊天变量) {
+                await replaceVariables(merged_data, { type: 'chat' });
+            }
 
             console.info('InitVar更新完成');
             toastr.success('InitVar描述已更新', '[MVU]', { timeOut: 3000 });
