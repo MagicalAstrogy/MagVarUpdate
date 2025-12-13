@@ -208,7 +208,7 @@ describe('reloadInit function', () => {
             await reloadInit();
 
             // Verify the merged data structure
-            const finalResult = (replaceVariables as jest.Mock).mock.calls[1][0] as any;
+            const finalResult = (replaceVariables as jest.Mock).mock.calls[0][0] as any;
 
             // Schema should merge msg_data.schema into init_data.schema
             expect(finalResult.schema).toMatchObject({
@@ -269,7 +269,7 @@ describe('reloadInit function', () => {
             await reloadInit();
 
             // Verify merge preserves EXTENSIBLE_MARKER
-            const finalResult = (replaceVariables as jest.Mock).mock.calls[1][0] as any;
+            const finalResult = (replaceVariables as jest.Mock).mock.calls[0][0] as any;
 
             expect(finalResult.schema.properties.nested.properties.array.extensible).toBe(true);
             expect(finalResult.stat_data.nested.array).toEqual(['a', 'b', 'c']);
