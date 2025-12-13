@@ -339,7 +339,9 @@ async function initialize() {
 
     registerButtons();
 
-    if (store.settings.更新到聊天变量 === false) await removeChatVariables();
+    if (store.settings.更新到聊天变量 === false) {
+        await removeChatVariables();
+    }
 
     const { 要保留变量的最近楼层数, 启用 } = store.settings.auto_cleanup;
     // 对于旧聊天文件, 清理过早楼层的变量

@@ -4,6 +4,7 @@ import { getLastValidVariable } from '@/function';
 import { createEmptyGameData, loadInitVarData } from '@/variable_init';
 import _ from 'lodash';
 import { MvuData, variable_events } from '@/variable_def';
+import { useSettingsStore } from '@/settings';
 
 // Mock only external dependencies
 jest.mock('@/function', () => ({
@@ -170,7 +171,7 @@ describe('reloadInit function', () => {
             // Verify cleanUpMetadata is called after first schema processing
             expect(cleanUpMetadataSpy).toHaveBeenNthCalledWith(1, init_data.stat_data);
 
-            const finalResult = (replaceVariables as jest.Mock).mock.calls[1][0] as any;
+            const finalResult = (replaceVariables as jest.Mock).mock.calls[0][0] as any;
             expect(finalResult.schema.extensible).toBe(true);
             expect(finalResult.stat_data.init).toBe('value');
             expect(finalResult.stat_data.msg).toBe('value');
@@ -208,7 +209,7 @@ describe('reloadInit function', () => {
             await reloadInit();
 
             // Verify the merged data structure
-            const finalResult = (replaceVariables as jest.Mock).mock.calls[1][0] as any;
+            const finalResult = (replaceVariables as jest.Mock).mock.calls[0][0] as any;
 
             // Schema should merge msg_data.schema into init_data.schema
             expect(finalResult.schema).toMatchObject({
@@ -269,7 +270,7 @@ describe('reloadInit function', () => {
             await reloadInit();
 
             // Verify merge preserves EXTENSIBLE_MARKER
-            const finalResult = (replaceVariables as jest.Mock).mock.calls[1][0] as any;
+            const finalResult = (replaceVariables as jest.Mock).mock.calls[0][0] as any;
 
             expect(finalResult.schema.properties.nested.properties.array.extensible).toBe(true);
             expect(finalResult.stat_data.nested.array).toEqual(['a', 'b', 'c']);
@@ -277,7 +278,74 @@ describe('reloadInit function', () => {
     });
 
     describe('Complete workflow', () => {
-        test('should execute complete reload workflow successfully', async () => {
+        test('should execute complete reload workflow successfully (更新到聊天变量=false)', async () => {
+            useSettingsStore().settings.更新到聊天变量 = false;
+
+            const init_data = {
+                stat_data: { init: 'data' },
+                schema: {},
+            };
+            const msg_data = {
+                stat_data: { msg: 'data' },
+                schema: {
+                    type: 'object',
+                    properties: {
+                        init: { type: 'string' },
+                        msg: { type: 'string' },
+                    },
+                },
+            };
+
+            (createEmptyGameData as jest.Mock).mockReturnValue(init_data);
+            (getLastValidVariable as jest.Mock).mockResolvedValue(msg_data);
+            (getLastMessageId as jest.Mock).mockReturnValue(5);
+
+            await reloadInit();
+
+            // Verify execution order
+            expect(createEmptyGameData).toHaveBeenCalled();
+            expect(loadInitVarData).toHaveBeenCalledWith(init_data);
+
+            // First schema processing (new in 666542e1)
+            expect(reconcileAndApplySchemaSpy).toHaveBeenNthCalledWith(1, init_data);
+            expect(cleanUpMetadataSpy).toHaveBeenNthCalledWith(1, init_data.stat_data);
+
+            expect(getLastMessageId).toHaveBeenCalled();
+            expect(getLastValidVariable).toHaveBeenCalledWith(5);
+
+            // Description updates
+            expect(updateDescriptionsSpy).toHaveBeenCalledWith(
+                '',
+                init_data.stat_data,
+                msg_data.stat_data,
+                expect.any(Object)
+            );
+
+            // Second schema processing with merged data
+            expect(reconcileAndApplySchemaSpy).toHaveBeenNthCalledWith(
+                2,
+                expect.objectContaining({
+                    stat_data: expect.any(Object),
+                    schema: expect.any(Object),
+                })
+            );
+            expect(cleanUpMetadataSpy).toHaveBeenNthCalledWith(2, expect.any(Object));
+
+            // Variable replacements
+            expect(replaceVariables).toHaveBeenCalledTimes(1);
+            expect(replaceVariables).toHaveBeenNthCalledWith(1, expect.any(Object), {
+                type: 'message',
+                message_id: 5,
+            });
+
+            expect(toastr.success).toHaveBeenCalledWith('InitVar描述已更新', '[MVU]', {
+                timeOut: 3000,
+            });
+        });
+
+        test('should execute complete reload workflow successfully (更新到聊天变量=true)', async () => {
+            useSettingsStore().settings.更新到聊天变量 = true;
+
             const init_data = {
                 stat_data: { init: 'data' },
                 schema: {},
