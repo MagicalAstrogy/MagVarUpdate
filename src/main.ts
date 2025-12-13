@@ -339,7 +339,7 @@ async function initialize() {
 
     registerButtons();
 
-    if (store.settings.更新到聊天变量) {
+    if (store.settings.更新到聊天变量 === false) {
         await removeChatVariables();
     }
 
