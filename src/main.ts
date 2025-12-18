@@ -249,7 +249,9 @@ async function onMessageReceived(message_id: number) {
                                     result += `<UpdateVariable>\n`;
                                     result += `<Analyze>\n${mvu_function_call_json.analysis}\n</Analyze>\n`;
                                     try {
-                                        parseString(mvu_function_call_json.delta);
+                                        parseString(
+                                            mvu_function_call_json.delta.replaceAll(/```.*/gm, '')
+                                        );
                                         result += `<JSONPatch>${mvu_function_call_json.delta}</JSONPatch>\n`;
                                     } catch (error) {
                                         result += `${mvu_function_call_json.delta}\n`;
