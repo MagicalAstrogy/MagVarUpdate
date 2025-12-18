@@ -258,22 +258,28 @@ async function onMessageReceived(message_id: number) {
                 }
             }
             console.log(`Vanilla Response: ${current_result}`);
-            if (current_result.indexOf('<UpdateVariable>') !== -1) {
-                //至少要出现一个变量设置语句，因为可能会有跑完thinking 直接截断的情况。
-                //此外还存在<UpdateVariable><UpdateVariable></UpdateVariable> 的情况
-                //因为可能在 thinking 中提及需要输出 <UpdateVariable> 块。
-                const lastUpdateVariableIndex = current_result.lastIndexOf('<UpdateVariable>');
-                const last_content = current_result
-                    .slice(lastUpdateVariableIndex + 16)
-                    .replace(/<\/UpdateVariable>/g, '');
+
+            const tag = _([...current_result.matchAll(/<(update(?:variable))>?/gi)]).last()?.[1];
+            if (!tag) {
+                continue;
+            }
+            const start_index = current_result.lastIndexOf(`<${tag}>`);
+            if (start_index === -1) {
+                continue;
+            }
+            const end_index = current_result.indexOf(`</${tag}>`, start_index);
+            const update_block = current_result.slice(
+                start_index + 2 + tag.length,
+                end_index === -1 ? undefined : end_index
+            );
+            if (update_block) {
                 const fn_call_match =
                     /_\.(?:set|insert|assign|remove|unset|delete|add)\s*\([\s\S]*?\)\s*;/.test(
-                        last_content
+                        update_block
                     );
-                const json_patch_pattern = /json_?patch/i;
-                const json_patch_match = last_content.match(json_patch_pattern);
-                if (fn_call_match || json_patch_match !== null) {
-                    result = `<UpdateVariable>${last_content}</UpdateVariable>`;
+                const json_patch_match = /json_?patch/i.test(update_block);
+                if (fn_call_match || json_patch_match) {
+                    result = `<${tag}>${update_block}</${tag}>`;
                     break;
                 }
             }
