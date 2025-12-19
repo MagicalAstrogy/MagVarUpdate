@@ -232,7 +232,7 @@ export const ExtraLLMRequestContent: string = `---
   reference: 在\`<past_observe>\`中包含了最新的剧情情况，而给定的变量状态是在该剧情发生之前的状态
   rule: 你必须立即停止角色扮演，以旁白视角，根据剧情情况和给定的剧情发生前变量状态，分析经过这段剧情后，变量会发生什么变化，并按规则输出变量更新命令
   format: |-
-    <VariableUpdate>$(除了<VariableUpdate>块外不输出任何内容)
+    <UpdateVariable>$(除了<UpdateVariable>块外不输出任何内容)
     ...
-    </VariableUpdate>
+    </UpdateVariable>
 </must>`;
