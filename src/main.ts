@@ -270,9 +270,7 @@ async function onMessageReceived(message_id: number) {
             }
             console.log(`Vanilla Response: ${current_result}`);
 
-            const tag = _([
-                ...current_result.matchAll(/<(update(?:variable)|variableupdate)>?/gi),
-            ]).last()?.[1];
+            const tag = _([...current_result.matchAll(/<(update(?:variable)?|variableupdate)>/gi)]).last()?.[1];
             if (!tag) {
                 continue;
             }
@@ -292,7 +290,7 @@ async function onMessageReceived(message_id: number) {
                     );
                 const json_patch_match = /json_?patch/i.test(update_block);
                 if (fn_call_match || json_patch_match) {
-                    result = `<${tag}>${update_block}</${tag}>`;
+                    result = `<UpdateVariable>${update_block}<UpdateVariable>`;
                     break;
                 }
             }
