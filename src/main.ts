@@ -270,7 +270,9 @@ async function onMessageReceived(message_id: number) {
             }
             console.log(`Vanilla Response: ${current_result}`);
 
-            const tag = _([...current_result.matchAll(/<(update(?:variable)|variableupdate)>?/gi)]).last()?.[1];
+            const tag = _([
+                ...current_result.matchAll(/<(update(?:variable)|variableupdate)>?/gi),
+            ]).last()?.[1];
             if (!tag) {
                 continue;
             }
