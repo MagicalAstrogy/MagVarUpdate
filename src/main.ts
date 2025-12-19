@@ -27,6 +27,7 @@ import {
     initTavernHelperVersion,
     is_jest_environment,
     isFunctionCallingSupported,
+    parseString,
     scopedEventOn,
 } from '@/util';
 import { exported_events, ExtraLLMRequestContent, MvuData } from '@/variable_def';
@@ -245,7 +246,17 @@ async function onMessageReceived(message_id: number) {
                                     mvu_function_call_json.delta &&
                                     mvu_function_call_json.delta.length > 5
                                 ) {
-                                    result = `<UpdateVariable><Analyze>${mvu_function_call_json.analysis}</Analyze>${mvu_function_call_json.delta}</UpdateVariable>`;
+                                    result += `<UpdateVariable>\n`;
+                                    result += `<Analyze>\n${mvu_function_call_json.analysis}\n</Analyze>\n`;
+                                    try {
+                                        parseString(
+                                            mvu_function_call_json.delta.replaceAll(/```.*/gm, '')
+                                        );
+                                        result += `<JSONPatch>${mvu_function_call_json.delta}</JSONPatch>\n`;
+                                    } catch (error) {
+                                        result += `${mvu_function_call_json.delta}\n`;
+                                    }
+                                    result += `</UpdateVariable>`;
                                     break;
                                 }
                             } catch (e) {
