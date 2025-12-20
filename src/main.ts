@@ -527,6 +527,7 @@ async function initialize() {
         }, 2000)
     );
 
+    initCheck();
     scopedEventOn(tavern_events.GENERATION_STARTED, initCheck);
     scopedEventOn(tavern_events.MESSAGE_SENT, initCheck);
     scopedEventOn(tavern_events.MESSAGE_SENT, handleVariablesInMessage);
