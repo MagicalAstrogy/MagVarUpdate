@@ -378,11 +378,11 @@ export type MVU = ReturnType<typeof createMVU>;
 
 export type Mvu = MVU;
 
-export function exportGlobals() {
+export async function exportGlobals() {
     const mvu = createMVU();
     _.set(window, 'Mvu', mvu);
     _.set(window.parent, 'Mvu', mvu);
-    eventEmit('global_Mvu_initialized');
+    await eventEmit('global_Mvu_initialized');
 }
 
 export function unsetGlobals() {
