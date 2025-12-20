@@ -527,7 +527,7 @@ async function initialize() {
         }, 2000)
     );
 
-    initCheck();
+    await initCheck();
     scopedEventOn(tavern_events.GENERATION_STARTED, initCheck);
     scopedEventOn(tavern_events.MESSAGE_SENT, initCheck);
     scopedEventOn(tavern_events.MESSAGE_SENT, handleVariablesInMessage);
@@ -594,7 +594,7 @@ async function destroy() {
 $(async () => {
     await initSillyTavernVersion();
     await initTavernHelperVersion();
-    exportGlobals();
+    await exportGlobals();
     await initPanel();
     eventOn(tavern_events.CHAT_CHANGED, reloadScript);
     await initialize();
