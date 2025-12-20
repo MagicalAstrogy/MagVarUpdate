@@ -594,10 +594,10 @@ async function destroy() {
 $(async () => {
     await initSillyTavernVersion();
     await initTavernHelperVersion();
-    await exportGlobals();
     await initPanel();
     eventOn(tavern_events.CHAT_CHANGED, reloadScript);
     await initialize();
+    await exportGlobals();
 });
 $(window).on('pagehide', async () => {
     destroyPanel();
