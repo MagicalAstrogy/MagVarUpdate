@@ -289,6 +289,6 @@ declare function createMVU(): {
 };
 export type MVU = ReturnType<typeof createMVU>;
 export type Mvu = MVU;
-export declare function exportGlobals(): void;
+export declare function exportGlobals(): Promise<void>;
 export declare function unsetGlobals(): void;
 export {};
