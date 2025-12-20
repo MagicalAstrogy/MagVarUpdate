@@ -53,7 +53,10 @@ jobs:
         run: git push origin beta:master -f
 
       - name: Github Tag Bump
-        uses: anothrNick/github-tag-action@1.73.0
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAG_PREFIX: v
+        uses: phish108/autotag-action@v1.1.64
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          branch: beta
+          release-branch: beta
+          bump: minor
+          with-v: true
