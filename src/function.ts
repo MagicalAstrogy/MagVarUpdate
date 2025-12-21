@@ -233,6 +233,15 @@ function extractJsonPatch(patch: any): Command[] {
                     reason: 'json_patch',
                 });
                 break;
+            case 'delta': {
+                translated_commands.push({
+                    type: 'add',
+                    full_match: JSON.stringify(op),
+                    args: [path, JSON.stringify((op as any).value)],
+                    reason: 'json_patch',
+                });
+                break;
+            }
             case 'insert':
             case 'add': {
                 const pathParts = _.toPath(path);
