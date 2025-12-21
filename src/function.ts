@@ -233,6 +233,7 @@ function extractJsonPatch(patch: any): Command[] {
                     reason: 'json_patch',
                 });
                 break;
+            case 'insert':
             case 'add': {
                 const pathParts = _.toPath(path);
                 const lastPart = pathParts[pathParts.length - 1];
