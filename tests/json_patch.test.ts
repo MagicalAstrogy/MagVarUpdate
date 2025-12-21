@@ -112,3 +112,23 @@ describe('JsonPatchMiscTest', () => {
         });
     });
 });
+
+describe('执行测试', () => {
+    test('delta指令', async () => {
+        const statData = { 测试: 10 };
+        const schema = generateSchema(_.cloneDeep(statData));
+        relaxSchema(schema);
+
+        const variables: MvuData = {
+            stat_data: statData,
+            display_data: {},
+            delta_data: {},
+            schema: schema as any,
+        };
+
+        const message = `<JsonPatch>[{"op": "delta", "path": "/测试", "value": 10}]</JsonPatch>`;
+        await updateVariables(message, variables);
+
+        expect(variables.stat_data).toEqual({ 测试: 20 });
+    });
+});
