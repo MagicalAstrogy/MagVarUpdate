@@ -511,8 +511,16 @@ async function initialize() {
                             } else {
                                 _.unset(data, 'schema');
                             }
-                            data.display_data = variables.display_data;
-                            data.delta_data = variables.delta_data;
+                            if (variables.display_data !== undefined) {
+                                _.set(data, 'display_data', variables.display_data);
+                            } else {
+                                _.unset(data, 'display_data');
+                            }
+                            if (variables.delta_data !== undefined) {
+                                _.set(data, 'delta_data', variables.delta_data);
+                            } else {
+                                _.unset(data, 'delta_data');
+                            }
                             return data;
                         },
                         { type: 'message', message_id: i }

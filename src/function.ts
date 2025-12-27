@@ -1417,11 +1417,6 @@ export async function updateVariables(
     // 触发变量更新结束事件
     //@ts-expect-error 这里会有一个variables类型的不一致，一个内部类型，一个外部类型。
     await eventEmit(variable_events.VARIABLE_UPDATE_ENDED, variables, variables_before_update);
-    await eventEmit(
-        variable_events.VARIABLE_UPDATE_ENDED + '_for_zod',
-        variables,
-        variables_before_update
-    );
     //在结束事件中也可能设置变量
     _.unset(variables.stat_data, '$internal');
     // 在所有命令执行完毕后，如果数据有任何变动，则执行一次 Schema 调和
@@ -1429,6 +1424,11 @@ export async function updateVariables(
     if (is_modified) {
         reconcileAndApplySchema(variables);
     }
+    await eventEmit(
+        variable_events.VARIABLE_UPDATE_ENDED + '_for_zod',
+        variables,
+        variables_before_update
+    );
     if (error_info && useSettingsStore().settings.通知.变量更新出错) {
         const base_command: string = error_info.error_command.full_match;
         if (typeof toastr !== 'undefined')
