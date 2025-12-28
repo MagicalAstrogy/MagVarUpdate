@@ -244,39 +244,47 @@ export async function loadInitVarData(
         // 适配 beta 分支的对象结构
         if (_.has(mvu_data.initialized_lorebooks, current_lorebook)) continue;
         mvu_data.initialized_lorebooks[current_lorebook] = [];
-        const init_entries = (await getLorebookEntries(current_lorebook)) as LorebookEntry[];
+        try {
+            const init_entries = (await getLorebookEntries(current_lorebook)) as LorebookEntry[];
 
-        for (const entry of init_entries) {
-            if (entry.comment?.toLowerCase().includes('[initvar]')) {
-                const codeblock_match = entry.content.trim().match(/```.*\n([\s\S]*)\n```/m);
-                if (codeblock_match) {
-                    entry.content = codeblock_match[1];
-                }
-                const content = substitudeMacros(entry.content);
-                let parsedData: any = null;
-                let parseError: Error | null = null;
+            for (const entry of init_entries) {
+                if (entry.comment?.toLowerCase().includes('[initvar]')) {
+                    const codeblock_match = entry.content.trim().match(/```.*\n([\s\S]*)\n```/m);
+                    if (codeblock_match) {
+                        entry.content = codeblock_match[1];
+                    }
+                    const content = substitudeMacros(entry.content);
+                    let parsedData: any = null;
+                    let parseError: Error | null = null;
 
-                // Try YAML first (which also handles JSON)
-                try {
-                    parsedData = parseString(content);
-                } catch (e) {
-                    parseError = e as Error;
-                }
+                    // Try YAML first (which also handles JSON)
+                    try {
+                        parsedData = parseString(content);
+                    } catch (e) {
+                        parseError = e as Error;
+                    }
 
-                if (parseError) {
-                    console.error(`解析世界书条目'${entry.comment}'失败: ${parseError}`);
-                    toastr.error(parseError.message, `[MVU] 解析世界书条目'${entry.comment}'失败`, {
-                        timeOut: 5000,
-                    });
-                    throw parseError;
-                }
+                    if (parseError) {
+                        console.error(`解析世界书条目'${entry.comment}'失败: ${parseError}`);
+                        toastr.error(
+                            parseError.message,
+                            `[MVU] 解析世界书条目'${entry.comment}'失败`,
+                            {
+                                timeOut: 5000,
+                            }
+                        );
+                        throw parseError;
+                    }
 
-                if (parsedData) {
-                    mvu_data.stat_data = _.merge(mvu_data.stat_data, parsedData);
+                    if (parsedData) {
+                        mvu_data.stat_data = _.merge(mvu_data.stat_data, parsedData);
+                    }
                 }
             }
+            is_updated = true;
+        } catch (e) {
+            console.error(e);
         }
-        is_updated = true;
     }
 
     return is_updated;
