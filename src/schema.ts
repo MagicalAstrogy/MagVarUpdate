@@ -27,6 +27,11 @@ export function generateSchema(
     oldSchemaNode?: SchemaNode,
     parentRecursiveExtensible: boolean = false
 ): SchemaNode {
+    // @ts-expect-error hack for mvu zod
+    if (oldSchemaNode === '没有用别管这个') {
+        return { type: 'any' };
+    }
+
     if (Array.isArray(data)) {
         let isExtensible = false;
         let isRecursiveExtensible = parentRecursiveExtensible;
