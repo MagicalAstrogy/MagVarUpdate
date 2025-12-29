@@ -139,13 +139,14 @@ export async function initCheck() {
                 message_id: 0,
                 swipes_data: await Promise.all(
                     last_msg.swipes!.map(async (swipe, index) => {
-                        let vanilla_variable_data: Record<string, any> = klona(
-                            last_msg.swipes_data[index]
+                        const vanilla_variable_data = klona(_.get(last_msg.swipes_data, index, {}));
+                        const current_data = _.mergeWith(
+                            vanilla_variable_data,
+                            klona(variables),
+                            (_lhs, rhs) =>
+                                // 修正 merge 合并 array 的行为: [1, 2, 3], [3, 4] 应该合并成 [3, 4] 而不是 [3, 4, 3]
+                                _.isArray(rhs) ? rhs : undefined
                         );
-                        if (vanilla_variable_data === undefined) {
-                            vanilla_variable_data = {};
-                        }
-                        const current_data = _.merge(vanilla_variable_data, klona(variables));
 
                         const matched_init = swipe.matchAll(
                             /<(initvar)>(?:\s*```.*)?([\s\S]*?)(?:```\s*)?<\/\1>/gim
@@ -158,22 +159,19 @@ export async function initCheck() {
                             const init_content = match[2];
                             try {
                                 const init_variables = parseString(substitudeMacros(init_content));
-                                _.merge(overrided_initvar, init_variables);
+                                _.mergeWith(overrided_initvar, init_variables, (_lhs, rhs) =>
+                                    _.isArray(rhs) ? rhs : undefined
+                                );
                                 is_initvar_applied = true;
                             } catch (e) {
                                 console.error('failed to parse initvar block:' + e);
                             }
                         }
                         if (is_initvar_applied) {
-                            current_data.stat_data = overrided_initvar;
-                            const char_lorebook =
-                                getCharWorldbookNames('current').primary ?? 'unknown';
-                            //此处的含义是，将 角色卡世界书 以外的其他世界书进行重置
-                            //避免 <initvar> 的覆盖行为导致其他世界书无法正常加载
-                            current_data.initialized_lorebooks = {};
-                            current_data.initialized_lorebooks[char_lorebook] = [];
-                            //重新进行其他全局世界书的初始化。
-                            await loadInitVarData(current_data);
+                            current_data.stat_data = {
+                                ...current_data.stat_data,
+                                ...overrided_initvar,
+                            };
                         }
 
                         await eventEmit(variable_events.VARIABLE_INITIALIZED, current_data, index);
