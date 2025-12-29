@@ -188,8 +188,7 @@ export async function initCheck() {
         ]);
     } else {
         // 非开局直接更新到最后一条即可，也并不需要重新结算当前的变量
-        // @ts-expect-error 该函数可用
-        await setChatMessage({ data: variables }, getLastMessageId());
+        await replaceVariables(variables, { type: 'message' });
     }
     try {
         // 输出构建信息
@@ -277,7 +276,7 @@ export async function loadInitVarData(
                     }
 
                     if (parsedData) {
-                        mvu_data.stat_data = _.merge(mvu_data.stat_data, parsedData);
+                        mvu_data.stat_data = { ...parsedData, ...mvu_data.stat_data };
                     }
                 }
             }
