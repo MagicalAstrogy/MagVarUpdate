@@ -255,9 +255,6 @@ export function reconcileAndApplySchema(variables: MvuData) {
     // 3. 直接用新 Schema 替换旧 Schema
     // stat_data 的根节点应该始终是对象，所以生成的 schema 也应该是 ObjectSchemaNode
     if (!isObjectSchema(newSchema)) {
-        console.error(
-            'Generated schema is not an object schema, which is unexpected for stat_data root'
-        );
         return;
     }
 

@@ -1457,7 +1457,6 @@ export async function handleVariablesInMessage(message_id: number) {
     const variables = await getLastValidVariable(request_message_id);
     const settings = useSettingsStore().settings;
     if (!_.has(variables, 'stat_data')) {
-        console.error(`cannot found stat_data for ${request_message_id}`);
         return;
     }
 
