@@ -96,7 +96,6 @@ async function onVariableUpdatedCall(args: any): Promise<string> {
     let message_content = chat_message.message;
     const variables = await getLastValidVariable(message_id);
     if (!_.has(variables, 'stat_data')) {
-        console.error(`cannot found stat_data for ${message_id}`);
         return '';
     }
 

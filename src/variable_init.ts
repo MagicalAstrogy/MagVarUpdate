@@ -111,10 +111,6 @@ export async function initCheck() {
             if (_.has(variables.stat_data, '$meta.strictSet'))
                 generated_schema.strictSet = variables.stat_data['$meta']?.strictSet as boolean;
             variables.schema = generated_schema;
-        } else {
-            console.error(
-                'Generated schema is not an object schema, which is unexpected for stat_data root'
-            );
         }
 
         // 3. 现在，清理真实的 stat_data，让它在后续操作中保持干净
