@@ -119,4 +119,85 @@ describe('loadInitVarData', () => {
             'version1.2': [],
         });
     });
+
+    test('merge elements in same lorebook', async () => {
+        const mvuData: MvuData = {
+            stat_data: {
+                //empty
+            },
+            initialized_lorebooks: {},
+        };
+
+        mockGetEnabledLorebookList.mockResolvedValue(['version1.2', 'version1.3']);
+        mockGetLorebookEntries.mockImplementation(async lorebookName => {
+            if (lorebookName === 'version1.2') {
+                return [
+                    {
+                        comment: '[initvar]',
+                        content: '{"悠纪":{"喵":"1","喵呜":"2"}}',
+                    },
+                    {
+                        comment: '[initvar]222',
+                        content: '{"悠纪":{"捏":"3"}}',
+                    },
+                ];
+            }
+            if (lorebookName === 'version1.3') {
+                return [
+                    {
+                        comment: '[initvar]',
+                        content: '{"悠纪":{"杂鱼喵": "杂鱼杂鱼"}}',
+                    },
+                ];
+            }
+            return [];
+        });
+
+        const updated = await loadInitVarData(mvuData);
+
+        expect(updated).toBe(true);
+        expect(mvuData.stat_data).toEqual({
+            悠纪: { 喵: '1', 喵呜: '2', 捏: '3' },
+        });
+        expect(mvuData.initialized_lorebooks).toEqual({
+            'version1.2': [],
+            'version1.3': [],
+        });
+    });
+
+    test('new merge behaviour', async () => {
+        const mvuData: MvuData = {
+            stat_data: {
+                //empty
+            },
+            initialized_lorebooks: {},
+        };
+
+        mockGetEnabledLorebookList.mockResolvedValue(['version1.2']);
+        mockGetLorebookEntries.mockImplementation(async lorebookName => {
+            if (lorebookName === 'version1.2') {
+                return [
+                    {
+                        comment: '[initvar]',
+                        content: '{"悠纪":["abc", "def"]}',
+                    },
+                    {
+                        comment: '[initvar]222',
+                        content: '{"悠纪":[]}',
+                    },
+                ];
+            }
+            return [];
+        });
+
+        const updated = await loadInitVarData(mvuData);
+
+        expect(updated).toBe(true);
+        expect(mvuData.stat_data).toEqual({
+            悠纪: [],
+        });
+        expect(mvuData.initialized_lorebooks).toEqual({
+            'version1.2': [],
+        });
+    });
 });

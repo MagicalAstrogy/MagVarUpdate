@@ -86,3 +86,8 @@ export function parseString(content: string) {
         }
     }
 }
+
+// 修正 _.merge 对数组的合并逻辑, [1, 2, 3] 和 [4, 5] 合并后变成 [4, 5] 而不是 [4, 5, 3]
+export function correctlyMerge<TObject, TSource>(lhs: TObject, rhs: TSource): TObject & TSource {
+    return _.mergeWith(lhs, rhs, (_lhs, rhs) => (_.isArray(rhs) ? rhs : undefined));
+}

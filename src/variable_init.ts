@@ -2,7 +2,7 @@
 import { getLastValidVariable, updateVariables } from '@/function';
 import { cleanUpMetadata, EXTENSIBLE_MARKER, generateSchema } from '@/schema';
 import { useSettingsStore } from '@/settings';
-import { parseString } from '@/util';
+import { correctlyMerge, parseString } from '@/util';
 import {
     isObjectSchema,
     MvuData,
@@ -141,7 +141,7 @@ export async function initCheck() {
                         if (vanilla_variable_data === undefined) {
                             vanilla_variable_data = {};
                         }
-                        const current_data = _.merge(vanilla_variable_data, klona(variables));
+                        const current_data = correctlyMerge(vanilla_variable_data, klona(variables));
 
                         const matched_init = swipe.matchAll(
                             /<(initvar)>(?:\s*```.*)?([\s\S]*?)(?:```\s*)?<\/\1>/gim
@@ -154,7 +154,7 @@ export async function initCheck() {
                             const init_content = match[2];
                             try {
                                 const init_variables = parseString(substitudeMacros(init_content));
-                                _.merge(overrided_initvar, init_variables);
+                                correctlyMerge(overrided_initvar, init_variables);
                                 is_initvar_applied = true;
                             } catch (e) {
                                 console.error('failed to parse initvar block:' + e);
@@ -242,6 +242,7 @@ export async function loadInitVarData(
         try {
             const init_entries = (await getLorebookEntries(current_lorebook)) as LorebookEntry[];
 
+            const merged_data: Record<string, any> = {};
             for (const entry of init_entries) {
                 if (entry.comment?.toLowerCase().includes('[initvar]')) {
                     const codeblock_match = entry.content.trim().match(/```.*\n([\s\S]*)\n```/m);
@@ -272,10 +273,11 @@ export async function loadInitVarData(
                     }
 
                     if (parsedData) {
-                        mvu_data.stat_data = { ...parsedData, ...mvu_data.stat_data };
+                        correctlyMerge(merged_data, parsedData);
                     }
                 }
             }
+            mvu_data.stat_data = { ...merged_data, ...mvu_data.stat_data };
             is_updated = true;
         } catch (e) {
             console.error(e);
