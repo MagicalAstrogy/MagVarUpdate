@@ -141,7 +141,10 @@ export async function initCheck() {
                         if (vanilla_variable_data === undefined) {
                             vanilla_variable_data = {};
                         }
-                        const current_data = correctlyMerge(vanilla_variable_data, klona(variables));
+                        const current_data = correctlyMerge(
+                            vanilla_variable_data,
+                            klona(variables)
+                        );
 
                         const matched_init = swipe.matchAll(
                             /<(initvar)>(?:\s*```.*)?([\s\S]*?)(?:```\s*)?<\/\1>/gim

@@ -13,3 +13,4 @@ export declare function findLastValidMessage(end_message_id: number): number;
 export declare function scopedEventOn<T extends EventType>(event_type: T, listener: ListenerType[T]): void;
 export declare function clearScopedEvent(): void;
 export declare function parseString(content: string): any;
+export declare function correctlyMerge<TObject, TSource>(lhs: TObject, rhs: TSource): TObject & TSource;
