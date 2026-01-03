@@ -750,6 +750,13 @@ export async function updateVariables(
         commands,
         current_message_content
     );
+    //保证 MVU zod 支持多变量结构脚本必须, 知道这样做很烂, 所以催促快点重构 MVU 本体合并 MVU、MVU beta 和 MVU zod
+    await eventEmit(
+        variable_events.COMMAND_PARSED + '_for_zod_multiscript',
+        variables,
+        commands,
+        current_message_content
+    );
 
     pathFixPass(variables, commands, current_message_content);
 
