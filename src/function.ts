@@ -524,9 +524,7 @@ export async function getLastValidVariable(message_id: number): Promise<MvuData>
             .slice(0, message_id + 1)
             .map(chat_message => _.get(chat_message, ['variables', chat_message.swipe_id ?? 0]))
             .findLast(variables => _.has(variables, 'stat_data'))
-
-        //@ts-expect-error old fn
-    ) ?? getVariables()) as MvuData;
+    ) ?? getVariables({ type: 'message' })) as MvuData;
 }
 
 export function pathFix(path: string): string {
