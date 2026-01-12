@@ -6,6 +6,7 @@ import * as z from 'zod';
 const Settings = z
     .object({
         更新方式: z.enum(['随AI输出', '额外模型解析']).default('随AI输出'),
+        自动触发额外模型解析: z.boolean().default(true),
         额外模型解析配置: z
             .object({
                 发送预设: z.boolean().default(true),

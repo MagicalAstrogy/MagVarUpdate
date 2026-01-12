@@ -1,6 +1,7 @@
 import { handleVariablesInCallback, updateVariable } from '@/function';
 import {
     extractRecord,
+    isDuringExtraAnalysis,
     isValueWithDescription,
     MvuData,
     variable_events,
@@ -370,6 +371,10 @@ function createMVU() {
         ): Record<string, any> {
             return extractRecord(category, mvu_data);
         },
+        /**
+         * @brief 返回当前轮次是否属于额外模型解析轮次。
+         */
+        isDuringExtraAnalysis: isDuringExtraAnalysis,
     };
     return mvu;
 }
@@ -386,5 +391,12 @@ export async function exportGlobals() {
 }
 
 export function unsetGlobals() {
+    updateVariablesWith(
+        variables => {
+            _.unset(variables, 'extra_analysis');
+            return variables;
+        },
+        { type: 'global' }
+    );
     _.unset(window.parent, 'Mvu');
 }

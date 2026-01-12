@@ -41,6 +41,19 @@
                     <option value="随AI输出">随AI输出</option>
                     <option value="额外模型解析">额外模型解析</option>
                 </select>
+                <label class="checkbox_label" for="mvu_auto_extra_analyze">
+                    <input
+                        id="mvu_auto_extra_analyze"
+                        v-model="store.settings.自动触发额外模型解析"
+                        type="checkbox"
+                    />
+                    <span>自动触发额外模型解析</span>
+                    <i
+                        class="fa-solid fa-circle-question fa-sm note-link-span"
+                        style="cursor: pointer"
+                        @click="showAutoAnalyzeVarHelp"
+                    />
+                </label>
 
                 <template v-if="store.settings.更新方式 === '额外模型解析'">
                     <label>
@@ -318,6 +331,7 @@ import { buttons } from '@/button';
 import chat_variable_help from '@/chat_variable_help.md';
 import panel_extra_mode_help from '@/panel_extra_mode_help.md';
 import panel_method_help from '@/panel_method_help.md';
+import auto_analyze_help from '@/auto_analyze_help.md';
 import { useSettingsStore } from '@/settings';
 import { getSillyTavernVersion, getTavernHelperVersion } from '@/util';
 import { compare } from 'compare-versions';
@@ -377,6 +391,14 @@ async function showMethodHelp() {
 
 async function showChatVarHelp() {
     SillyTavern.callGenericPopup(chat_variable_help, SillyTavern.POPUP_TYPE.TEXT, '', {
+        allowVerticalScrolling: true,
+        leftAlign: true,
+        wide: true,
+    });
+}
+
+async function showAutoAnalyzeVarHelp() {
+    SillyTavern.callGenericPopup(auto_analyze_help, SillyTavern.POPUP_TYPE.TEXT, '', {
         allowVerticalScrolling: true,
         leftAlign: true,
         wide: true,

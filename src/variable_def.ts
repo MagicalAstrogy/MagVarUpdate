@@ -236,3 +236,16 @@ export const ExtraLLMRequestContent: string = `---
     ...
     </UpdateVariable>
 </must>`;
+
+/**
+ * 标记是否处于额外模型解析
+ */
+let duringExtraCall = false;
+
+export function isDuringExtraAnalysis(): boolean {
+    return duringExtraCall;
+}
+
+export function setDuringExtraAnalysis(value: boolean) {
+    duringExtraCall = value;
+}

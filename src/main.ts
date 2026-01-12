@@ -30,15 +30,16 @@ import {
     parseString,
     scopedEventOn,
 } from '@/util';
-import { exported_events, ExtraLLMRequestContent, MvuData } from '@/variable_def';
+import {
+    exported_events,
+    ExtraLLMRequestContent,
+    isDuringExtraAnalysis,
+    MvuData,
+    setDuringExtraAnalysis,
+} from '@/variable_def';
 import { initCheck } from '@/variable_init';
 import { compare } from 'compare-versions';
 import { klona } from 'klona';
-
-/**
- * 标记是否处于额外模型解析
- */
-let duringExtraCall = false;
 
 /**
  * 记录世界书是否支持额外模型
@@ -77,7 +78,7 @@ async function handlePromptFilter(lores: {
         const filtered = _.remove(lore, entry => {
             const is_update_regex = entry.comment.match(update_regex);
             const is_plot_regex = entry.comment.match(plot_regex);
-            return duringExtraCall
+            return isDuringExtraAnalysis()
                 ? is_plot_regex && !is_update_regex
                 : !is_plot_regex && is_update_regex;
         });
@@ -93,7 +94,17 @@ async function handlePromptFilter(lores: {
 
 let vanilla_parseToolCalls: any = null;
 
-async function onMessageReceived(message_id: number) {
+async function updateGenState() {
+    updateVariablesWith(
+        variables => {
+            _.set(variables, 'extra_analysis', isDuringExtraAnalysis());
+            return variables;
+        },
+        { type: 'global' }
+    );
+}
+
+async function onMessageReceived(message_id: number, extra_param?: any) {
     const current_chatmsg = getChatMessages(message_id).at(-1);
     if (!current_chatmsg) {
         return;
@@ -106,7 +117,7 @@ async function onMessageReceived(message_id: number) {
     }
 
     const settings = useSettingsStore().settings;
-    duringExtraCall = false;
+    setDuringExtraAnalysis(false);
 
     SetExtraModelSupported(isExtraModelSupported);
     if (
@@ -123,7 +134,12 @@ async function onMessageReceived(message_id: number) {
         return;
     }
 
-    duringExtraCall = true;
+    if (settings.自动触发额外模型解析 === false && extra_param !== 'manual_emit') {
+        console.log('[MVU] 不自动触发额外模型解析');
+        return;
+    }
+
+    setDuringExtraAnalysis(true);
     let user_input = ExtraLLMRequestContent;
     if (settings.额外模型解析配置.使用函数调用) {
         user_input += `\n use \`mvu_VariableUpdate\` tool to update variables.`;
@@ -134,6 +150,13 @@ async function onMessageReceived(message_id: number) {
     let retries = 0;
 
     try {
+        updateVariablesWith(
+            variables => {
+                _.set(variables, 'extra_analysis', true);
+                return variables;
+            },
+            { type: 'global' }
+        );
         setFunctionCallEnabled(true);
         //因为部分预设会用到 {{lastUserMessage}}，因此进行修正。
         console.log('Before RegisterMacro');
@@ -307,8 +330,15 @@ async function onMessageReceived(message_id: number) {
             vanilla_parseToolCalls = null;
         }
         SillyTavern.unregisterMacro('lastUserMessage');
+        updateVariablesWith(
+            variables => {
+                _.set(variables, 'extra_analysis', false);
+                return variables;
+            },
+            { type: 'global' }
+        );
         setFunctionCallEnabled(false);
-        duringExtraCall = false;
+        setDuringExtraAnalysis(false);
         //因为 generate 过程中会使得这个变量变为 false，影响重试。
         isExtraModelSupported = true;
     }
@@ -536,6 +566,7 @@ async function initialize() {
     );
 
     await initCheck();
+    scopedEventOn(tavern_events.GENERATION_STARTED, updateGenState);
     scopedEventOn(tavern_events.GENERATION_STARTED, initCheck);
     scopedEventOn(tavern_events.MESSAGE_SENT, initCheck);
     scopedEventOn(tavern_events.MESSAGE_SENT, handleVariablesInMessage);
