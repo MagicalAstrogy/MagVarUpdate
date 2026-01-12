@@ -93,7 +93,17 @@ async function handlePromptFilter(lores: {
 
 let vanilla_parseToolCalls: any = null;
 
-async function onMessageReceived(message_id: number) {
+async function updateGenState() {
+    updateVariablesWith(
+        variables => {
+            _.set(variables, 'extra_analysis', duringExtraCall);
+            return variables;
+        },
+        { type: 'chat' }
+    );
+}
+
+async function onMessageReceived(message_id: number, extra_param?: any) {
     const current_chatmsg = getChatMessages(message_id).at(-1);
     if (!current_chatmsg) {
         return;
@@ -123,6 +133,11 @@ async function onMessageReceived(message_id: number) {
         return;
     }
 
+    if (settings.自动触发额外模型解析 === false && extra_param !== 'manual_emit') {
+        console.log('[MVU] 不自动触发额外模型解析');
+        return;
+    }
+
     duringExtraCall = true;
     let user_input = ExtraLLMRequestContent;
     if (settings.额外模型解析配置.使用函数调用) {
@@ -134,6 +149,13 @@ async function onMessageReceived(message_id: number) {
     let retries = 0;
 
     try {
+        updateVariablesWith(
+            variables => {
+                _.set(variables, 'extra_analysis', true);
+                return variables;
+            },
+            { type: 'chat' }
+        );
         setFunctionCallEnabled(true);
         //因为部分预设会用到 {{lastUserMessage}}，因此进行修正。
         console.log('Before RegisterMacro');
@@ -307,6 +329,13 @@ async function onMessageReceived(message_id: number) {
             vanilla_parseToolCalls = null;
         }
         SillyTavern.unregisterMacro('lastUserMessage');
+        updateVariablesWith(
+            variables => {
+                _.set(variables, 'extra_analysis', false);
+                return variables;
+            },
+            { type: 'chat' }
+        );
         setFunctionCallEnabled(false);
         duringExtraCall = false;
         //因为 generate 过程中会使得这个变量变为 false，影响重试。
@@ -536,6 +565,7 @@ async function initialize() {
     );
 
     await initCheck();
+    scopedEventOn(tavern_events.GENERATION_STARTED, updateGenState);
     scopedEventOn(tavern_events.GENERATION_STARTED, initCheck);
     scopedEventOn(tavern_events.MESSAGE_SENT, initCheck);
     scopedEventOn(tavern_events.MESSAGE_SENT, handleVariablesInMessage);

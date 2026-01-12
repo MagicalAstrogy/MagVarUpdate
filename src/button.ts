@@ -12,7 +12,7 @@ interface Button {
     function: (() => void) | (() => Promise<void>);
 }
 
-type OnMessageReceived = (message_id: number) => Promise<void>;
+type OnMessageReceived = (message_id: number, reason?: any) => Promise<void>;
 
 let msg_received_callback: OnMessageReceived;
 let is_extra_model_support: boolean;
@@ -75,7 +75,7 @@ async function EmitVariableAnalysisJob() {
             }
         );
     }
-    await msg_received_callback(last_msg);
+    await msg_received_callback(last_msg, 'manual_emit');
     toastr.info(`解析完成`, '[MVU]重试额外模型解析');
 }
 
