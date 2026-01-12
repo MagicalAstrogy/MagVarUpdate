@@ -1,4 +1,4 @@
-import { MvuData } from '@/variable_def';
+import { isDuringExtraAnalysis, MvuData } from '@/variable_def';
 type CommandNames = 'set' | 'insert' | 'delete' | 'add';
 /**
  * 对 parseMessage / updateVariables 内部命令解析结果的补充类型说明。
@@ -286,6 +286,10 @@ declare function createMVU(): {
      * @note 通常用于 LLM 准备 foreach 数据时使用
      */
     getRecordFromMvuData: (mvu_data: MvuData, category: "stat" | "display" | "delta") => Record<string, any>;
+    /**
+     * @brief 返回当前轮次是否属于额外模型解析轮次。
+     */
+    isDuringExtraAnalysis: typeof isDuringExtraAnalysis;
 };
 export type MVU = ReturnType<typeof createMVU>;
 export type Mvu = MVU;
