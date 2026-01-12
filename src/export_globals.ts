@@ -374,9 +374,7 @@ function createMVU() {
         /**
          * @brief 返回当前轮次是否属于额外模型解析轮次。
          */
-        isDuringExtraAnalysis: function (): boolean {
-            return isDuringExtraAnalysis();
-        },
+        isDuringExtraAnalysis: isDuringExtraAnalysis,
     };
     return mvu;
 }
