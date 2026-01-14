@@ -14,3 +14,4 @@ export declare function scopedEventOn<T extends EventType>(event_type: T, listen
 export declare function clearScopedEvent(): void;
 export declare function parseString(content: string): any;
 export declare function correctlyMerge<TObject, TSource>(lhs: TObject, rhs: TSource): TObject & TSource;
+export declare function showHelpPopup(content: string): void;
