@@ -45,6 +45,8 @@ import { klona } from 'klona';
  * 记录世界书是否支持额外模型
  */
 let isExtraModelSupported = false;
+const UPDATE_REGEX = /\[mvu_update\]/i;
+const PLOT_REGEX = /\[mvu_plot\]/i;
 
 async function handlePromptFilter(lores: {
     globalLore: Record<string, any>[];
@@ -72,12 +74,10 @@ async function handlePromptFilter(lores: {
         return;
     }
 
-    const update_regex = /\[mvu_update\]/i;
-    const plot_regex = /\[mvu_plot\]/i;
     const remove_and_check = (lore: Record<string, any>[]) => {
         const filtered = _.remove(lore, entry => {
-            const is_update_regex = entry.comment.match(update_regex);
-            const is_plot_regex = entry.comment.match(plot_regex);
+            const is_update_regex = UPDATE_REGEX.test(entry.comment);
+            const is_plot_regex = PLOT_REGEX.test(entry.comment);
             return isDuringExtraAnalysis()
                 ? is_plot_regex && !is_update_regex
                 : !is_plot_regex && is_update_regex;
@@ -90,6 +90,23 @@ async function handlePromptFilter(lores: {
     remove_and_check(lores.characterLore);
     remove_and_check(lores.chatLore);
     remove_and_check(lores.personaLore);
+
+    if (isExtraModelSupported) {
+        const supported_worlds = new Set(
+            _(_.concat(lores.globalLore, lores.characterLore, lores.chatLore, lores.personaLore))
+                .filter(entry => UPDATE_REGEX.test(entry.comment) || PLOT_REGEX.test(entry.comment))
+                .map(entry => entry.world)
+                .uniq()
+                .value()
+        );
+        const remove_unsupported_worlds = (lore: Record<string, any>[]) => {
+            _.remove(lore, entry => !supported_worlds.has(entry.world));
+        };
+        remove_unsupported_worlds(lores.globalLore);
+        remove_unsupported_worlds(lores.characterLore);
+        remove_unsupported_worlds(lores.chatLore);
+        remove_unsupported_worlds(lores.personaLore);
+    }
 }
 
 let vanilla_parseToolCalls: any = null;
@@ -578,6 +595,17 @@ async function initialize() {
         tavern_events.MESSAGE_RECEIVED,
         is_jest_environment ? onMessageReceived : _.throttle(onMessageReceived, 3000)
     );
+    const char_primary_book = getCharWorldbookNames('current').primary;
+    if (
+        char_primary_book &&
+        (await getWorldbook(char_primary_book).then(entries =>
+            entries.some(entry => UPDATE_REGEX.test(entry.name) || PLOT_REGEX.test(entry.name))
+        ))
+    ) {
+        // FIXME: 为什么两个记录……？
+        isExtraModelSupported = true;
+        SetExtraModelSupported(true);
+    }
     SetReceivedCallbackFn(onMessageReceived);
 
     scopedEventOn(exported_events.INVOKE_MVU_PROCESS, handleVariablesInCallback);
