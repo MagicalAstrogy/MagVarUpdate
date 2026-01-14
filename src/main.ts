@@ -103,7 +103,6 @@ async function handlePromptFilter(lores: {
             _.remove(lore, entry => !supported_worlds.has(entry.world));
         };
         remove_unsupported_worlds(lores.globalLore);
-        remove_unsupported_worlds(lores.characterLore);
         remove_unsupported_worlds(lores.chatLore);
         remove_unsupported_worlds(lores.personaLore);
     }
