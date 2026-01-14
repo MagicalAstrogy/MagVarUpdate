@@ -16,11 +16,11 @@
                 "
             >
                 <div class="mvu-warning">
-                    <span class="mvu-warning__icon">⚠️</span>
+                    <span class="mvu-warning__icon">ℹ️</span>
                     <span class="mvu-warning__text">
                         世界书 [{{ temp_contents.unsupported_warnings }}]
                         不支持额外模型解析，不会包含在额外模型解析轮次中，适配 [mvu_update]
-                        条目以解决此问题。
+                        条目即可避免。
                     </span>
                 </div>
             </template>
