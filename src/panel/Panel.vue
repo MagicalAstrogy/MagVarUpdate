@@ -7,13 +7,9 @@
 
         <div class="inline-drawer-content">
             <Notification />
-            <hr />
             <Update />
-            <hr />
             <Button />
-            <hr />
             <Cleanup />
-            <hr />
             <Compatibility />
         </div>
     </div>
@@ -26,3 +22,12 @@ import Compatibility from '@/panel/Compatibility.vue';
 import Notification from '@/panel/Notification.vue';
 import Update from '@/panel/Update.vue';
 </script>
+
+<style scoped>
+.inline-drawer-content {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    padding-top: 0.5rem;
+}
+</style>
