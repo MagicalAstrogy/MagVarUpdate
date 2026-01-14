@@ -98,6 +98,7 @@ export async function handlePromptFilter(lores: {
             )
         )
             .uniq()
+            .sort()
             .value();
 
         temp_contents.unsupported_warnings = Array.from(removed_worlds).join(', ');
