@@ -1,0 +1,167 @@
+<template>
+    <div class="mvu-model-select">
+        <div class="mvu-model-select__row">
+            <input
+                v-model="store.settings.额外模型解析配置.模型名称"
+                type="text"
+                class="text_pole"
+                autocomplete="off"
+            />
+        </div>
+
+        <div class="mvu-model-select__row mvu-model-select__row--controls">
+            <select
+                ref="select"
+                v-model="selected"
+                class="text_pole"
+                :disabled="models.length === 0"
+                aria-label="模型列表"
+            >
+                <option value="">（从列表选择）</option>
+                <option v-for="model in models" :key="model" :value="model">{{ model }}</option>
+            </select>
+
+            <input
+                class="mvu-model-select__btn menu_button menu_button_icon interactable"
+                type="button"
+                :value="loading ? '获取中…' : '获取模型'"
+                :disabled="loading"
+                @click="refresh"
+            />
+        </div>
+    </div>
+</template>
+
+<script setup lang="ts">
+import { useSettingsStore } from '@/settings';
+import { ref, watch } from 'vue';
+
+const store = useSettingsStore();
+
+const loading = ref(false);
+const models = ref<string[]>([]);
+const selected = ref('');
+
+function normalizeBaseURL(api_url: string): string {
+    api_url = api_url.trim().replace(/\/+$/, '');
+    if (!api_url) {
+        return '';
+    }
+    if (api_url.endsWith('/v1')) {
+        return api_url;
+    }
+    if (api_url.endsWith('/models')) {
+        return api_url.replace(/\/models$/, '');
+    }
+    return `${api_url}/v1`;
+}
+
+async function refresh() {
+    if (loading.value) {
+        return;
+    }
+
+    const base_url = normalizeBaseURL(store.settings.额外模型解析配置.api地址);
+    if (!base_url) {
+        return;
+    }
+
+    loading.value = true;
+    try {
+        const response = await fetch('/api/backends/chat-completions/status', {
+            method: 'POST',
+            headers: SillyTavern.getRequestHeaders(),
+            body: JSON.stringify({
+                reverse_proxy: base_url,
+                custom_url: base_url,
+                proxy_password: store.settings.额外模型解析配置.密钥,
+                chat_completion_source: 'custom',
+            }),
+            cache: 'no-cache',
+        });
+
+        const json = await response.json();
+
+        models.value = _(json?.data ?? [])
+            .map((model: any) => String(model?.id ?? model?.name ?? '').trim())
+            .filter(Boolean)
+            .sort()
+            .sortedUniq()
+            .value();
+        selected.value = models.value.includes(store.settings.额外模型解析配置.模型名称)
+            ? store.settings.额外模型解析配置.模型名称
+            : '';
+
+        if (models.value.length === 0) {
+            toastr.warning('模型列表为空或获取失败', '[MVU]获取模型列表');
+        }
+    } catch (error) {
+        toastr.error(String((error as Error)?.message ?? error), '[MVU]获取模型列表失败');
+    } finally {
+        loading.value = false;
+    }
+}
+
+watch(
+    selected,
+    value => {
+        if (!value) return;
+        store.settings.额外模型解析配置.模型名称 = value;
+    },
+    { flush: 'sync' }
+);
+
+watch(
+    () => store.settings.额外模型解析配置.模型名称,
+    value => {
+        if (!value) {
+            selected.value = '';
+            return;
+        }
+        selected.value = models.value.includes(value) ? value : '';
+    },
+    { flush: 'sync' }
+);
+
+watch(
+    () => [store.settings.额外模型解析配置.api地址, store.settings.额外模型解析配置.密钥] as const,
+    () => {
+        models.value = [];
+        selected.value = '';
+    }
+);
+</script>
+
+<style scoped>
+.mvu-model-select {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.mvu-model-select__row {
+    width: 100%;
+}
+
+.mvu-model-select__row--controls {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 0.5rem;
+    align-items: center;
+}
+
+.mvu-model-select__btn {
+    white-space: nowrap;
+    text-align: left;
+    padding: 0.35rem 0.6rem;
+    min-height: unset;
+    height: 2.05rem;
+    line-height: 1.1;
+}
+
+@media (max-width: 520px) {
+    .mvu-model-select__row--controls {
+        grid-template-columns: 1fr;
+    }
+}
+</style>

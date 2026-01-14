@@ -45,6 +45,9 @@ const Settings = z
             .prefault({}),
         快照保留间隔: z.number().default(50),
         更新到聊天变量: z.boolean().default(false),
+        legacy: z.object({
+            显示老旧功能: z.boolean().default(false),
+        }).prefault({}),
         auto_cleanup: z
             .object({
                 启用: z.boolean().default(false),

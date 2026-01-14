@@ -91,3 +91,11 @@ export function parseString(content: string) {
 export function correctlyMerge<TObject, TSource>(lhs: TObject, rhs: TSource): TObject & TSource {
     return _.mergeWith(lhs, rhs, (_lhs, rhs) => (_.isArray(rhs) ? rhs : undefined));
 }
+
+export function showHelpPopup(content: string) {
+    SillyTavern.callGenericPopup(content, SillyTavern.POPUP_TYPE.TEXT, '', {
+        allowVerticalScrolling: true,
+        leftAlign: true,
+        wide: true,
+    });
+}
