@@ -17,7 +17,7 @@ import {
 } from '@/function_call';
 import { showNotifications } from '@/notifications';
 import { destroyPanel, initPanel } from '@/panel';
-import { useSettingsStore } from '@/settings';
+import { useSettingsStore, useTempContents } from '@/settings';
 import {
     clearScopedEvent,
     findLastValidMessage,
@@ -55,6 +55,8 @@ async function handlePromptFilter(lores: {
     personaLore: Record<string, any>[];
 }) {
     const settings = useSettingsStore().settings;
+    const temp_contents = useTempContents().temp_contents;
+    temp_contents.unsupported_warnings = '';
 
     //每次开始解析时都进行重置。
     isExtraModelSupported = false;
@@ -75,19 +77,26 @@ async function handlePromptFilter(lores: {
     }
 
     const remove_and_check = (lore: Record<string, any>[]) => {
-        const filtered = _.remove(lore, entry => {
+        // 规则应当为：存在任意一个 [mvu_plot]/[mvu_update] 即算是支持，而不是必须存在 [mvu_plot]
+        let any_match = false;
+        _.remove(lore, entry => {
             const is_update_regex = UPDATE_REGEX.test(entry.comment);
             const is_plot_regex = PLOT_REGEX.test(entry.comment);
+            any_match = any_match || is_update_regex || is_plot_regex;
             return isDuringExtraAnalysis()
                 ? is_plot_regex && !is_update_regex
                 : !is_plot_regex && is_update_regex;
         });
-        if (filtered.length > 0) {
+        if (any_match) {
             isExtraModelSupported = true;
         }
     };
-    remove_and_check(lores.globalLore);
     remove_and_check(lores.characterLore);
+    //若要支持分步解析，角色世界书须是支持的。
+    //全局世界书支持，角色世界书不支持，亦算作不支持。
+    //在不支持的情况下，需要发送全局世界书等其他内容的所有条目。
+    if (!isExtraModelSupported) return;
+    remove_and_check(lores.globalLore);
     remove_and_check(lores.chatLore);
     remove_and_check(lores.personaLore);
 
@@ -100,11 +109,23 @@ async function handlePromptFilter(lores: {
                 .value()
         );
         const remove_unsupported_worlds = (lore: Record<string, any>[]) => {
-            _.remove(lore, entry => !supported_worlds.has(entry.world));
+            const removed_entries = _.remove(lore, entry => !supported_worlds.has(entry.world));
+            return _(removed_entries)
+                .map(entry => entry.world)
+                .uniq()
+                .value();
         };
-        remove_unsupported_worlds(lores.globalLore);
-        remove_unsupported_worlds(lores.chatLore);
-        remove_unsupported_worlds(lores.personaLore);
+        const removed_worlds = _(
+            _.concat(
+                remove_unsupported_worlds(lores.globalLore),
+                remove_unsupported_worlds(lores.chatLore),
+                remove_unsupported_worlds(lores.personaLore)
+            )
+        )
+            .uniq()
+            .value();
+
+        temp_contents.unsupported_warnings = Array.from(removed_worlds).join(', ');
     }
 }
 
@@ -402,6 +423,9 @@ async function initialize() {
 
     const store = useSettingsStore();
 
+    const temp_contents = useTempContents().temp_contents;
+    temp_contents.unsupported_warnings = '';
+
     registerButtons();
 
     if (store.settings.更新到聊天变量 === false) {
@@ -594,17 +618,7 @@ async function initialize() {
         tavern_events.MESSAGE_RECEIVED,
         is_jest_environment ? onMessageReceived : _.throttle(onMessageReceived, 3000)
     );
-    const char_primary_book = getCharWorldbookNames('current').primary;
-    if (
-        char_primary_book &&
-        (await getWorldbook(char_primary_book).then(entries =>
-            entries.some(entry => UPDATE_REGEX.test(entry.name) || PLOT_REGEX.test(entry.name))
-        ))
-    ) {
-        // FIXME: 为什么两个记录……？
-        isExtraModelSupported = true;
-        SetExtraModelSupported(true);
-    }
+
     SetReceivedCallbackFn(onMessageReceived);
 
     scopedEventOn(exported_events.INVOKE_MVU_PROCESS, handleVariablesInCallback);

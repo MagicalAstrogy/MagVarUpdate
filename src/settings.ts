@@ -63,6 +63,15 @@ const Settings = z
     })
     .prefault({});
 
+//在这存储一些非持久化的，且需要 ref 的属性集合。
+const TempContentsDef = z
+    .object({
+        unsupported_warnings: z.string().default(''),
+    })
+    .prefault({});
+
+const temp_contents = ref(TempContentsDef.parse({}));
+
 export const useSettingsStore = defineStore('settings', () => {
     const settings = ref(Settings.parse(_.get(SillyTavern.extensionSettings, 'mvu_settings', {})));
     watch(
@@ -75,4 +84,8 @@ export const useSettingsStore = defineStore('settings', () => {
     );
 
     return { settings };
+});
+
+export const useTempContents = defineStore('temp_contents', () => {
+    return { temp_contents };
 });
