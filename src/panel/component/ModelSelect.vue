@@ -5,7 +5,6 @@
                 v-model="store.settings.额外模型解析配置.模型名称"
                 type="text"
                 class="text_pole"
-                placeholder="gemini-2.5-flash-nothinking"
                 autocomplete="off"
             />
         </div>
