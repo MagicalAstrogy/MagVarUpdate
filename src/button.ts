@@ -11,6 +11,7 @@ import { klona } from 'klona';
 interface Button {
     name: string;
     function: (() => void) | (() => Promise<void>);
+    is_legacy?: boolean;
 }
 
 type OnMessageReceived = (message_id: number, reason?: any) => Promise<void>;
@@ -314,10 +315,12 @@ export const buttons: Button[] = [
                 toastr.success(`已将 ${message_id} 层配置为快照楼层`, '[MVU]配置楼层快照')
             );
         },
+        is_legacy: true,
     },
     {
         name: '重演楼层',
         function: RecurVariable,
+        is_legacy: true,
     },
     {
         name: '重试额外模型解析',
