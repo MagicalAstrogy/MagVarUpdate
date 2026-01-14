@@ -2,7 +2,10 @@
     <div class="mvu-range-number">
         <template v-for="type in ['range', 'number']" :key="type">
             <input
-                :class="`mvu-range-number__${type}`"
+                :class="[
+                    `mvu-range-number__${type}`,
+                    type === 'number' ? 'text_pole' : '',
+                ]"
                 :type="type"
                 :min="min"
                 :max="max"
@@ -29,7 +32,8 @@ function clamp(value: number) {
 }
 
 function onInput(event: Event) {
-    const value = Number($(event).val());
+    const target = event.target as HTMLInputElement | null;
+    const value = Number(target?.value);
     if (Number.isFinite(value)) {
         model.value = clamp(value);
     }
@@ -52,6 +56,11 @@ function onInput(event: Event) {
     text-align: left;
     padding-top: 0.3rem;
     padding-bottom: 0.3rem;
+    background-color: color-mix(
+        in srgb,
+        var(--SmartThemeBlurTintColor, rgba(31, 31, 31, 1)) 33%,
+        transparent
+    );
 }
 
 @media (max-width: 420px) {
