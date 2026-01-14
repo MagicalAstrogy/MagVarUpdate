@@ -16,7 +16,7 @@ import {
     unregisterFunction,
 } from '@/function_call';
 import { showNotifications } from '@/notifications';
-import { destroyPanel, initPanel } from '@/panel';
+import { initPanel } from '@/panel/index';
 import { useSettingsStore } from '@/settings';
 import {
     clearScopedEvent,
@@ -633,16 +633,18 @@ async function destroy() {
 $(async () => {
     await initSillyTavernVersion();
     await initTavernHelperVersion();
-    await initPanel();
+    const { destroy: destroyPanel } = initPanel();
     eventOn(tavern_events.CHAT_CHANGED, reloadScript);
     await initialize();
     await exportGlobals();
+
+    $(window).on('pagehide', async () => {
+        destroyPanel();
+        destroy();
+        unsetGlobals();
+    });
 });
-$(window).on('pagehide', async () => {
-    destroyPanel();
-    destroy();
-    unsetGlobals();
-});
+
 let current_chat_id = SillyTavern.getCurrentChatId();
 function reloadScript(chat_id: string) {
     if (current_chat_id !== chat_id) {
