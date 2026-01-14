@@ -5,6 +5,7 @@ import { updateDescriptions } from '@/update_descriptions';
 import { findLastValidMessage, isFunctionCallingSupported, scopedEventOn } from '@/util';
 import { MvuData } from '@/variable_def';
 import { createEmptyGameData, loadInitVarData } from '@/variable_init';
+import { getIsExtraModelSupported } from '@/prompt_filter';
 import { klona } from 'klona';
 
 interface Button {
@@ -16,13 +17,9 @@ interface Button {
 type OnMessageReceived = (message_id: number, reason?: any) => Promise<void>;
 
 let msg_received_callback: OnMessageReceived;
-let is_extra_model_support: boolean;
 
 export function SetReceivedCallbackFn(fn: OnMessageReceived) {
     msg_received_callback = fn;
-}
-export function SetExtraModelSupported(is_support: boolean) {
-    is_extra_model_support = is_support;
 }
 
 async function EmitVariableAnalysisJob() {
@@ -37,7 +34,7 @@ async function EmitVariableAnalysisJob() {
             timeOut: 3000,
         });
         return;
-    } else if (!is_extra_model_support) {
+    } else if (!getIsExtraModelSupported()) {
         toastr.info(
             `当前角色卡不支持额外模型解析，或是刚刚刷新页面，无法进行此操作`,
             '[MVU]重试额外模型解析',

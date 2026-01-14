@@ -9,6 +9,22 @@
                 <Select v-model="store.settings.更新方式" :options="['随AI输出', '额外模型解析']" />
             </Field>
 
+            <template
+                v-if="
+                    temp_contents.unsupported_warnings !== '' &&
+                    store.settings.更新方式 === '额外模型解析'
+                "
+            >
+                <div class="mvu-warning">
+                    <span class="mvu-warning__icon">ℹ️</span>
+                    <span class="mvu-warning__text">
+                        世界书 [{{ temp_contents.unsupported_warnings }}]
+                        不支持额外模型解析，不会包含在额外模型解析轮次中，适配 [mvu_update]
+                        条目即可避免。
+                    </span>
+                </div>
+            </template>
+
             <template v-if="store.settings.更新方式 === '额外模型解析'">
                 <div class="mvu-subtitle">
                     <span>解析方式</span>
@@ -143,7 +159,7 @@ import Select from '@/panel/component/Select.vue';
 import auto_analyze_help from '@/panel/help/auto_analyze.md';
 import panel_extra_mode_help from '@/panel/help/extra_mode.md';
 import panel_method_help from '@/panel/help/update_method.md';
-import { useSettingsStore } from '@/settings';
+import { useSettingsStore, useTempContents } from '@/settings';
 import { getSillyTavernVersion, getTavernHelperVersion } from '@/util';
 import { compare } from 'compare-versions';
 import { watch } from 'vue';
@@ -151,6 +167,7 @@ import { watch } from 'vue';
 const additional_extra_configuration_supported = compare(getTavernHelperVersion(), '4.0.14', '>=');
 
 const store = useSettingsStore();
+const temp_contents = useTempContents().temp_contents;
 
 watch(
     () => store.settings.更新方式,
@@ -234,6 +251,27 @@ watch(
 .mvu-note {
     opacity: 0.85;
     color: var(--SmartThemeEmColor, inherit);
+}
+
+.mvu-warning {
+    margin-top: 0.5rem;
+    padding: 0.55rem 0.7rem;
+    border: 1px solid color-mix(in srgb, var(--SmartThemeEmColor, #d39e00) 35%, transparent);
+    border-radius: 10px;
+    background-color: color-mix(in srgb, var(--SmartThemeEmColor, #fff3cd) 15%, transparent);
+    color: var(--SmartThemeEmColor, #856404);
+    display: grid;
+    grid-template-columns: auto 1fr;
+    column-gap: 0.5rem;
+    align-items: center;
+}
+
+.mvu-warning__icon {
+    line-height: 1;
+}
+
+.mvu-warning__text {
+    word-break: break-word;
 }
 
 .mvu-advanced-grid {
