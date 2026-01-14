@@ -4,7 +4,7 @@
         <template #content>
             <div class="mvu-button-wrap">
                 <div
-                    v-for="button in buttons"
+                    v-for="button in visibleButtons"
                     :key="button.name"
                     class="menu_button menu_button_icon interactable"
                     tabindex="0"
@@ -21,6 +21,13 @@
 <script setup lang="ts">
 import { buttons } from '@/button';
 import Section from '@/panel/component/Section.vue';
+import { useSettingsStore } from '@/settings';
+import { computed } from 'vue';
+
+const store = useSettingsStore();
+const visibleButtons = computed(() =>
+    buttons.filter(button => !(button.is_legacy ?? false) || store.settings.legacy.显示老旧功能 === true)
+);
 </script>
 
 <style scoped>
