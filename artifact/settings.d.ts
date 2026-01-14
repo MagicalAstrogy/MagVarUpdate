@@ -329,3 +329,28 @@ export declare const useSettingsStore: import("pinia").StoreDefinition<"settings
         };
     }>;
 }, never>>;
+export declare const useTempContents: import("pinia").StoreDefinition<"temp_contents", Pick<{
+    temp_contents: import("vue").Ref<{
+        unsupported_warnings: string;
+    }, {
+        unsupported_warnings: string;
+    } | {
+        unsupported_warnings: string;
+    }>;
+}, "temp_contents">, Pick<{
+    temp_contents: import("vue").Ref<{
+        unsupported_warnings: string;
+    }, {
+        unsupported_warnings: string;
+    } | {
+        unsupported_warnings: string;
+    }>;
+}, never>, Pick<{
+    temp_contents: import("vue").Ref<{
+        unsupported_warnings: string;
+    }, {
+        unsupported_warnings: string;
+    } | {
+        unsupported_warnings: string;
+    }>;
+}, never>>;
