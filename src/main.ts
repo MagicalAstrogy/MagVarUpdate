@@ -16,7 +16,7 @@ import {
     unregisterFunction,
 } from '@/function_call';
 import { showNotifications } from '@/notifications';
-import { destroyPanel, initPanel } from '@/panel';
+import { initPanel } from '@/panel';
 import {
     getIsExtraModelSupported,
     handlePromptFilter,

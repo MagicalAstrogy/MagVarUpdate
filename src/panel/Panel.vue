@@ -25,7 +25,6 @@ import Update from '@/panel/Update.vue';
 
 <style scoped>
 .inline-drawer-content {
-    display: flex;
     flex-direction: column;
     gap: 0.75rem;
     padding-top: 0.5rem;
