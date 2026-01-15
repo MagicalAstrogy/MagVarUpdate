@@ -5338,6 +5338,15 @@ __metadata:
   languageName: node
   linkType: hard
 
+"jsonrepair@npm:^3.13.2":
+  version: 3.13.2
+  resolution: "jsonrepair@npm:3.13.2"
+  bin:
+    jsonrepair: bin/cli.js
+  checksum: d5ea8b4f92177efb432e5033821804c33689e6ea6fb59e6db7bf0df3e99acf96a1236d7ee0261f9582b3f249889ed9a3c237c04be45123a01ccbb0c7e423032e
+  languageName: node
+  linkType: hard
+
 "jszip@npm:^3.10.1":
   version: 3.10.1
   resolution: "jszip@npm:3.10.1"
@@ -5644,6 +5653,7 @@ __metadata:
     jest: ^29.7.0
     jest-localstorage-mock: ^2.4.26
     json5: ^2.2.3
+    jsonrepair: ^3.13.2
     jszip: ^3.10.1
     klona: ^2.0.6
     lodash: ^4.17.21
