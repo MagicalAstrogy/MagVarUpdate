@@ -1,13 +1,20 @@
 <template>
     <div class="mvu-section flex-container flexFlowColumn">
         <div class="mvu-section__title">
-            <strong><slot name="title" /></strong>
+            <strong>
+                <span>{{ label }}</span>
+            </strong>
+            <slot name="label-suffix" />
         </div>
         <div class="mvu-section__content flex-container flexFlowColumn">
             <slot name="content" />
         </div>
     </div>
 </template>
+
+<script setup lang="ts">
+defineProps<{ label: string }>();
+</script>
 
 <style scoped>
 .mvu-section {
