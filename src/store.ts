@@ -14,7 +14,7 @@ export const Settings = z
         更新方式: z.enum(['随AI输出', '额外模型解析']).default('随AI输出'),
         额外模型解析配置: z
             .object({
-                发送预设: z.boolean().default(true),
+                破限方案: z.enum(['使用内置破限', '使用当前预设']).default('使用内置破限'),
                 使用函数调用: z.boolean().default(false),
 
                 启用自动请求: z.boolean().default(true),
@@ -66,6 +66,7 @@ export const Settings = z
                 已提醒自动清理旧变量功能: z.boolean().default(false),
                 已提醒更新了API温度等配置: z.boolean().default(false),
                 已默认开启自动清理旧变量功能: z.boolean().default(false),
+                已提醒内置破限: z.boolean().default(false),
             })
             .prefault({}),
     })

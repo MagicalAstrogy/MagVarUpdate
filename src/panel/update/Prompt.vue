@@ -1,9 +1,13 @@
 <template>
     <Detail title="提示词设定">
         <Field label="破限方案">
-            <Checkbox v-model="store.settings.额外模型解析配置.发送预设">
-                <span>启用</span>
-            </Checkbox>
+            <template #label-suffix>
+                <HelpIcon :help="prompt_break_help" />
+            </template>
+            <Select
+                v-model="store.settings.额外模型解析配置.破限方案"
+                :options="['使用内置破限', '使用当前预设']"
+            />
         </Field>
 
         <Field label="函数调用">
@@ -21,6 +25,8 @@
 import Checkbox from '@/panel/component/Checkbox.vue';
 import Detail from '@/panel/component/Detail.vue';
 import Field from '@/panel/component/Field.vue';
+import Select from '@/panel/component/Select.vue';
+import prompt_break_help from '@/panel/update/prompt_break.md';
 import prompt_toolcall_help from '@/panel/update/prompt_toolcall.md';
 import { useDataStore } from '@/store';
 import { watch } from 'vue';

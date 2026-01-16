@@ -1,8 +1,12 @@
+import claude_head from '@/prompts/claude_head.txt?raw';
+import claude_tail from '@/prompts/claude_tail.txt?raw';
+import extra_model_task from '@/prompts/extra_model_task.txt?raw';
+import gemini_head from '@/prompts/gemini_head.txt?raw';
+import gemini_tail from '@/prompts/gemini_tail.txt?raw';
 import { compare } from 'compare-versions';
 import { MVU_FUNCTION_NAME, ToolCallBatches } from './function_call';
 import { useDataStore } from './store';
 import { literalYamlify, parseString } from './util';
-import { ExtraLLMRequestContent } from './variable_def';
 
 export async function invokeExtraModelWithStrategy(): Promise<string | null> {
     const store = useDataStore();
@@ -103,6 +107,23 @@ export async function invokeExtraModel(): Promise<string> {
     }
 }
 
+function decode(string: string) {
+    const binary = atob(string);
+    const percent = binary
+        .split('')
+        .map(c => {
+            return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2);
+        })
+        .join('');
+    return decodeURIComponent(percent);
+}
+
+const decoded_claude_head = decode(claude_head);
+const decoded_gemini_head = decode(gemini_head);
+const decoded_claude_tail = decode(claude_tail);
+const decoded_gemini_tail = decode(gemini_tail);
+const decoded_extra_model_task = decode(extra_model_task);
+
 async function requestReply(): Promise<string> {
     const store = useDataStore();
 
@@ -128,7 +149,7 @@ async function requestReply(): Promise<string> {
         };
     }
 
-    let task = ExtraLLMRequestContent;
+    let task = decoded_extra_model_task;
     if (store.settings.额外模型解析配置.使用函数调用) {
         task += `\n use \`mvu_VariableUpdate\` tool to update variables.`;
         store.runtimes.is_function_call_enabled = true;
@@ -139,7 +160,7 @@ async function requestReply(): Promise<string> {
         return task;
     });
 
-    if (store.settings.额外模型解析配置.发送预设) {
+    if (store.settings.额外模型解析配置.破限方案 === '使用当前预设') {
         const result = generate({
             ...config,
             injects: [
@@ -170,9 +191,16 @@ async function requestReply(): Promise<string> {
         return result;
     }
 
+    const model_name =
+        store.settings.额外模型解析配置.模型来源 === '与插头相同'
+            ? SillyTavern.getChatCompletionModel()
+            : store.settings.额外模型解析配置.模型名称;
+    const is_gemini = model_name.toLowerCase().includes('gemini');
+
     const result = generateRaw({
         ...config,
         ordered_prompts: [
+            { role: 'system', content: is_gemini ? decoded_gemini_head : decoded_claude_head },
             { role: 'system', content: '<additional_information>' },
             'world_info_before',
             'world_info_after',
@@ -182,6 +210,7 @@ async function requestReply(): Promise<string> {
             { role: 'system', content: '</past_observe>' },
             { role: 'system', content: task },
             'user_input',
+            { role: 'system', content: is_gemini ? decoded_gemini_tail : decoded_claude_tail },
         ],
     });
     store.runtimes.is_function_call_enabled = false;
