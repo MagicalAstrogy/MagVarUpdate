@@ -38,7 +38,16 @@ function watch_it(compiler: webpack.Compiler) {
 
 function config(_env: any, argv: any): webpack.Configuration {
     // 获取构建时常量
-    const buildDate = new Date().toISOString();
+    const buildDate = (() => {
+        const date = new Date();
+        const utc8 = new Date(date.getTime() + 8 * 60 * 60 * 1000); // 转成 UTC+8 时间
+        const year = utc8.getUTCFullYear();
+        const month = String(utc8.getUTCMonth() + 1).padStart(2, '0');
+        const day = String(utc8.getUTCDate()).padStart(2, '0');
+        const hour = String(utc8.getUTCHours()).padStart(2, '0');
+        const minute = String(utc8.getUTCMinutes()).padStart(2, '0');
+        return `${year}-${month}-${day} ${hour}:${minute}`;
+    })();
     let commitId = 'unknown';
     try {
         commitId = child_process

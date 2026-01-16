@@ -8,6 +8,7 @@ import {
     updateVariables,
 } from '@/function';
 import { overrideToolRequest, registerFunction, unregisterFunction } from '@/function_call';
+import { invokeExtraModelWithStrategy } from '@/invoke_extra_model';
 import { showNotifications } from '@/notifications';
 import { initPanel } from '@/panel';
 import { handlePromptFilter } from '@/prompt_filter';
@@ -26,7 +27,6 @@ import { exported_events, MvuData } from '@/variable_def';
 import { initCheck } from '@/variable_init';
 import { compare } from 'compare-versions';
 import { klona } from 'klona';
-import { invokeExtraModelWithStrategy } from '@/invoke_extra_model';
 
 async function onMessageReceived(message_id: number, extra_param?: any) {
     const current_chatmsg = getChatMessages(message_id).at(-1);
@@ -339,11 +339,6 @@ async function initialize() {
     });
 
     showNotifications();
-
-    toastr.info(
-        `构建信息: ${__BUILD_DATE__ ?? 'Unknown'} (${__COMMIT_ID__ ?? 'Unknown'})`,
-        '[MVU]脚本加载成功'
-    );
 }
 
 async function destroy() {
