@@ -16,6 +16,7 @@ export const Settings = z
             .object({
                 破限方案: z.enum(['使用内置破限', '使用当前预设']).default('使用内置破限'),
                 使用函数调用: z.boolean().default(false),
+                兼容假流式: z.boolean().default(true),
 
                 启用自动请求: z.boolean().default(true),
                 请求方式: z

@@ -1,5 +1,5 @@
 <template>
-    <Detail title="提示词设定">
+    <Detail title="请求内容">
         <Field label="破限方案">
             <template #label-suffix>
                 <HelpIcon :help="prompt_break_help" />
@@ -15,6 +15,17 @@
                 <HelpIcon :help="prompt_toolcall_help" />
             </template>
             <Checkbox v-model="store.settings.额外模型解析配置.使用函数调用">
+                <span>启用</span>
+            </Checkbox>
+        </Field>
+
+        <Field label="兼容假流式">
+            <template #label-suffix>
+                <HelpIcon
+                    help="勾选后, 额外模型解析将会要求 AI 流式传输, 从而兼容一些需要假流式来保活的渠道模型"
+                />
+            </template>
+            <Checkbox v-model="store.settings.额外模型解析配置.兼容假流式">
                 <span>启用</span>
             </Checkbox>
         </Field>

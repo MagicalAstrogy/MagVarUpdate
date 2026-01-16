@@ -176,7 +176,9 @@ async function requestReply(): Promise<string> {
     const config: GenerateRawConfig = {
         user_input: '遵循<must>指令',
         max_chat_history: 2,
-        should_stream: store.settings.额外模型解析配置.使用函数调用,
+        should_stream:
+            store.settings.额外模型解析配置.兼容假流式 ||
+            store.settings.额外模型解析配置.使用函数调用,
     };
     if (store.settings.额外模型解析配置.模型来源 === '自定义') {
         const unset_if_equal = (value: number, expected: number) =>
