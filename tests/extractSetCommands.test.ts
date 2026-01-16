@@ -1,5 +1,5 @@
-import { extractCommands, parseCommandValue, updateVariables } from '../src/function';
 import { MvuData } from '@/variable_def';
+import { extractCommands, parseCommandValue, updateVariables } from '../src/function';
 
 // 命令别名定义
 const ASSIGN_ALIASES = ['assign', 'insert'] as const;

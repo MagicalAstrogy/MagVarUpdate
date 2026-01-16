@@ -1,6 +1,6 @@
 // Global test setup
-import { createPinia, setActivePinia } from 'pinia';
 import _ from 'lodash';
+import { createPinia, setActivePinia } from 'pinia';
 
 // Make lodash available globally as it's used in the source code
 (globalThis as any)._ = _;

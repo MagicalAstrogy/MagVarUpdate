@@ -1,15 +1,15 @@
 import {
-    handleVariablesInCallback,
-    parseParameters,
-    trimQuotesAndBackslashes,
     getLastValidVariable,
-    updateVariables,
+    handleVariablesInCallback,
     handleVariablesInMessage,
+    parseParameters,
     pathFix,
+    trimQuotesAndBackslashes,
+    updateVariables,
 } from '@/function';
+import { useSettingsStore } from '@/settings';
 import { assertVWD, MvuData, VariableData } from '@/variable_def';
 import _ from 'lodash';
-import { useSettingsStore } from '@/settings';
 
 describe('parseParameters', () => {
     describe('基本参数解析', () => {

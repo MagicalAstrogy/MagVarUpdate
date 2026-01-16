@@ -1,4 +1,4 @@
-import { handlePromptFilter, getIsExtraModelSupported } from '@/prompt_filter';
+import { getIsExtraModelSupported, handlePromptFilter } from '@/prompt_filter';
 import { useSettingsStore, useTempContents } from '@/settings';
 import { setDuringExtraAnalysis } from '@/variable_def';
 

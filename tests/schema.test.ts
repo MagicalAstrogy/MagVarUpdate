@@ -1,18 +1,18 @@
+import { updateVariables } from '@/function';
 import {
+    EXTENSIBLE_MARKER,
     generateSchema,
     getSchemaForPath,
     reconcileAndApplySchema,
-    EXTENSIBLE_MARKER,
 } from '@/schema';
 import {
-    MvuData,
-    StatData,
-    SchemaNode,
-    ObjectSchemaNode,
-    isArraySchema,
     ArraySchemaNode,
+    MvuData,
+    ObjectSchemaNode,
+    SchemaNode,
+    StatData,
+    isArraySchema,
 } from '@/variable_def';
-import { updateVariables } from '@/function';
 
 describe('generateSchema', () => {
     describe('基本类型生成', () => {

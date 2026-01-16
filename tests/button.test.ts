@@ -1,10 +1,10 @@
 import { registerButtons } from '@/button';
-import { EXTENSIBLE_MARKER } from '@/schema';
 import { getLastValidVariable } from '@/function';
+import { EXTENSIBLE_MARKER } from '@/schema';
+import { useSettingsStore } from '@/settings';
+import { MvuData, variable_events } from '@/variable_def';
 import { createEmptyGameData, loadInitVarData } from '@/variable_init';
 import _ from 'lodash';
-import { MvuData, variable_events } from '@/variable_def';
-import { useSettingsStore } from '@/settings';
 
 // Mock only external dependencies
 jest.mock('@/function', () => ({
@@ -574,7 +574,7 @@ describe('RecurVariable function', () => {
                 },
             },
         };
-        var old_stat = _.cloneDeep(baseVariables.stat_data);
+        let old_stat = _.cloneDeep(baseVariables.stat_data);
 
         const silly = (globalThis as any).SillyTavern as any;
         silly.chat = [
@@ -627,7 +627,7 @@ describe('RecurVariable function', () => {
                     variables.display_data = {};
                 }
                 variables.display_data.replayCount = nextCount;
-                let ref_value = _.cloneDeep(variables_before_update.stat_data);
+                const ref_value = _.cloneDeep(variables_before_update.stat_data);
                 delete ref_value['$internal'];
                 expect(ref_value).toMatchObject(old_stat);
                 old_stat = _.cloneDeep(variables.stat_data);
