@@ -190,18 +190,20 @@ export async function initCheck() {
         await replaceVariables(variables, { type: 'message' });
     }
     try {
-        // 输出构建信息
-        toastr.info(
-            `有新的世界书初始化变量被加载，当前使用世界书:<br>${Object.entries(
-                variables.initialized_lorebooks ?? {}
-            )
-                .map(([key, value]) => `- ${key}: ${JSON.stringify(value)}`)
-                .join('<br>')}`,
-            '[MVU]变量初始化成功',
-            {
-                escapeHtml: false,
-            }
-        );
+        if (useDataStore().settings.通知.变量初始化成功) {
+            // 输出构建信息
+            toastr.info(
+                `有新的世界书初始化变量被加载，当前使用世界书:<br>${Object.entries(
+                    variables.initialized_lorebooks ?? {}
+                )
+                    .map(([key, value]) => `- ${key}: ${JSON.stringify(value)}`)
+                    .join('<br>')}`,
+                '[MVU]变量初始化成功',
+                {
+                    escapeHtml: false,
+                }
+            );
+        }
     } catch (_e) {
         /* empty */
     }

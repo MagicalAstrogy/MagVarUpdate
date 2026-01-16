@@ -1,6 +1,9 @@
 <template>
     <Section label="通知设置">
         <template #content>
+            <Checkbox v-model="store.settings.通知.变量初始化成功">
+                <span>变量初始化成功时通知</span>
+            </Checkbox>
             <Checkbox v-model="store.settings.通知.变量更新出错">
                 <span>变量初始化/更新出错时通知</span>
             </Checkbox>
