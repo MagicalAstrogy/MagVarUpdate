@@ -18,5 +18,6 @@ module.exports = {
             tsconfig: 'tsconfig.test.json',
         },
     },
+    setupFiles: ['jest-localstorage-mock'],
     setupFilesAfterEnv: ['<rootDir>/tests/setup.ts'],
 };
