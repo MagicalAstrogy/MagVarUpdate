@@ -1,11 +1,10 @@
 import { getLastValidVariable, handleVariablesInMessage, updateVariables } from '@/function';
 import { cleanUpMetadata, reconcileAndApplySchema } from '@/schema';
-import { useSettingsStore } from '@/settings';
+import { useDataStore } from '@/store';
 import { updateDescriptions } from '@/update_descriptions';
 import { findLastValidMessage, isFunctionCallingSupported, scopedEventOn } from '@/util';
 import { MvuData } from '@/variable_def';
 import { createEmptyGameData, loadInitVarData } from '@/variable_init';
-import { getIsExtraModelSupported } from '@/prompt_filter';
 import { klona } from 'klona';
 
 interface Button {
@@ -23,18 +22,18 @@ export function SetReceivedCallbackFn(fn: OnMessageReceived) {
 }
 
 async function EmitVariableAnalysisJob() {
-    const settings = useSettingsStore().settings;
-    if (settings.更新方式 === '随AI输出') {
+    const store = useDataStore();
+    if (store.settings.更新方式 === '随AI输出') {
         toastr.info(`当前配置没有启用额外模型解析，不需要进行此操作`, '[MVU]重试额外模型解析', {
             timeOut: 3000,
         });
         return;
-    } else if (settings.额外模型解析配置.使用函数调用 && !isFunctionCallingSupported()) {
+    } else if (store.settings.额外模型解析配置.使用函数调用 && !isFunctionCallingSupported()) {
         toastr.info(`当前配置指定的LLM不支持函数调用，不需要进行此操作`, '[MVU]重试额外模型解析', {
             timeOut: 3000,
         });
         return;
-    } else if (!getIsExtraModelSupported()) {
+    } else if (!store.runtimes.is_extra_model_supported) {
         toastr.info(
             `当前角色卡不支持额外模型解析，或是刚刚刷新页面，无法进行此操作`,
             '[MVU]重试额外模型解析',
@@ -276,7 +275,7 @@ export const buttons: Button[] = [
             // @ts-expect-error 该函数可用
             await setChatMessage({}, message_id);
 
-            if (useSettingsStore().settings.更新到聊天变量) {
+            if (useDataStore().settings.更新到聊天变量) {
                 await replaceVariables(merged_data, { type: 'chat' });
             }
 
@@ -329,7 +328,7 @@ export const buttons: Button[] = [
     {
         name: '清除旧楼层变量',
         function: async () => {
-            const snapshot_interval = useSettingsStore().settings.快照保留间隔;
+            const snapshot_interval = useDataStore().settings.快照保留间隔;
             const result = (await SillyTavern.callGenericPopup(
                 `<h4>清除旧楼层变量信息以减小聊天文件大小避免手机崩溃</h4>请填写要保留变量信息的楼层数 (如 10 为保留最后 10 层，每 [${snapshot_interval}] 层保留一层作为快照)，每 <br><strong>注意: 你需要通过重演才能回退游玩到没保留变量信息的楼层</strong>`,
                 SillyTavern.POPUP_TYPE.INPUT,

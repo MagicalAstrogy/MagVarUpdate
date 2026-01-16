@@ -4,7 +4,7 @@ import {
     getSchemaForPath,
     reconcileAndApplySchema,
 } from '@/schema';
-import { useSettingsStore } from '@/settings';
+import { useDataStore } from '@/store';
 import { parseString, saveChatDebounced } from '@/util';
 import {
     assertVWD,
@@ -1427,7 +1427,7 @@ export async function updateVariables(
         variables,
         variables_before_update
     );
-    if (error_info && useSettingsStore().settings.通知.变量更新出错) {
+    if (error_info && useDataStore().settings.通知.变量更新出错) {
         const base_command: string = error_info.error_command.full_match;
         if (typeof toastr !== 'undefined')
             toastr.warning(
@@ -1453,7 +1453,7 @@ export async function handleVariablesInMessage(message_id: number) {
     }
     const request_message_id = message_id === 0 ? 0 : message_id - 1;
     const variables = await getLastValidVariable(request_message_id);
-    const settings = useSettingsStore().settings;
+    const settings = useDataStore().settings;
     if (!_.has(variables, 'stat_data')) {
         return;
     }

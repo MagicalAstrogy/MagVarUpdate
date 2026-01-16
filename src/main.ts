@@ -11,18 +11,13 @@ import {
     MVU_FUNCTION_NAME,
     overrideToolRequest,
     registerFunction,
-    setFunctionCallEnabled,
     ToolCallBatches,
     unregisterFunction,
 } from '@/function_call';
 import { showNotifications } from '@/notifications';
 import { initPanel } from '@/panel';
-import {
-    getIsExtraModelSupported,
-    handlePromptFilter,
-    setIsExtraModelSupported,
-} from '@/prompt_filter';
-import { useSettingsStore, useTempContents } from '@/settings';
+import { handlePromptFilter } from '@/prompt_filter';
+import { useDataStore } from '@/store';
 import {
     clearScopedEvent,
     findLastValidMessage,
@@ -34,28 +29,12 @@ import {
     parseString,
     scopedEventOn,
 } from '@/util';
-import {
-    exported_events,
-    ExtraLLMRequestContent,
-    isDuringExtraAnalysis,
-    MvuData,
-    setDuringExtraAnalysis,
-} from '@/variable_def';
+import { exported_events, ExtraLLMRequestContent, MvuData } from '@/variable_def';
 import { initCheck } from '@/variable_init';
 import { compare } from 'compare-versions';
 import { klona } from 'klona';
 
 let vanilla_parseToolCalls: any = null;
-
-async function updateGenState() {
-    updateVariablesWith(
-        variables => {
-            _.set(variables, 'extra_analysis', isDuringExtraAnalysis());
-            return variables;
-        },
-        { type: 'global' }
-    );
-}
 
 async function onMessageReceived(message_id: number, extra_param?: any) {
     const current_chatmsg = getChatMessages(message_id).at(-1);
@@ -69,14 +48,13 @@ async function onMessageReceived(message_id: number, extra_param?: any) {
         return;
     }
 
-    const settings = useSettingsStore().settings;
-    setDuringExtraAnalysis(false);
+    const store = useDataStore();
+    store.runtimes.is_during_extra_analysis = false;
 
-    const extra_model_supported = getIsExtraModelSupported();
     if (
-        settings.更新方式 === '随AI输出' ||
-        (settings.额外模型解析配置.使用函数调用 && !isFunctionCallingSupported()) || //与上面相同的退化情况。
-        extra_model_supported === false // 角色卡未适配时, 依旧使用 "随AI输出"
+        store.settings.更新方式 === '随AI输出' ||
+        (store.settings.额外模型解析配置.使用函数调用 && !isFunctionCallingSupported()) || //与上面相同的退化情况。
+        store.runtimes.is_extra_model_supported === false // 角色卡未适配时, 依旧使用 "随AI输出"
     ) {
         await handleVariablesInMessage(message_id);
         return;
@@ -87,17 +65,17 @@ async function onMessageReceived(message_id: number, extra_param?: any) {
         return;
     }
 
-    if (settings.自动触发额外模型解析 === false && extra_param !== 'manual_emit') {
+    if (store.settings.自动触发额外模型解析 === false && extra_param !== 'manual_emit') {
         console.log('[MVU] 不自动触发额外模型解析');
         return;
     }
 
-    setDuringExtraAnalysis(true);
+    store.runtimes.is_during_extra_analysis = true;
     let user_input = ExtraLLMRequestContent;
-    if (settings.额外模型解析配置.使用函数调用) {
+    if (store.settings.额外模型解析配置.使用函数调用) {
         user_input += `\n use \`mvu_VariableUpdate\` tool to update variables.`;
     }
-    const generateFn = settings.额外模型解析配置.发送预设 === false ? generateRaw : generate;
+    const generateFn = store.settings.额外模型解析配置.发送预设 === false ? generateRaw : generate;
 
     let result: string = '';
     let retries = 0;
@@ -110,7 +88,7 @@ async function onMessageReceived(message_id: number, extra_param?: any) {
             },
             { type: 'global' }
         );
-        setFunctionCallEnabled(true);
+        store.runtimes.is_function_call_enabled = true;
         //因为部分预设会用到 {{lastUserMessage}}，因此进行修正。
         console.log('Before RegisterMacro');
         SillyTavern.registerMacro('lastUserMessage', () => {
@@ -145,7 +123,7 @@ async function onMessageReceived(message_id: number, extra_param?: any) {
         ]; //部分预设会在后面强调 user_input 的演绎行为，需要找个方式肘掉它
 
         let collected_tool_calls: ToolCallBatches | undefined = undefined;
-        if (settings.额外模型解析配置.使用函数调用) {
+        if (store.settings.额外模型解析配置.使用函数调用) {
             vanilla_parseToolCalls = SillyTavern.ToolManager.parseToolCalls;
             const vanilla_bound = SillyTavern.ToolManager.parseToolCalls.bind(
                 SillyTavern.ToolManager
@@ -157,7 +135,7 @@ async function onMessageReceived(message_id: number, extra_param?: any) {
         }
 
         for (retries = 0; retries < 3; retries++) {
-            if (settings.通知.额外模型解析中) {
+            if (store.settings.通知.额外模型解析中) {
                 toastr.info(
                     `[MVU]额外模型分析变量更新中...${retries === 0 ? '' : ` 重试 ${retries}/3`}`
                 );
@@ -168,34 +146,34 @@ async function onMessageReceived(message_id: number, extra_param?: any) {
                     ? 'unset'
                     : value;
             const current_result = await generateFn(
-                settings.额外模型解析配置.模型来源 === '与插头相同'
+                store.settings.额外模型解析配置.模型来源 === '与插头相同'
                     ? {
                           user_input: `遵循后续的 <must> 指令`,
                           injects: promptInjects,
                           max_chat_history: 2,
-                          should_stream: settings.额外模型解析配置.使用函数调用,
+                          should_stream: store.settings.额外模型解析配置.使用函数调用,
                       }
                     : {
                           user_input: `遵循后续的 <must> 指令`,
                           custom_api: {
-                              apiurl: settings.额外模型解析配置.api地址,
-                              key: settings.额外模型解析配置.密钥,
-                              model: settings.额外模型解析配置.模型名称,
-                              max_tokens: settings.额外模型解析配置.最大回复token数,
-                              temperature: unset_if_equal(settings.额外模型解析配置.温度, 1),
+                              apiurl: store.settings.额外模型解析配置.api地址,
+                              key: store.settings.额外模型解析配置.密钥,
+                              model: store.settings.额外模型解析配置.模型名称,
+                              max_tokens: store.settings.额外模型解析配置.最大回复token数,
+                              temperature: unset_if_equal(store.settings.额外模型解析配置.温度, 1),
                               frequency_penalty: unset_if_equal(
-                                  settings.额外模型解析配置.频率惩罚,
+                                  store.settings.额外模型解析配置.频率惩罚,
                                   0
                               ),
                               presence_penalty: unset_if_equal(
-                                  settings.额外模型解析配置.存在惩罚,
+                                  store.settings.额外模型解析配置.存在惩罚,
                                   0
                               ),
-                              top_p: unset_if_equal(settings.额外模型解析配置.top_p, 1),
+                              top_p: unset_if_equal(store.settings.额外模型解析配置.top_p, 1),
                           },
                           injects: promptInjects,
                           max_chat_history: 2,
-                          should_stream: settings.额外模型解析配置.使用函数调用,
+                          should_stream: store.settings.额外模型解析配置.使用函数调用,
                       }
             );
             if (collected_tool_calls !== undefined) {
@@ -285,10 +263,10 @@ async function onMessageReceived(message_id: number, extra_param?: any) {
             },
             { type: 'global' }
         );
-        setFunctionCallEnabled(false);
-        setDuringExtraAnalysis(false);
+        store.runtimes.is_function_call_enabled = false;
+        store.runtimes.is_during_extra_analysis = false;
         //因为 generate 过程中会使得这个变量变为 false，影响重试。
-        setIsExtraModelSupported(true);
+        store.runtimes.is_extra_model_supported = true;
     }
 
     if (result !== '') {
@@ -332,10 +310,8 @@ async function initialize() {
         );
     }
 
-    const store = useSettingsStore();
-
-    const temp_contents = useTempContents().temp_contents;
-    temp_contents.unsupported_warnings = '';
+    const store = useDataStore();
+    store.resetRuntimes();
 
     registerButtons();
 
@@ -433,7 +409,7 @@ async function initialize() {
             //默认参数下，debounce 是尾触发的，在这个场景意味着所有删除操作结束后，才会进行恢复操作
             const last_message_id = SillyTavern.chat.length - 1;
 
-            const store = useSettingsStore();
+            const store = useDataStore();
             const { 触发恢复变量的最近楼层数 } = store.settings.auto_cleanup;
 
             const last_10th_message_id = Math.max(1, last_message_id - 触发恢复变量的最近楼层数);
@@ -517,7 +493,6 @@ async function initialize() {
     );
 
     await initCheck();
-    scopedEventOn(tavern_events.GENERATION_STARTED, updateGenState);
     scopedEventOn(tavern_events.GENERATION_STARTED, initCheck);
     scopedEventOn(tavern_events.MESSAGE_SENT, initCheck);
     scopedEventOn(tavern_events.MESSAGE_SENT, handleVariablesInMessage);
@@ -541,7 +516,7 @@ async function initialize() {
 
     // 清理旧楼层变量，这个操作的优先级需要比更新操作低，保证在所有事情做完之后，再进行变量的清理。
     scopedEventOn(tavern_events.MESSAGE_RECEIVED, message_id => {
-        const store = useSettingsStore();
+        const store = useDataStore();
         const { 启用 } = store.settings.auto_cleanup;
         if (!启用) {
             return;

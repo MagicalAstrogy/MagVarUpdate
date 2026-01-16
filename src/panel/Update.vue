@@ -11,14 +11,14 @@
 
             <template
                 v-if="
-                    temp_contents.unsupported_warnings !== '' &&
+                    store.runtimes.unsupported_warnings !== '' &&
                     store.settings.更新方式 === '额外模型解析'
                 "
             >
                 <div class="mvu-warning">
                     <span class="mvu-warning__icon">ℹ️</span>
                     <span class="mvu-warning__text">
-                        世界书 [{{ temp_contents.unsupported_warnings }}]
+                        世界书 [{{ store.runtimes.unsupported_warnings }}]
                         不支持额外模型解析，不会包含在额外模型解析轮次中，适配 [mvu_update]
                         条目即可避免。
                     </span>
@@ -159,15 +159,14 @@ import Select from '@/panel/component/Select.vue';
 import auto_analyze_help from '@/panel/help/auto_analyze.md';
 import panel_extra_mode_help from '@/panel/help/extra_mode.md';
 import panel_method_help from '@/panel/help/update_method.md';
-import { useSettingsStore, useTempContents } from '@/settings';
+import { useDataStore } from '@/store';
 import { getTavernHelperVersion } from '@/util';
 import { compare } from 'compare-versions';
 import { watch } from 'vue';
 
 const additional_extra_configuration_supported = compare(getTavernHelperVersion(), '4.0.14', '>=');
 
-const store = useSettingsStore();
-const temp_contents = useTempContents().temp_contents;
+const store = useDataStore();
 
 watch(
     () => store.settings.额外模型解析配置.使用函数调用,

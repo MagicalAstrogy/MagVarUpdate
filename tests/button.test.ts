@@ -1,7 +1,7 @@
 import { registerButtons } from '@/button';
 import { getLastValidVariable } from '@/function';
 import { EXTENSIBLE_MARKER } from '@/schema';
-import { useSettingsStore } from '@/settings';
+import { useDataStore } from '@/store';
 import { MvuData, variable_events } from '@/variable_def';
 import { createEmptyGameData, loadInitVarData } from '@/variable_init';
 import _ from 'lodash';
@@ -279,7 +279,7 @@ describe('reloadInit function', () => {
 
     describe('Complete workflow', () => {
         test('should execute complete reload workflow successfully (更新到聊天变量=false)', async () => {
-            useSettingsStore().settings.更新到聊天变量 = false;
+            useDataStore().settings.更新到聊天变量 = false;
 
             const init_data = {
                 stat_data: { init: 'data' },
@@ -344,7 +344,7 @@ describe('reloadInit function', () => {
         });
 
         test('should execute complete reload workflow successfully (更新到聊天变量=true)', async () => {
-            useSettingsStore().settings.更新到聊天变量 = true;
+            useDataStore().settings.更新到聊天变量 = true;
 
             const init_data = {
                 stat_data: { init: 'data' },

@@ -1,13 +1,13 @@
 import { handleVariablesInCallback, updateVariable } from '@/function';
 import {
     extractRecord,
-    isDuringExtraAnalysis,
     isValueWithDescription,
     MvuData,
     variable_events,
     VariableData,
 } from '@/variable_def';
 import { loadInitVarData } from '@/variable_init';
+import { useDataStore } from './store';
 
 type CommandNames = 'set' | 'insert' | 'delete' | 'add';
 
@@ -374,7 +374,7 @@ function createMVU() {
         /**
          * @brief 返回当前轮次是否属于额外模型解析轮次。
          */
-        isDuringExtraAnalysis: isDuringExtraAnalysis,
+        isDuringExtraAnalysis: () => useDataStore().runtimes.is_during_extra_analysis,
     };
     return mvu;
 }

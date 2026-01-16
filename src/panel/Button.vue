@@ -21,12 +21,14 @@
 <script setup lang="ts">
 import { buttons } from '@/button';
 import Section from '@/panel/component/Section.vue';
-import { useSettingsStore } from '@/settings';
+import { useDataStore } from '@/store';
 import { computed } from 'vue';
 
-const store = useSettingsStore();
+const store = useDataStore();
 const visibleButtons = computed(() =>
-    buttons.filter(button => !(button.is_legacy ?? false) || store.settings.legacy.显示老旧功能 === true)
+    buttons.filter(
+        button => !(button.is_legacy ?? false) || store.settings.legacy.显示老旧功能 === true
+    )
 );
 </script>
 

@@ -54,9 +54,9 @@
 import Checkbox from '@/panel/component/Checkbox.vue';
 import Field from '@/panel/component/Field.vue';
 import Section from '@/panel/component/Section.vue';
-import { useSettingsStore } from '@/settings';
+import { useDataStore } from '@/store';
 
-const store = useSettingsStore();
+const store = useDataStore();
 </script>
 
 <style scoped>

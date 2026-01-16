@@ -15,7 +15,7 @@
 <script setup lang="ts">
 import Checkbox from '@/panel/component/Checkbox.vue';
 import Section from '@/panel/component/Section.vue';
-import { useSettingsStore } from '@/settings';
+import { useDataStore } from '@/store';
 
-const store = useSettingsStore();
+const store = useDataStore();
 </script>

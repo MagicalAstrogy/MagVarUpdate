@@ -81,3 +81,4 @@ beforeEach(() => {
 (globalThis as any).getCurrentCharPrimaryLorebook = jest.fn();
 (globalThis as any).getAvailableLorebooks = jest.fn();
 (globalThis as any).substitudeMacros = jest.fn(input => input);
+(globalThis as any).insertOrAssignVariables = jest.fn();

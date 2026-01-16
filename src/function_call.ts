@@ -1,5 +1,5 @@
 import { getLastValidVariable, updateVariables } from '@/function';
-import { useSettingsStore } from '@/settings';
+import { useDataStore } from '@/store';
 
 /**
  * 最终的变量更新机制实际上是专门generate 一个新的请求，那个请求会通过 tool_call 直接更新变量。
@@ -53,12 +53,6 @@ export type ToolCallBatches = ToolCallBatch[];
 /** 已知的工具名：先收窄 mvu_VariableUpdate，保留 string 兼容其它 */
 export type ToolName = typeof MVU_FUNCTION_NAME | (string & {});
 
-let is_function_call_enabled: boolean = false;
-
-export function setFunctionCallEnabled(enabled: boolean) {
-    is_function_call_enabled = enabled;
-}
-
 export function unregisterFunction() {
     SillyTavern.unregisterFunctionTool(MVU_FUNCTION_NAME);
     SillyTavern.unregisterFunctionTool(mvu_update_call_function_name);
@@ -100,7 +94,7 @@ async function onVariableUpdatedCall(args: any): Promise<string> {
     }
 
     const has_variable_modified = await updateVariables(args.delta, variables);
-    if (has_variable_modified && useSettingsStore().settings.更新到聊天变量) {
+    if (has_variable_modified && useDataStore().settings.更新到聊天变量) {
         await replaceVariables(variables, { type: 'chat' });
     }
     await replaceVariables(variables, { type: 'message', message_id: message_id });
@@ -171,11 +165,11 @@ export function registerFunction() {
         description: 'use this tool to UpdateVariable.',
         parameters: mvu_update_schema,
         shouldRegister: () => {
-            if (!is_function_call_enabled) {
+            const store = useDataStore();
+            if (!store.runtimes.is_function_call_enabled) {
                 return false;
             }
-            const settings = useSettingsStore().settings;
-            return settings.额外模型解析配置.使用函数调用;
+            return store.settings.额外模型解析配置.使用函数调用;
         },
         action: onVariableUpdatedCall,
         formatMessage: () => '',
@@ -198,7 +192,7 @@ export function registerFunction() {
             '**ALWAYS** call this function to end each response. By use this tool, output the `<UpdateVariable>` block is no longer necessary;',
         parameters: mvuRoundUpdateSchema,
         shouldRegister: () => {
-            const settings = useSettingsStore().settings;
+            const settings = useDataStore().settings;
             if (settings.更新方式 === '额外轮次函数调用') {
                 const message_id = getLastMessageId();
                 const chat_message = getChatMessages(message_id).at(-1);
@@ -221,11 +215,11 @@ export function registerFunction() {
 }
 
 export function overrideToolRequest(generate_data: any) {
-    const settings = useSettingsStore().settings;
-    if (settings.更新方式 !== '额外模型解析' || settings.额外模型解析配置.使用函数调用 !== true) {
+    const store = useDataStore();
+    if (store.settings.更新方式 !== '额外模型解析' || store.settings.额外模型解析配置.使用函数调用 !== true) {
         return;
     }
-    if (!is_function_call_enabled) {
+    if (!store.runtimes.is_function_call_enabled) {
         return;
     }
     if (generate_data.tools !== undefined && _.size(generate_data.tools) > 0) {

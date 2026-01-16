@@ -7,7 +7,7 @@ import {
     trimQuotesAndBackslashes,
     updateVariables,
 } from '@/function';
-import { useSettingsStore } from '@/settings';
+import { useDataStore } from '@/store';
 import { assertVWD, MvuData, VariableData } from '@/variable_def';
 import _ from 'lodash';
 
@@ -708,7 +708,7 @@ describe('handleVariablesInMessage', () => {
 
     test('应该保留chat级别变量的其他属性，只更新必要的字段', async () => {
         //这个用例同时会测试更新到聊天变量的有效性，下面预期同时更新楼层和聊天变量。
-        useSettingsStore().settings.更新到聊天变量 = true;
+        useDataStore().settings.更新到聊天变量 = true;
 
         const mockChatVariables = {
             stat_data: { health: 100, mana: 50 },
@@ -784,7 +784,7 @@ describe('handleVariablesInMessage', () => {
 
     test('覆盖消息级别变量', async () => {
         //这个用例同时会测试更新到聊天变量的有效性，下面预期只会更新楼层变量。也就是默认行为
-        useSettingsStore().settings.更新到聊天变量 = false;
+        useDataStore().settings.更新到聊天变量 = false;
 
         // 模拟消息已有的变量（之前的状态）
         const existingMessageVariables = {

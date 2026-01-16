@@ -1,7 +1,7 @@
 // 整体游戏数据类型
 import { getLastValidVariable, updateVariables } from '@/function';
 import { cleanUpMetadata, EXTENSIBLE_MARKER, generateSchema } from '@/schema';
-import { useSettingsStore } from '@/settings';
+import { useDataStore } from '@/store';
 import { correctlyMerge, parseString } from '@/util';
 import {
     isObjectSchema,
@@ -121,7 +121,7 @@ export async function initCheck() {
         return;
     }
 
-    if (useSettingsStore().settings.更新到聊天变量) {
+    if (useDataStore().settings.更新到聊天变量) {
         console.info(`Init chat variables.`);
         await updateVariablesWith(data => _.assign(data, variables), { type: 'chat' });
     }

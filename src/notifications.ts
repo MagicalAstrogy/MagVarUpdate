@@ -1,7 +1,7 @@
-import { useSettingsStore } from '@/settings';
+import { useDataStore } from '@/store';
 
 export function showNotifications() {
-    const store = useSettingsStore();
+    const store = useDataStore();
 
     if (store.settings.internal.已提醒更新了配置界面 === false) {
         toastr.info(
