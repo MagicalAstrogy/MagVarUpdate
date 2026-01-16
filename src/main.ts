@@ -26,7 +26,6 @@ import { useSettingsStore, useTempContents } from '@/settings';
 import {
     clearScopedEvent,
     findLastValidMessage,
-    getSillyTavernVersion,
     getTavernHelperVersion,
     initSillyTavernVersion,
     initTavernHelperVersion,
@@ -114,11 +113,6 @@ async function onMessageReceived(message_id: number, extra_param?: any) {
         setFunctionCallEnabled(true);
         //因为部分预设会用到 {{lastUserMessage}}，因此进行修正。
         console.log('Before RegisterMacro');
-        if (compare(getSillyTavernVersion(), '1.13.4', '<=')) {
-            //https://github.com/SillyTavern/SillyTavern/pull/4614
-            //需要等待1s来错开 dry_run
-            await new Promise(res => setTimeout(res, 1000));
-        }
         SillyTavern.registerMacro('lastUserMessage', () => {
             return user_input;
         });
