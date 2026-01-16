@@ -30,6 +30,7 @@ export function showNotifications() {
             'MVU 现在会自动清理较老楼层上的变量信息，以降低聊天文件大小。',
             '[MVU]已更新自动清理配置'
         );
-        //会在 main.ts 中进行具体的设置操作，所以提醒部分不需更新。
+        store.settings.internal.已提醒自动清理旧变量功能 = true;
+        store.settings.自动清理变量.启用 = true;
     }
 }

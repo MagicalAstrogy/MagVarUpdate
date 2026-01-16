@@ -2,7 +2,7 @@
     <Section>
         <template #title>自动清理变量</template>
         <template #content>
-            <Checkbox v-model="store.settings.auto_cleanup.启用">
+            <Checkbox v-model="store.settings.自动清理变量.启用">
                 <span>启用自动清理变量</span>
             </Checkbox>
 
@@ -12,7 +12,7 @@
                     <Field id="mvu_snapshot_keep_interval" label="快照保留间隔">
                         <input
                             id="mvu_snapshot_keep_interval"
-                            v-model.number="store.settings.快照保留间隔"
+                            v-model.number="store.settings.自动清理变量.快照保留间隔"
                             type="number"
                             min="1"
                             step="1"
@@ -24,7 +24,7 @@
                     <Field id="mvu_keep_recent_floors" label="要保留变量的最近楼层数">
                         <input
                             id="mvu_keep_recent_floors"
-                            v-model.number="store.settings.auto_cleanup.要保留变量的最近楼层数"
+                            v-model.number="store.settings.自动清理变量.要保留变量的最近楼层数"
                             type="number"
                             min="1"
                             step="1"
@@ -36,7 +36,7 @@
                     <Field id="mvu_restore_recent_floors" label="触发恢复变量的最近楼层数">
                         <input
                             id="mvu_restore_recent_floors"
-                            v-model.number="store.settings.auto_cleanup.触发恢复变量的最近楼层数"
+                            v-model.number="store.settings.自动清理变量.触发恢复变量的最近楼层数"
                             type="number"
                             min="1"
                             step="1"

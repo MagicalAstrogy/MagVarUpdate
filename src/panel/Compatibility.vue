@@ -2,12 +2,12 @@
     <Section>
         <template #title>兼容性</template>
         <template #content>
-            <Checkbox v-model="store.settings.更新到聊天变量">
+            <Checkbox v-model="store.settings.兼容性.更新到聊天变量">
                 <span>变量更新到聊天变量</span>
                 <HelpIcon :help="chat_variable_help" />
             </Checkbox>
 
-            <Checkbox v-model="store.settings.legacy.显示老旧功能">
+            <Checkbox v-model="store.settings.兼容性.显示老旧功能">
                 <span>显示老旧功能</span>
             </Checkbox>
         </template>

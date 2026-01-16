@@ -27,7 +27,7 @@ import { computed } from 'vue';
 const store = useDataStore();
 const visibleButtons = computed(() =>
     buttons.filter(
-        button => !(button.is_legacy ?? false) || store.settings.legacy.显示老旧功能 === true
+        button => !(button.is_legacy ?? false) || store.settings.兼容性.显示老旧功能 === true
     )
 );
 </script>

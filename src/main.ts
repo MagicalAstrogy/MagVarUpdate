@@ -65,7 +65,7 @@ async function onMessageReceived(message_id: number, extra_param?: any) {
         return;
     }
 
-    if (store.settings.自动触发额外模型解析 === false && extra_param !== 'manual_emit') {
+    if (store.settings.额外模型解析配置.启用自动请求 === false && extra_param !== 'manual_emit') {
         console.log('[MVU] 不自动触发额外模型解析');
         return;
     }
@@ -315,15 +315,14 @@ async function initialize() {
 
     registerButtons();
 
-    if (store.settings.更新到聊天变量 === false) {
+    if (store.settings.兼容性.更新到聊天变量 === false) {
         await removeChatVariables();
     }
 
-    const { 要保留变量的最近楼层数, 启用 } = store.settings.auto_cleanup;
     // 对于旧聊天文件, 清理过早楼层的变量
     if (
-        启用 &&
-        SillyTavern.chat.length > 要保留变量的最近楼层数 + 5 &&
+        store.settings.自动清理变量.启用 &&
+        SillyTavern.chat.length > store.settings.自动清理变量.要保留变量的最近楼层数 + 5 &&
         _.has(SillyTavern.chat, [1, 'variables', 0, 'stat_data']) &&
         !_.has(SillyTavern.chat, [1, 'variables', 0, 'ignore_cleanup'])
     ) {
@@ -390,8 +389,10 @@ async function initialize() {
             if (result === SillyTavern.POPUP_RESULT.AFFIRMATIVE || is_backup_success) {
                 const counter = cleanupVariablesInMessages(
                     1, //0 层永不清理，以保证始终有快照能力。
-                    SillyTavern.chat.length - 1 - 要保留变量的最近楼层数,
-                    store.settings.快照保留间隔
+                    SillyTavern.chat.length -
+                        1 -
+                        store.settings.自动清理变量.要保留变量的最近楼层数,
+                    store.settings.自动清理变量.快照保留间隔
                 );
                 if (counter > 0) {
                     toastr.info(`已清理老聊天记录中的 ${counter} 条消息`, '[MVU]自动清理', {
@@ -410,7 +411,7 @@ async function initialize() {
             const last_message_id = SillyTavern.chat.length - 1;
 
             const store = useDataStore();
-            const { 触发恢复变量的最近楼层数 } = store.settings.auto_cleanup;
+            const { 触发恢复变量的最近楼层数 } = store.settings.自动清理变量;
 
             const last_10th_message_id = Math.max(1, last_message_id - 触发恢复变量的最近楼层数);
             const last_not_has_variable_message_id = SillyTavern.chat.findLastIndex(
@@ -424,7 +425,10 @@ async function initialize() {
                 return;
             }
 
-            const last_20th_message_id = Math.max(1, last_message_id - 要保留变量的最近楼层数);
+            const last_20th_message_id = Math.max(
+                1,
+                last_message_id - store.settings.自动清理变量.要保留变量的最近楼层数
+            );
             const snapshot_message_id = findLastValidMessage(last_20th_message_id);
             if (
                 snapshot_message_id === -1 ||
@@ -517,30 +521,28 @@ async function initialize() {
     // 清理旧楼层变量，这个操作的优先级需要比更新操作低，保证在所有事情做完之后，再进行变量的清理。
     scopedEventOn(tavern_events.MESSAGE_RECEIVED, message_id => {
         const store = useDataStore();
-        const { 启用 } = store.settings.auto_cleanup;
-        if (!启用) {
+        if (!store.settings.自动清理变量.启用) {
             return;
         }
         if (SillyTavern.chat.length % 5 !== 0) {
             return; // 每 5 层执行一次清理。
         }
-        const old_message_id = message_id - 要保留变量的最近楼层数; //排除对应楼层为user楼层的场合
+        const old_message_id = message_id - store.settings.自动清理变量.要保留变量的最近楼层数; //排除对应楼层为user楼层的场合
         if (old_message_id > 0) {
             const counter = cleanupVariablesInMessages(
                 //考虑到部分情况下会 消息楼层会是 user，所以需要 * 2，寻找更远范围的。
-                Math.max(1, old_message_id - 2 - 要保留变量的最近楼层数 * 2), // 因为没有监听 MESSAGE_SENT
+                Math.max(
+                    1,
+                    old_message_id - 2 - store.settings.自动清理变量.要保留变量的最近楼层数 * 2
+                ), // 因为没有监听 MESSAGE_SENT
                 old_message_id,
-                store.settings.快照保留间隔
+                store.settings.自动清理变量.快照保留间隔
             );
             console.log(`[MVU]已清理 ${counter} 层的消息`);
         }
     });
 
     showNotifications();
-    if (store.settings.internal.已默认开启自动清理旧变量功能 === false) {
-        store.settings.internal.已默认开启自动清理旧变量功能 = true;
-        store.settings.auto_cleanup.启用 = true;
-    }
 
     toastr.info(
         `构建信息: ${__BUILD_DATE__ ?? 'Unknown'} (${__COMMIT_ID__ ?? 'Unknown'})`,

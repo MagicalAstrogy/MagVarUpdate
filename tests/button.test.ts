@@ -279,7 +279,7 @@ describe('reloadInit function', () => {
 
     describe('Complete workflow', () => {
         test('should execute complete reload workflow successfully (更新到聊天变量=false)', async () => {
-            useDataStore().settings.更新到聊天变量 = false;
+            useDataStore().settings.兼容性.更新到聊天变量 = false;
 
             const init_data = {
                 stat_data: { init: 'data' },
@@ -344,7 +344,7 @@ describe('reloadInit function', () => {
         });
 
         test('should execute complete reload workflow successfully (更新到聊天变量=true)', async () => {
-            useDataStore().settings.更新到聊天变量 = true;
+            useDataStore().settings.兼容性.更新到聊天变量 = true;
 
             const init_data = {
                 stat_data: { init: 'data' },

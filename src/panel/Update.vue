@@ -39,7 +39,7 @@
                     <span>使用函数调用</span>
                 </Checkbox>
 
-                <Checkbox v-model="store.settings.自动触发额外模型解析">
+                <Checkbox v-model="store.settings.额外模型解析配置.启用自动请求">
                     <span>自动触发</span>
                     <HelpIcon :help="auto_analyze_help" />
                 </Checkbox>

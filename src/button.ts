@@ -275,7 +275,7 @@ export const buttons: Button[] = [
             // @ts-expect-error 该函数可用
             await setChatMessage({}, message_id);
 
-            if (useDataStore().settings.更新到聊天变量) {
+            if (useDataStore().settings.兼容性.更新到聊天变量) {
                 await replaceVariables(merged_data, { type: 'chat' });
             }
 
@@ -328,7 +328,7 @@ export const buttons: Button[] = [
     {
         name: '清除旧楼层变量',
         function: async () => {
-            const snapshot_interval = useDataStore().settings.快照保留间隔;
+            const snapshot_interval = useDataStore().settings.自动清理变量.快照保留间隔;
             const result = (await SillyTavern.callGenericPopup(
                 `<h4>清除旧楼层变量信息以减小聊天文件大小避免手机崩溃</h4>请填写要保留变量信息的楼层数 (如 10 为保留最后 10 层，每 [${snapshot_interval}] 层保留一层作为快照)，每 <br><strong>注意: 你需要通过重演才能回退游玩到没保留变量信息的楼层</strong>`,
                 SillyTavern.POPUP_TYPE.INPUT,
