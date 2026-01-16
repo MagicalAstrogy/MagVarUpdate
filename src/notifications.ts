@@ -45,4 +45,12 @@ export function showNotifications() {
         );
         store.settings.internal.已提醒内置破限 = true;
     }
+
+    if (store.settings.internal.已提醒额外模型同时请求 === false) {
+        notify(
+            '[MVU]已支持同时多次请求变量更新',
+            '现在，你可以在「变量更新方式-请求策略-请求方式」中选择它，提高额外模型解析成功率且节省时间'
+        );
+        store.settings.internal.已提醒额外模型同时请求 = true;
+    }
 }

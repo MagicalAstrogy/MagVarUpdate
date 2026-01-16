@@ -27,17 +27,63 @@ export async function invokeExtraModelWithStrategy(): Promise<string | null> {
         }
         return null;
     };
+    const concurrentInvoke = async (times: number) => {
+        // TODO: invokeExtraModel 对于函数调用的并发似乎有些问题
+        try {
+            return await Promise.any(_.times(times - 1, recordedInvoke));
+        } catch (e) {
+            /** 已经记录, 忽略 */
+        } finally {
+            stopGenerate();
+        }
+        return null;
+    };
 
-    for (let i = 0; i < store.settings.额外模型解析配置.请求次数; i++) {
-        if (store.settings.通知.额外模型解析中) {
-            toastr.info(`${i === 0 ? '' : ` 重试 ${i}/3`}`, '[MVU额外模型解析]变量更新中');
+    const stopGenerate = () => {
+        const $mes_stop = $('#mes_stop');
+        if ($mes_stop.is(':visible')) {
+            $mes_stop.trigger('click');
         }
-        const result = await safeInvoke();
-        if (result !== null) {
-            return result;
-        }
+    };
+
+    switch (store.settings.额外模型解析配置.请求方式) {
+        case '依次请求，失败后重试':
+            for (let i = 0; i < store.settings.额外模型解析配置.请求次数; i++) {
+                if (store.settings.通知.额外模型解析中) {
+                    toastr.info(`${i === 0 ? '' : ` 重试 ${i}/3`}`, '[MVU额外模型解析]变量更新中');
+                }
+                const result = await safeInvoke();
+                if (result !== null) {
+                    return result;
+                }
+            }
+            return null;
+        case '同时请求多次':
+            if (store.settings.通知.额外模型解析中) {
+                toastr.info(
+                    `将同时请求 ${store.settings.额外模型解析配置.请求次数} 次AI回复以提高成功率...`,
+                    '[MVU额外模型解析]变量更新中'
+                );
+            }
+            return concurrentInvoke(store.settings.额外模型解析配置.请求次数);
+        case '先请求一次, 失败后再同时请求多次':
+            if (store.settings.通知.额外模型解析中) {
+                toastr.info(`将先请求一次尝试是否能成功...`, '[MVU额外模型解析]变量更新中');
+            }
+            {
+                const result = await safeInvoke();
+                if (result !== null) {
+                    return result;
+                }
+            }
+            if (store.settings.通知.额外模型解析中) {
+                toastr.info(
+                    `首次请求失败, 将同时请求 ${store.settings.额外模型解析配置.请求次数 - 1} 次AI回复以提高成功率...`,
+                    '[MVU额外模型解析]变量更新中'
+                );
+            }
+            return concurrentInvoke(store.settings.额外模型解析配置.请求次数 - 1);
     }
-    return null;
 }
 
 export async function invokeExtraModel(): Promise<string> {

@@ -18,6 +18,13 @@ export const Settings = z
                 使用函数调用: z.boolean().default(false),
 
                 启用自动请求: z.boolean().default(true),
+                请求方式: z
+                    .enum([
+                        '依次请求，失败后重试',
+                        '同时请求多次',
+                        '先请求一次, 失败后再同时请求多次',
+                    ])
+                    .default('依次请求，失败后重试'),
                 请求次数: z.number().default(3),
 
                 模型来源: z.enum(['与插头相同', '自定义']).default('与插头相同'),
@@ -67,6 +74,7 @@ export const Settings = z
                 已提醒更新了API温度等配置: z.boolean().default(false),
                 已默认开启自动清理旧变量功能: z.boolean().default(false),
                 已提醒内置破限: z.boolean().default(false),
+                已提醒额外模型同时请求: z.boolean().default(false),
             })
             .prefault({}),
     })
