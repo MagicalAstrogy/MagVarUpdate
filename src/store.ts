@@ -79,6 +79,11 @@ export const Settings = z
                 已提醒额外模型同时请求: z.boolean().default(false),
             })
             .prefault({}),
+        debug: z
+            .object({
+                首次额外请求必失败: z.boolean().default(false),
+            })
+            .prefault({}),
     })
     .prefault({});
 

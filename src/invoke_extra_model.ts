@@ -6,108 +6,187 @@ import gemini_tail from '@/prompts/gemini_tail.txt?raw';
 import { compare } from 'compare-versions';
 import { MVU_FUNCTION_NAME, ToolCallBatches } from './function_call';
 import { useDataStore } from './store';
-import { literalYamlify, parseString } from './util';
+import { literalYamlify, parseString, getTavernHelperVersion } from './util';
 
-export async function invokeExtraModelWithStrategy(): Promise<string | null> {
+let collected_tool_calls: string | undefined = undefined;
+let vanilla_parseToolCalls: any = null;
+//测试用，为了使首次请求必失败
+let debug_extra_request_counter = 0;
+
+function setExtraAnalysisStates() {
     const store = useDataStore();
 
-    const recordedInvoke = async () => {
-        try {
-            return await invokeExtraModel();
-        } catch (e) {
-            console.error(e);
-            throw e;
-        }
-    };
-    const safeInvoke = async () => {
-        try {
-            return await recordedInvoke();
-        } catch (e) {
-            /** 已经记录, 忽略 */
-        }
-        return null;
-    };
-    const concurrentInvoke = async (times: number) => {
-        // TODO: invokeExtraModel 对于函数调用的并发似乎有些问题
-        try {
-            return await Promise.any(_.times(times - 1, recordedInvoke));
-        } catch (e) {
-            /** 已经记录, 忽略 */
-        } finally {
-            stopGenerate();
-        }
-        return null;
-    };
-
-    const stopGenerate = () => {
-        const $mes_stop = $('#mes_stop');
-        if ($mes_stop.is(':visible')) {
-            $mes_stop.trigger('click');
-        }
-    };
-
-    switch (store.settings.额外模型解析配置.请求方式) {
-        case '依次请求，失败后重试':
-            for (let i = 0; i < store.settings.额外模型解析配置.请求次数; i++) {
-                if (store.settings.通知.额外模型解析中) {
-                    toastr.info(`${i === 0 ? '' : ` 重试 ${i}/3`}`, '[MVU额外模型解析]变量更新中');
-                }
-                const result = await safeInvoke();
-                if (result !== null) {
-                    return result;
-                }
-            }
-            return null;
-        case '同时请求多次':
-            if (store.settings.通知.额外模型解析中) {
-                toastr.info(
-                    `将同时请求 ${store.settings.额外模型解析配置.请求次数} 次AI回复以提高成功率...`,
-                    '[MVU额外模型解析]变量更新中'
-                );
-            }
-            return concurrentInvoke(store.settings.额外模型解析配置.请求次数);
-        case '先请求一次, 失败后再同时请求多次':
-            if (store.settings.通知.额外模型解析中) {
-                toastr.info(`将先请求一次尝试是否能成功...`, '[MVU额外模型解析]变量更新中');
-            }
-            {
-                const result = await safeInvoke();
-                if (result !== null) {
-                    return result;
-                }
-            }
-            if (store.settings.通知.额外模型解析中) {
-                toastr.info(
-                    `首次请求失败, 将同时请求 ${store.settings.额外模型解析配置.请求次数 - 1} 次AI回复以提高成功率...`,
-                    '[MVU额外模型解析]变量更新中'
-                );
-            }
-            return concurrentInvoke(store.settings.额外模型解析配置.请求次数 - 1);
+    if (store.runtimes.is_during_extra_analysis === true) {
+        //这个函数不应当被嵌套调用，因此直接报错
+        throw new Error('setExtraAnalysisStates() should not be called recursively.');
     }
-}
 
-export async function invokeExtraModel(): Promise<string> {
-    const store = useDataStore();
+    //这里本来也应当初始化macro的，但是因为不知道具体内容，所以延迟到 RequestReply
+    //因为这个操作是幂等的，所以无所谓。
 
     store.runtimes.is_during_extra_analysis = true;
+    collected_tool_calls = undefined;
 
-    let collected_tool_calls: ToolCallBatches | undefined = undefined;
-    let vanilla_parseToolCalls: any = null;
     if (store.settings.额外模型解析配置.使用函数调用) {
         vanilla_parseToolCalls = SillyTavern.ToolManager.parseToolCalls;
         const vanilla_bound = SillyTavern.ToolManager.parseToolCalls.bind(SillyTavern.ToolManager);
         SillyTavern.ToolManager.parseToolCalls = (tool_calls: any, parsed: any) => {
             vanilla_bound(tool_calls, parsed);
-            collected_tool_calls = tool_calls;
+            //在concurrent 的场合，这个上下文只需要获取到 **任意** 一个有效的内容即可，不需要严格要求是请求所对应的那个。
+            const extracted = extractFromToolCall(tool_calls as ToolCallBatches);
+            if (extracted) {
+                collected_tool_calls = extracted;
+            }
         };
     }
+}
 
+function unsetExtraAnalysisStates() {
+    const store = useDataStore();
+
+    if (vanilla_parseToolCalls !== null) {
+        SillyTavern.ToolManager.parseToolCalls = vanilla_parseToolCalls;
+        vanilla_parseToolCalls = null;
+    }
+    SillyTavern.unregisterMacro('lastUserMessage');
+    store.runtimes.is_during_extra_analysis = false;
+    // generate 过程中会使得这个变量变为 false, 影响重试
+    store.runtimes.is_extra_model_supported = true;
+    store.runtimes.is_function_call_enabled = false;
+}
+
+let is_analysis_inprogress = false;
+
+export async function invokeExtraModelWithStrategy(): Promise<string | null> {
+    try {
+        if (is_analysis_inprogress) {
+            //考虑到在分析过程中误按的场景。
+            toastr.error('已有在途的额外分析请求', '[MVU额外模型解析]变量更新失败');
+            return null;
+        }
+        is_analysis_inprogress = true;
+        const store = useDataStore();
+
+        debug_extra_request_counter = 0;
+
+        const recordedInvoke = async () => {
+            try {
+                return await invokeExtraModel();
+            } catch (e) {
+                console.error(e);
+                throw e;
+            }
+        };
+        const safeInvoke = async (): Promise<{
+            result: string | null;
+            is_manual_canceled: boolean;
+        }> => {
+            let is_manual_canceled = false;
+            try {
+                setExtraAnalysisStates();
+                return { result: await recordedInvoke(), is_manual_canceled: false };
+            } catch (e) {
+                /** 已经记录, 忽略 */
+                if (e === 'Clicked stop button') is_manual_canceled = true;
+            } finally {
+                unsetExtraAnalysisStates();
+            }
+            return { result: null, is_manual_canceled: is_manual_canceled };
+        };
+        const concurrentInvoke = async (times: number) => {
+            try {
+                setExtraAnalysisStates();
+                return await Promise.any(_.times(times, recordedInvoke));
+            } catch (e) {
+                /** 已经记录, 忽略 */
+            } finally {
+                stopGenerate();
+                unsetExtraAnalysisStates();
+            }
+            return null;
+        };
+
+        const stopGenerate = () => {
+            const $mes_stop = $('#mes_stop');
+            if ($mes_stop.is(':visible')) {
+                $mes_stop.trigger('click');
+            }
+        };
+
+        switch (store.settings.额外模型解析配置.请求方式) {
+            case '依次请求，失败后重试':
+                for (let i = 0; i < store.settings.额外模型解析配置.请求次数; i++) {
+                    if (store.settings.通知.额外模型解析中) {
+                        toastr.info(
+                            `${i === 0 ? '' : ` 重试 ${i}/3`}`,
+                            '[MVU额外模型解析]变量更新中'
+                        );
+                    }
+                    const { result, is_manual_canceled } = await safeInvoke();
+                    if (result !== null) {
+                        return result;
+                    }
+                    if (is_manual_canceled) {
+                        //因为手动取消了，不再进行重试。
+                        return null;
+                    }
+                }
+                return null;
+            case '同时请求多次':
+                if (store.settings.通知.额外模型解析中) {
+                    toastr.info(
+                        `将同时请求 ${store.settings.额外模型解析配置.请求次数} 次AI回复以提高成功率...`,
+                        '[MVU额外模型解析]变量更新中'
+                    );
+                }
+                return concurrentInvoke(store.settings.额外模型解析配置.请求次数);
+            case '先请求一次, 失败后再同时请求多次':
+                if (store.settings.通知.额外模型解析中) {
+                    toastr.info(`将先请求一次尝试是否能成功...`, '[MVU额外模型解析]变量更新中');
+                }
+                {
+                    const { result, is_manual_canceled } = await safeInvoke();
+                    if (result !== null) {
+                        return result;
+                    }
+                    if (is_manual_canceled) {
+                        //因为手动取消了，不再进行重试。
+                        return null;
+                    }
+                }
+                if (store.settings.通知.额外模型解析中) {
+                    toastr.info(
+                        `首次请求失败, 将同时请求 ${store.settings.额外模型解析配置.请求次数 - 1} 次AI回复以提高成功率...`,
+                        '[MVU额外模型解析]变量更新中'
+                    );
+                }
+                return concurrentInvoke(store.settings.额外模型解析配置.请求次数 - 1);
+        }
+    } finally {
+        is_analysis_inprogress = false;
+    }
+}
+
+/**
+ * @brief 调用额外模型解析，可能会抛出异常。
+ */
+export async function generateExtraModel(): Promise<string | null> {
+    try {
+        setExtraAnalysisStates();
+        return await invokeExtraModel();
+    } finally {
+        unsetExtraAnalysisStates();
+    }
+    return null;
+}
+
+// 在点击停止按钮时，会触发异常 `Clicked stop button`: string ,需要专门处理。
+//仅内部使用，因为一部分状态的初始化是在外面执行的。
+async function invokeExtraModel(): Promise<string> {
     try {
         const direct_reply = await requestReply();
         // collected_tool_calls 依赖于 requestReply 的结果, 必须在之后
-        const tool_call_reply = extractFromToolCall(collected_tool_calls);
-
-        const result = tool_call_reply ?? direct_reply;
+        const result = collected_tool_calls ?? direct_reply;
 
         // QUESTION: 是在这里直接返回整个结果, 还是返回处理后的结果
 
@@ -142,14 +221,7 @@ export async function invokeExtraModel(): Promise<string> {
             })
         );
     } finally {
-        if (vanilla_parseToolCalls !== null) {
-            SillyTavern.ToolManager.parseToolCalls = vanilla_parseToolCalls;
-            vanilla_parseToolCalls = null;
-        }
-        SillyTavern.unregisterMacro('lastUserMessage');
-        store.runtimes.is_during_extra_analysis = false;
-        // generate 过程中会使得这个变量变为 false, 影响重试
-        store.runtimes.is_extra_model_supported = true;
+        /* empty */
     }
 }
 
@@ -204,9 +276,14 @@ async function requestReply(): Promise<string> {
     }
 
     //因为部分预设会用到 {{lastUserMessage}}，因此进行修正。
+    //在重复注册的场合， ST 的行为会是覆盖老的，因此无所谓
     SillyTavern.registerMacro('lastUserMessage', () => {
         return task;
     });
+    if (store.settings.debug.首次额外请求必失败 && debug_extra_request_counter === 0) {
+        debug_extra_request_counter++;
+        throw 'simulated exception';
+    }
 
     if (store.settings.额外模型解析配置.破限方案 === '使用当前预设') {
         const result = generate({
@@ -235,7 +312,6 @@ async function requestReply(): Promise<string> {
                 },
             ],
         });
-        store.runtimes.is_function_call_enabled = false;
         return result;
     }
 
@@ -261,7 +337,6 @@ async function requestReply(): Promise<string> {
             { role: 'system', content: is_gemini ? decoded_gemini_tail : decoded_claude_tail },
         ],
     });
-    store.runtimes.is_function_call_enabled = false;
     return result;
 }
 
