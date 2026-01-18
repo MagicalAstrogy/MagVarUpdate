@@ -96,8 +96,100 @@ const Runtimes = z
     })
     .prefault({});
 
+type LooseSettings = Record<string, unknown>;
+
+function migrateSettings(raw: unknown): LooseSettings {
+    if (!raw || typeof raw !== 'object') {
+        return {};
+    }
+
+    const legacy = raw as LooseSettings;
+    const migrated = _.cloneDeep(legacy) as LooseSettings;
+
+    if (
+        _.has(legacy, '自动触发额外模型解析') &&
+        !_.has(migrated, '额外模型解析配置.启用自动请求')
+    ) {
+        _.set(
+            migrated,
+            '额外模型解析配置.启用自动请求',
+            _.get(legacy, '自动触发额外模型解析')
+        );
+    }
+
+    if (
+        _.has(legacy, '额外模型解析配置.发送预设') &&
+        !_.has(migrated, '额外模型解析配置.破限方案')
+    ) {
+        const sendPreset = _.get(legacy, '额外模型解析配置.发送预设');
+        if (typeof sendPreset === 'boolean') {
+            _.set(
+                migrated,
+                '额外模型解析配置.破限方案',
+                sendPreset ? '使用当前预设' : '使用内置破限'
+            );
+        }
+    }
+
+    if (_.has(legacy, '更新到聊天变量') && !_.has(migrated, '兼容性.更新到聊天变量')) {
+        _.set(
+            migrated,
+            '兼容性.更新到聊天变量',
+            _.get(legacy, '更新到聊天变量')
+        );
+    }
+
+    if (_.has(legacy, 'legacy.显示老旧功能') && !_.has(migrated, '兼容性.显示老旧功能')) {
+        _.set(migrated, '兼容性.显示老旧功能', _.get(legacy, 'legacy.显示老旧功能'));
+    }
+
+    if (
+        _.has(legacy, 'auto_cleanup.启用') &&
+        !_.has(migrated, '自动清理变量.启用')
+    ) {
+        _.set(migrated, '自动清理变量.启用', _.get(legacy, 'auto_cleanup.启用'));
+    }
+
+    if (
+        _.has(legacy, '快照保留间隔') &&
+        !_.has(migrated, '自动清理变量.快照保留间隔')
+    ) {
+        _.set(
+            migrated,
+            '自动清理变量.快照保留间隔',
+            _.get(legacy, '快照保留间隔')
+        );
+    }
+
+    if (
+        _.has(legacy, 'auto_cleanup.要保留变量的最近楼层数') &&
+        !_.has(migrated, '自动清理变量.要保留变量的最近楼层数')
+    ) {
+        _.set(
+            migrated,
+            '自动清理变量.要保留变量的最近楼层数',
+            _.get(legacy, 'auto_cleanup.要保留变量的最近楼层数')
+        );
+    }
+
+    if (
+        _.has(legacy, 'auto_cleanup.触发恢复变量的最近楼层数') &&
+        !_.has(migrated, '自动清理变量.触发恢复变量的最近楼层数')
+    ) {
+        _.set(
+            migrated,
+            '自动清理变量.触发恢复变量的最近楼层数',
+            _.get(legacy, 'auto_cleanup.触发恢复变量的最近楼层数')
+        );
+    }
+
+    return migrated;
+}
+
 export const useDataStore = defineStore('data', () => {
-    const settings = ref(Settings.parse(_.get(SillyTavern.extensionSettings, 'mvu_settings', {})));
+    const settings = ref(
+        Settings.parse(migrateSettings(_.get(SillyTavern.extensionSettings, 'mvu_settings', {})))
+    );
     watch(
         settings,
         new_settings => {
