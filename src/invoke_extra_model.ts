@@ -58,12 +58,12 @@ function unsetExtraAnalysisStates() {
 let is_analysis_inprogress = false;
 
 export async function invokeExtraModelWithStrategy(): Promise<string | null> {
+    if (is_analysis_inprogress) {
+        //考虑到在分析过程中误按的场景。
+        toastr.error('已有在途的额外分析请求', '[MVU额外模型解析]变量更新失败');
+        return null;
+    }
     try {
-        if (is_analysis_inprogress) {
-            //考虑到在分析过程中误按的场景。
-            toastr.error('已有在途的额外分析请求', '[MVU额外模型解析]变量更新失败');
-            return null;
-        }
         is_analysis_inprogress = true;
         const store = useDataStore();
 
