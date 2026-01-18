@@ -216,7 +216,10 @@ export function registerFunction() {
 
 export function overrideToolRequest(generate_data: any) {
     const store = useDataStore();
-    if (store.settings.更新方式 !== '额外模型解析' || store.settings.额外模型解析配置.使用函数调用 !== true) {
+    if (
+        store.settings.更新方式 !== '额外模型解析' ||
+        store.settings.额外模型解析配置.使用函数调用 !== true
+    ) {
         return;
     }
     if (!store.runtimes.is_function_call_enabled) {

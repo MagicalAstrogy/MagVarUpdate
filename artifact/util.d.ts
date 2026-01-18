@@ -12,6 +12,8 @@ export declare const saveChatDebounced: import("lodash").DebouncedFunc<() => Pro
 export declare function findLastValidMessage(end_message_id: number): number;
 export declare function scopedEventOn<T extends EventType>(event_type: T, listener: ListenerType[T]): void;
 export declare function clearScopedEvent(): void;
+export declare function literalYamlify(object: Record<string, any>): string;
 export declare function parseString(content: string): any;
 export declare function correctlyMerge<TObject, TSource>(lhs: TObject, rhs: TSource): TObject & TSource;
+export declare function uuidv4(): string;
 export declare function showHelpPopup(content: string): void;

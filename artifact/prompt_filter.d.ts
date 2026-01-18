@@ -1,5 +1,3 @@
-export declare function getIsExtraModelSupported(): boolean;
-export declare function setIsExtraModelSupported(value: boolean): void;
 export declare function handlePromptFilter(lores: {
     globalLore: Record<string, any>[];
     characterLore: Record<string, any>[];

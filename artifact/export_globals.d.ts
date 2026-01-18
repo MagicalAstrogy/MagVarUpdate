@@ -1,4 +1,4 @@
-import { isDuringExtraAnalysis, MvuData } from '@/variable_def';
+import { MvuData } from '@/variable_def';
 type CommandNames = 'set' | 'insert' | 'delete' | 'add';
 /**
  * 对 parseMessage / updateVariables 内部命令解析结果的补充类型说明。
@@ -289,7 +289,7 @@ declare function createMVU(): {
     /**
      * @brief 返回当前轮次是否属于额外模型解析轮次。
      */
-    isDuringExtraAnalysis: typeof isDuringExtraAnalysis;
+    isDuringExtraAnalysis: () => boolean;
 };
 export type MVU = ReturnType<typeof createMVU>;
 export type Mvu = MVU;

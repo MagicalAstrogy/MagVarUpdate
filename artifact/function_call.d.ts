@@ -26,7 +26,6 @@ export type ToolCallBatch = ToolFunctionCall[];
 export type ToolCallBatches = ToolCallBatch[];
 /** 已知的工具名：先收窄 mvu_VariableUpdate，保留 string 兼容其它 */
 export type ToolName = typeof MVU_FUNCTION_NAME | (string & {});
-export declare function setFunctionCallEnabled(enabled: boolean): void;
 export declare function unregisterFunction(): void;
 export declare function registerFunction(): void;
 export declare function overrideToolRequest(generate_data: any): void;

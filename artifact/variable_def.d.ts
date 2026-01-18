@@ -130,6 +130,3 @@ export type ExtendedListenerType = {
 export type InitVarType = StatData & RootAdditionalMetaProps;
 export type DataCategory = 'stat' | 'display' | 'delta';
 export declare function extractRecord(category: 'stat' | 'display' | 'delta', game_data: MvuData): Record<string, any>;
-export declare const ExtraLLMRequestContent: string;
-export declare function isDuringExtraAnalysis(): boolean;
-export declare function setDuringExtraAnalysis(value: boolean): void;

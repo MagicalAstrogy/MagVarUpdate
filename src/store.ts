@@ -110,11 +110,7 @@ function migrateSettings(raw: unknown): LooseSettings {
         _.has(legacy, '自动触发额外模型解析') &&
         !_.has(migrated, '额外模型解析配置.启用自动请求')
     ) {
-        _.set(
-            migrated,
-            '额外模型解析配置.启用自动请求',
-            _.get(legacy, '自动触发额外模型解析')
-        );
+        _.set(migrated, '额外模型解析配置.启用自动请求', _.get(legacy, '自动触发额外模型解析'));
     }
 
     if (
@@ -132,33 +128,19 @@ function migrateSettings(raw: unknown): LooseSettings {
     }
 
     if (_.has(legacy, '更新到聊天变量') && !_.has(migrated, '兼容性.更新到聊天变量')) {
-        _.set(
-            migrated,
-            '兼容性.更新到聊天变量',
-            _.get(legacy, '更新到聊天变量')
-        );
+        _.set(migrated, '兼容性.更新到聊天变量', _.get(legacy, '更新到聊天变量'));
     }
 
     if (_.has(legacy, 'legacy.显示老旧功能') && !_.has(migrated, '兼容性.显示老旧功能')) {
         _.set(migrated, '兼容性.显示老旧功能', _.get(legacy, 'legacy.显示老旧功能'));
     }
 
-    if (
-        _.has(legacy, 'auto_cleanup.启用') &&
-        !_.has(migrated, '自动清理变量.启用')
-    ) {
+    if (_.has(legacy, 'auto_cleanup.启用') && !_.has(migrated, '自动清理变量.启用')) {
         _.set(migrated, '自动清理变量.启用', _.get(legacy, 'auto_cleanup.启用'));
     }
 
-    if (
-        _.has(legacy, '快照保留间隔') &&
-        !_.has(migrated, '自动清理变量.快照保留间隔')
-    ) {
-        _.set(
-            migrated,
-            '自动清理变量.快照保留间隔',
-            _.get(legacy, '快照保留间隔')
-        );
+    if (_.has(legacy, '快照保留间隔') && !_.has(migrated, '自动清理变量.快照保留间隔')) {
+        _.set(migrated, '自动清理变量.快照保留间隔', _.get(legacy, '快照保留间隔'));
     }
 
     if (
