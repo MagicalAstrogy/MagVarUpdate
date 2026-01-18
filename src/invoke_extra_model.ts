@@ -276,7 +276,7 @@ async function requestReply(): Promise<string> {
     }
 
     //因为部分预设会用到 {{lastUserMessage}}，因此进行修正。
-    //在重复注册的场合， ST 的行为会是覆盖老的，因此无所谓
+    //在重复注册的场合, ST 的行为会是覆盖老的，因此无所谓
     SillyTavern.registerMacro('lastUserMessage', () => {
         return task;
     });
@@ -340,7 +340,7 @@ async function requestReply(): Promise<string> {
     return result;
 }
 
-function extractFromToolCall(tool_calls: ToolCallBatches | undefined): string | null {
+export function extractFromToolCall(tool_calls: ToolCallBatches | undefined): string | null {
     if (!tool_calls) {
         return null;
     }

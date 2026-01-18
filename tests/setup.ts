@@ -32,6 +32,9 @@ const __eventHandlers = new Map<string, Array<(...args: unknown[]) => unknown>>(
 
 // Mock window object
 (globalThis as any).window = globalThis;
+(globalThis as any).atob =
+    (globalThis as any).atob ??
+    ((value: string) => Buffer.from(value, 'base64').toString('binary'));
 
 // Mock TavernHelper
 (globalThis as any).window.TavernHelper = {
