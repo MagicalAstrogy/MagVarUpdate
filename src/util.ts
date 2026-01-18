@@ -84,7 +84,8 @@ export function parseString(content: string) {
         } catch (e2) {
             // Try to repair json
             try {
-                return jsonrepair(content);
+                // eslint-disable-next-line import-x/no-named-as-default-member
+                return JSON5.parse(jsonrepair(content));
             } catch (e3) {
                 // Try TOML
                 try {
