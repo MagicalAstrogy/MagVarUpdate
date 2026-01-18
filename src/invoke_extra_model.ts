@@ -96,6 +96,7 @@ export async function invokeExtraModelWithStrategy(): Promise<string | null> {
         const concurrentInvoke = async (times: number) => {
             try {
                 setExtraAnalysisStates();
+                //在函数调用的模式下，允许接受 **任意** 有效的函数结果，因此被允许被覆盖。
                 return await Promise.any(_.times(times, recordedInvoke));
             } catch (e) {
                 /** 已经记录, 忽略 */
