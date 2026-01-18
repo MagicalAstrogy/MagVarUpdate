@@ -1,10 +1,10 @@
-import fs from 'fs';
-import path from 'path';
-import _ from 'lodash';
 import { extractCommands, updateVariables } from '@/function';
 import { generateSchema } from '@/schema';
 import { isArraySchema, isObjectSchema, MvuData, SchemaNode } from '@/variable_def';
 import { describe, expect, it } from '@jest/globals';
+import fs from 'fs';
+import _ from 'lodash';
+import path from 'path';
 
 type PatchCase = {
     comment?: string;

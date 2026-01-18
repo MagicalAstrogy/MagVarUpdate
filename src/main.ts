@@ -7,56 +7,26 @@ import {
     updateVariable,
     updateVariables,
 } from '@/function';
-import {
-    MVU_FUNCTION_NAME,
-    overrideToolRequest,
-    registerFunction,
-    setFunctionCallEnabled,
-    ToolCallBatches,
-    unregisterFunction,
-} from '@/function_call';
+import { overrideToolRequest, registerFunction, unregisterFunction } from '@/function_call';
+import { invokeExtraModelWithStrategy } from '@/invoke_extra_model';
 import { showNotifications } from '@/notifications';
 import { initPanel } from '@/panel';
-import {
-    getIsExtraModelSupported,
-    handlePromptFilter,
-    setIsExtraModelSupported,
-} from '@/prompt_filter';
-import { useSettingsStore, useTempContents } from '@/settings';
+import { handlePromptFilter } from '@/prompt_filter';
+import { useDataStore } from '@/store';
 import {
     clearScopedEvent,
     findLastValidMessage,
-    getSillyTavernVersion,
     getTavernHelperVersion,
     initSillyTavernVersion,
     initTavernHelperVersion,
     is_jest_environment,
     isFunctionCallingSupported,
-    parseString,
     scopedEventOn,
 } from '@/util';
-import {
-    exported_events,
-    ExtraLLMRequestContent,
-    isDuringExtraAnalysis,
-    MvuData,
-    setDuringExtraAnalysis,
-} from '@/variable_def';
+import { exported_events, MvuData } from '@/variable_def';
 import { initCheck } from '@/variable_init';
 import { compare } from 'compare-versions';
 import { klona } from 'klona';
-
-let vanilla_parseToolCalls: any = null;
-
-async function updateGenState() {
-    updateVariablesWith(
-        variables => {
-            _.set(variables, 'extra_analysis', isDuringExtraAnalysis());
-            return variables;
-        },
-        { type: 'global' }
-    );
-}
 
 async function onMessageReceived(message_id: number, extra_param?: any) {
     const current_chatmsg = getChatMessages(message_id).at(-1);
@@ -70,14 +40,13 @@ async function onMessageReceived(message_id: number, extra_param?: any) {
         return;
     }
 
-    const settings = useSettingsStore().settings;
-    setDuringExtraAnalysis(false);
+    const store = useDataStore();
+    store.runtimes.is_during_extra_analysis = false;
 
-    const extra_model_supported = getIsExtraModelSupported();
     if (
-        settings.更新方式 === '随AI输出' ||
-        (settings.额外模型解析配置.使用函数调用 && !isFunctionCallingSupported()) || //与上面相同的退化情况。
-        extra_model_supported === false // 角色卡未适配时, 依旧使用 "随AI输出"
+        store.settings.更新方式 === '随AI输出' ||
+        (store.settings.额外模型解析配置.使用函数调用 && !isFunctionCallingSupported()) || //与上面相同的退化情况。
+        store.runtimes.is_extra_model_supported === false // 角色卡未适配时, 依旧使用 "随AI输出"
     ) {
         await handleVariablesInMessage(message_id);
         return;
@@ -88,224 +57,20 @@ async function onMessageReceived(message_id: number, extra_param?: any) {
         return;
     }
 
-    if (settings.自动触发额外模型解析 === false && extra_param !== 'manual_emit') {
+    if (store.settings.额外模型解析配置.启用自动请求 === false && extra_param !== 'manual_emit') {
         console.log('[MVU] 不自动触发额外模型解析');
         return;
     }
 
-    setDuringExtraAnalysis(true);
-    let user_input = ExtraLLMRequestContent;
-    if (settings.额外模型解析配置.使用函数调用) {
-        user_input += `\n use \`mvu_VariableUpdate\` tool to update variables.`;
-    }
-    const generateFn = settings.额外模型解析配置.发送预设 === false ? generateRaw : generate;
-
-    let result: string = '';
-    let retries = 0;
-
-    try {
-        updateVariablesWith(
-            variables => {
-                _.set(variables, 'extra_analysis', true);
-                return variables;
-            },
-            { type: 'global' }
-        );
-        setFunctionCallEnabled(true);
-        //因为部分预设会用到 {{lastUserMessage}}，因此进行修正。
-        console.log('Before RegisterMacro');
-        if (compare(getSillyTavernVersion(), '1.13.4', '<=')) {
-            //https://github.com/SillyTavern/SillyTavern/pull/4614
-            //需要等待1s来错开 dry_run
-            await new Promise(res => setTimeout(res, 1000));
-        }
-        SillyTavern.registerMacro('lastUserMessage', () => {
-            return user_input;
-        });
-        console.log('After RegisterMacro');
-        const promptInjects: InjectionPrompt[] = [
-            {
-                id: '817114514',
-                position: 'in_chat',
-                depth: 0,
-                should_scan: false,
-                role: 'system',
-                content: user_input,
-            },
-            {
-                id: '817114515',
-                position: 'in_chat',
-                depth: 2,
-                should_scan: false,
-                role: 'assistant',
-                content: '<past_observe>',
-            },
-            {
-                id: '817114516',
-                position: 'in_chat',
-                depth: 1,
-                should_scan: false,
-                role: 'assistant',
-                content: '</past_observe>',
-            },
-        ]; //部分预设会在后面强调 user_input 的演绎行为，需要找个方式肘掉它
-
-        let collected_tool_calls: ToolCallBatches | undefined = undefined;
-        if (settings.额外模型解析配置.使用函数调用) {
-            vanilla_parseToolCalls = SillyTavern.ToolManager.parseToolCalls;
-            const vanilla_bound = SillyTavern.ToolManager.parseToolCalls.bind(
-                SillyTavern.ToolManager
-            );
-            SillyTavern.ToolManager.parseToolCalls = (tool_calls: any, parsed: any) => {
-                vanilla_bound(tool_calls, parsed);
-                collected_tool_calls = tool_calls;
-            };
-        }
-
-        for (retries = 0; retries < 3; retries++) {
-            if (settings.通知.额外模型解析中) {
-                toastr.info(
-                    `[MVU]额外模型分析变量更新中...${retries === 0 ? '' : ` 重试 ${retries}/3`}`
-                );
-            }
-            collected_tool_calls = undefined;
-            const unset_if_equal = (value: number, expected: number) =>
-                compare(getTavernHelperVersion(), '4.3.9', '>=') && value === expected
-                    ? 'unset'
-                    : value;
-            const current_result = await generateFn(
-                settings.额外模型解析配置.模型来源 === '与插头相同'
-                    ? {
-                          user_input: `遵循后续的 <must> 指令`,
-                          injects: promptInjects,
-                          max_chat_history: 2,
-                          should_stream: settings.额外模型解析配置.使用函数调用,
-                      }
-                    : {
-                          user_input: `遵循后续的 <must> 指令`,
-                          custom_api: {
-                              apiurl: settings.额外模型解析配置.api地址,
-                              key: settings.额外模型解析配置.密钥,
-                              model: settings.额外模型解析配置.模型名称,
-                              max_tokens: settings.额外模型解析配置.最大回复token数,
-                              temperature: unset_if_equal(settings.额外模型解析配置.温度, 1),
-                              frequency_penalty: unset_if_equal(
-                                  settings.额外模型解析配置.频率惩罚,
-                                  0
-                              ),
-                              presence_penalty: unset_if_equal(
-                                  settings.额外模型解析配置.存在惩罚,
-                                  0
-                              ),
-                              top_p: unset_if_equal(settings.额外模型解析配置.top_p, 1),
-                          },
-                          injects: promptInjects,
-                          max_chat_history: 2,
-                          should_stream: settings.额外模型解析配置.使用函数调用,
-                      }
-            );
-            if (collected_tool_calls !== undefined) {
-                const content = _.get(collected_tool_calls as ToolCallBatches, '[0]');
-                if (content) {
-                    const mvu_function_call = _(content).findLast(
-                        fn => fn.function.name === MVU_FUNCTION_NAME
-                    );
-                    if (mvu_function_call) {
-                        const mvu_function_call_content = _.get(
-                            mvu_function_call,
-                            'function.arguments'
-                        );
-                        if (mvu_function_call_content) {
-                            try {
-                                const mvu_function_call_json =
-                                    JSON.parse(mvu_function_call_content);
-                                if (
-                                    mvu_function_call_json.delta &&
-                                    mvu_function_call_json.delta.length > 5
-                                ) {
-                                    result += `<UpdateVariable>\n`;
-                                    result += `<Analyze>\n${mvu_function_call_json.analysis}\n</Analyze>\n`;
-                                    try {
-                                        parseString(
-                                            mvu_function_call_json.delta.replaceAll(/```.*/gm, '')
-                                        );
-                                        result += `<JSONPatch>${mvu_function_call_json.delta}</JSONPatch>\n`;
-                                    } catch (error) {
-                                        result += `${mvu_function_call_json.delta}\n`;
-                                    }
-                                    result += `</UpdateVariable>`;
-                                    break;
-                                }
-                            } catch (e) {
-                                console.log(
-                                    `failed to parse function call content,retry: ${mvu_function_call_content}: ${e}`
-                                );
-                            }
-                        }
-                    }
-                }
-            }
-            console.log(`Vanilla Response: ${current_result}`);
-
-            const tag = _([
-                ...current_result.matchAll(/<(update(?:variable)?|variableupdate)>/gi),
-            ]).last()?.[1];
-            if (!tag) {
-                continue;
-            }
-            const start_index = current_result.lastIndexOf(`<${tag}>`);
-            if (start_index === -1) {
-                continue;
-            }
-            const end_index = current_result.indexOf(`</${tag}>`, start_index);
-            const update_block = current_result.slice(
-                start_index + 2 + tag.length,
-                end_index === -1 ? undefined : end_index
-            );
-            if (update_block) {
-                const fn_call_match =
-                    /_\.(?:set|insert|assign|remove|unset|delete|add)\s*\([\s\S]*?\)\s*;/.test(
-                        update_block
-                    );
-                const json_patch_match = /json_?patch/i.test(update_block);
-                if (fn_call_match || json_patch_match) {
-                    result = `<UpdateVariable>${update_block}</UpdateVariable>`;
-                    break;
-                }
-            }
-        }
-    } catch (e) {
-        console.error(`变量更新请求发生错误: ${e}`);
-        await handleVariablesInMessage(message_id);
-        return;
-    } finally {
-        if (vanilla_parseToolCalls !== null) {
-            SillyTavern.ToolManager.parseToolCalls = vanilla_parseToolCalls;
-            vanilla_parseToolCalls = null;
-        }
-        SillyTavern.unregisterMacro('lastUserMessage');
-        updateVariablesWith(
-            variables => {
-                _.set(variables, 'extra_analysis', false);
-                return variables;
-            },
-            { type: 'global' }
-        );
-        setFunctionCallEnabled(false);
-        setDuringExtraAnalysis(false);
-        //因为 generate 过程中会使得这个变量变为 false，影响重试。
-        setIsExtraModelSupported(true);
-    }
-
-    if (result !== '') {
-        // QUESTION: 目前的方案是直接将额外模型对变量的解析结果直接尾附到楼层中, 会不会像 tool calling 那样把结果新建为一个楼层更好?
+    const result = await invokeExtraModelWithStrategy();
+    if (result !== null) {
         const chat_message = getChatMessages(message_id);
 
         await setChatMessages(
             [
                 {
                     message_id,
-                    message: chat_message[0].message + result,
+                    message: chat_message[0].message.trimEnd() + '\n\n' + result,
                 },
             ],
             {
@@ -313,7 +78,10 @@ async function onMessageReceived(message_id: number, extra_param?: any) {
             }
         );
     } else {
-        toastr.error('建议调整变量更新方式/额外模型解析模式', '[MVU]额外模型分析变量更新失败');
+        toastr.error(
+            '建议调整变量更新方式, 「输入框左下角魔棒-日志查看器」可查看具体情况',
+            '[MVU额外模型解析]变量更新失败'
+        );
     }
     await handleVariablesInMessage(message_id);
 }
@@ -338,22 +106,19 @@ async function initialize() {
         );
     }
 
-    const store = useSettingsStore();
-
-    const temp_contents = useTempContents().temp_contents;
-    temp_contents.unsupported_warnings = '';
+    const store = useDataStore();
+    store.resetRuntimes();
 
     registerButtons();
 
-    if (store.settings.更新到聊天变量 === false) {
+    if (store.settings.兼容性.更新到聊天变量 === false) {
         await removeChatVariables();
     }
 
-    const { 要保留变量的最近楼层数, 启用 } = store.settings.auto_cleanup;
     // 对于旧聊天文件, 清理过早楼层的变量
     if (
-        启用 &&
-        SillyTavern.chat.length > 要保留变量的最近楼层数 + 5 &&
+        store.settings.自动清理变量.启用 &&
+        SillyTavern.chat.length > store.settings.自动清理变量.要保留变量的最近楼层数 + 5 &&
         _.has(SillyTavern.chat, [1, 'variables', 0, 'stat_data']) &&
         !_.has(SillyTavern.chat, [1, 'variables', 0, 'ignore_cleanup'])
     ) {
@@ -420,8 +185,10 @@ async function initialize() {
             if (result === SillyTavern.POPUP_RESULT.AFFIRMATIVE || is_backup_success) {
                 const counter = cleanupVariablesInMessages(
                     1, //0 层永不清理，以保证始终有快照能力。
-                    SillyTavern.chat.length - 1 - 要保留变量的最近楼层数,
-                    store.settings.快照保留间隔
+                    SillyTavern.chat.length -
+                        1 -
+                        store.settings.自动清理变量.要保留变量的最近楼层数,
+                    store.settings.自动清理变量.快照保留间隔
                 );
                 if (counter > 0) {
                     toastr.info(`已清理老聊天记录中的 ${counter} 条消息`, '[MVU]自动清理', {
@@ -439,8 +206,8 @@ async function initialize() {
             //默认参数下，debounce 是尾触发的，在这个场景意味着所有删除操作结束后，才会进行恢复操作
             const last_message_id = SillyTavern.chat.length - 1;
 
-            const store = useSettingsStore();
-            const { 触发恢复变量的最近楼层数 } = store.settings.auto_cleanup;
+            const store = useDataStore();
+            const { 触发恢复变量的最近楼层数 } = store.settings.自动清理变量;
 
             const last_10th_message_id = Math.max(1, last_message_id - 触发恢复变量的最近楼层数);
             const last_not_has_variable_message_id = SillyTavern.chat.findLastIndex(
@@ -454,7 +221,10 @@ async function initialize() {
                 return;
             }
 
-            const last_20th_message_id = Math.max(1, last_message_id - 要保留变量的最近楼层数);
+            const last_20th_message_id = Math.max(
+                1,
+                last_message_id - store.settings.自动清理变量.要保留变量的最近楼层数
+            );
             const snapshot_message_id = findLastValidMessage(last_20th_message_id);
             if (
                 snapshot_message_id === -1 ||
@@ -523,7 +293,6 @@ async function initialize() {
     );
 
     await initCheck();
-    scopedEventOn(tavern_events.GENERATION_STARTED, updateGenState);
     scopedEventOn(tavern_events.GENERATION_STARTED, initCheck);
     scopedEventOn(tavern_events.MESSAGE_SENT, initCheck);
     scopedEventOn(tavern_events.MESSAGE_SENT, handleVariablesInMessage);
@@ -547,43 +316,32 @@ async function initialize() {
 
     // 清理旧楼层变量，这个操作的优先级需要比更新操作低，保证在所有事情做完之后，再进行变量的清理。
     scopedEventOn(tavern_events.MESSAGE_RECEIVED, message_id => {
-        const store = useSettingsStore();
-        const { 启用 } = store.settings.auto_cleanup;
-        if (!启用) {
+        const store = useDataStore();
+        if (!store.settings.自动清理变量.启用) {
             return;
         }
         if (SillyTavern.chat.length % 5 !== 0) {
             return; // 每 5 层执行一次清理。
         }
-        const old_message_id = message_id - 要保留变量的最近楼层数; //排除对应楼层为user楼层的场合
+        const old_message_id = message_id - store.settings.自动清理变量.要保留变量的最近楼层数; //排除对应楼层为user楼层的场合
         if (old_message_id > 0) {
             const counter = cleanupVariablesInMessages(
                 //考虑到部分情况下会 消息楼层会是 user，所以需要 * 2，寻找更远范围的。
-                Math.max(1, old_message_id - 2 - 要保留变量的最近楼层数 * 2), // 因为没有监听 MESSAGE_SENT
+                Math.max(
+                    1,
+                    old_message_id - 2 - store.settings.自动清理变量.要保留变量的最近楼层数 * 2
+                ), // 因为没有监听 MESSAGE_SENT
                 old_message_id,
-                store.settings.快照保留间隔
+                store.settings.自动清理变量.快照保留间隔
             );
             console.log(`[MVU]已清理 ${counter} 层的消息`);
         }
     });
 
     showNotifications();
-    if (store.settings.internal.已默认开启自动清理旧变量功能 === false) {
-        store.settings.internal.已默认开启自动清理旧变量功能 = true;
-        store.settings.auto_cleanup.启用 = true;
-    }
-
-    toastr.info(
-        `构建信息: ${__BUILD_DATE__ ?? 'Unknown'} (${__COMMIT_ID__ ?? 'Unknown'})`,
-        '[MVU]脚本加载成功'
-    );
 }
 
 async function destroy() {
-    if (vanilla_parseToolCalls !== null) {
-        SillyTavern.ToolManager.parseToolCalls = vanilla_parseToolCalls;
-        vanilla_parseToolCalls = null;
-    }
     unregisterFunction();
     clearScopedEvent();
 }

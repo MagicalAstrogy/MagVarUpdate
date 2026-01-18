@@ -8,6 +8,8 @@ module.exports = {
         '^.+\\.ts$': 'ts-jest',
     },
     moduleNameMapper: {
+        '^@/(.*)\\?raw$': '<rootDir>/tests/mocks/rawTextMock.ts',
+        '\\.txt\\?raw$': '<rootDir>/tests/mocks/rawTextMock.ts',
         '^@/(.*)$': '<rootDir>/src/$1',
     },
     collectCoverageFrom: ['src/**/*.ts', '!src/**/*.d.ts', '!src/**/index.ts'],
@@ -18,5 +20,6 @@ module.exports = {
             tsconfig: 'tsconfig.test.json',
         },
     },
+    setupFiles: ['jest-localstorage-mock'],
     setupFilesAfterEnv: ['<rootDir>/tests/setup.ts'],
 };

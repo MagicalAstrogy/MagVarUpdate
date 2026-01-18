@@ -1,6 +1,6 @@
 // Global test setup
-import { createPinia, setActivePinia } from 'pinia';
 import _ from 'lodash';
+import { createPinia, setActivePinia } from 'pinia';
 
 // Make lodash available globally as it's used in the source code
 (globalThis as any)._ = _;
@@ -32,6 +32,9 @@ const __eventHandlers = new Map<string, Array<(...args: unknown[]) => unknown>>(
 
 // Mock window object
 (globalThis as any).window = globalThis;
+(globalThis as any).atob =
+    (globalThis as any).atob ??
+    ((value: string) => Buffer.from(value, 'base64').toString('binary'));
 
 // Mock TavernHelper
 (globalThis as any).window.TavernHelper = {
@@ -81,3 +84,4 @@ beforeEach(() => {
 (globalThis as any).getCurrentCharPrimaryLorebook = jest.fn();
 (globalThis as any).getAvailableLorebooks = jest.fn();
 (globalThis as any).substitudeMacros = jest.fn(input => input);
+(globalThis as any).insertOrAssignVariables = jest.fn();

@@ -6,6 +6,7 @@
         </div>
 
         <div class="inline-drawer-content">
+            <Version />
             <Notification />
             <Update />
             <Button />
@@ -21,6 +22,7 @@ import Cleanup from '@/panel/Cleanup.vue';
 import Compatibility from '@/panel/Compatibility.vue';
 import Notification from '@/panel/Notification.vue';
 import Update from '@/panel/Update.vue';
+import Version from '@/panel/Version.vue';
 </script>
 
 <style scoped>

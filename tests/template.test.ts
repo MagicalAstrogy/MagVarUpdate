@@ -1,12 +1,12 @@
-import { describe, it, expect, beforeEach } from '@jest/globals';
+import { beforeEach, describe, expect, it } from '@jest/globals';
 import { applyTemplate, updateVariables } from '../src/function';
 import {
-    generateSchema,
     cleanUpMetadata,
-    reconcileAndApplySchema,
     EXTENSIBLE_MARKER,
+    generateSchema,
+    reconcileAndApplySchema,
 } from '../src/schema';
-import { StatData, MvuData } from '../src/variable_def';
+import { MvuData, StatData } from '../src/variable_def';
 
 describe('Template Feature', () => {
     describe('applyTemplate function', () => {

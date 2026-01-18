@@ -1,5 +1,5 @@
-import { exportGlobals, MVU } from '@/export_globals';
 import type { CommandInfo } from '@/export_globals';
+import { exportGlobals, MVU } from '@/export_globals';
 import { MvuData, variable_events } from '@/variable_def';
 import _ from 'lodash';
 
@@ -426,7 +426,7 @@ _.set('stats.gold', 500, "750");//获得金币
     });
 
     test('Mvu.setMvuVariable with is_recursive should trigger eventEmit', async () => {
-        let testData = {
+        const testData = {
             initialized_lorebooks: {},
             stat_data: {
                 player: {

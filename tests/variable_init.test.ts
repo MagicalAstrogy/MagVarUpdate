@@ -1,6 +1,6 @@
-import YAML from 'yaml';
 import { MvuData } from '@/variable_def';
 import { getEnabledLorebookList, loadInitVarData } from '@/variable_init';
+import YAML from 'yaml';
 
 jest.mock('@/variable_init', () => {
     const actual = jest.requireActual('@/variable_init');

@@ -33,10 +33,10 @@
 </template>
 
 <script setup lang="ts">
-import { useSettingsStore } from '@/settings';
+import { useDataStore } from '@/store';
 import { ref, watch } from 'vue';
 
-const store = useSettingsStore();
+const store = useDataStore();
 
 const loading = ref(false);
 const models = ref<string[]>([]);

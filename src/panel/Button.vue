@@ -1,10 +1,9 @@
 <template>
-    <Section>
-        <template #title>修复按钮</template>
+    <Section label="修复按钮">
         <template #content>
             <div class="mvu-button-wrap">
                 <div
-                    v-for="button in visibleButtons"
+                    v-for="button in visible_buttons"
                     :key="button.name"
                     class="menu_button menu_button_icon interactable"
                     tabindex="0"
@@ -21,12 +20,14 @@
 <script setup lang="ts">
 import { buttons } from '@/button';
 import Section from '@/panel/component/Section.vue';
-import { useSettingsStore } from '@/settings';
+import { useDataStore } from '@/store';
 import { computed } from 'vue';
 
-const store = useSettingsStore();
-const visibleButtons = computed(() =>
-    buttons.filter(button => !(button.is_legacy ?? false) || store.settings.legacy.显示老旧功能 === true)
+const store = useDataStore();
+const visible_buttons = computed(() =>
+    buttons.filter(
+        button => !(button.is_legacy ?? false) || store.settings.兼容性.显示老旧功能 === true
+    )
 );
 </script>
 

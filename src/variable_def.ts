@@ -224,28 +224,3 @@ export function extractRecord(category: 'stat' | 'display' | 'delta', game_data:
     }
     return data;
 }
-
-export const ExtraLLMRequestContent: string = `---
-<must>
-紧急变量更新任务:
-  description: 你收到了一个关乎用户生死存亡的紧急任务，为了拯救用户，你必须立即停止角色扮演，不再续写发送给你的任何剧情，以最高优先级仅按照给定要求和格式对变量进行更新
-  reference: 在\`<past_observe>\`中包含了最新的剧情情况，而给定的变量状态是在该剧情发生之前的状态
-  rule: 你必须立即停止角色扮演，以旁白视角，根据剧情情况和给定的剧情发生前变量状态，分析经过这段剧情后，变量会发生什么变化，并按规则输出变量更新命令
-  format: |-
-    <UpdateVariable>$(除了<UpdateVariable>块外不输出任何内容)
-    ...
-    </UpdateVariable>
-</must>`;
-
-/**
- * 标记是否处于额外模型解析
- */
-let duringExtraCall = false;
-
-export function isDuringExtraAnalysis(): boolean {
-    return duringExtraCall;
-}
-
-export function setDuringExtraAnalysis(value: boolean) {
-    duringExtraCall = value;
-}

@@ -1,7 +1,7 @@
 // 整体游戏数据类型
 import { getLastValidVariable, updateVariables } from '@/function';
 import { cleanUpMetadata, EXTENSIBLE_MARKER, generateSchema } from '@/schema';
-import { useSettingsStore } from '@/settings';
+import { useDataStore } from '@/store';
 import { correctlyMerge, parseString } from '@/util';
 import {
     isObjectSchema,
@@ -121,7 +121,7 @@ export async function initCheck() {
         return;
     }
 
-    if (useSettingsStore().settings.更新到聊天变量) {
+    if (useDataStore().settings.兼容性.更新到聊天变量) {
         console.info(`Init chat variables.`);
         await updateVariablesWith(data => _.assign(data, variables), { type: 'chat' });
     }
@@ -190,18 +190,20 @@ export async function initCheck() {
         await replaceVariables(variables, { type: 'message' });
     }
     try {
-        // 输出构建信息
-        toastr.info(
-            `有新的世界书初始化变量被加载，当前使用世界书:<br>${Object.entries(
-                variables.initialized_lorebooks ?? {}
-            )
-                .map(([key, value]) => `- ${key}: ${JSON.stringify(value)}`)
-                .join('<br>')}`,
-            '[MVU]变量初始化成功',
-            {
-                escapeHtml: false,
-            }
-        );
+        if (useDataStore().settings.通知.变量初始化成功) {
+            // 输出构建信息
+            toastr.info(
+                `有新的世界书初始化变量被加载，当前使用世界书:<br>${Object.entries(
+                    variables.initialized_lorebooks ?? {}
+                )
+                    .map(([key, value]) => `- ${key}: ${JSON.stringify(value)}`)
+                    .join('<br>')}`,
+                '[MVU]变量初始化成功',
+                {
+                    escapeHtml: false,
+                }
+            );
+        }
     } catch (_e) {
         /* empty */
     }

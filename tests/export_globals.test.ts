@@ -1,7 +1,7 @@
 import { exportGlobals } from '@/export_globals';
 import { handleVariablesInCallback, updateVariable } from '@/function';
-import { loadInitVarData } from '@/variable_init';
 import { MvuData, variable_events } from '@/variable_def';
+import { loadInitVarData } from '@/variable_init';
 import _ from 'lodash';
 
 jest.mock('@/function', () => ({
