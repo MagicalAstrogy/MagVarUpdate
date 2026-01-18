@@ -6,7 +6,7 @@ import gemini_tail from '@/prompts/gemini_tail.txt?raw';
 import { compare } from 'compare-versions';
 import { MVU_FUNCTION_NAME, ToolCallBatches } from './function_call';
 import { useDataStore } from './store';
-import { literalYamlify, parseString, getTavernHelperVersion } from './util';
+import { getTavernHelperVersion, literalYamlify, parseString, uuidv4 } from './util';
 
 let collected_tool_calls: string | undefined = undefined;
 let vanilla_parseToolCalls: any = null;
@@ -69,9 +69,9 @@ export async function invokeExtraModelWithStrategy(): Promise<string | null> {
 
         debug_extra_request_counter = 0;
 
-        const recordedInvoke = async () => {
+        const recordedInvoke = async (generation_id?: string) => {
             try {
-                return await invokeExtraModel();
+                return await invokeExtraModel(generation_id);
             } catch (e) {
                 console.error(e);
                 throw e;
@@ -94,24 +94,18 @@ export async function invokeExtraModelWithStrategy(): Promise<string | null> {
             return { result: null, is_manual_canceled: is_manual_canceled };
         };
         const concurrentInvoke = async (times: number) => {
+            const uuids = _.times(times, uuidv4);
             try {
                 setExtraAnalysisStates();
                 //在函数调用的模式下，允许接受 **任意** 有效的函数结果，因此被允许被覆盖。
-                return await Promise.any(_.times(times, recordedInvoke));
+                return await Promise.any(uuids.map(recordedInvoke));
             } catch (e) {
                 /** 已经记录, 忽略 */
             } finally {
-                stopGenerate();
+                uuids.forEach(stopGenerationById);
                 unsetExtraAnalysisStates();
             }
             return null;
-        };
-
-        const stopGenerate = () => {
-            const $mes_stop = $('#mes_stop');
-            if ($mes_stop.is(':visible')) {
-                $mes_stop.trigger('click');
-            }
         };
 
         switch (store.settings.额外模型解析配置.请求方式) {
@@ -178,14 +172,13 @@ export async function generateExtraModel(): Promise<string | null> {
     } finally {
         unsetExtraAnalysisStates();
     }
-    return null;
 }
 
 // 在点击停止按钮时，会触发异常 `Clicked stop button`: string ,需要专门处理。
 //仅内部使用，因为一部分状态的初始化是在外面执行的。
-async function invokeExtraModel(): Promise<string> {
+async function invokeExtraModel(generation_id?: string): Promise<string> {
     try {
-        const direct_reply = await requestReply();
+        const direct_reply = await requestReply(generation_id);
         // collected_tool_calls 依赖于 requestReply 的结果, 必须在之后
         const result = collected_tool_calls ?? direct_reply;
 
@@ -243,7 +236,7 @@ const decoded_claude_tail = decode(claude_tail);
 const decoded_gemini_tail = decode(gemini_tail);
 const decoded_extra_model_task = decode(extra_model_task);
 
-async function requestReply(): Promise<string> {
+async function requestReply(generation_id?: string): Promise<string> {
     const store = useDataStore();
 
     const config: GenerateRawConfig = {
@@ -252,6 +245,7 @@ async function requestReply(): Promise<string> {
         should_stream:
             store.settings.额外模型解析配置.兼容假流式 ||
             store.settings.额外模型解析配置.使用函数调用,
+        generation_id,
     };
     if (store.settings.额外模型解析配置.模型来源 === '自定义') {
         const unset_if_equal = (value: number, expected: number) =>
