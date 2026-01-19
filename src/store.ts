@@ -17,7 +17,7 @@ export const Settings = z
             .object({
                 破限方案: z.enum(['使用内置破限', '使用当前预设']).default('使用内置破限'),
                 使用函数调用: z.boolean().default(false),
-                兼容假流式: z.boolean().default(true),
+                兼容假流式: z.boolean().default(false),
 
                 启用自动请求: z.boolean().default(true),
                 请求方式: z
@@ -77,6 +77,7 @@ export const Settings = z
                 已默认开启自动清理旧变量功能: z.boolean().default(false),
                 已提醒内置破限: z.boolean().default(false),
                 已提醒额外模型同时请求: z.boolean().default(false),
+                已开启默认不兼容假流式: z.boolean().default(false),
             })
             .prefault({}),
         debug: z
