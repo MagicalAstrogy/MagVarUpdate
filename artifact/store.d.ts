@@ -53,6 +53,7 @@ export declare const Settings: z.ZodPrefault<z.ZodObject<{
         已默认开启自动清理旧变量功能: z.ZodDefault<z.ZodBoolean>;
         已提醒内置破限: z.ZodDefault<z.ZodBoolean>;
         已提醒额外模型同时请求: z.ZodDefault<z.ZodBoolean>;
+        已开启默认不兼容假流式: z.ZodDefault<z.ZodBoolean>;
     }, z.core.$strip>>;
     debug: z.ZodPrefault<z.ZodObject<{
         首次额外请求必失败: z.ZodDefault<z.ZodBoolean>;
@@ -100,6 +101,7 @@ export declare const useDataStore: import("pinia").StoreDefinition<"data", Pick<
             已默认开启自动清理旧变量功能: boolean;
             已提醒内置破限: boolean;
             已提醒额外模型同时请求: boolean;
+            已开启默认不兼容假流式: boolean;
         };
         debug: {
             首次额外请求必失败: boolean;
@@ -145,6 +147,7 @@ export declare const useDataStore: import("pinia").StoreDefinition<"data", Pick<
             已默认开启自动清理旧变量功能: boolean;
             已提醒内置破限: boolean;
             已提醒额外模型同时请求: boolean;
+            已开启默认不兼容假流式: boolean;
         };
         debug: {
             首次额外请求必失败: boolean;
@@ -190,6 +193,7 @@ export declare const useDataStore: import("pinia").StoreDefinition<"data", Pick<
             已默认开启自动清理旧变量功能: boolean;
             已提醒内置破限: boolean;
             已提醒额外模型同时请求: boolean;
+            已开启默认不兼容假流式: boolean;
         };
         debug: {
             首次额外请求必失败: boolean;
@@ -254,6 +258,7 @@ export declare const useDataStore: import("pinia").StoreDefinition<"data", Pick<
             已默认开启自动清理旧变量功能: boolean;
             已提醒内置破限: boolean;
             已提醒额外模型同时请求: boolean;
+            已开启默认不兼容假流式: boolean;
         };
         debug: {
             首次额外请求必失败: boolean;
@@ -299,6 +304,7 @@ export declare const useDataStore: import("pinia").StoreDefinition<"data", Pick<
             已默认开启自动清理旧变量功能: boolean;
             已提醒内置破限: boolean;
             已提醒额外模型同时请求: boolean;
+            已开启默认不兼容假流式: boolean;
         };
         debug: {
             首次额外请求必失败: boolean;
@@ -344,6 +350,7 @@ export declare const useDataStore: import("pinia").StoreDefinition<"data", Pick<
             已默认开启自动清理旧变量功能: boolean;
             已提醒内置破限: boolean;
             已提醒额外模型同时请求: boolean;
+            已开启默认不兼容假流式: boolean;
         };
         debug: {
             首次额外请求必失败: boolean;
@@ -408,6 +415,7 @@ export declare const useDataStore: import("pinia").StoreDefinition<"data", Pick<
             已默认开启自动清理旧变量功能: boolean;
             已提醒内置破限: boolean;
             已提醒额外模型同时请求: boolean;
+            已开启默认不兼容假流式: boolean;
         };
         debug: {
             首次额外请求必失败: boolean;
@@ -453,6 +461,7 @@ export declare const useDataStore: import("pinia").StoreDefinition<"data", Pick<
             已默认开启自动清理旧变量功能: boolean;
             已提醒内置破限: boolean;
             已提醒额外模型同时请求: boolean;
+            已开启默认不兼容假流式: boolean;
         };
         debug: {
             首次额外请求必失败: boolean;
@@ -498,6 +507,7 @@ export declare const useDataStore: import("pinia").StoreDefinition<"data", Pick<
             已默认开启自动清理旧变量功能: boolean;
             已提醒内置破限: boolean;
             已提醒额外模型同时请求: boolean;
+            已开启默认不兼容假流式: boolean;
         };
         debug: {
             首次额外请求必失败: boolean;
