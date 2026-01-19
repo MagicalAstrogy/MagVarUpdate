@@ -7,6 +7,7 @@ export const Settings = z
     .object({
         通知: z
             .object({
+                MVU框架加载成功: z.boolean().default(true),
                 变量初始化成功: z.boolean().default(true),
                 变量更新出错: z.boolean().default(false),
                 额外模型解析中: z.boolean().default(true),

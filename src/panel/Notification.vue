@@ -1,6 +1,9 @@
 <template>
     <Section label="通知设置">
         <template #content>
+            <Checkbox v-model="store.settings.通知.MVU框架加载成功">
+                <span>MVU框架加载成功时通知</span>
+            </Checkbox>
             <Checkbox v-model="store.settings.通知.变量初始化成功">
                 <span>变量初始化成功时通知</span>
             </Checkbox>
