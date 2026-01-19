@@ -35,13 +35,9 @@ async function EmitVariableAnalysisJob() {
         });
         return;
     } else if (!(await isExtraModelSupported())) {
-        toastr.info(
-            `当前角色卡不支持额外模型解析，或是刚刚刷新页面，无法进行此操作`,
-            '[MVU]重试额外模型解析',
-            {
-                timeOut: 3000,
-            }
-        );
+        toastr.info(`当前角色卡不支持额外模型解析，无法进行此操作`, '[MVU]重试额外模型解析', {
+            timeOut: 3000,
+        });
         return;
     }
     const last_msg = getLastMessageId();
