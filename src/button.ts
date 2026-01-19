@@ -1,4 +1,5 @@
 import { getLastValidVariable, handleVariablesInMessage, updateVariables } from '@/function';
+import { isExtraModelSupported } from '@/prompt_filter';
 import { cleanUpMetadata, reconcileAndApplySchema } from '@/schema';
 import { useDataStore } from '@/store';
 import { updateDescriptions } from '@/update_descriptions';
@@ -33,7 +34,7 @@ async function EmitVariableAnalysisJob() {
             timeOut: 3000,
         });
         return;
-    } else if (!store.runtimes.is_extra_model_supported) {
+    } else if (!(await isExtraModelSupported())) {
         toastr.info(
             `当前角色卡不支持额外模型解析，或是刚刚刷新页面，无法进行此操作`,
             '[MVU]重试额外模型解析',

@@ -92,7 +92,6 @@ export const Settings = z
 const Runtimes = z
     .object({
         unsupported_warnings: z.string().default(''),
-        is_extra_model_supported: z.boolean().default(false),
         is_during_extra_analysis: z.boolean().default(false),
         is_function_call_enabled: z.boolean().default(false),
     })

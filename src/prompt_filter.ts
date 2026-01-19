@@ -1,8 +1,16 @@
 import { useDataStore } from '@/store';
 import { isFunctionCallingSupported } from '@/util';
+import { PLOT_REGEX, UPDATE_REGEX } from '@/variable_def';
 
-const UPDATE_REGEX = /\[mvu_update\]/i;
-const PLOT_REGEX = /\[mvu_plot\]/i;
+export async function isExtraModelSupported(): Promise<boolean> {
+    const lorebook_name = getCurrentCharPrimaryLorebook();
+    if (!lorebook_name) {
+        return false;
+    }
+    return await getLorebookEntries(lorebook_name).then(entries =>
+        entries.some(entry => UPDATE_REGEX.test(entry.comment) || PLOT_REGEX.test(entry.comment))
+    );
+}
 
 export async function handlePromptFilter(lores: {
     globalLore: Record<string, any>[];
@@ -12,9 +20,6 @@ export async function handlePromptFilter(lores: {
 }) {
     const store = useDataStore();
     store.runtimes.unsupported_warnings = '';
-
-    //每次开始解析时都进行重置。
-    store.runtimes.is_extra_model_supported = false;
 
     //在这个回调中，会将所有lore的条目传入，此处可以去除所有 [mvu_update] 相关的条目，避免在非更新的轮次中输出相关内容。
     if (store.settings.更新方式 === '随AI输出') {
@@ -34,27 +39,25 @@ export async function handlePromptFilter(lores: {
     const tagged_worlds = new Set<string>();
     const remove_and_check = (lore: Record<string, any>[]) => {
         // 规则应当为：存在任意一个 [mvu_plot]/[mvu_update] 即算是支持，而不是必须存在 [mvu_plot]
-        let any_match = false;
         _.remove(lore, entry => {
             const is_update_regex = UPDATE_REGEX.test(entry.comment);
             const is_plot_regex = PLOT_REGEX.test(entry.comment);
             if (is_update_regex || is_plot_regex) {
-                any_match = true;
                 tagged_worlds.add(entry.world);
             }
             return store.runtimes.is_during_extra_analysis
                 ? is_plot_regex && !is_update_regex
                 : !is_plot_regex && is_update_regex;
         });
-        if (any_match) {
-            store.runtimes.is_extra_model_supported = true;
-        }
     };
     remove_and_check(lores.characterLore);
     //若要支持分步解析，角色世界书须是支持的。
     //全局世界书支持，角色世界书不支持，亦算作不支持。
     //在不支持的情况下，需要发送全局世界书等其他内容的所有条目。
-    if (!store.runtimes.is_extra_model_supported) return;
+    const is_extra_model_supported = await isExtraModelSupported();
+    if (!is_extra_model_supported) {
+        return;
+    }
     remove_and_check(lores.globalLore);
     remove_and_check(lores.chatLore);
     remove_and_check(lores.personaLore);
