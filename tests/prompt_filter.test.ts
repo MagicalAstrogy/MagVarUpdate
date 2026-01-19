@@ -2,6 +2,11 @@ import { handlePromptFilter } from '@/prompt_filter';
 import { useDataStore } from '@/store';
 
 const makeEntry = (world: string, comment: string) => ({ world, comment });
+const cloneEntries = (entries: Array<{ world: string; comment: string }>) =>
+    entries.map(entry => ({ ...entry }));
+
+let mockGetCurrentCharPrimaryLorebook: jest.MockedFunction<() => string | undefined>;
+let mockGetLorebookEntries: jest.MockedFunction<(name: string) => Promise<any[]>>;
 
 describe('handlePromptFilter', () => {
     beforeEach(() => {
@@ -20,6 +25,17 @@ describe('handlePromptFilter', () => {
 
         (globalThis as any).SillyTavern.ToolManager.isToolCallingSupported.mockReturnValue(true);
         (globalThis as any).SillyTavern.chatCompletionSettings.function_calling = true;
+
+        mockGetCurrentCharPrimaryLorebook = (globalThis as any)
+            .getCurrentCharPrimaryLorebook as jest.MockedFunction<() => string | undefined>;
+        if (!mockGetCurrentCharPrimaryLorebook) {
+            mockGetCurrentCharPrimaryLorebook = jest.fn();
+            (globalThis as any).getCurrentCharPrimaryLorebook = mockGetCurrentCharPrimaryLorebook;
+        }
+        mockGetCurrentCharPrimaryLorebook.mockReturnValue('current');
+
+        mockGetLorebookEntries = jest.fn();
+        (globalThis as any).getLorebookEntries = mockGetLorebookEntries;
     });
 
     afterEach(() => {
@@ -37,6 +53,8 @@ describe('handlePromptFilter', () => {
             chatLore: [],
             personaLore: [],
         };
+
+        mockGetLorebookEntries.mockResolvedValue(cloneEntries(lores.characterLore));
 
         await handlePromptFilter(lores);
 
@@ -58,6 +76,8 @@ describe('handlePromptFilter', () => {
             chatLore: [],
             personaLore: [],
         };
+
+        mockGetLorebookEntries.mockResolvedValue(cloneEntries(lores.characterLore));
 
         await handlePromptFilter(lores);
 
@@ -82,6 +102,8 @@ describe('handlePromptFilter', () => {
             personaLore: [],
         };
 
+        mockGetLorebookEntries.mockResolvedValue(cloneEntries(lores.characterLore));
+
         await handlePromptFilter(lores);
 
         expect(lores.globalLore).toHaveLength(3);
@@ -105,6 +127,8 @@ describe('handlePromptFilter', () => {
             chatLore: [makeEntry('WorldB', 'untagged')],
             personaLore: [],
         };
+
+        mockGetLorebookEntries.mockResolvedValue(cloneEntries(lores.characterLore));
 
         await handlePromptFilter(lores);
 
@@ -137,6 +161,8 @@ describe('handlePromptFilter', () => {
             personaLore: [],
         };
 
+        mockGetLorebookEntries.mockResolvedValue(cloneEntries(lores.characterLore));
+
         await handlePromptFilter(lores);
 
         expect(lores.globalLore).toEqual([
@@ -165,6 +191,8 @@ describe('handlePromptFilter', () => {
             chatLore: [],
             personaLore: [],
         };
+
+        mockGetLorebookEntries.mockResolvedValue(cloneEntries(lores.characterLore));
 
         await handlePromptFilter(lores);
 
