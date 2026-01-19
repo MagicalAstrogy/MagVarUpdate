@@ -2,6 +2,11 @@ import { handlePromptFilter } from '@/prompt_filter';
 import { useDataStore } from '@/store';
 
 const makeEntry = (world: string, comment: string) => ({ world, comment });
+const cloneEntries = (entries: Array<{ world: string; comment: string }>) =>
+    entries.map(entry => ({ ...entry }));
+
+let mockGetCurrentCharPrimaryLorebook: jest.MockedFunction<() => string | undefined>;
+let mockGetLorebookEntries: jest.MockedFunction<(name: string) => Promise<any[]>>;
 
 describe('handlePromptFilter', () => {
     beforeEach(() => {
@@ -20,6 +25,17 @@ describe('handlePromptFilter', () => {
 
         (globalThis as any).SillyTavern.ToolManager.isToolCallingSupported.mockReturnValue(true);
         (globalThis as any).SillyTavern.chatCompletionSettings.function_calling = true;
+
+        mockGetCurrentCharPrimaryLorebook = (globalThis as any)
+            .getCurrentCharPrimaryLorebook as jest.MockedFunction<() => string | undefined>;
+        if (!mockGetCurrentCharPrimaryLorebook) {
+            mockGetCurrentCharPrimaryLorebook = jest.fn();
+            (globalThis as any).getCurrentCharPrimaryLorebook = mockGetCurrentCharPrimaryLorebook;
+        }
+        mockGetCurrentCharPrimaryLorebook.mockReturnValue('current');
+
+        mockGetLorebookEntries = jest.fn();
+        (globalThis as any).getLorebookEntries = mockGetLorebookEntries;
     });
 
     afterEach(() => {
@@ -38,12 +54,13 @@ describe('handlePromptFilter', () => {
             personaLore: [],
         };
 
+        mockGetLorebookEntries.mockResolvedValue(cloneEntries(lores.characterLore));
+
         await handlePromptFilter(lores);
 
         expect(lores.globalLore).toHaveLength(1);
         expect(lores.characterLore).toHaveLength(1);
         expect(store.runtimes.unsupported_warnings).toBe('');
-        expect(store.runtimes.is_extra_model_supported).toBe(false);
     });
 
     // 场景: 需要函数调用但不支持时，直接提示并退出
@@ -60,12 +77,13 @@ describe('handlePromptFilter', () => {
             personaLore: [],
         };
 
+        mockGetLorebookEntries.mockResolvedValue(cloneEntries(lores.characterLore));
+
         await handlePromptFilter(lores);
 
         expect(lores.globalLore).toHaveLength(1);
         expect(lores.characterLore).toHaveLength(1);
         expect(store.runtimes.unsupported_warnings).toBe('');
-        expect(store.runtimes.is_extra_model_supported).toBe(false);
         expect((globalThis as any).toastr.warning).toHaveBeenCalled();
     });
 
@@ -84,12 +102,13 @@ describe('handlePromptFilter', () => {
             personaLore: [],
         };
 
+        mockGetLorebookEntries.mockResolvedValue(cloneEntries(lores.characterLore));
+
         await handlePromptFilter(lores);
 
         expect(lores.globalLore).toHaveLength(3);
         expect(lores.characterLore).toHaveLength(1);
         expect(store.runtimes.unsupported_warnings).toBe('');
-        expect(store.runtimes.is_extra_model_supported).toBe(false);
     });
 
     // 场景: 主阶段过滤 update-only 条目，并不会移除未支持的世界书
@@ -109,6 +128,8 @@ describe('handlePromptFilter', () => {
             personaLore: [],
         };
 
+        mockGetLorebookEntries.mockResolvedValue(cloneEntries(lores.characterLore));
+
         await handlePromptFilter(lores);
 
         expect(lores.characterLore).toEqual([makeEntry('WorldA', 'untagged')]);
@@ -120,7 +141,6 @@ describe('handlePromptFilter', () => {
         expect(lores.chatLore).toHaveLength(1);
         //即便在主阶段，也会明确检测不支持的世界书，只是不进行删除
         expect(store.runtimes.unsupported_warnings).toBe('WorldB');
-        expect(store.runtimes.is_extra_model_supported).toBe(true);
     });
 
     // 场景: 非额外解析阶段保留 [mvu_plot]，过滤掉 [mvu_update]
@@ -141,6 +161,8 @@ describe('handlePromptFilter', () => {
             personaLore: [],
         };
 
+        mockGetLorebookEntries.mockResolvedValue(cloneEntries(lores.characterLore));
+
         await handlePromptFilter(lores);
 
         expect(lores.globalLore).toEqual([
@@ -149,7 +171,6 @@ describe('handlePromptFilter', () => {
             makeEntry('WorldC', '[mvu_plot][mvu_update]'),
         ]);
         expect(store.runtimes.unsupported_warnings).toBe('');
-        expect(store.runtimes.is_extra_model_supported).toBe(true);
     });
 
     // 场景: 额外解析阶段，plot-only 世界书的未标记条目应保留
@@ -171,6 +192,8 @@ describe('handlePromptFilter', () => {
             personaLore: [],
         };
 
+        mockGetLorebookEntries.mockResolvedValue(cloneEntries(lores.characterLore));
+
         await handlePromptFilter(lores);
 
         expect(lores.globalLore).toEqual([
@@ -179,6 +202,5 @@ describe('handlePromptFilter', () => {
             makeEntry('PlotWorld2', 'untagged'),
         ]);
         expect(store.runtimes.unsupported_warnings).toBe('UntaggedWorld');
-        expect(store.runtimes.is_extra_model_supported).toBe(true);
     });
 });

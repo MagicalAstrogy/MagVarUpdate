@@ -50,8 +50,6 @@ function unsetExtraAnalysisStates() {
     }
     SillyTavern.unregisterMacro('lastUserMessage');
     store.runtimes.is_during_extra_analysis = false;
-    // generate 过程中会使得这个变量变为 false, 影响重试
-    store.runtimes.is_extra_model_supported = true;
     store.runtimes.is_function_call_enabled = false;
 }
 

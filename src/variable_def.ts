@@ -224,3 +224,6 @@ export function extractRecord(category: 'stat' | 'display' | 'delta', game_data:
     }
     return data;
 }
+
+export const UPDATE_REGEX = /\[mvu_update\]/i;
+export const PLOT_REGEX = /\[mvu_plot\]/i;

@@ -11,7 +11,7 @@ import { overrideToolRequest, registerFunction, unregisterFunction } from '@/fun
 import { invokeExtraModelWithStrategy } from '@/invoke_extra_model';
 import { showNotifications } from '@/notifications';
 import { initPanel } from '@/panel';
-import { handlePromptFilter } from '@/prompt_filter';
+import { handlePromptFilter, isExtraModelSupported } from '@/prompt_filter';
 import { useDataStore } from '@/store';
 import {
     clearScopedEvent,
@@ -46,7 +46,7 @@ async function onMessageReceived(message_id: number, extra_param?: any) {
     if (
         store.settings.更新方式 === '随AI输出' ||
         (store.settings.额外模型解析配置.使用函数调用 && !isFunctionCallingSupported()) || //与上面相同的退化情况。
-        store.runtimes.is_extra_model_supported === false // 角色卡未适配时, 依旧使用 "随AI输出"
+        !(await isExtraModelSupported())
     ) {
         await handleVariablesInMessage(message_id);
         return;
@@ -343,6 +343,13 @@ async function initialize() {
     });
 
     showNotifications();
+
+    if (store.settings.通知.MVU框架加载成功) {
+        toastr.info(
+            `构建信息: ${__BUILD_DATE__ ?? 'Unknown'} (${__COMMIT_ID__ ?? 'Unknown'})`,
+            '[MVU]脚本加载成功'
+        );
+    }
 }
 
 async function destroy() {
