@@ -1,5 +1,5 @@
 import { MvuData } from '@/variable_def';
-type CommandNames = 'set' | 'insert' | 'delete' | 'add';
+type CommandNames = 'set' | 'insert' | 'delete' | 'add' | 'move';
 /**
  * 对 parseMessage / updateVariables 内部命令解析结果的补充类型说明。
  *
@@ -18,11 +18,16 @@ type RemoveCommandArgs = [path: string] | [path: string, indexKeyOrValueLiteral:
  * `_.add` 始终需要增量或布尔目标，用第二个参数表示。
  */
 type AddCommandArgs = [path: string, deltaOrToggleLiteral: string];
+/**
+ * `_.move` 需要两个参数，分别表示要移动的变量路径和目标路径
+ */
+type MoveCommandArgs = [from: string, to: string];
 type CommandArgsMap = {
     set: SetCommandArgs;
     insert: AssignCommandArgs;
     delete: RemoveCommandArgs;
     add: AddCommandArgs;
+    move: MoveCommandArgs;
 };
 /**
  * CommandInfo 与内部的 Command 结构保持字段布局一致，
