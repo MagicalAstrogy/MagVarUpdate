@@ -17,3 +17,4 @@ export declare function parseString(content: string): any;
 export declare function correctlyMerge<TObject, TSource>(lhs: TObject, rhs: TSource): TObject & TSource;
 export declare function uuidv4(): string;
 export declare function showHelpPopup(content: string): void;
+export declare function normalizeBaseURL(api_url: string): string;
