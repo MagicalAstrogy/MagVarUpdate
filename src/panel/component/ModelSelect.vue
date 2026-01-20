@@ -34,6 +34,7 @@
 
 <script setup lang="ts">
 import { useDataStore } from '@/store';
+import { normalizeBaseURL } from '@/util';
 import { ref, watch } from 'vue';
 
 const store = useDataStore();
@@ -41,20 +42,6 @@ const store = useDataStore();
 const loading = ref(false);
 const models = ref<string[]>([]);
 const selected = ref('');
-
-function normalizeBaseURL(api_url: string): string {
-    api_url = api_url.trim().replace(/\/+$/, '');
-    if (!api_url) {
-        return '';
-    }
-    if (api_url.endsWith('/v1')) {
-        return api_url;
-    }
-    if (api_url.endsWith('/models')) {
-        return api_url.replace(/\/models$/, '');
-    }
-    return `${api_url}/v1`;
-}
 
 async function refresh() {
     if (loading.value) {
@@ -73,9 +60,8 @@ async function refresh() {
             headers: SillyTavern.getRequestHeaders(),
             body: JSON.stringify({
                 reverse_proxy: base_url,
-                custom_url: base_url,
                 proxy_password: store.settings.额外模型解析配置.密钥,
-                chat_completion_source: 'custom',
+                chat_completion_source: 'openai',
             }),
             cache: 'no-cache',
         });

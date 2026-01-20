@@ -3,10 +3,16 @@ import claude_tail from '@/prompts/claude_tail.txt?raw';
 import extra_model_task from '@/prompts/extra_model_task.txt?raw';
 import gemini_head from '@/prompts/gemini_head.txt?raw';
 import gemini_tail from '@/prompts/gemini_tail.txt?raw';
+import {
+    getTavernHelperVersion,
+    literalYamlify,
+    normalizeBaseURL,
+    parseString,
+    uuidv4,
+} from '@/util';
 import { compare } from 'compare-versions';
 import { MVU_FUNCTION_NAME, ToolCallBatches } from './function_call';
 import { useDataStore } from './store';
-import { getTavernHelperVersion, literalYamlify, parseString, uuidv4 } from './util';
 
 let collected_tool_calls: string | undefined = undefined;
 let vanilla_parseToolCalls: any = null;
@@ -251,7 +257,7 @@ async function requestReply(generation_id?: string): Promise<string> {
                 ? 'unset'
                 : value;
         config.custom_api = {
-            apiurl: store.settings.额外模型解析配置.api地址,
+            apiurl: normalizeBaseURL(store.settings.额外模型解析配置.api地址),
             key: store.settings.额外模型解析配置.密钥,
             model: store.settings.额外模型解析配置.模型名称,
             max_tokens: store.settings.额外模型解析配置.最大回复token数,
