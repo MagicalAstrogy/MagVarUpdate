@@ -29,13 +29,11 @@ function isJsonPatch(patch: any): patch is jsonpatch.Operation[] {
     if (patch.length === 0) {
         return true;
     }
-    // Check if all operations have 'op' and 'path'.
     return patch.every(
         op =>
-            typeof op === 'object' &&
-            op !== null &&
+            _.isPlainObject(op) &&
             typeof op.op === 'string' &&
-            typeof op.path === 'string'
+            (typeof op.path === 'string' || (op.op === 'move' && typeof op.to === 'string'))
     );
 }
 
@@ -204,7 +202,7 @@ export function parseCommandValue(valStr: string): any {
  * - 'remove': Represents a command to remove an item or data.
  * - 'add': Represents a command to add an item or data.
  */
-type CommandNames = 'set' | 'insert' | 'assign' | 'remove' | 'unset' | 'delete' | 'add';
+type CommandNames = 'set' | 'insert' | 'assign' | 'remove' | 'unset' | 'delete' | 'add' | 'move';
 
 /**
  * 从大字符串中提取所有 .set(${path}, ${new_value});//${reason} 格式的模式
@@ -223,7 +221,7 @@ function extractJsonPatch(patch: any): Command[] {
     const translated_commands: Command[] = [];
 
     for (const op of patch) {
-        const path = op.path.substring(1).replace(/\//g, '.');
+        const path = (op.path ?? op.to).substring(1).replace(/\//g, '.');
         switch (op.op) {
             case 'replace':
                 translated_commands.push({
@@ -261,6 +259,14 @@ function extractJsonPatch(patch: any): Command[] {
                     type: 'delete',
                     full_match: JSON.stringify(op),
                     args: [path],
+                    reason: 'json_patch',
+                });
+                break;
+            case 'move':
+                translated_commands.push({
+                    type: 'move',
+                    full_match: JSON.stringify(op),
+                    args: [(op as any).from.substring(1).replace(/\//g, '.'), path],
                     reason: 'json_patch',
                 });
                 break;

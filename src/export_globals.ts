@@ -9,7 +9,7 @@ import {
 import { loadInitVarData } from '@/variable_init';
 import { useDataStore } from './store';
 
-type CommandNames = 'set' | 'insert' | 'delete' | 'add';
+type CommandNames = 'set' | 'insert' | 'delete' | 'add' | 'move';
 
 /**
  * 对 parseMessage / updateVariables 内部命令解析结果的补充类型说明。
@@ -37,11 +37,17 @@ type RemoveCommandArgs = [path: string] | [path: string, indexKeyOrValueLiteral:
  */
 type AddCommandArgs = [path: string, deltaOrToggleLiteral: string];
 
+/**
+ * `_.move` 需要两个参数，分别表示要移动的变量路径和目标路径
+ */
+type MoveCommandArgs = [from: string, to: string];
+
 type CommandArgsMap = {
     set: SetCommandArgs;
     insert: AssignCommandArgs;
     delete: RemoveCommandArgs;
     add: AddCommandArgs;
+    move: MoveCommandArgs;
 };
 
 /**
