@@ -1,3 +1,4 @@
+import * as jsonpatch from 'fast-json-patch';
 export declare function initSillyTavernVersion(): Promise<void>;
 export declare function getSillyTavernVersion(): string;
 export declare function initTavernHelperVersion(): Promise<void>;
@@ -14,6 +15,7 @@ export declare function scopedEventOn<T extends EventType>(event_type: T, listen
 export declare function clearScopedEvent(): void;
 export declare function literalYamlify(object: Record<string, any>): string;
 export declare function parseString(content: string): any;
+export declare function isJsonPatch(patch: any): patch is jsonpatch.Operation[];
 export declare function correctlyMerge<TObject, TSource>(lhs: TObject, rhs: TSource): TObject & TSource;
 export declare function uuidv4(): string;
 export declare function showHelpPopup(content: string): void;
