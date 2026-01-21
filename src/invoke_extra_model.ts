@@ -323,6 +323,7 @@ async function requestReply(generation_id?: string): Promise<string> {
     const result = generateRaw({
         ...config,
         ordered_prompts: [
+            { role: 'system', content: _.times(4, () => uuidv4().slice(0, 8)).join('\n') },
             { role: 'system', content: is_gemini ? decoded_gemini_head : decoded_claude_head },
             { role: 'system', content: '<additional_information>' },
             'world_info_before',
