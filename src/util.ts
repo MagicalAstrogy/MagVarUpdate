@@ -2,6 +2,7 @@ import JSON5 from 'json5';
 import { jsonrepair } from 'jsonrepair';
 import TOML from 'toml';
 import TavernHelper = globalThis.TavernHelper;
+import * as jsonpatch from 'fast-json-patch';
 
 let sillytavern_version: string = '1.0.0';
 export async function initSillyTavernVersion(): Promise<void> {
@@ -106,6 +107,22 @@ export function parseString(content: string) {
             }
         }
     }
+}
+
+export function isJsonPatch(patch: any): patch is jsonpatch.Operation[] {
+    if (!Array.isArray(patch)) {
+        return false;
+    }
+    // An empty array is a valid patch.
+    if (patch.length === 0) {
+        return true;
+    }
+    return patch.every(
+        op =>
+            _.isPlainObject(op) &&
+            typeof op.op === 'string' &&
+            (typeof op.path === 'string' || (op.op === 'move' && typeof op.to === 'string'))
+    );
 }
 
 // 修正 _.merge 对数组的合并逻辑, [1, 2, 3] 和 [4, 5] 合并后变成 [4, 5] 而不是 [4, 5, 3]

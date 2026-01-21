@@ -5,6 +5,7 @@ import gemini_head from '@/prompts/gemini_head.txt?raw';
 import gemini_tail from '@/prompts/gemini_tail.txt?raw';
 import {
     getTavernHelperVersion,
+    isJsonPatch,
     literalYamlify,
     normalizeBaseURL,
     parseString,
@@ -366,15 +367,36 @@ export function extractFromToolCall(tool_calls: ToolCallBatches | undefined): st
             let result = '';
             result += `<UpdateVariable>\n`;
             result += `<Analyze>\n${json.analysis}\n</Analyze>\n`;
+            //如果返回的内容中已包含 <JsonPatch> 块，则要求这里必须能被解释成有效的对象
+            //否则需要在这里拒绝
+            // 主要有两种情况， llm加了 <json_patch> 和没有加的情况，所以下面是try，解码错误的时候fallback一下。
+            const json_patch_match = /json_?patch/i.test(json.delta);
             try {
-                json.delta = JSON.stringify(
-                    parseString(json.delta.replaceAll(/```.*/gm, '')),
-                    null,
-                    2
+                const parsed = parseString(
+                    json.delta.replaceAll(/```.*/gm, '').replaceAll(/<\/?json_?patch>/gim, '')
                 );
+                if (!isJsonPatch(parsed)) {
+                    throw new Error(`不是有效的 json patch`);
+                }
+                json.delta = JSON.stringify(parsed, null, 2);
                 result += `<JSONPatch>\n${json.delta}\n</JSONPatch>\n`;
             } catch (error) {
-                result += `${json.delta}\n`;
+                if (json_patch_match) {
+                    console.error(
+                        `[MVU额外模型解析]无法解析的变量更新块。 ${json.delta}, 错误 ${error}`
+                    );
+                    return null;
+                }
+                const fn_call_match =
+                    /_\.(?:set|insert|assign|remove|unset|delete|add)\s*\([\s\S]*?\)\s*;/.test(
+                        json.delta
+                    );
+                //在错误路径上只可能是以往的变量更新语句，因此无效的场合需要拒绝。
+                if (fn_call_match) {
+                    result += `${json.delta}\n`;
+                } else {
+                    return null;
+                }
             }
             result += `</UpdateVariable>`;
             return result;

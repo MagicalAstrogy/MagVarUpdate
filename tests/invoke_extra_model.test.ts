@@ -21,6 +21,11 @@ describe('extractFromToolCall', () => {
         expect(extractFromToolCall([] as ToolCallBatches)).toBeNull();
     });
 
+    test('returns null when the first batch is empty', () => {
+        const toolCalls = [[]] as unknown as ToolCallBatches;
+        expect(extractFromToolCall(toolCalls)).toBeNull();
+    });
+
     test('returns null when no matching tool name exists', () => {
         const args = JSON.stringify({
             delta: '[{"op":"add","path":"/x","value":1}]',
@@ -32,6 +37,11 @@ describe('extractFromToolCall', () => {
 
     test('returns null when arguments do not contain delta', () => {
         const toolCalls = makeToolCalls('not json');
+        expect(extractFromToolCall(toolCalls)).toBeNull();
+    });
+
+    test('returns null when arguments are empty', () => {
+        const toolCalls = makeToolCalls('');
         expect(extractFromToolCall(toolCalls)).toBeNull();
     });
 
@@ -116,5 +126,57 @@ describe('extractFromToolCall', () => {
         ].join('\n');
 
         expect(extractFromToolCall(toolCalls)).toBe(expected);
+    });
+
+    test('returns null when json patch tag exists but is invalid', () => {
+        const delta = '<JSONPatch>{"foo":1}</JSONPatch>';
+        const args = JSON.stringify({ delta, analysis: 'bad patch' });
+        const toolCalls = makeToolCalls(args);
+        const errorSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
+
+        expect(extractFromToolCall(toolCalls)).toBeNull();
+        expect(errorSpy).toHaveBeenCalled();
+
+        errorSpy.mockRestore();
+    });
+
+    test('returns null when delta is not a json patch and not legacy', () => {
+        const delta = '{"foo":1}';
+        const args = JSON.stringify({ delta, analysis: 'not a patch' });
+        const toolCalls = makeToolCalls(args);
+
+        expect(extractFromToolCall(toolCalls)).toBeNull();
+    });
+
+    test('returns null when argument parsing throws', () => {
+        jest.isolateModules(() => {
+            jest.doMock('@/util', () => {
+                const actual = jest.requireActual('@/util');
+                return {
+                    ...actual,
+                    parseString: jest.fn(() => {
+                        throw new Error('boom');
+                    }),
+                };
+            });
+            const { extractFromToolCall } = require('@/invoke_extra_model');
+            const { MVU_FUNCTION_NAME } = require('@/function_call');
+            const args = JSON.stringify({
+                delta: '[{"op":"add","path":"/x","value":1}]',
+                analysis: 'ok',
+            });
+            const toolCalls = [
+                [
+                    {
+                        index: 0,
+                        id: 'tool_0',
+                        type: 'function',
+                        function: { name: MVU_FUNCTION_NAME, arguments: args },
+                    },
+                ],
+            ];
+
+            expect(extractFromToolCall(toolCalls)).toBeNull();
+        });
     });
 });
