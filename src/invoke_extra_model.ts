@@ -366,15 +366,14 @@ export function extractFromToolCall(tool_calls: ToolCallBatches | undefined): st
             result += `<UpdateVariable>\n`;
             result += `<Analyze>\n${json.analysis}\n</Analyze>\n`;
             try {
-                parseString(json.delta.replaceAll(/```.*/gm, ''));
+                json.delta = JSON.stringify(
+                    parseString(json.delta.replaceAll(/```.*/gm, '')),
+                    null,
+                    2
+                );
                 result += `<JSONPatch>${json.delta}</JSONPatch>\n`;
             } catch (error) {
-                try {
-                    parseString('[\n' + json.delta + '\n]');
-                    result += `<JSONPatch>${json.delta}</JSONPatch>\n`;
-                } catch (error) {
-                    result += `${json.delta}\n`;
-                }
+                result += `${json.delta}\n`;
             }
             result += `</UpdateVariable>`;
             return result;
