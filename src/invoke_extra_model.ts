@@ -369,7 +369,12 @@ export function extractFromToolCall(tool_calls: ToolCallBatches | undefined): st
                 parseString(json.delta.replaceAll(/```.*/gm, ''));
                 result += `<JSONPatch>${json.delta}</JSONPatch>\n`;
             } catch (error) {
-                result += `${json.delta}\n`;
+                try {
+                    parseString('[\n' + json.delta + '\n]');
+                    result += `<JSONPatch>${json.delta}</JSONPatch>\n`;
+                } catch (error) {
+                    result += `${json.delta}\n`;
+                }
             }
             result += `</UpdateVariable>`;
             return result;
