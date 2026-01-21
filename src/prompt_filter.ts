@@ -70,7 +70,7 @@ export async function handlePromptFilter(lores: {
             //如果不在额外分析，则只进行整理
             removed_entries = _.filter(lore, entry => !supported_worlds.has(entry.world));
         }
-        return _(removed_entries).map(entry => entry.world);
+        return removed_entries.map(entry => entry.world);
     };
     const removed_worlds = _(
         _.concat(
