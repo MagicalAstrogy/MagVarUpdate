@@ -20,6 +20,10 @@ let vanilla_parseToolCalls: any = null;
 //测试用，为了使首次请求必失败
 let debug_extra_request_counter = 0;
 
+function generateRandomHeader(): string {
+    return _.times(4, () => uuidv4().slice(0, 8)).join('\n');
+}
+
 function setExtraAnalysisStates() {
     const store = useDataStore();
 
@@ -63,6 +67,7 @@ function unsetExtraAnalysisStates() {
 let is_analysis_inprogress = false;
 
 export async function invokeExtraModelWithStrategy(): Promise<string | null> {
+    const batch_id = generateRandomHeader();
     if (is_analysis_inprogress) {
         //考虑到在分析过程中误按的场景。
         toastr.error('已有在途的额外分析请求', '[MVU额外模型解析]变量更新失败');
@@ -76,7 +81,7 @@ export async function invokeExtraModelWithStrategy(): Promise<string | null> {
 
         const recordedInvoke = async (generation_id?: string) => {
             try {
-                return await invokeExtraModel(generation_id);
+                return await invokeExtraModel(generation_id, batch_id);
             } catch (e) {
                 console.error(e);
                 throw e;
@@ -181,9 +186,9 @@ export async function generateExtraModel(): Promise<string | null> {
 
 // 在点击停止按钮时，会触发异常 `Clicked stop button`: string ,需要专门处理。
 //仅内部使用，因为一部分状态的初始化是在外面执行的。
-async function invokeExtraModel(generation_id?: string): Promise<string> {
+async function invokeExtraModel(generation_id?: string, batch_id?: string): Promise<string> {
     try {
-        const direct_reply = await requestReply(generation_id);
+        const direct_reply = await requestReply(generation_id, batch_id);
         // collected_tool_calls 依赖于 requestReply 的结果, 必须在之后
         const result = collected_tool_calls ?? direct_reply;
 
@@ -241,7 +246,7 @@ const decoded_claude_tail = decode(claude_tail);
 const decoded_gemini_tail = decode(gemini_tail);
 const decoded_extra_model_task = decode(extra_model_task);
 
-async function requestReply(generation_id?: string): Promise<string> {
+async function requestReply(generation_id?: string, batch_id?: string): Promise<string> {
     const store = useDataStore();
 
     const config: GenerateRawConfig = {
@@ -324,7 +329,7 @@ async function requestReply(generation_id?: string): Promise<string> {
     const result = generateRaw({
         ...config,
         ordered_prompts: [
-            { role: 'system', content: _.times(4, () => uuidv4().slice(0, 8)).join('\n') },
+            { role: 'system', content: batch_id ?? generateRandomHeader() },
             { role: 'system', content: is_gemini ? decoded_gemini_head : decoded_claude_head },
             { role: 'system', content: '<additional_information>' },
             'world_info_before',
