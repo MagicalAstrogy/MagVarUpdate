@@ -36,14 +36,14 @@ export async function handlePromptFilter(lores: {
         return;
     }
 
-    const tagged_worlds = new Set<string>();
+    const supported_worlds = new Set<string>();
     const remove_and_check = (lore: Record<string, any>[]) => {
         // 规则应当为：存在任意一个 [mvu_plot]/[mvu_update] 即算是支持，而不是必须存在 [mvu_plot]
         _.remove(lore, entry => {
             const is_update_regex = UPDATE_REGEX.test(entry.comment);
             const is_plot_regex = PLOT_REGEX.test(entry.comment);
             if (is_update_regex || is_plot_regex) {
-                tagged_worlds.add(entry.world);
+                supported_worlds.add(entry.world);
             }
             return store.runtimes.is_during_extra_analysis
                 ? is_plot_regex && !is_update_regex
@@ -62,9 +62,6 @@ export async function handlePromptFilter(lores: {
     remove_and_check(lores.chatLore);
     remove_and_check(lores.personaLore);
 
-    //先处理 remove_and_check 获取到明确的有效世界书列表，然后再筛选。
-    // 只在额外分析时进行这个过滤
-    const supported_worlds = tagged_worlds;
     const process_unsupported_worlds = (lore: Record<string, any>[]) => {
         let removed_entries: Record<string, any>[] = [];
         if (store.runtimes.is_during_extra_analysis) {
@@ -73,10 +70,7 @@ export async function handlePromptFilter(lores: {
             //如果不在额外分析，则只进行整理
             removed_entries = _.filter(lore, entry => !supported_worlds.has(entry.world));
         }
-        return _(removed_entries)
-            .map(entry => entry.world)
-            .uniq()
-            .value();
+        return removed_entries.map(entry => entry.world);
     };
     const removed_worlds = _(
         _.concat(
@@ -85,8 +79,8 @@ export async function handlePromptFilter(lores: {
             process_unsupported_worlds(lores.personaLore)
         )
     )
-        .uniq()
         .sort()
+        .sortedUniq()
         .value();
 
     store.runtimes.unsupported_warnings = Array.from(removed_worlds).join(', ');

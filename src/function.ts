@@ -5,7 +5,7 @@ import {
     reconcileAndApplySchema,
 } from '@/schema';
 import { useDataStore } from '@/store';
-import { parseString, saveChatDebounced } from '@/util';
+import { parseString, saveChatDebounced, isJsonPatch } from '@/util';
 import {
     assertVWD,
     isArraySchema,
@@ -17,25 +17,8 @@ import {
     variable_events,
     VariableData,
 } from '@/variable_def';
-import * as jsonpatch from 'fast-json-patch';
 import { klona } from 'klona';
 import * as math from 'mathjs';
-
-function isJsonPatch(patch: any): patch is jsonpatch.Operation[] {
-    if (!Array.isArray(patch)) {
-        return false;
-    }
-    // An empty array is a valid patch.
-    if (patch.length === 0) {
-        return true;
-    }
-    return patch.every(
-        op =>
-            _.isPlainObject(op) &&
-            typeof op.op === 'string' &&
-            (typeof op.path === 'string' || (op.op === 'move' && typeof op.to === 'string'))
-    );
-}
 
 export function trimQuotesAndBackslashes(str: string): string {
     if (!_.isString(str)) return str;

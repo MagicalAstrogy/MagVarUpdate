@@ -44,6 +44,25 @@ describe('parseString', () => {
         }
     });
 
+    test('repairs JSON patch missing outer array brackets', () => {
+        const original = (globalThis as any).YAML.parseDocument;
+        (globalThis as any).YAML.parseDocument = () => {
+            throw new Error('forced YAML failure');
+        };
+        try {
+            const input = [
+                '{ "op": "add", "path": "/items/0", "value": "first" }',
+                '{ "op": "replace", "path": "/items/1", "value": "second" }',
+            ].join('\n');
+            expect(parseString(input)).toEqual([
+                { op: 'add', path: '/items/0', value: 'first' },
+                { op: 'replace', path: '/items/1', value: 'second' },
+            ]);
+        } finally {
+            (globalThis as any).YAML.parseDocument = original;
+        }
+    });
+
     test('parses TOML input when YAML/JSON5/repair fail', () => {
         const original = (globalThis as any).YAML.parseDocument;
         (globalThis as any).YAML.parseDocument = () => {

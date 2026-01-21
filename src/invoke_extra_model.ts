@@ -5,6 +5,7 @@ import gemini_head from '@/prompts/gemini_head.txt?raw';
 import gemini_tail from '@/prompts/gemini_tail.txt?raw';
 import {
     getTavernHelperVersion,
+    isJsonPatch,
     literalYamlify,
     normalizeBaseURL,
     parseString,
@@ -18,6 +19,10 @@ let collected_tool_calls: string | undefined = undefined;
 let vanilla_parseToolCalls: any = null;
 //测试用，为了使首次请求必失败
 let debug_extra_request_counter = 0;
+
+function generateRandomHeader(): string {
+    return _.times(4, () => uuidv4().slice(0, 8)).join('\n');
+}
 
 function setExtraAnalysisStates() {
     const store = useDataStore();
@@ -62,6 +67,7 @@ function unsetExtraAnalysisStates() {
 let is_analysis_inprogress = false;
 
 export async function invokeExtraModelWithStrategy(): Promise<string | null> {
+    const batch_id = generateRandomHeader();
     if (is_analysis_inprogress) {
         //考虑到在分析过程中误按的场景。
         toastr.error('已有在途的额外分析请求', '[MVU额外模型解析]变量更新失败');
@@ -75,7 +81,7 @@ export async function invokeExtraModelWithStrategy(): Promise<string | null> {
 
         const recordedInvoke = async (generation_id?: string) => {
             try {
-                return await invokeExtraModel(generation_id);
+                return await invokeExtraModel(generation_id, batch_id);
             } catch (e) {
                 console.error(e);
                 throw e;
@@ -180,9 +186,9 @@ export async function generateExtraModel(): Promise<string | null> {
 
 // 在点击停止按钮时，会触发异常 `Clicked stop button`: string ,需要专门处理。
 //仅内部使用，因为一部分状态的初始化是在外面执行的。
-async function invokeExtraModel(generation_id?: string): Promise<string> {
+async function invokeExtraModel(generation_id?: string, batch_id?: string): Promise<string> {
     try {
-        const direct_reply = await requestReply(generation_id);
+        const direct_reply = await requestReply(generation_id, batch_id);
         // collected_tool_calls 依赖于 requestReply 的结果, 必须在之后
         const result = collected_tool_calls ?? direct_reply;
 
@@ -240,7 +246,7 @@ const decoded_claude_tail = decode(claude_tail);
 const decoded_gemini_tail = decode(gemini_tail);
 const decoded_extra_model_task = decode(extra_model_task);
 
-async function requestReply(generation_id?: string): Promise<string> {
+async function requestReply(generation_id?: string, batch_id?: string): Promise<string> {
     const store = useDataStore();
 
     const config: GenerateRawConfig = {
@@ -323,6 +329,7 @@ async function requestReply(generation_id?: string): Promise<string> {
     const result = generateRaw({
         ...config,
         ordered_prompts: [
+            { role: 'system', content: batch_id ?? generateRandomHeader() },
             { role: 'system', content: is_gemini ? decoded_gemini_head : decoded_claude_head },
             { role: 'system', content: '<additional_information>' },
             'world_info_before',
@@ -365,11 +372,36 @@ export function extractFromToolCall(tool_calls: ToolCallBatches | undefined): st
             let result = '';
             result += `<UpdateVariable>\n`;
             result += `<Analyze>\n${json.analysis}\n</Analyze>\n`;
+            //如果返回的内容中已包含 <JsonPatch> 块，则要求这里必须能被解释成有效的对象
+            //否则需要在这里拒绝
+            // 主要有两种情况， llm加了 <json_patch> 和没有加的情况，所以下面是try，解码错误的时候fallback一下。
+            const json_patch_match = /json_?patch/i.test(json.delta);
             try {
-                parseString(json.delta.replaceAll(/```.*/gm, ''));
-                result += `<JSONPatch>${json.delta}</JSONPatch>\n`;
+                const parsed = parseString(
+                    json.delta.replaceAll(/```.*/gm, '').replaceAll(/<\/?json_?patch>/gim, '')
+                );
+                if (!isJsonPatch(parsed)) {
+                    throw new Error(`不是有效的 json patch`);
+                }
+                json.delta = JSON.stringify(parsed, null, 2);
+                result += `<JSONPatch>\n${json.delta}\n</JSONPatch>\n`;
             } catch (error) {
-                result += `${json.delta}\n`;
+                if (json_patch_match) {
+                    console.error(
+                        `[MVU额外模型解析]无法解析的变量更新块。 ${json.delta}, 错误 ${error}`
+                    );
+                    return null;
+                }
+                const fn_call_match =
+                    /_\.(?:set|insert|assign|remove|unset|delete|add)\s*\([\s\S]*?\)\s*;/.test(
+                        json.delta
+                    );
+                //在错误路径上只可能是以往的变量更新语句，因此无效的场合需要拒绝。
+                if (fn_call_match) {
+                    result += `${json.delta}\n`;
+                } else {
+                    return null;
+                }
             }
             result += `</UpdateVariable>`;
             return result;
