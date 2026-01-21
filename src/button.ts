@@ -68,6 +68,28 @@ async function EmitVariableAnalysisJob() {
                 refresh: 'none',
             }
         );
+        //需要将当前楼层的变量重置为上一层的样子，才能保证在重试时发出的内容是对的。
+        //不能直接删除，因为世界书条目中会取当前楼层的变量。
+        const last_valid_msg = findLastValidMessage(last_msg);
+        if (last_valid_msg !== -1) {
+            const last_variable_data = klona(
+                getVariables({
+                    type: 'message',
+                    message_id: last_valid_msg,
+                })
+            );
+            //还原上一次更新的变量，如果有
+            await updateVariablesWith(
+                variables => {
+                    _.set(variables, `stat_data`, last_variable_data?.stat_data);
+                    _.set(variables, `delta_data`, last_variable_data?.delta_data);
+                    _.set(variables, `display_data`, last_variable_data?.display_data);
+                    _.set(variables, `schema`, last_variable_data?.schema);
+                    return variables;
+                },
+                { type: 'message', message_id: last_msg }
+            );
+        }
     }
     await msg_received_callback(last_msg, 'manual_emit');
     toastr.info(`解析完成`, '[MVU]重试额外模型解析');
