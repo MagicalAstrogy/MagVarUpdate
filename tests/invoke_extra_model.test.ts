@@ -78,7 +78,15 @@ describe('extractFromToolCall', () => {
             '<Analyze>',
             'second',
             '</Analyze>',
-            '<JSONPatch>[{"op":"replace","path":"/second","value":2}]</JSONPatch>',
+            '<JSONPatch>',
+            '[',
+            '  {',
+            '    "op": "replace",',
+            '    "path": "/second",',
+            '    "value": 2',
+            '  }',
+            ']',
+            '</JSONPatch>',
             '</UpdateVariable>',
         ].join('\n');
 

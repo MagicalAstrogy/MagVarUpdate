@@ -371,7 +371,7 @@ export function extractFromToolCall(tool_calls: ToolCallBatches | undefined): st
                     null,
                     2
                 );
-                result += `<JSONPatch>${json.delta}</JSONPatch>\n`;
+                result += `<JSONPatch>\n${json.delta}\n</JSONPatch>\n`;
             } catch (error) {
                 result += `${json.delta}\n`;
             }
