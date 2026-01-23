@@ -314,6 +314,26 @@ async function initialize() {
     scopedEventOn(exported_events.INVOKE_MVU_PROCESS, handleVariablesInCallback);
     scopedEventOn(exported_events.UPDATE_VARIABLE, updateVariable);
     scopedEventOn(tavern_events.CHAT_COMPLETION_SETTINGS_READY, overrideToolRequest);
+    scopedEventOn(tavern_events.CHAT_COMPLETION_SETTINGS_READY, ({ messages }) => {
+        if (
+            store.settings.更新方式 === '额外模型解析' &&
+            !store.runtimes.is_during_extra_analysis
+        ) {
+            messages
+                .filter(
+                    message =>
+                        typeof message.content === 'string' &&
+                        message.content.includes('<UpdateVariable>')
+                )
+                .forEach(
+                    message =>
+                        (message.content = (message.content as string).replaceAll(
+                            /<(update(?:variable)?|variableupdate)>(?:(?!<\1>).)*<\/\1?>/gis,
+                            ''
+                        ))
+                );
+        }
+    });
 
     _.set(window.parent, 'handleVariablesInMessage', handleVariablesInMessage);
     registerFunction();
