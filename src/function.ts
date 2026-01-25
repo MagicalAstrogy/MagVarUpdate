@@ -5,7 +5,7 @@ import {
     reconcileAndApplySchema,
 } from '@/schema';
 import { useDataStore } from '@/store';
-import { parseString, saveChatDebounced, isJsonPatch } from '@/util';
+import { isJsonPatch, parseString, saveChatDebounced } from '@/util';
 import {
     assertVWD,
     isArraySchema,
@@ -657,11 +657,6 @@ export async function updateVariable(
     return false;
 }
 
-type ErrorInfo = {
-    error_last: string;
-    error_command: Command;
-};
-
 export function pathFixPass(
     _unused_data: MvuData,
     commands: Command[],
@@ -702,13 +697,14 @@ export async function updateVariables(
     //@ts-expect-error 这里会有一个variables类型的不一致，一个内部类型，一个外部类型。
     await eventEmit(variable_events.VARIABLE_UPDATE_STARTED, variables);
 
-    let error_info: ErrorInfo | undefined;
+    let error_info: { title: string; content: string } | undefined;
     let current_command: Command | undefined;
-    const outError = function (message: string) {
-        console.warn(message);
+    const outError = function (content: string) {
+        const title = `发生变量更新错误, 可能需要重Roll: ${current_command?.full_match}`;
+        console.warn(`${title}\n${content}`);
         error_info = {
-            error_last: message,
-            error_command: current_command!,
+            title: `[MVU]${title}`,
+            content,
         };
     };
 
@@ -1417,13 +1413,7 @@ export async function updateVariables(
         variables_before_update
     );
     if (error_info && useDataStore().settings.通知.变量更新出错) {
-        const base_command: string = error_info.error_command.full_match;
-        if (typeof toastr !== 'undefined')
-            toastr.warning(
-                `最近错误: ${error_info.error_last}`,
-                `[MVU]发生变量更新错误，可能需要重Roll: ${base_command}`,
-                { timeOut: 6000 }
-            );
+        toastr.warning(error_info.content, error_info.title, { timeOut: 6000 });
     }
 
     return is_modified;
