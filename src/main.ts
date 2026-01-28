@@ -98,6 +98,32 @@ async function removeChatVariables() {
         { type: 'chat' }
     );
 }
+function cleanupPrompts({ messages }: { messages: SillyTavern.SendingMessage[] }) {
+    const store = useDataStore();
+
+    const text_messages = messages.filter(message => typeof message.content === 'string') as {
+        role: string;
+        content: string;
+    }[];
+
+    if (store.settings.更新方式 === '额外模型解析' && !store.runtimes.is_during_extra_analysis) {
+        text_messages
+            .filter(message => message.content.includes('<UpdateVariable>'))
+            .forEach(
+                message =>
+                    (message.content = message.content.replaceAll(
+                        /\n<(update(?:variable)?|variableupdate)>(?:(?!<\1>).)*<\/\1?>/gis,
+                        ''
+                    ))
+            );
+    }
+    text_messages
+        .filter(message => message.content.includes('<StatusPlaceHolderImpl/>'))
+        .forEach(
+            message =>
+                (message.content = message.content.replaceAll('\n<StatusPlaceHolderImpl/>', ''))
+        );
+}
 async function initialize() {
     if (compare(getTavernHelperVersion(), '3.4.17', '<')) {
         toastr.warning(
@@ -314,6 +340,7 @@ async function initialize() {
     scopedEventOn(exported_events.INVOKE_MVU_PROCESS, handleVariablesInCallback);
     scopedEventOn(exported_events.UPDATE_VARIABLE, updateVariable);
     scopedEventOn(tavern_events.CHAT_COMPLETION_SETTINGS_READY, overrideToolRequest);
+    scopedEventOn(tavern_events.CHAT_COMPLETION_SETTINGS_READY, cleanupPrompts);
 
     _.set(window.parent, 'handleVariablesInMessage', handleVariablesInMessage);
     registerFunction();

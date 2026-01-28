@@ -87,7 +87,7 @@ async function onVariableUpdatedCall(args: any): Promise<string> {
         return '';
     }
 
-    let message_content = chat_message.message;
+    let message_content = chat_message.message.trimEnd();
     const variables = await getLastValidVariable(message_id);
     if (!_.has(variables, 'stat_data')) {
         return '';
@@ -99,7 +99,7 @@ async function onVariableUpdatedCall(args: any): Promise<string> {
     }
     await replaceVariables(variables, { type: 'message', message_id: message_id });
 
-    message_content += `<UpdateVariable>\n<Analysis>${args.analysis}</Analysis></Analysis>${args.delta}\n</UpdateVariable>`;
+    message_content += `\n\n<UpdateVariable>\n<Analysis>${args.analysis}</Analysis></Analysis>${args.delta}\n</UpdateVariable>`;
 
     if (chat_message.role !== 'user' && !message_content.includes('<StatusPlaceHolderImpl/>')) {
         //同时追加 PlaceHolder。
