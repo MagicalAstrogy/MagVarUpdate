@@ -19,6 +19,10 @@ type LorebookEntry = {
 };
 
 export async function initCheck() {
+    if ($('#chat > .welcomePanel').length > 0) {
+        return;
+    }
+
     let variables: MvuData & Record<string, any>;
     //这个函数需要处理 dryRun,因为0层。
 
