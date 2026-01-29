@@ -19,7 +19,7 @@ type LorebookEntry = {
 };
 
 export async function initCheck() {
-    if ($('#welcomePanel').length > 0) {
+    if ($('#chat > .welcomePanel').length > 0) {
         return;
     }
 
