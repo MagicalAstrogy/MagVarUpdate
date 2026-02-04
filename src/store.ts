@@ -170,9 +170,10 @@ function migrateSettings(raw: unknown): LooseSettings {
 }
 
 export const useDataStore = defineStore('data', () => {
-    const settings = ref(
-        Settings.parse(migrateSettings(_.get(SillyTavern.extensionSettings, 'mvu_settings', {})))
+    const parsed = Settings.safeParse(
+        migrateSettings(_.get(SillyTavern.extensionSettings, 'mvu_settings', {}))
     );
+    const settings = ref(parsed.success ? parsed.data : Settings.parse({}));
     watch(
         settings,
         new_settings => {
