@@ -1476,6 +1476,12 @@ export async function handleVariablesInMessage(message_id: number) {
         if (!message_content.includes('<StatusPlaceHolderImpl/>')) {
             message_content += '\n\n<StatusPlaceHolderImpl/>';
         }
+        if (message_content.includes('<status_current_variable>')) {
+            message_content = message_content.replaceAll(
+                /<(status_current_variable)>(?:(?!<\1>).)*<\/\1?>/gis,
+                ''
+            );
+        }
         await setChatMessages(
             [
                 {
