@@ -98,7 +98,7 @@ export type MvuData = {
     // initialized_lorebooks 从字符串列表变为记录对象
     // 这样可以为每个知识库存储元数据，例如初始化的标记变量
     /** 已初始化的 lorebook 列表 */
-    initialized_lorebooks?: Record<string, any[]>;
+    initialized_lorebooks: Record<string, any[]>;
 
     /**
      * 状态数据 - 存储实际的变量值
@@ -136,7 +136,7 @@ export type MvuData = {
      */
     delta_data?: Record<string, any>;
     // 用于存储数据结构的模式
-    schema?: ObjectSchemaNode & Partial<RootAdditionalProps>;
+    schema: ObjectSchemaNode & Partial<RootAdditionalProps>;
 };
 
 export interface VariableData {
@@ -155,10 +155,6 @@ export const variable_events = {
     COMMAND_PARSED: 'mag_command_parsed',
     BEFORE_MESSAGE_UPDATE: 'mag_before_message_update',
 } as const;
-export const exported_events = {
-    INVOKE_MVU_PROCESS: 'mag_invoke_mvu',
-    UPDATE_VARIABLE: 'mag_update_variable',
-} as const;
 
 export type InternalData = {
     display_data: Record<string, any>;
@@ -170,7 +166,7 @@ export type UpdateContext = {
     message_content: string;
 };
 
-export type ExtendedListenerType = {
+export interface ListenerType  {
     [variable_events.SINGLE_VARIABLE_UPDATED]: (
         stat_data: Record<string, any>,
         path: string,
@@ -192,38 +188,11 @@ export type ExtendedListenerType = {
         message_content: string
     ) => void;
     [variable_events.BEFORE_MESSAGE_UPDATE]: (context: UpdateContext) => void;
-    [exported_events.INVOKE_MVU_PROCESS]: (
-        message_content: string,
-        variable_info: VariableData
-    ) => void;
-    [exported_events.UPDATE_VARIABLE]: (
-        stat_data: Record<string, any>,
-        path: string,
-        newValue: any,
-        reason: string,
-        isRecursive: boolean
-    ) => void;
 };
 
 export type InitVarType = StatData & RootAdditionalMetaProps;
 
 export type DataCategory = 'stat' | 'display' | 'delta';
-
-export function extractRecord(category: 'stat' | 'display' | 'delta', game_data: MvuData) {
-    let data: Record<string, any> | undefined = undefined;
-    switch (category) {
-        case 'stat':
-            data = game_data.stat_data;
-            break;
-        case 'display':
-            data = game_data.display_data!;
-            break;
-        case 'delta':
-            data = game_data.delta_data!;
-            break;
-    }
-    return data;
-}
 
 export const UPDATE_REGEX = /\[mvu_update\]/i;
 export const PLOT_REGEX = /\[mvu_plot\]/i;

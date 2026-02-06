@@ -1,18 +1,9 @@
+import { isExtraModelSupported } from '@/function/is_extra_model_supported';
 import { useDataStore } from '@/store';
 import { isFunctionCallingSupported } from '@/util';
 import { PLOT_REGEX, UPDATE_REGEX } from '@/variable_def';
 
-export async function isExtraModelSupported(): Promise<boolean> {
-    const lorebook_name = getCurrentCharPrimaryLorebook();
-    if (!lorebook_name) {
-        return false;
-    }
-    return await getLorebookEntries(lorebook_name).then(entries =>
-        entries.some(entry => UPDATE_REGEX.test(entry.comment) || PLOT_REGEX.test(entry.comment))
-    );
-}
-
-export async function handlePromptFilter(lores: {
+export async function filterEntries(lores: {
     globalLore: Record<string, any>[];
     characterLore: Record<string, any>[];
     chatLore: Record<string, any>[];
