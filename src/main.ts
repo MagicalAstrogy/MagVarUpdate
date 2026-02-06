@@ -4,7 +4,7 @@ import { initGlobals } from '@/function/global';
 import { initInitvar } from '@/function/initvar';
 import { initNotification } from '@/function/notification';
 import { initRequest } from '@/function/request';
-import { initResponse } from '@/function/response';
+import { initResponse } from '@/function/update';
 import { initPanel } from '@/panel';
 import { useDataStore } from '@/store';
 import { checkMinimumVersion } from '@util/common';
