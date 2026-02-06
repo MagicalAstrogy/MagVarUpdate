@@ -1,10 +1,11 @@
 import { createEmptyGameData, loadInitVarData } from '@/function/initvar/variable_init';
 import { isExtraModelSupported } from '@/function/is_extra_model_supported';
+import { isFunctionCallingSupported } from '@/function/is_function_calling_supported';
 import { cleanUpMetadata, reconcileAndApplySchema } from '@/function/schema';
 import { onMessageReceived } from '@/function/update/on_message_received';
 import { handleVariablesInMessage, updateVariables } from '@/function/update_variables';
 import { useDataStore } from '@/store';
-import { getLastValidMessageId, getLastValidVariable, isFunctionCallingSupported } from '@/util';
+import { getLastValidMessageId, getLastValidVariable } from '@/util';
 import { MvuData } from '@/variable_def';
 import { klona } from 'klona';
 
@@ -395,7 +396,7 @@ export const buttons: Button[] = [
                 !isFunctionCallingSupported()
             ) {
                 toastr.info(
-                    `当前配置指定的LLM不支持函数调用，不需要进行此操作`,
+                    `当前配置指定的LLM不支持函数调用，请调整额外模型解析设置`,
                     '[MVU]重试额外模型解析',
                     {
                         timeOut: 3000,
