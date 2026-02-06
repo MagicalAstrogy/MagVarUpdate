@@ -1,6 +1,6 @@
+import { overrideToolRequest, registerFunction } from '@/function/function_call';
 import { filterEntries } from '@/function/request/filter_entries';
 import { filterPrompts } from '@/function/request/filter_prompts';
-import { overrideToolRequest, registerFunction } from '@/function/request/function_call';
 import { stoppableEventOn } from '@/util';
 
 export function initRequest() {
