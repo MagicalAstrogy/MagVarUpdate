@@ -5,14 +5,8 @@ import extra_model_task from '@/prompts/extra_model_task.txt?raw';
 import gemini_head from '@/prompts/gemini_head.txt?raw';
 import gemini_tail from '@/prompts/gemini_tail.txt?raw';
 import { useDataStore } from '@/store';
-import {
-    getTavernHelperVersion,
-    isJsonPatch,
-    literalYamlify,
-    normalizeBaseURL,
-    parseString,
-    uuidv4,
-} from '@/util';
+import { getTavernHelperVersion, isJsonPatch, normalizeBaseURL } from '@/util';
+import { literalYamlify, parseString, uuidv4 } from '@util/common';
 import { compare } from 'compare-versions';
 
 let collected_tool_calls: string | undefined = undefined;
