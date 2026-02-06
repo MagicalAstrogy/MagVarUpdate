@@ -5,7 +5,7 @@ import extra_model_task from '@/prompts/extra_model_task.txt?raw';
 import gemini_head from '@/prompts/gemini_head.txt?raw';
 import gemini_tail from '@/prompts/gemini_tail.txt?raw';
 import { useDataStore } from '@/store';
-import { getTavernHelperVersion, isJsonPatch, normalizeBaseURL } from '@/util';
+import { isJsonPatch, normalizeBaseURL } from '@/util';
 import { literalYamlify, parseString, uuidv4 } from '@util/common';
 import { compare } from 'compare-versions';
 
@@ -253,7 +253,7 @@ async function requestReply(generation_id?: string, batch_id?: string): Promise<
     };
     if (store.settings.额外模型解析配置.模型来源 === '自定义') {
         const unset_if_equal = (value: number, expected: number) =>
-            compare(getTavernHelperVersion(), '4.3.9', '>=') && value === expected
+            compare(store.versions.tavernhelper, '4.3.9', '>=') && value === expected
                 ? 'unset'
                 : value;
         config.custom_api = {

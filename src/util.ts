@@ -1,25 +1,6 @@
 import { isMvuData, MvuData } from '@/variable_def';
 import * as jsonpatch from 'fast-json-patch';
 
-let sillytavern_version: string = '1.0.0';
-export async function initSillyTavernVersion(): Promise<void> {
-    sillytavern_version = await fetch('/version')
-        .then(res => res.json())
-        .then(data => data.pkgVersion)
-        .catch(() => '1.0.0');
-}
-export function getSillyTavernVersion(): string {
-    return sillytavern_version;
-}
-
-let tavernhelper_version: string = '1.0.0';
-export async function initTavernHelperVersion(): Promise<void> {
-    tavernhelper_version = await getTavernHelperVersion();
-}
-export function getTavernHelperVersion(): string {
-    return tavernhelper_version;
-}
-
 export function isFunctionCallingSupported() {
     if (!SillyTavern.ToolManager.isToolCallingSupported()) {
         return false;
