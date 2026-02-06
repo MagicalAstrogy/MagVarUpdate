@@ -54,11 +54,6 @@ export type ToolCallBatch = ToolFunctionCall[];
 /** 多批（组）工具调用：你示例的最外层 */
 export type ToolCallBatches = ToolCallBatch[];
 
-export function unregisterFunction() {
-    SillyTavern.unregisterFunctionTool(MVU_FUNCTION_NAME);
-    SillyTavern.unregisterFunctionTool(mvu_update_call_function_name);
-}
-
 /*
 async function _onStoryEndCall(_args: any): Promise<string> {
     const variables = await getLastValidVariable(getLastMessageId());
@@ -136,7 +131,7 @@ export function registerFunction() {
     const { registerFunctionTool } = SillyTavern;
     if (!registerFunctionTool) {
         console.debug('MVU: function tools are not supported');
-        return;
+        return () => {};
     }
 
     const mvu_update_schema = Object.freeze({
@@ -213,6 +208,11 @@ export function registerFunction() {
         formatMessage: () => '',
     });
     */
+
+    return () => {
+        SillyTavern.unregisterFunctionTool(MVU_FUNCTION_NAME);
+        SillyTavern.unregisterFunctionTool(mvu_update_call_function_name);
+    };
 }
 
 export function overrideToolRequest(generate_data: any) {
