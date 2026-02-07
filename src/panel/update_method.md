@@ -16,7 +16,7 @@
 - 名字里带有 `[mvu_update]` 的条目只会发给更新变量 AI;
 - 名字中既没有 `[mvu_plot]` 也没有 `[mvu_update]` 的条目将会发送给两个 AI.
 
-可见, 这需要 MVU 角色卡世界书适配地为条目名字添加 `[mvu_plot]` 或 `[mvu_plot]`.
+可见, 这需要 MVU 角色卡世界书适配地为条目名字添加 `[mvu_plot]` 或 `[mvu_update]`.
 
 最新的
 [MVU 教程](https://stagedog.github.io/络络/教程/手写mvu变量卡/)所制作出的角色卡会直接适配额外模型解析, 你也可以阅读该教程来为旧角色卡适配.
