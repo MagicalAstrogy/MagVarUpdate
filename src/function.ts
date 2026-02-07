@@ -733,6 +733,13 @@ export async function updateVariables(
         commands,
         current_message_content
     );
+    //允许 MVU zod 在处理完所有 COMMAND_PARSED 后清理 commands
+    await eventEmit(
+        variable_events.COMMAND_PARSED + 'ended_for_zod',
+        variables,
+        commands,
+        current_message_content
+    );
 
     pathFixPass(variables, commands, current_message_content);
 
@@ -1475,6 +1482,12 @@ export async function handleVariablesInMessage(message_id: number) {
     if (chat_message.role !== 'user') {
         if (!message_content.includes('<StatusPlaceHolderImpl/>')) {
             message_content += '\n\n<StatusPlaceHolderImpl/>';
+        }
+        if (message_content.includes('<status_current_variable>')) {
+            message_content = message_content.replaceAll(
+                /<(status_current_variable)>(?:(?!<\1>).)*<\/\1?>/gis,
+                ''
+            );
         }
         await setChatMessages(
             [

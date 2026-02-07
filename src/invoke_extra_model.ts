@@ -332,6 +332,8 @@ async function requestReply(generation_id?: string, batch_id?: string): Promise<
             { role: 'system', content: batch_id ?? generateRandomHeader() },
             { role: 'system', content: is_gemini ? decoded_gemini_head : decoded_claude_head },
             { role: 'system', content: '<additional_information>' },
+            'persona_description',
+            'char_description',
             'world_info_before',
             'world_info_after',
             { role: 'system', content: '</additional_information>' },
