@@ -1,8 +1,10 @@
+import { MVU_FUNCTION_NAME, ToolCallBatches } from '@/function/request/function_call';
 import claude_head from '@/prompts/claude_head.txt?raw';
 import claude_tail from '@/prompts/claude_tail.txt?raw';
 import extra_model_task from '@/prompts/extra_model_task.txt?raw';
 import gemini_head from '@/prompts/gemini_head.txt?raw';
 import gemini_tail from '@/prompts/gemini_tail.txt?raw';
+import { useDataStore } from '@/store';
 import {
     getTavernHelperVersion,
     isJsonPatch,
@@ -12,8 +14,6 @@ import {
     uuidv4,
 } from '@/util';
 import { compare } from 'compare-versions';
-import { MVU_FUNCTION_NAME, ToolCallBatches } from './function_call';
-import { useDataStore } from './store';
 
 let collected_tool_calls: string | undefined = undefined;
 let vanilla_parseToolCalls: any = null;
@@ -286,7 +286,7 @@ async function requestReply(generation_id?: string, batch_id?: string): Promise<
     SillyTavern.registerMacro('lastUserMessage', () => {
         return task;
     });
-    if (store.settings.debug.首次额外请求必失败 && debug_extra_request_counter === 0) {
+    if (store.runtimes.debug.首次额外请求必失败 && debug_extra_request_counter === 0) {
         debug_extra_request_counter++;
         throw 'simulated exception';
     }

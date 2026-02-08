@@ -1,5 +1,5 @@
 // 整体游戏数据类型
-import { getLastValidVariable, updateVariables } from '@/function';
+import { getLastValidVariable, updateVariables } from '@/function/update_variables';
 import { cleanUpMetadata, EXTENSIBLE_MARKER, generateSchema } from '@/schema';
 import { useDataStore } from '@/store';
 import { correctlyMerge, parseString } from '@/util';
@@ -374,5 +374,3 @@ export async function updateLorebookSettings(): Promise<void> {
         setLorebookSettings(dst_setting);
     }
 }
-
-//window.initCheck = initCheck;
