@@ -58,17 +58,15 @@ function unsetExtraAnalysisStates() {
     store.runtimes.is_function_call_enabled = false;
 }
 
-let is_analysis_inprogress = false;
+let is_analysis_in_progress = false;
 
 export async function invokeExtraModelWithStrategy(): Promise<string | null> {
     const batch_id = generateRandomHeader();
-    if (is_analysis_inprogress) {
-        //考虑到在分析过程中误按的场景。
-        toastr.error('已有在途的额外分析请求', '[MVU额外模型解析]变量更新失败');
+    if (is_analysis_in_progress) {
         return null;
     }
     try {
-        is_analysis_inprogress = true;
+        is_analysis_in_progress = true;
         const store = useDataStore();
 
         debug_extra_request_counter = 0;
@@ -162,7 +160,7 @@ export async function invokeExtraModelWithStrategy(): Promise<string | null> {
                 return concurrentInvoke(store.settings.额外模型解析配置.请求次数 - 1);
         }
     } finally {
-        is_analysis_inprogress = false;
+        is_analysis_in_progress = false;
     }
 }
 
