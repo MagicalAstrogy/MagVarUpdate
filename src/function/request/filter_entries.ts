@@ -1,6 +1,6 @@
 import { isExtraModelSupported } from '@/function/is_extra_model_supported';
+import { isFunctionCallingSupported } from '@/function/is_function_calling_supported';
 import { useDataStore } from '@/store';
-import { isFunctionCallingSupported } from '@/util';
 import { PLOT_REGEX, UPDATE_REGEX } from '@/variable_def';
 
 export async function filterEntries(lores: {

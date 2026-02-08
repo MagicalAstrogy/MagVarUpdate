@@ -1,16 +1,6 @@
 import { isMvuData, MvuData } from '@/variable_def';
 import * as jsonpatch from 'fast-json-patch';
 
-export function isFunctionCallingSupported() {
-    if (!SillyTavern.ToolManager.isToolCallingSupported()) {
-        return false;
-    }
-    if (SillyTavern.chatCompletionSettings.function_calling === false) {
-        return false;
-    }
-    return true;
-}
-
 declare const jest: any;
 declare const process: any;
 
