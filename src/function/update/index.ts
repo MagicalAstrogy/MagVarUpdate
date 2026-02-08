@@ -1,6 +1,6 @@
 import { is_jest_environment, stoppableEventOn } from '@/util';
 
-import { onMessageReceived } from '@/function/response/on_message_received';
+import { onMessageReceived } from '@/function/update/on_message_received';
 import { handleVariablesInMessage } from '@/function/update_variables';
 
 export function initResponse() {

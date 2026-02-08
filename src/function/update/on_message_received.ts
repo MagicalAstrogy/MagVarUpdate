@@ -1,5 +1,5 @@
-import { invokeExtraModelWithStrategy } from '@/function/response/invoke_extra_model';
 import { isExtraModelSupported } from '@/function/is_extra_model_supported';
+import { invokeExtraModelWithStrategy } from '@/function/update/invoke_extra_model';
 import { handleVariablesInMessage } from '@/function/update_variables';
 import { useDataStore } from '@/store';
 import { isFunctionCallingSupported } from '@/util';

@@ -1,7 +1,7 @@
 import { createEmptyGameData, loadInitVarData } from '@/function/initvar/variable_init';
 import { isExtraModelSupported } from '@/function/is_extra_model_supported';
-import { onMessageReceived } from '@/function/response/on_message_received';
 import { cleanUpMetadata, reconcileAndApplySchema } from '@/function/schema';
+import { onMessageReceived } from '@/function/update/on_message_received';
 import { handleVariablesInMessage, updateVariables } from '@/function/update_variables';
 import { useDataStore } from '@/store';
 import { getLastValidMessageId, getLastValidVariable, isFunctionCallingSupported } from '@/util';
