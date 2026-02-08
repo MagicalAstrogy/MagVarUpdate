@@ -5,7 +5,7 @@ import {
     reconcileAndApplySchema,
 } from '@/schema';
 import { useDataStore } from '@/store';
-import { isJsonPatch, parseString, saveChatDebounced } from '@/util';
+import { isJsonPatch, parseString } from '@/util';
 import {
     assertVWD,
     isArraySchema,
@@ -20,7 +20,7 @@ import {
 import { klona } from 'klona';
 import * as math from 'mathjs';
 
-export function trimQuotesAndBackslashes(str: string): string {
+function trimQuotesAndBackslashes(str: string): string {
     if (!_.isString(str)) return str;
     // Regular expression to match backslashes and quotes (including backticks) at the beginning and end
     return str.replace(/^[\\"'` ]*(.*?)[\\"'` ]*$/, '$1');
@@ -34,7 +34,7 @@ export function trimQuotesAndBackslashes(str: string): string {
  * @param array_merge_concat 指明数组的 合并 行为是指 覆盖 还是 拼接，默认拼接。
  * @returns 合并后的值
  */
-export function applyTemplate(
+function applyTemplate(
     value: any,
     template: TemplateType | undefined,
     strict_array_cast: boolean = false,
@@ -83,7 +83,7 @@ export function applyTemplate(
 
 // 一个更安全的、用于解析命令中值的辅助函数
 // 它会尝试将字符串解析为 JSON, 布尔值, null, 数字, 或数学表达式
-export function parseCommandValue(valStr: string): any {
+function parseCommandValue(valStr: string): any {
     if (typeof valStr !== 'string') return valStr;
     const trimmed = valStr.trim();
 
@@ -271,7 +271,7 @@ function extractJsonPatch(patch: any): Command[] {
  * 使用状态机方法，通过计数括号配对来准确找到 _.set() 调用的结束位置
  */
 // 将 extractSetCommands 扩展为 extractCommands 以支持多种命令
-export function extractCommands(inputText: string): Command[] {
+function extractCommands(inputText: string): Command[] {
     // TODO: 应该按照消息中更新命令出现的顺序来排列 json_patch 和自定义命令
     const results: (Command & { $index: number })[] = _.concat(
         [
@@ -444,7 +444,7 @@ function findMatchingCloseParen(str: string, startPos: number): number {
 
 // 解析参数字符串，处理嵌套结构
 // 增加了对圆括号的层级计数。
-export function parseParameters(paramsString: string): string[] {
+function parseParameters(paramsString: string): string[] {
     const params: string[] = [];
     let currentParam = '';
     let inQuote = false;
@@ -657,11 +657,7 @@ export async function updateVariable(
     return false;
 }
 
-export function pathFixPass(
-    _unused_data: MvuData,
-    commands: Command[],
-    _unused_content: string
-): void {
+function pathFixPass(_unused_data: MvuData, commands: Command[], _unused_content: string): void {
     for (const command of commands) {
         command.args[0] = pathFix(trimQuotesAndBackslashes(command.args[0]));
     }
@@ -671,7 +667,6 @@ function isNullOrWhiteSpace(str: string): boolean {
     return str == null || str.trim().length === 0;
 }
 
-// 重构 updateVariables 以处理更多命令
 export async function updateVariables(
     current_message_content: string,
     variables: MvuData
@@ -694,7 +689,6 @@ export async function updateVariables(
         display_data: out_status.stat_data,
         delta_data: delta_status.stat_data || {},
     });
-    //@ts-expect-error 这里会有一个variables类型的不一致，一个内部类型，一个外部类型。
     await eventEmit(variable_events.VARIABLE_UPDATE_STARTED, variables);
 
     let error_info: { title: string; content: string } | undefined;
@@ -1405,7 +1399,6 @@ export async function updateVariables(
     variables.display_data = out_status.stat_data;
     variables.delta_data = delta_status.stat_data!;
     // 触发变量更新结束事件
-    //@ts-expect-error 这里会有一个variables类型的不一致，一个内部类型，一个外部类型。
     await eventEmit(variable_events.VARIABLE_UPDATE_ENDED, variables, variables_before_update);
     //在结束事件中也可能设置变量
     _.unset(variables.stat_data, '$internal');
@@ -1450,7 +1443,6 @@ export async function handleVariablesInMessage(message_id: number) {
             variables: variables,
             message_content: message_content,
         };
-        //@ts-expect-error 新老版本酒馆助手类型信息兼容
         await eventEmit(variable_events.BEFORE_MESSAGE_UPDATE, context);
         message_content = context.message_content;
     }
@@ -1513,50 +1505,4 @@ export async function handleVariablesInCallback(
     in_out_variable_info.new_variables = klona(in_out_variable_info.old_variables);
     await updateVariables(message_content, in_out_variable_info.new_variables);
     return in_out_variable_info.new_variables;
-}
-
-/** 清理 `[start_message_id, end_message_id]` 内, 楼层号不为 `snap_interval` 倍数的楼层变量 */
-export function cleanupVariablesInMessages(
-    start_message_id: number,
-    end_message_id: number,
-    snap_interval: number
-) {
-    let counter = 0;
-    _(SillyTavern.chat)
-        .slice(start_message_id, end_message_id + 1)
-        .forEach((chat_message, msg_index) => {
-            if (chat_message.variables === undefined) {
-                return;
-            }
-            //每个楼层只在counter 中统计一次。
-            let chat_flag = false;
-            chat_message.variables = _.range(0, chat_message.swipes?.length ?? 1).map(i => {
-                if (chat_message?.variables?.[i] === undefined) {
-                    return {};
-                }
-                if (_.get(chat_message?.variables?.[i], 'snapshot') === true) {
-                    return chat_message.variables[i];
-                }
-                if ((start_message_id + msg_index) % snap_interval === 0) {
-                    //需要对已经忽略的snapshot 楼层进行标记
-                    //原因是考虑到用户会修改楼层间隔，比如从 50-> 70 ，因为最小公倍数的原因，会导致之前的楼层实质上 350 层一个快照，有较大风险
-                    _.set(chat_message, ['variables', i, 'snapshot'], true);
-                    return chat_message.variables[i];
-                }
-                if (!chat_flag) {
-                    chat_flag = true;
-                    ++counter;
-                }
-                return _.omit(
-                    chat_message.variables[i],
-                    `initialized_lorebooks`,
-                    `stat_data`,
-                    `display_data`,
-                    `delta_data`,
-                    `schema`
-                );
-            });
-        });
-    saveChatDebounced();
-    return counter;
 }

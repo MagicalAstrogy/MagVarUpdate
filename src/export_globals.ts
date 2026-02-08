@@ -1,12 +1,6 @@
-import { handleVariablesInCallback, updateVariable } from '@/function';
-import {
-    extractRecord,
-    isValueWithDescription,
-    MvuData,
-    variable_events,
-    VariableData,
-} from '@/variable_def';
-import { loadInitVarData } from '@/variable_init';
+import { loadInitVarData } from '@/function/init/variable_init';
+import { handleVariablesInCallback, updateVariable } from '@/function/update_variables';
+import { isValueWithDescription, MvuData, variable_events, VariableData } from '@/variable_def';
 import { useDataStore } from './store';
 
 type CommandNames = 'set' | 'insert' | 'delete' | 'add' | 'move';
@@ -375,7 +369,19 @@ function createMVU() {
             mvu_data: MvuData,
             category: 'stat' | 'display' | 'delta'
         ): Record<string, any> {
-            return extractRecord(category, mvu_data);
+            let data: Record<string, any> | undefined = undefined;
+            switch (category) {
+                case 'stat':
+                    data = mvu_data.stat_data;
+                    break;
+                case 'display':
+                    data = mvu_data.display_data!;
+                    break;
+                case 'delta':
+                    data = mvu_data.delta_data!;
+                    break;
+            }
+            return data;
         },
         /**
          * @brief 返回当前轮次是否属于额外模型解析轮次。

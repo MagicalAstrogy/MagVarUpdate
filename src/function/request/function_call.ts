@@ -1,4 +1,4 @@
-import { getLastValidVariable, updateVariables } from '@/function';
+import { getLastValidVariable, updateVariables } from '@/function/update_variables';
 import { useDataStore } from '@/store';
 
 /**
@@ -28,6 +28,9 @@ const mvu_update_call_function_name = 'mvu_updateRound';
 ]
  */
 
+/** 已知的工具名：先收窄 mvu_VariableUpdate，保留 string 兼容其它 */
+export type ToolName = typeof MVU_FUNCTION_NAME | (string & {});
+
 /** 工具调用的“函数体” */
 export interface FunctionCallBody {
     /** 工具名，例如 "mvu_VariableUpdate"。你也可以扩成联合类型做更强约束 */
@@ -49,9 +52,6 @@ export type ToolCallBatch = ToolFunctionCall[];
 
 /** 多批（组）工具调用：你示例的最外层 */
 export type ToolCallBatches = ToolCallBatch[];
-
-/** 已知的工具名：先收窄 mvu_VariableUpdate，保留 string 兼容其它 */
-export type ToolName = typeof MVU_FUNCTION_NAME | (string & {});
 
 export function unregisterFunction() {
     SillyTavern.unregisterFunctionTool(MVU_FUNCTION_NAME);
