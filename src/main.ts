@@ -124,17 +124,16 @@ $(async () => {
     await initSillyTavernVersion();
     await initTavernHelperVersion();
     stop_list.push(initPanel());
-    eventOn(tavern_events.CHAT_CHANGED, reloadScript);
-    await initialize();
     stop_list.push(await initGlobals());
     stop_list.push(initNotification());
 
     $(window).on('pagehide', async () => {
         stop_list.forEach(stop);
-        destroy();
     });
 });
 
+// TODO: 重新考虑哪些在 CHAT_CHANGED 时应该被重载
+eventOn(tavern_events.CHAT_CHANGED, reloadScript);
 let current_chat_id = SillyTavern.getCurrentChatId();
 function reloadScript(chat_id: string) {
     if (current_chat_id !== chat_id) {

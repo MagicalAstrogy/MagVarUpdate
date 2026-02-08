@@ -5,7 +5,7 @@ import {
     reconcileAndApplySchema,
 } from '@/function/schema';
 import { useDataStore } from '@/store';
-import { getLastValidVariable, isJsonPatch, parseString } from '@/util';
+import { getLastValidVariable, isJsonPatch } from '@/util';
 import {
     assertVWD,
     isArraySchema,
@@ -16,6 +16,7 @@ import {
     UpdateContext,
     variable_events,
 } from '@/variable_def';
+import { parseString } from '@util/common';
 import { klona } from 'klona';
 import * as math from 'mathjs';
 
