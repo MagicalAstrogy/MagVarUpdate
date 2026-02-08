@@ -1,6 +1,9 @@
+import { isMvuData, MvuData } from '@/variable_def';
 import * as jsonpatch from 'fast-json-patch';
 import JSON5 from 'json5';
 import { jsonrepair } from 'jsonrepair';
+import { klona } from 'klona';
+import _ from 'lodash';
 import TavernHelper = globalThis.TavernHelper;
 
 let sillytavern_version: string = '1.0.0';
@@ -45,17 +48,26 @@ export const saveChatDebounced = _.debounce(SillyTavern.saveChat, 1000);
  * 寻找包含变量信息的最后一个楼层
  * @param end_message_id 从哪一条消息开始倒序搜索(不含那一条)
  */
-export function findLastValidMessage(end_message_id: number) {
+export function getLastValidMessageId(end_message_id: number): number {
     return _(SillyTavern.chat)
-        .slice(0, end_message_id) // 不包括那个下标
+        .slice(0, end_message_id)
         .findLastIndex(chat_message => {
-            return (
-                _.get(chat_message, ['variables', chat_message.swipe_id ?? 0, 'stat_data']) !==
-                    undefined &&
-                _.get(chat_message, ['variables', chat_message.swipe_id ?? 0, 'schema']) !==
-                    undefined
-            ); //需要同时有 schema 和 stat_data
+            return isMvuData(_.get(chat_message, ['variables', chat_message.swipe_id ?? 0], {}));
         });
+}
+
+export function getLastValidVariable(end_message_id: number): MvuData | undefined {
+    const message_id = getLastValidMessageId(end_message_id);
+    if (message_id === -1) {
+        return undefined;
+    }
+    return klona(
+        _.get(
+            SillyTavern.chat[message_id],
+            ['variables', SillyTavern.chat[message_id].swipe_id ?? 0],
+            {}
+        ) as MvuData
+    );
 }
 
 // 酒馆助手 4.1.6 有原生支持, 但为了向后兼容性, 自己包装一层

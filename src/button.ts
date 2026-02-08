@@ -1,14 +1,15 @@
 import { createEmptyGameData, loadInitVarData } from '@/function/init/variable_init';
 import { isExtraModelSupported } from '@/function/is_extra_model_supported';
 import { onMessageReceived } from '@/function/response/on_message_received';
-import {
-    getLastValidVariable,
-    handleVariablesInMessage,
-    updateVariables,
-} from '@/function/update_variables';
-import { cleanUpMetadata, reconcileAndApplySchema } from '@/schema';
+import { cleanUpMetadata, reconcileAndApplySchema } from '@/function/schema';
+import { handleVariablesInMessage, updateVariables } from '@/function/update_variables';
 import { useDataStore } from '@/store';
-import { findLastValidMessage, isFunctionCallingSupported, scopedEventOn } from '@/util';
+import {
+    getLastValidMessageId,
+    getLastValidVariable,
+    isFunctionCallingSupported,
+    scopedEventOn,
+} from '@/util';
 import { MvuData } from '@/variable_def';
 import { klona } from 'klona';
 
@@ -35,12 +36,7 @@ import { klona } from 'klona';
  *   }
  * }
  */
-function updateDescriptions(
-    _init_path: string,
-    init_data: any,
-    msg_data: any,
-    target_data: any
-) {
+function updateDescriptions(_init_path: string, init_data: any, msg_data: any, target_data: any) {
     _.forEach(init_data, (value, key) => {
         const current_path = key; //init_path ? `${init_path}.${key}` : key;
 
@@ -134,7 +130,6 @@ function updateDescriptions(
     });
 }
 
-
 interface Button {
     name: string;
     function: (() => void) | (() => Promise<void>);
@@ -192,11 +187,9 @@ export const buttons: Button[] = [
                 return;
             }
 
-            const latest_msg_data = await getLastValidVariable(message_id);
+            const latest_msg_data = getLastValidVariable(message_id);
 
-            if (!_.has(latest_msg_data, 'stat_data')) {
-                console.error('最新消息中没有找到 stat_data');
-                toastr.error('最新消息中没有 stat_data', '[MVU]', { timeOut: 3000 });
+            if (!latest_msg_data) {
                 return;
             }
 
@@ -298,7 +291,7 @@ export const buttons: Button[] = [
                 return;
             }
 
-            const fnd_message = findLastValidMessage(message_id);
+            const fnd_message = getLastValidMessageId(message_id);
             if (fnd_message === -1) {
                 toastr.error(`无法找到可以进行重演的楼层`, '[MVU]楼层重演失败');
                 return;
@@ -455,7 +448,7 @@ export const buttons: Button[] = [
                 );
                 //需要将当前楼层的变量重置为上一层的样子，才能保证在重试时发出的内容是对的。
                 //不能直接删除，因为世界书条目中会取当前楼层的变量。
-                const last_valid_msg = findLastValidMessage(last_msg);
+                const last_valid_msg = getLastValidMessageId(last_msg);
                 if (last_valid_msg !== -1) {
                     const last_variable_data = klona(
                         getVariables({

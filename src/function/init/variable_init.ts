@@ -1,8 +1,7 @@
-// 整体游戏数据类型
-import { getLastValidVariable, updateVariables } from '@/function/update_variables';
-import { cleanUpMetadata, EXTENSIBLE_MARKER, generateSchema } from '@/schema';
+import { cleanUpMetadata, EXTENSIBLE_MARKER, generateSchema } from '@/function/schema';
+import { updateVariables } from '@/function/update_variables';
 import { useDataStore } from '@/store';
-import { correctlyMerge, parseString } from '@/util';
+import { correctlyMerge, getLastValidVariable, parseString } from '@/util';
 import {
     isObjectSchema,
     MvuData,

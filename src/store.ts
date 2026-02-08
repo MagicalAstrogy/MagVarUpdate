@@ -166,7 +166,7 @@ const Runtimes = z
     })
     .prefault({});
 
-export const useDataStore = defineStore('data', () => {
+export const useDataStore = defineStore('MVU变量框架', () => {
     const settings = ref(Settings.parse(_.get(SillyTavern.extensionSettings, 'mvu_settings', {})));
     watch(
         settings,

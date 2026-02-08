@@ -1,6 +1,5 @@
 import { cleanupMessageVariables } from '@/function/cleanup/cleanup_variables';
 import { useDataStore } from '@/store';
-import _ from 'lodash';
 
 export async function cleanupLegacyChat() {
     const result = await SillyTavern.callGenericPopup(
