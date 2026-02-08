@@ -1,15 +1,10 @@
-import { createEmptyGameData, loadInitVarData } from '@/function/init/variable_init';
+import { createEmptyGameData, loadInitVarData } from '@/function/initvar/variable_init';
 import { isExtraModelSupported } from '@/function/is_extra_model_supported';
 import { onMessageReceived } from '@/function/response/on_message_received';
 import { cleanUpMetadata, reconcileAndApplySchema } from '@/function/schema';
 import { handleVariablesInMessage, updateVariables } from '@/function/update_variables';
 import { useDataStore } from '@/store';
-import {
-    getLastValidMessageId,
-    getLastValidVariable,
-    isFunctionCallingSupported,
-    scopedEventOn,
-} from '@/util';
+import { getLastValidMessageId, getLastValidVariable, isFunctionCallingSupported } from '@/util';
 import { MvuData } from '@/variable_def';
 import { klona } from 'klona';
 
@@ -528,9 +523,11 @@ export const buttons: Button[] = [
     },
 ];
 
-export function registerButtons() {
-    appendInexistentScriptButtons(buttons.map(b => ({ name: b.name, visible: false })));
-    buttons.forEach(b => {
-        scopedEventOn(getButtonEvent(b.name), b.function);
+export function initButtons() {
+    appendInexistentScriptButtons(buttons.map(button => ({ name: button.name, visible: false })));
+    buttons.forEach(button => {
+        eventOn(getButtonEvent(button.name), button.function);
     });
+
+    return () => {};
 }

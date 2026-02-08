@@ -54,5 +54,12 @@ export function initNotification() {
         store.settings.internal.已提醒额外模型同时请求 = true;
     }
 
+    if (store.settings.通知.MVU框架加载成功) {
+        toastr.info(
+            `构建信息: ${__BUILD_DATE__ ?? 'Unknown'} (${__COMMIT_ID__ ?? 'Unknown'})`,
+            '[MVU]脚本加载成功'
+        );
+    }
+
     return () => {};
 }
