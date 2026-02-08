@@ -29,6 +29,8 @@ coverage/
 
 # Ignore Webpack cache
 .cache/
+auto-imports.d.ts
+components.d.ts
 
 # Ignore Visual Studio
 .vs/
