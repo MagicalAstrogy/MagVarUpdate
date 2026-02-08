@@ -3,9 +3,9 @@ import {
     generateSchema,
     getSchemaForPath,
     reconcileAndApplySchema,
-} from '@/schema';
+} from '@/function/schema';
 import { useDataStore } from '@/store';
-import { isJsonPatch, parseString } from '@/util';
+import { getLastValidVariable, isJsonPatch, parseString } from '@/util';
 import {
     assertVWD,
     isArraySchema,
@@ -15,7 +15,6 @@ import {
     TemplateType,
     UpdateContext,
     variable_events,
-    VariableData,
 } from '@/variable_def';
 import { klona } from 'klona';
 import * as math from 'mathjs';
@@ -507,15 +506,6 @@ function parseParameters(paramsString: string): string[] {
     return params;
 }
 
-export async function getLastValidVariable(message_id: number): Promise<MvuData> {
-    return (klona(
-        _(SillyTavern.chat)
-            .slice(0, message_id + 1)
-            .map(chat_message => _.get(chat_message, ['variables', chat_message.swipe_id ?? 0]))
-            .findLast(variables => _.has(variables, 'stat_data'))
-    ) ?? getVariables({ type: 'message' })) as MvuData;
-}
-
 export function pathFix(path: string): string {
     if (!path) return path;
 
@@ -596,11 +586,7 @@ export function pathFix(path: string): string {
 
 /**
  * MVU 风格的变量更新操作，同时会更新 display_data/delta_data
- * @param stat_data 当前的变量状态，来源应当是 mag_variable_updated 回调中提供的 stat_data。其他来源则不会修改 display_data 等。
- * @param path 要更改的变量路径
- * @param new_value 新值
- * @param reason 修改原因（可选，默认为空）
- * @param is_recursive 此次修改是否允许触发 mag_variable_updated 回调（默认不允许）
+ * @deprecated MVU zod 不再需要支持 display_data/delta_data
  */
 export async function updateVariable(
     stat_data: Record<string, any>,
@@ -1431,7 +1417,7 @@ export async function handleVariablesInMessage(message_id: number) {
         return;
     }
     const request_message_id = message_id === 0 ? 0 : message_id - 1;
-    const variables = await getLastValidVariable(request_message_id);
+    const variables = getLastValidVariable(request_message_id);
     const settings = useDataStore().settings;
     if (!_.has(variables, 'stat_data')) {
         return;
@@ -1493,16 +1479,4 @@ export async function handleVariablesInMessage(message_id: number) {
             }
         );
     }
-}
-
-export async function handleVariablesInCallback(
-    message_content: string,
-    in_out_variable_info: VariableData
-) {
-    if (in_out_variable_info.old_variables === undefined) {
-        return;
-    }
-    in_out_variable_info.new_variables = klona(in_out_variable_info.old_variables);
-    await updateVariables(message_content, in_out_variable_info.new_variables);
-    return in_out_variable_info.new_variables;
 }

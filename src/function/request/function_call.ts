@@ -1,5 +1,6 @@
-import { getLastValidVariable, updateVariables } from '@/function/update_variables';
+import { updateVariables } from '@/function/update_variables';
 import { useDataStore } from '@/store';
+import { getLastValidVariable } from '@/util';
 
 /**
  * 最终的变量更新机制实际上是专门generate 一个新的请求，那个请求会通过 tool_call 直接更新变量。

@@ -3,7 +3,7 @@ import { createPinia } from 'pinia';
 import { createApp } from 'vue';
 
 export function initPanel() {
-    const app = createApp(Panel).use(createPinia());
+    const app = createApp(Panel).use(getActivePinia() ?? createPinia());
 
     const $app = $('<div>').attr('script_id', getScriptId());
     $('#extensions_settings2').append($app);
@@ -14,11 +14,9 @@ export function initPanel() {
         .append($(`head > style`, document).clone())
         .appendTo('head');
 
-    return {
-        destroy: () => {
-            app.unmount();
-            $app.remove();
-            $style.remove();
-        },
+    return () => {
+        app.unmount();
+        $app.remove();
+        $style.remove();
     };
 }

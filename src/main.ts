@@ -1,10 +1,11 @@
 import { registerButtons } from '@/button';
-import { exportGlobals, unsetGlobals } from '@/export_globals';
 import { cleanupLegacyChat } from '@/function/cleanup/cleanup_legacy_chat';
 import { cleanupMessageVariables } from '@/function/cleanup/cleanup_variables';
 import { removeChatVariables } from '@/function/cleanup/remove_chat_variables';
 import { restoreVariables } from '@/function/cleanup/restore_variables';
+import { initGlobals } from '@/function/global';
 import { initCheck } from '@/function/init/variable_init';
+import { initNotification } from '@/function/notification';
 import { filterEntries } from '@/function/request/filter_entries';
 import { filterPrompts } from '@/function/request/filter_prompts';
 import {
@@ -14,7 +15,6 @@ import {
 } from '@/function/request/function_call';
 import { onMessageReceived } from '@/function/response/on_message_received';
 import { handleVariablesInMessage } from '@/function/update_variables';
-import { showNotifications } from '@/notifications';
 import { initPanel } from '@/panel';
 import { useDataStore } from '@/store';
 import {
@@ -26,7 +26,6 @@ import {
     scopedEventOn,
 } from '@/util';
 import { compare } from 'compare-versions';
-import _ from 'lodash';
 
 async function initialize() {
     if (compare(getTavernHelperVersion(), '3.4.17', '<')) {
@@ -104,8 +103,6 @@ async function initialize() {
         }
     });
 
-    showNotifications();
-
     if (store.settings.通知.MVU框架加载成功) {
         toastr.info(
             `构建信息: ${__BUILD_DATE__ ?? 'Unknown'} (${__COMMIT_ID__ ?? 'Unknown'})`,
@@ -119,18 +116,22 @@ async function destroy() {
     clearScopedEvent();
 }
 
+setActivePinia(getActivePinia() ?? createPinia());
+
 $(async () => {
+    const stop_list: Array<() => void> = [];
+
     await initSillyTavernVersion();
     await initTavernHelperVersion();
-    const { destroy: destroyPanel } = initPanel();
+    stop_list.push(initPanel());
     eventOn(tavern_events.CHAT_CHANGED, reloadScript);
     await initialize();
-    await exportGlobals();
+    stop_list.push(await initGlobals());
+    stop_list.push(initNotification());
 
     $(window).on('pagehide', async () => {
-        destroyPanel();
+        stop_list.forEach(stop);
         destroy();
-        unsetGlobals();
     });
 });
 

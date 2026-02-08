@@ -1,9 +1,8 @@
 import { updateVariables } from '@/function/update_variables';
 import { useDataStore } from '@/store';
-import { findLastValidMessage } from '@/util';
+import { getLastValidMessageId } from '@/util';
 import { MvuData } from '@/variable_def';
 import { klona } from 'klona';
-import _ from 'lodash';
 
 export async function restoreVariables() {
     const last_message_id = SillyTavern.chat.length - 1;
@@ -27,11 +26,8 @@ export async function restoreVariables() {
         1,
         last_message_id - store.settings.自动清理变量.要保留变量的最近楼层数
     );
-    const snapshot_message_id = findLastValidMessage(last_20th_message_id);
-    if (
-        snapshot_message_id === -1 ||
-        !_.has(SillyTavern.chat, [snapshot_message_id, 'variables', 0, 'stat_data'])
-    ) {
+    const snapshot_message_id = getLastValidMessageId(last_20th_message_id);
+    if (snapshot_message_id === -1) {
         // 无法恢复
         toastr.warning(
             `在 0 ~ ${last_20th_message_id} 层找不到有效的变量信息, 无法进行楼层变量恢复`,
