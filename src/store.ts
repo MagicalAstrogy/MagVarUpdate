@@ -149,6 +149,13 @@ const NewSettings = z
             })
             .prefault({}),
     })
+    .transform(data => {
+        if (data.internal.已开启默认不兼容假流式 === false) {
+            data.额外模型解析配置.兼容假流式 = false;
+            data.internal.已开启默认不兼容假流式 = true;
+        }
+        return data;
+    })
     .prefault({});
 
 const Settings = z.union([OldSettings, NewSettings]).catch(() => NewSettings.parse({}));

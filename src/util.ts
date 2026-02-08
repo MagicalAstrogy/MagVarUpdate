@@ -46,14 +46,9 @@ export function getLastValidVariable(end_message_id: number): MvuData | undefine
     );
 }
 
-// 酒馆助手 4.1.6 有原生支持, 但为了向后兼容性, 自己包装一层
-const stop_lists: Array<() => void> = [];
-export function scopedEventOn<T extends EventType>(event_type: T, listener: ListenerType[T]) {
+export function stoppableEventOn<T extends EventType>(event_type: T, listener: ListenerType[T]) {
     eventOn(event_type, listener);
-    stop_lists.push(() => eventRemoveListener(event_type, listener));
-}
-export function clearScopedEvent() {
-    stop_lists.forEach(stop => stop());
+    return () => eventRemoveListener(event_type, listener);
 }
 
 export function isJsonPatch(patch: any): patch is jsonpatch.Operation[] {

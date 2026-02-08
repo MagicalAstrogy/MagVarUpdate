@@ -1,4 +1,4 @@
-import { loadInitVarData } from '@/function/init/variable_init';
+import { loadInitVarData } from '@/function/initvar/variable_init';
 import { updateVariable, updateVariables } from '@/function/update_variables';
 import { isValueWithDescription, MvuData, variable_events } from '@/variable_def';
 import { useDataStore } from '../../store';
@@ -161,11 +161,11 @@ function createMvu() {
     return mvu;
 }
 
-export async function initGlobals() {
+export function initGlobals() {
     const mvu = createMvu();
     _.set(window, 'Mvu', mvu);
     _.set(window.parent, 'Mvu', mvu);
-    await eventEmit('global_Mvu_initialized');
+    eventEmit('global_Mvu_initialized');
 
     return () => {
         deleteVariable('extra_analysis', { type: 'global' });
