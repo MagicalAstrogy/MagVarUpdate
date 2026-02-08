@@ -187,5 +187,17 @@ export const useDataStore = defineStore('MVU变量框架', () => {
         runtimes.value = Runtimes.parse({});
     };
 
-    return { settings, runtimes, resetRuntimes };
+    const versions = ref<{ sillytavern: string; tavernhelper: string }>({
+        sillytavern: '',
+        tavernhelper: '',
+    });
+    const _wait_init = async () => {
+        versions.value.sillytavern = await fetch('/version')
+            .then(res => res.json())
+            .then(data => data.pkgVersion)
+            .catch(() => '1.0.0');
+        versions.value.tavernhelper = await getTavernHelperVersion();
+    };
+
+    return { settings, runtimes, versions, resetRuntimes, _wait_init };
 });

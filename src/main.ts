@@ -17,24 +17,10 @@ import { onMessageReceived } from '@/function/response/on_message_received';
 import { handleVariablesInMessage } from '@/function/update_variables';
 import { initPanel } from '@/panel';
 import { useDataStore } from '@/store';
-import {
-    clearScopedEvent,
-    getTavernHelperVersion,
-    initSillyTavernVersion,
-    initTavernHelperVersion,
-    is_jest_environment,
-    scopedEventOn,
-} from '@/util';
-import { compare } from 'compare-versions';
+import { clearScopedEvent, is_jest_environment, scopedEventOn } from '@/util';
+import { checkMinimumVersion } from '@util/common';
 
 async function initialize() {
-    if (compare(getTavernHelperVersion(), '3.4.17', '<')) {
-        toastr.warning(
-            '酒馆助手版本过低, 无法正常处理, 请更新至 3.4.17 或更高版本（建议保持酒馆助手最新）',
-            '[MVU]不支持当前酒馆助手版本'
-        );
-    }
-
     const store = useDataStore();
     store.resetRuntimes();
 
@@ -119,13 +105,16 @@ async function destroy() {
 setActivePinia(getActivePinia() ?? createPinia());
 
 $(async () => {
+    await checkMinimumVersion('3.4.17', 'MVU变量框架');
+
+    const store = useDataStore();
+    await store._wait_init();
+
     const stop_list: Array<() => void> = [];
 
-    await initSillyTavernVersion();
-    await initTavernHelperVersion();
     stop_list.push(initPanel());
-    stop_list.push(await initGlobals());
     stop_list.push(initNotification());
+    stop_list.push(await initGlobals());
 
     $(window).on('pagehide', async () => {
         stop_list.forEach(stop);
