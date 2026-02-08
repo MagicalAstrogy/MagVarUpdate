@@ -9,10 +9,6 @@ import { initPanel } from '@/panel';
 import { useDataStore } from '@/store';
 import { checkMinimumVersion } from '@util/common';
 
-async function initialize() {}
-
-async function destroy() {}
-
 setActivePinia(getActivePinia() ?? createPinia());
 
 $(async () => {
@@ -27,26 +23,29 @@ $(async () => {
     stop_list.push(initButtons());
     stop_list.push(initGlobals());
 
-    stop_list.push(await initInitvar());
-    stop_list.push(initRequest());
-    stop_list.push(initResponse());
-
-    stop_list.push(initCleanup());
+    let chat_level_stop_list = await initChatLevel();
+    let current_chat_id = SillyTavern.getCurrentChatId();
+    eventOn(tavern_events.CHAT_CHANGED, async (chat_id: string) => {
+        if (current_chat_id !== chat_id) {
+            current_chat_id = chat_id;
+            chat_level_stop_list.forEach(stop => stop());
+            chat_level_stop_list = await initChatLevel();
+        }
+    });
 
     stop_list.push(initNotification());
 
     $(window).on('pagehide', async () => {
+        chat_level_stop_list.forEach(stop => stop());
         stop_list.forEach(stop => stop());
     });
 });
 
-// TODO: 重新考虑哪些在 CHAT_CHANGED 时应该被重载
-eventOn(tavern_events.CHAT_CHANGED, reloadScript);
-let current_chat_id = SillyTavern.getCurrentChatId();
-function reloadScript(chat_id: string) {
-    if (current_chat_id !== chat_id) {
-        current_chat_id = chat_id;
-        destroy();
-        initialize();
-    }
+async function initChatLevel() {
+    const stop_list: Array<() => void> = [];
+    stop_list.push(await initInitvar());
+    stop_list.push(initRequest());
+    stop_list.push(initResponse());
+    stop_list.push(initCleanup());
+    return stop_list;
 }

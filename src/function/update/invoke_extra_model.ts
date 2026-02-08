@@ -1,4 +1,4 @@
-import { MVU_FUNCTION_NAME, ToolCallBatches } from '@/function/request/function_call';
+import { MVU_FUNCTION_NAME, ToolCallBatches } from '@/function/function_call';
 import claude_head from '@/prompts/claude_head.txt?raw';
 import claude_tail from '@/prompts/claude_tail.txt?raw';
 import extra_model_task from '@/prompts/extra_model_task.txt?raw';
