@@ -5,8 +5,9 @@
             "jqueryui",
             "lodash",
             "toastr",
+            "type-fest",
             "yaml",
-            "vue"
+            "zod",
         ],
         "target": "ESNext",
         "module": "ESNext",
@@ -18,7 +19,7 @@
             ]
         },
         "moduleDetection": "auto",
-        "moduleResolution": "node",
+        "moduleResolution": "bundler",
         "allowUmdGlobalAccess": true,
         "allowSyntheticDefaultImports": true,
         "strictBindCallApply": true,
@@ -26,18 +27,18 @@
         "checkJs": false,
         "sourceMap": true,
         "strict": true,
+        "jsx": "react-jsx",
         "noUnusedLocals": true,
         "noUnusedParameters": true,
         "noImplicitReturns": true,
         "noFallthroughCasesInSwitch": true,
         "esModuleInterop": true,
-        "forceConsistentCasingInFileNames": true,
-        "alwaysStrict": true
+        "forceConsistentCasingInFileNames": true
     },
     "include": [
         "src",
         "slash-runner/@types",
-        "global.d.ts",
+        "*.d.ts",
     ],
     "exclude": [
         "**/dist/**",
