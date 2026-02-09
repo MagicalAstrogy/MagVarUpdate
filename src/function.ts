@@ -735,7 +735,7 @@ export async function updateVariables(
     );
     //允许 MVU zod 在处理完所有 COMMAND_PARSED 后清理 commands
     await eventEmit(
-        variable_events.COMMAND_PARSED + 'ended_for_zod',
+        variable_events.COMMAND_PARSED + '_ended_for_zod',
         variables,
         commands,
         current_message_content
