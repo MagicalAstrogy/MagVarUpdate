@@ -55,7 +55,7 @@ export async function checkAndCleanupLegacyChat() {
                 toastr.error(`聊天记录导出失败，放弃清理: ${data.message}`, '[MVU]自动清理');
                 return;
             }
-
+            toastr.success(data.message);
             const serialized = data.result;
             const blob = new Blob([serialized], { type: 'text/plain' });
             const url = URL.createObjectURL(blob);
