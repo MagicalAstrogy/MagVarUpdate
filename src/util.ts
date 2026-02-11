@@ -1,5 +1,6 @@
 import { isMvuData, MvuData } from '@/variable_def';
 import * as jsonpatch from 'fast-json-patch';
+import { klona } from 'klona';
 
 declare const jest: any;
 declare const process: any;
