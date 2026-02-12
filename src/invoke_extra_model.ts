@@ -271,6 +271,7 @@ async function requestReply(generation_id?: string, batch_id?: string): Promise<
             frequency_penalty: unset_if_equal(store.settings.额外模型解析配置.频率惩罚, 0),
             presence_penalty: unset_if_equal(store.settings.额外模型解析配置.存在惩罚, 0),
             top_p: unset_if_equal(store.settings.额外模型解析配置.top_p, 1),
+            top_k: unset_if_equal(store.settings.额外模型解析配置.top_k, 0),
         };
     }
 
