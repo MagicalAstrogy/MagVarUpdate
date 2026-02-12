@@ -58,16 +58,6 @@
                         />
                     </Field>
 
-                    <Field label="Top P">
-                        <RangeNumber
-                            v-model="store.settings.额外模型解析配置.top_p"
-                            :disabled="!additional_extra_configuration_supported"
-                            :min="0"
-                            :max="1"
-                            :step="0.01"
-                        />
-                    </Field>
-
                     <Field label="频率惩罚">
                         <RangeNumber
                             v-model="store.settings.额外模型解析配置.频率惩罚"
@@ -85,6 +75,26 @@
                             :min="-2"
                             :max="2"
                             :step="0.01"
+                        />
+                    </Field>
+
+                    <Field label="Top P">
+                        <RangeNumber
+                            v-model="store.settings.额外模型解析配置.top_p"
+                            :disabled="!additional_extra_configuration_supported"
+                            :min="0"
+                            :max="1"
+                            :step="0.01"
+                        />
+                    </Field>
+
+                    <Field label="Top K">
+                        <RangeNumber
+                            v-model="store.settings.额外模型解析配置.top_k"
+                            :disabled="!additional_extra_configuration_supported"
+                            :min="0"
+                            :max="500"
+                            :step="1"
                         />
                     </Field>
                 </div>

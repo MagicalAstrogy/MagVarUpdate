@@ -50,6 +50,10 @@ export const Settings = z
                     .number()
                     .default(1)
                     .transform(value => _.clamp(value, 0, 1)),
+                top_k: z.coerce
+                    .number()
+                    .default(0)
+                    .transform(value => _.clamp(value, 0, 500)),
                 最大回复token数: z.coerce
                     .number()
                     .default(4096)
