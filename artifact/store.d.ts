@@ -35,6 +35,7 @@ export declare const Settings: z.ZodPrefault<z.ZodObject<{
         频率惩罚: z.ZodPipe<z.ZodDefault<z.ZodCoercedNumber<unknown>>, z.ZodTransform<number, number>>;
         存在惩罚: z.ZodPipe<z.ZodDefault<z.ZodCoercedNumber<unknown>>, z.ZodTransform<number, number>>;
         top_p: z.ZodPipe<z.ZodDefault<z.ZodCoercedNumber<unknown>>, z.ZodTransform<number, number>>;
+        top_k: z.ZodPipe<z.ZodDefault<z.ZodCoercedNumber<unknown>>, z.ZodTransform<number, number>>;
         最大回复token数: z.ZodPipe<z.ZodDefault<z.ZodCoercedNumber<unknown>>, z.ZodTransform<number, number>>;
     }, z.core.$strip>>;
     自动清理变量: z.ZodPrefault<z.ZodObject<{
@@ -84,6 +85,7 @@ export declare const useDataStore: import("pinia").StoreDefinition<"data", Pick<
             频率惩罚: number;
             存在惩罚: number;
             top_p: number;
+            top_k: number;
             最大回复token数: number;
         };
         自动清理变量: {
@@ -131,6 +133,7 @@ export declare const useDataStore: import("pinia").StoreDefinition<"data", Pick<
             频率惩罚: number;
             存在惩罚: number;
             top_p: number;
+            top_k: number;
             最大回复token数: number;
         };
         自动清理变量: {
@@ -178,6 +181,7 @@ export declare const useDataStore: import("pinia").StoreDefinition<"data", Pick<
             频率惩罚: number;
             存在惩罚: number;
             top_p: number;
+            top_k: number;
             最大回复token数: number;
         };
         自动清理变量: {
@@ -241,6 +245,7 @@ export declare const useDataStore: import("pinia").StoreDefinition<"data", Pick<
             频率惩罚: number;
             存在惩罚: number;
             top_p: number;
+            top_k: number;
             最大回复token数: number;
         };
         自动清理变量: {
@@ -288,6 +293,7 @@ export declare const useDataStore: import("pinia").StoreDefinition<"data", Pick<
             频率惩罚: number;
             存在惩罚: number;
             top_p: number;
+            top_k: number;
             最大回复token数: number;
         };
         自动清理变量: {
@@ -335,6 +341,7 @@ export declare const useDataStore: import("pinia").StoreDefinition<"data", Pick<
             频率惩罚: number;
             存在惩罚: number;
             top_p: number;
+            top_k: number;
             最大回复token数: number;
         };
         自动清理变量: {
@@ -398,6 +405,7 @@ export declare const useDataStore: import("pinia").StoreDefinition<"data", Pick<
             频率惩罚: number;
             存在惩罚: number;
             top_p: number;
+            top_k: number;
             最大回复token数: number;
         };
         自动清理变量: {
@@ -445,6 +453,7 @@ export declare const useDataStore: import("pinia").StoreDefinition<"data", Pick<
             频率惩罚: number;
             存在惩罚: number;
             top_p: number;
+            top_k: number;
             最大回复token数: number;
         };
         自动清理变量: {
@@ -492,6 +501,7 @@ export declare const useDataStore: import("pinia").StoreDefinition<"data", Pick<
             频率惩罚: number;
             存在惩罚: number;
             top_p: number;
+            top_k: number;
             最大回复token数: number;
         };
         自动清理变量: {
