@@ -85,7 +85,7 @@ async function onVariableUpdatedCall(args: any): Promise<string> {
     }
 
     let message_content = chat_message.message.trimEnd();
-    const variables = await getLastValidVariable(message_id);
+    const variables = getLastValidVariable(message_id + 1);
     if (!_.has(variables, 'stat_data')) {
         return '';
     }
