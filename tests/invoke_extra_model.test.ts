@@ -1,5 +1,13 @@
-import { MVU_FUNCTION_NAME, ToolCallBatches } from '@/function_call';
-import { extractFromToolCall } from '@/invoke_extra_model';
+import { extractFromToolCall, MVU_FUNCTION_NAME } from '@/function/function_call';
+
+type ToolCallBatches = Array<
+    Array<{
+        index: number;
+        id: string;
+        type: 'function';
+        function: { name: string; arguments: string };
+    }>
+>;
 
 const makeToolCalls = (argumentsValue: string, name = MVU_FUNCTION_NAME): ToolCallBatches => [
     [
@@ -150,8 +158,8 @@ describe('extractFromToolCall', () => {
 
     test('returns null when argument parsing throws', () => {
         jest.isolateModules(() => {
-            jest.doMock('@/util', () => {
-                const actual = jest.requireActual('@/util');
+            jest.doMock('@util/common', () => {
+                const actual = jest.requireActual('@util/common');
                 return {
                     ...actual,
                     parseString: jest.fn(() => {
@@ -159,8 +167,7 @@ describe('extractFromToolCall', () => {
                     }),
                 };
             });
-            const { extractFromToolCall } = require('@/invoke_extra_model');
-            const { MVU_FUNCTION_NAME } = require('@/function_call');
+            const { extractFromToolCall, MVU_FUNCTION_NAME } = require('@/function/function_call');
             const args = JSON.stringify({
                 delta: '[{"op":"add","path":"/x","value":1}]',
                 analysis: 'ok',

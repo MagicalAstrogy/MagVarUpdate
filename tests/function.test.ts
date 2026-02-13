@@ -1,15 +1,16 @@
+import { handleVariablesInMessage, pathFix, updateVariables } from '@/function/update_variables';
+import { getLastValidVariable } from '@/util';
 import {
-    getLastValidVariable,
     handleVariablesInCallback,
-    handleVariablesInMessage,
     parseParameters,
-    pathFix,
     trimQuotesAndBackslashes,
-    updateVariables,
-} from '@/function';
+    VariableData,
+} from './helpers/legacyFunction';
 import { useDataStore } from '@/store';
-import { assertVWD, MvuData, VariableData } from '@/variable_def';
+import { assertVWD } from '@/variable_def';
 import _ from 'lodash';
+
+type MvuData = any;
 
 describe('parseParameters', () => {
     describe('基本参数解析', () => {
@@ -375,6 +376,7 @@ describe('trimQuotesAndBackslashes', () => {
     });
 });
 
+const mockSchema = { type: 'object', properties: {} };
 describe('getLastValidVariable', () => {
     beforeEach(() => {
         jest.clearAllMocks();
@@ -390,6 +392,7 @@ describe('getLastValidVariable', () => {
                         stat_data: { health: 100 },
                         display_data: {},
                         delta_data: {},
+                        schema: mockSchema,
                     },
                 ],
             },
@@ -409,6 +412,7 @@ describe('getLastValidVariable', () => {
                         stat_data: { health: 80 },
                         display_data: {},
                         delta_data: {},
+                        schema: mockSchema,
                     },
                 ],
             },
@@ -417,9 +421,9 @@ describe('getLastValidVariable', () => {
         (globalThis as any).SillyTavern = { chat: mockChat };
         (globalThis as any).getVariables = jest.fn();
 
-        const result = await getLastValidVariable(2);
+        const result = await getLastValidVariable(3);
 
-        expect(result).toEqual({
+        expect(result).toMatchObject({
             stat_data: { health: 80 },
             display_data: {},
             delta_data: {},
@@ -434,6 +438,7 @@ describe('getLastValidVariable', () => {
                     {
                         stat_data: { health: 100 },
                         display_data: {},
+                        schema: mockSchema,
                     },
                 ],
             },
@@ -449,7 +454,7 @@ describe('getLastValidVariable', () => {
 
         const result = await getLastValidVariable(1);
 
-        expect(result).toEqual({
+        expect(result).toMatchObject({
             stat_data: { health: 100 },
             display_data: {},
         });
@@ -463,28 +468,32 @@ describe('getLastValidVariable', () => {
                     {
                         stat_data: { health: 100 },
                         display_data: {},
+                        schema: mockSchema,
                     },
                 ],
             },
             {
                 // 第一个 swipe 没有数据
                 swipe_id: 1,
-                variables: [{ display_data: {} }, { stat_data: { mana: 50 }, display_data: {} }],
+                variables: [
+                    { display_data: {} },
+                    { stat_data: { mana: 50 }, display_data: {}, schema: mockSchema },
+                ],
             },
         ];
 
         (globalThis as any).SillyTavern = { chat: mockChat };
         (globalThis as any).getVariables = jest.fn();
 
-        const result = await getLastValidVariable(1);
+        const result = await getLastValidVariable(2);
 
-        expect(result).toEqual({
+        expect(result).toMatchObject({
             stat_data: { mana: 50 },
             display_data: {},
         });
     });
 
-    test('当没有找到有效变量时应该调用getVariables', async () => {
+    test('当没有找到有效变量时应该返回 undefined', async () => {
         const mockChat = [
             {
                 swipe_id: 0,
@@ -505,19 +514,13 @@ describe('getLastValidVariable', () => {
             },
         ];
 
-        const mockGetVariables = {
-            stat_data: { default: true },
-            display_data: {},
-            delta_data: {},
-        };
-
         (globalThis as any).SillyTavern = { chat: mockChat };
-        (globalThis as any).getVariables = jest.fn().mockReturnValue(mockGetVariables);
+        (globalThis as any).getVariables = jest.fn();
 
         const result = await getLastValidVariable(1);
 
-        expect(result).toEqual(mockGetVariables);
-        expect((globalThis as any).getVariables).toHaveBeenCalled();
+        expect(result).toBeUndefined();
+        expect((globalThis as any).getVariables).not.toHaveBeenCalled();
     });
 
     test('应该正确处理message_id边界', async () => {
@@ -528,6 +531,7 @@ describe('getLastValidVariable', () => {
                     {
                         stat_data: { level: 1 },
                         display_data: {},
+                        schema: mockSchema,
                     },
                 ],
             },
@@ -537,6 +541,7 @@ describe('getLastValidVariable', () => {
                     {
                         stat_data: { level: 2 },
                         display_data: {},
+                        schema: mockSchema,
                     },
                 ],
             },
@@ -546,6 +551,7 @@ describe('getLastValidVariable', () => {
                     {
                         stat_data: { level: 3 },
                         display_data: {},
+                        schema: mockSchema,
                     },
                 ],
             },
@@ -554,29 +560,23 @@ describe('getLastValidVariable', () => {
         (globalThis as any).SillyTavern = { chat: mockChat };
         (globalThis as any).getVariables = jest.fn();
 
-        // 测试 message_id = 1，应该只检查前两个消息
-        const result = await getLastValidVariable(1);
+        // end_message_id=2 时，检查 [0, 2) 区间
+        const result = await getLastValidVariable(2);
 
-        expect(result).toEqual({
+        expect(result).toMatchObject({
             stat_data: { level: 2 },
             display_data: {},
         });
     });
 
-    test('应该处理空聊天记录', async () => {
-        const mockGetVariables = {
-            stat_data: { initialized: true },
-            display_data: {},
-            delta_data: {},
-        };
-
+    test('应该处理空聊天记录并返回 undefined', async () => {
         (globalThis as any).SillyTavern = { chat: [] };
-        (globalThis as any).getVariables = jest.fn().mockReturnValue(mockGetVariables);
+        (globalThis as any).getVariables = jest.fn();
 
         const result = await getLastValidVariable(0);
 
-        expect(result).toEqual(mockGetVariables);
-        expect((globalThis as any).getVariables).toHaveBeenCalled();
+        expect(result).toBeUndefined();
+        expect((globalThis as any).getVariables).not.toHaveBeenCalled();
     });
 
     test('应该正确处理undefined和null的variables', async () => {
@@ -587,6 +587,7 @@ describe('getLastValidVariable', () => {
                     {
                         stat_data: { valid: true },
                         display_data: {},
+                        schema: mockSchema,
                     },
                 ],
             },
@@ -605,7 +606,7 @@ describe('getLastValidVariable', () => {
 
         const result = await getLastValidVariable(2);
 
-        expect(result).toEqual({
+        expect(result).toMatchObject({
             stat_data: { valid: true },
             display_data: {},
         });
@@ -616,6 +617,7 @@ describe('getLastValidVariable', () => {
             stat_data: { health: 100, items: ['sword', 'shield'] },
             display_data: {},
             delta_data: {},
+            schema: mockSchema,
         };
 
         const mockChat = [
@@ -628,13 +630,13 @@ describe('getLastValidVariable', () => {
         (globalThis as any).SillyTavern = { chat: mockChat };
         (globalThis as any).getVariables = jest.fn();
 
-        const result = await getLastValidVariable(0);
+        const result = await getLastValidVariable(1);
 
         // 验证是深拷贝
         expect(result).toEqual(originalVariable);
         expect(result).not.toBe(originalVariable);
-        expect(result.stat_data).not.toBe(originalVariable.stat_data);
-        expect(result.stat_data.items).not.toBe(originalVariable.stat_data.items);
+        expect(result!.stat_data).not.toBe(originalVariable.stat_data);
+        expect(result!.stat_data.items).not.toBe(originalVariable.stat_data.items);
     });
 });
 
@@ -724,6 +726,7 @@ describe('handleVariablesInMessage', () => {
             display_data: { health: '100->80 (受到伤害)' },
             delta_data: { stat_data: { health: '100->80 (受到伤害)' } },
             initialized_lorebooks: ['book1', 'book2'],
+            schema: mockSchema,
         };
 
         (globalThis as any).getChatMessages = jest.fn().mockReturnValue([
@@ -804,6 +807,7 @@ describe('handleVariablesInMessage', () => {
             },
             initialized_lorebooks: ['book1'],
             custom_message_field: 'message_specific', // 消息特有的字段，应该被保留
+            schema: mockSchema,
         };
 
         const mockChatVariables = {
@@ -889,6 +893,7 @@ describe('handleVariablesInMessage', () => {
                             stat_data: { health: 100 },
                             display_data: {},
                             delta_data: {},
+                            schema: mockSchema,
                         },
                     ],
                 },

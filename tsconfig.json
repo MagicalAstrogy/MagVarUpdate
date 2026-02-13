@@ -43,7 +43,6 @@
         "util",
         "slash-runner/@types",
         "*.d.ts",
-        "util",
     ],
     "exclude": [
         "**/dist/**",

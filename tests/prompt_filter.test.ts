@@ -1,4 +1,4 @@
-import { handlePromptFilter } from '@/prompt_filter';
+import { filterEntries } from '@/function/request/filter_entries';
 import { useDataStore } from '@/store';
 
 const makeEntry = (world: string, comment: string) => ({ world, comment });
@@ -8,7 +8,7 @@ const cloneEntries = (entries: Array<{ world: string; comment: string }>) =>
 let mockGetCurrentCharPrimaryLorebook: jest.MockedFunction<() => string | undefined>;
 let mockGetLorebookEntries: jest.MockedFunction<(name: string) => Promise<any[]>>;
 
-describe('handlePromptFilter', () => {
+describe('filterEntries', () => {
     beforeEach(() => {
         const store = useDataStore();
         store.settings.更新方式 = '额外模型解析';
@@ -56,7 +56,7 @@ describe('handlePromptFilter', () => {
 
         mockGetLorebookEntries.mockResolvedValue(cloneEntries(lores.characterLore));
 
-        await handlePromptFilter(lores);
+        await filterEntries(lores);
 
         expect(lores.globalLore).toHaveLength(1);
         expect(lores.characterLore).toHaveLength(1);
@@ -79,7 +79,7 @@ describe('handlePromptFilter', () => {
 
         mockGetLorebookEntries.mockResolvedValue(cloneEntries(lores.characterLore));
 
-        await handlePromptFilter(lores);
+        await filterEntries(lores);
 
         expect(lores.globalLore).toHaveLength(1);
         expect(lores.characterLore).toHaveLength(1);
@@ -104,7 +104,7 @@ describe('handlePromptFilter', () => {
 
         mockGetLorebookEntries.mockResolvedValue(cloneEntries(lores.characterLore));
 
-        await handlePromptFilter(lores);
+        await filterEntries(lores);
 
         expect(lores.globalLore).toHaveLength(3);
         expect(lores.characterLore).toHaveLength(1);
@@ -130,7 +130,7 @@ describe('handlePromptFilter', () => {
 
         mockGetLorebookEntries.mockResolvedValue(cloneEntries(lores.characterLore));
 
-        await handlePromptFilter(lores);
+        await filterEntries(lores);
 
         expect(lores.characterLore).toEqual([makeEntry('WorldA', 'untagged')]);
         expect(lores.globalLore).toEqual([
@@ -163,7 +163,7 @@ describe('handlePromptFilter', () => {
 
         mockGetLorebookEntries.mockResolvedValue(cloneEntries(lores.characterLore));
 
-        await handlePromptFilter(lores);
+        await filterEntries(lores);
 
         expect(lores.globalLore).toEqual([
             makeEntry('WorldD', '[mvu_plot]'),
@@ -194,7 +194,7 @@ describe('handlePromptFilter', () => {
 
         mockGetLorebookEntries.mockResolvedValue(cloneEntries(lores.characterLore));
 
-        await handlePromptFilter(lores);
+        await filterEntries(lores);
 
         expect(lores.globalLore).toEqual([
             makeEntry('PlotWorld', 'untagged'),

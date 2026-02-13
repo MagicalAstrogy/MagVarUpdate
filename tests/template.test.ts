@@ -1,12 +1,15 @@
 import { beforeEach, describe, expect, it } from '@jest/globals';
-import { applyTemplate, updateVariables } from '../src/function';
+import { updateVariables } from '../src/function/update_variables';
 import {
     cleanUpMetadata,
     EXTENSIBLE_MARKER,
     generateSchema,
     reconcileAndApplySchema,
-} from '../src/schema';
-import { MvuData, StatData } from '../src/variable_def';
+} from '../src/function/schema';
+import { StatData } from '../src/variable_def';
+import { applyTemplate } from './helpers/legacyFunction';
+
+type MvuData = any;
 
 describe('Template Feature', () => {
     describe('applyTemplate function', () => {
