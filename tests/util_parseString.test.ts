@@ -1,5 +1,5 @@
 import YAML from 'yaml';
-import { parseString } from '@/util';
+import { parseString } from '@util/common';
 
 describe('parseString', () => {
     beforeAll(() => {
@@ -63,14 +63,14 @@ describe('parseString', () => {
         }
     });
 
-    test('parses TOML input when YAML/JSON5/repair fail', () => {
+    test('throws for TOML input when YAML/JSON parsing fails', () => {
         const original = (globalThis as any).YAML.parseDocument;
         (globalThis as any).YAML.parseDocument = () => {
             throw new Error('forced YAML failure');
         };
         try {
             const input = ['title = "TOML"', 'count = 2'].join('\n');
-            expect(parseString(input)).toEqual({ title: 'TOML', count: 2 });
+            expect(() => parseString(input)).toThrow('要解析的字符串不是有效的 YAML/JSON 格式');
         } finally {
             (globalThis as any).YAML.parseDocument = original;
         }

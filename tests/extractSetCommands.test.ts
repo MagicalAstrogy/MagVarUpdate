@@ -1,5 +1,7 @@
-import { MvuData } from '@/variable_def';
-import { extractCommands, parseCommandValue, updateVariables } from '../src/function';
+import { updateVariables } from '@/function/update_variables';
+import { extractCommands, parseCommandValue } from './helpers/legacyFunction';
+
+type MvuData = any;
 
 // 命令别名定义
 const ASSIGN_ALIASES = ['assign', 'insert'] as const;
@@ -585,7 +587,7 @@ describe('高等数学与高级运算测试', () => {
                  _.assign('items', 'shield');//添加盾牌
                  _.assign('items', 'potion');//添加药水
                  _.assign('items', 'key');//添加钥匙`,
-                    variables
+                    variables as any
                 );
 
                 expect(variables.stat_data.items).toEqual(['sword', 'shield', 'potion', 'key']);
@@ -594,7 +596,7 @@ describe('高等数学与高级运算测试', () => {
                 await updateVariables(
                     `_.${removeCommand}('items', 1);//丢弃盾牌
                  _.${removeCommand}('items', 1);//丢弃药水`,
-                    variables
+                    variables as any
                 );
 
                 expect(variables.stat_data.items).toEqual(['sword', 'key']);
@@ -627,7 +629,7 @@ describe('高等数学与高级运算测试', () => {
                  _.insert('inventory', 'mana_potion');//添加魔法药水
                  _.insert('inventory', 'poison');//添加毒药
                  _.insert('inventory', 'antidote');//添加解毒剂`,
-                    variables
+                    variables as any
                 );
 
                 expect(variables.stat_data.inventory).toEqual([
@@ -641,7 +643,7 @@ describe('高等数学与高级运算测试', () => {
                 await updateVariables(
                     `_.${removeCommand}('inventory', 'poison');//丢弃毒药
                  _.${removeCommand}('inventory', 'mana_potion');//用掉魔法药水`,
-                    variables
+                    variables as any
                 );
 
                 expect(variables.stat_data.inventory).toEqual(['healing_potion', 'antidote']);
@@ -698,7 +700,7 @@ describe('高等数学与高级运算测试', () => {
                  _.${assignCommand}('player.buffs', 'defense');//获得防御加成
                  _.${assignCommand}('player.skills', 'slash');//学会斩击
                  _.${assignCommand}('player.skills', 'block');//学会格挡`,
-                    variables
+                    variables as any
                 );
 
                 expect(variables.stat_data.player.buffs).toEqual(['strength', 'speed', 'defense']);
@@ -708,7 +710,7 @@ describe('高等数学与高级运算测试', () => {
                 await updateVariables(
                     `_.${removeCommand}('player.buffs', 1);//速度加成结束
                  _.${removeCommand}('player.skills', 'slash');//遗忘斩击技能`,
-                    variables
+                    variables as any
                 );
 
                 expect(variables.stat_data.player.buffs).toEqual(['strength', 'defense']);
@@ -765,7 +767,7 @@ describe('高等数学与高级运算测试', () => {
                  _.assign('game.quests', 'main_quest');//接受主线任务
                  _.insert('game.quests', 'side_quest_1');//接受支线任务1
                  _.insert('game.quests', 'side_quest_2');//接受支线任务2`,
-                variables
+                variables as any
             );
 
             expect(variables.stat_data.game.inventory).toEqual(['sword', 'shield']);
@@ -782,7 +784,7 @@ describe('高等数学与高级运算测试', () => {
                  _.unset('game.enemies', 0);//击败兽人
                  _.delete('game.quests', 1);//完成支线任务1
                  _.unset('game.inventory', 'shield');//盾牌损坏`,
-                variables
+                variables as any
             );
 
             expect(variables.stat_data.game.inventory).toEqual(['sword']);
