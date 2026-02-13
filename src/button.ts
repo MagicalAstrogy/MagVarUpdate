@@ -183,7 +183,7 @@ export const buttons: Button[] = [
                 return;
             }
 
-            const latest_msg_data = getLastValidVariable(message_id);
+            const latest_msg_data = getLastValidVariable(message_id + 1);
 
             if (!latest_msg_data) {
                 return;

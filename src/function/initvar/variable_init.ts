@@ -32,7 +32,7 @@ export async function initCheck() {
             toastr.error('需要有开场白才能初始化变量', '[MVU]变量初始化失败');
             return;
         }
-        variables = (await getLastValidVariable(getLastMessageId())) ?? createEmptyGameData();
+        variables = getLastValidVariable(getLastMessageId() + 1) ?? createEmptyGameData();
     } catch (e) {
         console.error('不存在任何一条消息，退出');
         return;
