@@ -1,8 +1,6 @@
-import JSON5 from 'json5';
-import { jsonrepair } from 'jsonrepair';
-import TOML from 'toml';
-import TavernHelper = globalThis.TavernHelper;
 import * as jsonpatch from 'fast-json-patch';
+import { jsonrepair } from 'jsonrepair';
+import TavernHelper = globalThis.TavernHelper;
 
 let sillytavern_version: string = '1.0.0';
 export async function initSillyTavernVersion(): Promise<void> {
@@ -73,38 +71,32 @@ export function literalYamlify(object: Record<string, any>) {
     return YAML.stringify(object, { blockQuote: 'literal' });
 }
 
-export function parseString(content: string) {
-    // Try YAML first (which also handles JSON)
+export function parseString(content: string): any {
+    const json_first = /^[[{]/s.test(content.trimStart());
     try {
-        return YAML.parseDocument(content, { merge: true }).toJS();
-    } catch (e) {
-        // Try JSON5
+        return json_first
+            ? JSON.parse(jsonrepair(content))
+            : YAML.parseDocument(content, { merge: true }).toJS();
+    } catch (e1) {
         try {
-            // eslint-disable-next-line import-x/no-named-as-default-member
-            return JSON5.parse(content);
+            return json_first
+                ? YAML.parseDocument(content, { merge: true }).toJS()
+                : JSON.parse(jsonrepair(content));
         } catch (e2) {
-            // Try to repair json
-            try {
-                // eslint-disable-next-line import-x/no-named-as-default-member
-                return JSON5.parse(jsonrepair(content));
-            } catch (e3) {
-                // Try TOML
-                try {
-                    return TOML.parse(content);
-                } catch (e4) {
-                    throw new Error(
-                        literalYamlify({
-                            ['要解析的字符串不是有效的 YAML/JSON/JSON5/TOML 格式']: {
-                                字符串内容: content,
-                                YAML错误信息: (e as Error)?.message ?? e,
-                                JSON5错误信息: (e2 as Error)?.message ?? e2,
-                                尝试修复JSON时的错误信息: (e3 as Error)?.message ?? e3,
-                                TOML错误信息: (e4 as Error)?.message ?? e4,
-                            },
-                        })
-                    );
-                }
-            }
+            const toError = (error: unknown) =>
+                error instanceof Error
+                    ? `${error.stack ? error.stack : error.message}`
+                    : String(error);
+
+            const error = { 字符串内容: content };
+            _.set(error, json_first ? 'JSON错误信息' : 'YAML错误信息', toError(e1));
+            _.set(error, json_first ? 'YAML错误信息' : 'JSON错误信息', toError(e2));
+            throw new Error(
+                literalYamlify({
+                    [`要解析的字符串不是有效的 ${json_first ? 'JSON/YAML' : 'YAML/JSON'} 格式`]:
+                        error,
+                })
+            );
         }
     }
 }
