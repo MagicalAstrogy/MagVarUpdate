@@ -1,4 +1,5 @@
 import * as jsonpatch from 'fast-json-patch';
+import JSON5 from 'json5';
 import { jsonrepair } from 'jsonrepair';
 import TavernHelper = globalThis.TavernHelper;
 
@@ -74,29 +75,41 @@ export function literalYamlify(object: Record<string, any>) {
 export function parseString(content: string): any {
     const json_first = /^[[{]/s.test(content.trimStart());
     try {
-        return json_first
-            ? JSON.parse(jsonrepair(content))
-            : YAML.parseDocument(content, { merge: true }).toJS();
-    } catch (e1) {
+        if (json_first) {
+            throw Error(`expected error`);
+        }
+        return YAML.parseDocument(content, { merge: true }).toJS();
+    } catch (yaml_error1) {
         try {
-            return json_first
-                ? YAML.parseDocument(content, { merge: true }).toJS()
-                : JSON.parse(jsonrepair(content));
-        } catch (e2) {
-            const toError = (error: unknown) =>
-                error instanceof Error
-                    ? `${error.stack ? error.stack : error.message}`
-                    : String(error);
+            // eslint-disable-next-line import-x/no-named-as-default-member
+            return JSON5.parse(content);
+        } catch (json5_error) {
+            try {
+                return JSON.parse(jsonrepair(content));
+            } catch (json_error) {
+                try {
+                    if (!json_first) {
+                        throw Error(`expected error`);
+                    }
+                    return YAML.parseDocument(content, { merge: true }).toJS();
+                } catch (yaml_error2) {
+                    const toError = (error: unknown) =>
+                        error instanceof Error
+                            ? `${error.stack ? error.stack : error.message}`
+                            : String(error);
 
-            const error = { 字符串内容: content };
-            _.set(error, json_first ? 'JSON错误信息' : 'YAML错误信息', toError(e1));
-            _.set(error, json_first ? 'YAML错误信息' : 'JSON错误信息', toError(e2));
-            throw new Error(
-                literalYamlify({
-                    [`要解析的字符串不是有效的 ${json_first ? 'JSON/YAML' : 'YAML/JSON'} 格式`]:
-                        error,
-                })
-            );
+                    throw new Error(
+                        literalYamlify({
+                            ['要解析的字符串不是有效的 YAML/JSON/JSON5 格式']: {
+                                字符串内容: content,
+                                YAML错误信息: toError(json_first ? yaml_error2 : yaml_error1),
+                                JSON5错误信息: toError(json5_error),
+                                JSON错误信息: toError(json_error),
+                            },
+                        })
+                    );
+                }
+            }
         }
     }
 }

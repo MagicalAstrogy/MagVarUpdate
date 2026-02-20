@@ -1,8 +1,8 @@
+import { parseString } from '@/util';
+import JSON5 from 'json5';
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { isDeepStrictEqual } from 'node:util';
-import { parseString } from '@/util';
-import JSON5 from 'json5';
 import YAML from 'yaml';
 
 const JSON5_TEST_ROOT = path.resolve(__dirname, 'json5-tests');
@@ -113,19 +113,10 @@ describe('parseString', () => {
 
     test('accepts non-breaking-space as additional whitespace', () => {
         const input = '{\u00A0foo:\u00A01,\u00A0bar:\u00A02\u00A0}';
-        const json5Parsed = JSON5.parse(input);
-
-        expect(json5Parsed).toEqual({
+        expect(parseString(input)).toEqual({
             foo: 1,
             bar: 2,
         });
-
-        expect(parseString(input)).toEqual({
-            foo: 1,
-            bar: '2\u00A0',
-        });
-
-        expect(parseString(input)).toEqual(json5Parsed);
     });
 
     test('parses JSON5 numeric literals in top-level scalar form', () => {
@@ -137,15 +128,13 @@ describe('parseString', () => {
 
     test('normalizes non-JSON numeric literals when parsing JSON-like objects', () => {
         const input = '{hex:0x10, trailing:5., nan:NaN, inf:Infinity, ninf:-Infinity}';
-        const json5Parsed = JSON5.parse(input);
         expect(parseString(input)).toEqual({
-            hex: '0x10',
+            hex: 16,
             trailing: 5,
-            nan: 'NaN',
-            inf: 'Infinity',
-            ninf: '-Infinity',
+            nan: NaN,
+            inf: Infinity,
+            ninf: -Infinity,
         });
-        expect(parseString(input)).toEqual(json5Parsed);
     });
 
     test('matches JSON5 parser on official valid fixtures except known divergences', () => {
@@ -170,17 +159,11 @@ describe('parseString', () => {
         }
 
         //下面是与 json5 中不符的，可以具体看一下。
-        expect(mismatches).toEqual([]);
         expect(mismatches).toEqual([
             'comments/block-comment-following-top-level-value.json5',
             'comments/block-comment-preceding-top-level-value.json5',
             'comments/inline-comment-following-top-level-value.json5',
             'comments/inline-comment-preceding-top-level-value.json5',
-            'misc/readme-example.json5',
-            'misc/valid-whitespace.json5',
-            'new-lines/escaped-cr.json5',
-            'new-lines/escaped-crlf.json5',
-            'new-lines/escaped-lf.json5',
             'numbers/hexadecimal-uppercase-x.json5',
             'numbers/infinity.json5',
             'numbers/nan.json5',
@@ -192,7 +175,6 @@ describe('parseString', () => {
             'numbers/positive-zero-hexadecimal.json5',
             'strings/escaped-single-quoted-string.json5',
             'strings/multi-line-string.json5',
-            'todo/unicode-escaped-unquoted-key.json5',
         ]);
     });
 

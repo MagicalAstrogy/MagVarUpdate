@@ -29,6 +29,7 @@
         "compare-versions": "^6.1.1",
         "corepack": "^0.32.0",
         "fast-json-patch": "^3.1.1",
+        "json5": "^2.2.3",
         "jszip": "^3.10.1",
         "klona": "^2.0.6",
         "lodash": "^4.17.21",
@@ -93,7 +94,6 @@
         "vue-loader": "^17.4.2",
         "vue-style-loader": "^4.1.3",
         "webpack": "^5.99.8",
-        "webpack-cli": "^5.1.4",
-        "json5": "^2.2.3"
+        "webpack-cli": "^5.1.4"
     }
 }
