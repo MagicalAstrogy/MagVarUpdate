@@ -1,13 +1,9 @@
-import type { CommandInfo } from '@/export_globals';
-import { exportGlobals, MVU } from '@/export_globals';
-import { MvuData, variable_events } from '@/variable_def';
+import type { CommandInfo } from '@/variable_def';
+import { initGlobals as exportGlobals } from '@/function/global';
+import { variable_events } from '@/variable_def';
 import _ from 'lodash';
 
-// Mock the function module to provide real implementation
-jest.mock('@/function', () => {
-    const actual = jest.requireActual('@/function');
-    return actual;
-});
+type MvuData = any;
 
 describe('export_globals integration test - Variable Update with display_data and delta_data', () => {
     let originalWindow: any;
@@ -19,7 +15,7 @@ describe('export_globals integration test - Variable Update with display_data an
         //@ts-ignore
         global.window = {
             parent: {} as any,
-            Mvu: undefined as MVU | undefined,
+            Mvu: undefined,
         } as any;
 
         global._ = _;
@@ -43,7 +39,7 @@ describe('export_globals integration test - Variable Update with display_data an
 
     test('should update stat_data, display_data and delta_data correctly for complex game state using Mvu.parseMessage', async () => {
         // 初始状态
-        const initialState: MvuData = {
+        const initialState= {
             initialized_lorebooks: {},
             stat_data: {
                 剩余时间: 10,
@@ -171,7 +167,7 @@ _.set('悠纪.当前所想[0]', "", "……狐狸？嗯…她的用词很精准�
     });
 
     test('should emit COMMAND_PARSED with parsed command payload during parseMessage', async () => {
-        const initialState: MvuData = {
+        const initialState= {
             initialized_lorebooks: {},
             stat_data: {
                 player: {
@@ -227,7 +223,7 @@ _.set('悠纪.当前所想[0]', "", "……狐狸？嗯…她的用词很精准�
                 },
             } as any,
             delta_data: {} as any,
-        } satisfies MvuData;
+        } as MvuData;
 
         // 准备内部数据结构以支持 display_data 和 delta_data 更新
         testData.stat_data.$internal = {
@@ -266,7 +262,7 @@ _.set('悠纪.当前所想[0]', "", "……狐狸？嗯…她的用词很精准�
     });
 
     test('should use Mvu.getMvuVariable to get values from different data categories', () => {
-        const testData: MvuData = {
+        const testData= {
             initialized_lorebooks: {},
             stat_data: {
                 player: {
@@ -320,7 +316,7 @@ _.set('悠纪.当前所想[0]', "", "……狐狸？嗯…她的用词很精准�
     });
 
     test('should use Mvu.getRecordFromMvuData to extract different data categories', () => {
-        const testData: MvuData = {
+        const testData= {
             initialized_lorebooks: {},
             stat_data: { a: 1, b: 2 },
             display_data: { a: '1->10', b: '2->20' },
@@ -344,7 +340,7 @@ _.set('悠纪.当前所想[0]', "", "……狐狸？嗯…她的用词很精准�
     });
 
     test('Mvu.parseMessage should handle ValueWithDescription arrays correctly', async () => {
-        const testData: MvuData = {
+        const testData= {
             initialized_lorebooks: {},
             stat_data: {
                 player: {
@@ -382,7 +378,7 @@ _.set('player.position[0]', "城镇", "森林");//移动到森林
     });
 
     test('Mvu.parseMessage should handle number type conversions correctly', async () => {
-        const testData: MvuData = {
+        const testData= {
             initialized_lorebooks: {},
             stat_data: {
                 stats: {
@@ -445,7 +441,7 @@ _.set('stats.gold', 500, "750");//获得金币
                 },
             },
             delta_data: {},
-        } satisfies MvuData;
+        } as MvuData;
 
         // 准备内部数据结构
         (testData.stat_data as any).$internal = {
@@ -527,7 +523,7 @@ _.set('stats.gold', 500, "750");//获得金币
             },
             display_data: {} as any,
             delta_data: {},
-        } satisfies MvuData;
+        } as MvuData;
 
         (testData.stat_data as any).$internal = {
             display_data: testData.display_data,
@@ -569,7 +565,7 @@ _.set('stats.gold', 500, "750");//获得金币
     });
 
     test('Mvu.parseMessage should return undefined when no changes are made', async () => {
-        const testData: MvuData = {
+        const testData= {
             initialized_lorebooks: {},
             stat_data: {
                 value: 100,
@@ -593,7 +589,7 @@ _.set('stats.gold', 500, "750");//获得金币
 
     test('Complex integration test with all Mvu methods', async () => {
         // 1. 初始化数据
-        const initialState: MvuData = {
+        const initialState= {
             initialized_lorebooks: {},
             stat_data: {
                 game: {

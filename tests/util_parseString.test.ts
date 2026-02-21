@@ -1,4 +1,4 @@
-import { parseString } from '@/util';
+import { parseString } from '@util/common';
 import JSON5 from 'json5';
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';

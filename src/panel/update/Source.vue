@@ -110,12 +110,11 @@ import ModelSelect from '@/panel/component/ModelSelect.vue';
 import RangeNumber from '@/panel/component/RangeNumber.vue';
 import Select from '@/panel/component/Select.vue';
 import { useDataStore } from '@/store';
-import { getTavernHelperVersion } from '@/util';
 import { compare } from 'compare-versions';
 
-const additional_extra_configuration_supported = compare(getTavernHelperVersion(), '4.0.14', '>=');
-
 const store = useDataStore();
+
+const additional_extra_configuration_supported = compare(store.versions.tavernhelper, '4.0.14', '>=');
 </script>
 
 <style scoped>

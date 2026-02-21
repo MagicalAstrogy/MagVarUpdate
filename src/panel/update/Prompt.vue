@@ -63,7 +63,7 @@ watch(
                     timeOut: 5000,
                 });
             }
-            store.settings.额外模型解析配置.使用函数调用 = true;
+            store.settings.额外模型解析配置.使用函数调用 = false;
         }
     }
 );

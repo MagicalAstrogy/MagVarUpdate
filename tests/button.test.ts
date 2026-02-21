@@ -1,27 +1,31 @@
-import { registerButtons } from '@/button';
-import { getLastValidVariable } from '@/function';
-import { EXTENSIBLE_MARKER } from '@/schema';
+import { initButtons } from '@/button';
+import { getLastValidVariable } from '@/util';
+import { EXTENSIBLE_MARKER } from '@/function/schema';
 import { useDataStore } from '@/store';
-import { MvuData, variable_events } from '@/variable_def';
-import { createEmptyGameData, loadInitVarData } from '@/variable_init';
+import { variable_events } from '@/variable_def';
+import { createEmptyGameData, loadInitVarData } from '@/function/initvar/variable_init';
 import _ from 'lodash';
 
+type MvuData = any;
+
 // Mock only external dependencies
-jest.mock('@/function', () => ({
-    ...jest.requireActual('@/function'),
+jest.mock('@/util', () => ({
+    ...jest.requireActual('@/util'),
     getLastValidVariable: jest.fn(),
 }));
 
-jest.mock('@/variable_init', () => ({
-    ...jest.requireActual('@/variable_init'),
+jest.mock('@/function/initvar/variable_init', () => ({
+    ...jest.requireActual('@/function/initvar/variable_init'),
     createEmptyGameData: jest.fn(),
     loadInitVarData: jest.fn(),
 }));
 
 // Spy on these functions to check calls but keep their implementation
-const reconcileAndApplySchemaSpy = jest.spyOn(require('@/schema'), 'reconcileAndApplySchema');
-const cleanUpMetadataSpy = jest.spyOn(require('@/schema'), 'cleanUpMetadata');
-const updateDescriptionsSpy = jest.spyOn(require('@/update_descriptions'), 'updateDescriptions');
+const reconcileAndApplySchemaSpy = jest.spyOn(
+    require('@/function/schema'),
+    'reconcileAndApplySchema'
+);
+const cleanUpMetadataSpy = jest.spyOn(require('@/function/schema'), 'cleanUpMetadata');
 
 global._ = _;
 global.getLastMessageId = jest.fn();
@@ -81,14 +85,14 @@ describe('reloadInit function', () => {
         });
         (loadInitVarData as jest.Mock).mockResolvedValue(true);
         (getLastMessageId as jest.Mock).mockReturnValue(1);
-        (getLastValidVariable as jest.Mock).mockResolvedValue({
+        (getLastValidVariable as jest.Mock).mockReturnValue({
             stat_data: {},
             schema: {},
         });
         (replaceVariables as jest.Mock).mockResolvedValue(undefined);
 
         // Register buttons to get the callback
-        registerButtons();
+        initButtons();
         reloadInit = getReloadInitCallback();
     });
 
@@ -126,14 +130,14 @@ describe('reloadInit function', () => {
         });
 
         test('should handle missing stat_data in latest message', async () => {
-            (getLastValidVariable as jest.Mock).mockResolvedValue({});
+            (getLastValidVariable as jest.Mock).mockReturnValue({});
 
             await reloadInit();
 
-            expect(toastr.error).toHaveBeenCalledWith('最新消息中没有 stat_data', '[MVU]', {
-                timeOut: 3000,
-            });
-            expect(updateDescriptionsSpy).not.toHaveBeenCalled();
+            //新版本移除了这个日志
+            //expect(toastr.error).toHaveBeenCalledWith('最新消息中没有 stat_data', '[MVU]', {
+            //    timeOut: 3000,
+            //});
         });
     });
 
@@ -160,7 +164,7 @@ describe('reloadInit function', () => {
             };
 
             (createEmptyGameData as jest.Mock).mockReturnValue(init_data);
-            (getLastValidVariable as jest.Mock).mockResolvedValue(msg_data);
+            (getLastValidVariable as jest.Mock).mockReturnValue(msg_data);
 
             await reloadInit();
 
@@ -204,7 +208,7 @@ describe('reloadInit function', () => {
             };
 
             (createEmptyGameData as jest.Mock).mockReturnValue(init_data);
-            (getLastValidVariable as jest.Mock).mockResolvedValue(msg_data);
+            (getLastValidVariable as jest.Mock).mockReturnValue(msg_data);
 
             await reloadInit();
 
@@ -265,7 +269,7 @@ describe('reloadInit function', () => {
             };
 
             (createEmptyGameData as jest.Mock).mockReturnValue(init_data);
-            (getLastValidVariable as jest.Mock).mockResolvedValue(msg_data);
+            (getLastValidVariable as jest.Mock).mockReturnValue(msg_data);
 
             await reloadInit();
 
@@ -297,7 +301,7 @@ describe('reloadInit function', () => {
             };
 
             (createEmptyGameData as jest.Mock).mockReturnValue(init_data);
-            (getLastValidVariable as jest.Mock).mockResolvedValue(msg_data);
+            (getLastValidVariable as jest.Mock).mockReturnValue(msg_data);
             (getLastMessageId as jest.Mock).mockReturnValue(5);
 
             await reloadInit();
@@ -311,15 +315,10 @@ describe('reloadInit function', () => {
             expect(cleanUpMetadataSpy).toHaveBeenNthCalledWith(1, init_data.stat_data);
 
             expect(getLastMessageId).toHaveBeenCalled();
-            expect(getLastValidVariable).toHaveBeenCalledWith(5);
+            //5-> 6 因为现在获取变量也会调用
+            expect(getLastValidVariable).toHaveBeenCalledWith(6);
 
             // Description updates
-            expect(updateDescriptionsSpy).toHaveBeenCalledWith(
-                '',
-                init_data.stat_data,
-                msg_data.stat_data,
-                expect.any(Object)
-            );
 
             // Second schema processing with merged data
             expect(reconcileAndApplySchemaSpy).toHaveBeenNthCalledWith(
@@ -362,7 +361,7 @@ describe('reloadInit function', () => {
             };
 
             (createEmptyGameData as jest.Mock).mockReturnValue(init_data);
-            (getLastValidVariable as jest.Mock).mockResolvedValue(msg_data);
+            (getLastValidVariable as jest.Mock).mockReturnValue(msg_data);
             (getLastMessageId as jest.Mock).mockReturnValue(5);
 
             await reloadInit();
@@ -376,15 +375,10 @@ describe('reloadInit function', () => {
             expect(cleanUpMetadataSpy).toHaveBeenNthCalledWith(1, init_data.stat_data);
 
             expect(getLastMessageId).toHaveBeenCalled();
-            expect(getLastValidVariable).toHaveBeenCalledWith(5);
+            //5-> 6 因为现在获取变量也会调用
+            expect(getLastValidVariable).toHaveBeenCalledWith(6);
 
             // Description updates
-            expect(updateDescriptionsSpy).toHaveBeenCalledWith(
-                '',
-                init_data.stat_data,
-                msg_data.stat_data,
-                expect.any(Object)
-            );
 
             // Second schema processing with merged data
             expect(reconcileAndApplySchemaSpy).toHaveBeenNthCalledWith(
@@ -427,7 +421,7 @@ describe('reloadInit function', () => {
             };
 
             (createEmptyGameData as jest.Mock).mockReturnValue(init_data);
-            (getLastValidVariable as jest.Mock).mockResolvedValue(msg_data);
+            (getLastValidVariable as jest.Mock).mockReturnValue(msg_data);
 
             await reloadInit();
 
@@ -506,7 +500,7 @@ describe('reloadInit function', () => {
             };
 
             (createEmptyGameData as jest.Mock).mockReturnValue(init_data);
-            (getLastValidVariable as jest.Mock).mockResolvedValue(msg_data);
+            (getLastValidVariable as jest.Mock).mockReturnValue(msg_data);
 
             await reloadInit();
 
@@ -538,7 +532,7 @@ describe('RecurVariable function', () => {
         jest.clearAllMocks();
 
         // eslint-disable-next-line @typescript-eslint/no-require-imports
-        const functionModule = require('@/function');
+        const functionModule = require('@/function/update_variables');
         updateVariablesSpy = jest.spyOn(functionModule, 'updateVariables');
 
         (getScriptId as jest.Mock).mockReturnValue('test-script');
@@ -635,7 +629,7 @@ describe('RecurVariable function', () => {
             }
         );
 
-        registerButtons();
+        initButtons();
         const recurVariable = getRecurVariableCallback();
         expect(typeof recurVariable).toBe('function');
 
@@ -718,7 +712,7 @@ describe('RecurVariable function', () => {
         const callGenericPopupMock = silly.callGenericPopup as jest.Mock;
         callGenericPopupMock.mockResolvedValueOnce('2');
 
-        registerButtons();
+        initButtons();
         const recurVariable = getRecurVariableCallback();
         expect(typeof recurVariable).toBe('function');
 

@@ -3,7 +3,70 @@ import { defineStore } from 'pinia';
 import { ref, toRaw, watch } from 'vue';
 import * as z from 'zod';
 
-export const Settings = z
+const OldSettings = z
+    .object({
+        通知: z.object({
+            变量更新出错: z.boolean(),
+            额外模型解析中: z.boolean(),
+        }),
+        更新方式: z.enum(['随AI输出', '额外模型解析']),
+        自动触发额外模型解析: z.boolean(),
+        额外模型解析配置: z.object({
+            发送预设: z.boolean(),
+            使用函数调用: z.boolean(),
+            模型来源: z.enum(['与插头相同', '自定义']),
+            api地址: z.string(),
+            密钥: z.string(),
+            模型名称: z.string(),
+            温度: z.coerce.number(),
+            频率惩罚: z.coerce.number(),
+            存在惩罚: z.coerce.number(),
+            top_p: z.coerce.number(),
+            最大回复token数: z.coerce.number(),
+        }),
+        快照保留间隔: z.number(),
+        更新到聊天变量: z.boolean(),
+        legacy: z.object({
+            显示老旧功能: z.boolean(),
+        }),
+        auto_cleanup: z.object({
+            启用: z.boolean(),
+            要保留变量的最近楼层数: z.number(),
+            触发恢复变量的最近楼层数: z.number(),
+        }),
+        internal: z.object({
+            已提醒更新了配置界面: z.boolean(),
+            已提醒自动清理旧变量功能: z.boolean(),
+            已提醒更新了API温度等配置: z.boolean(),
+            已默认开启自动清理旧变量功能: z.boolean(),
+        }),
+    })
+    .transform(data =>
+        NewSettings.decode({
+            通知: {
+                ...data.通知,
+            },
+            更新方式: data.更新方式,
+            额外模型解析配置: {
+                ...data.额外模型解析配置,
+                破限方案: data.额外模型解析配置.发送预设 ? '使用当前预设' : '使用内置破限',
+                启用自动请求: data.自动触发额外模型解析,
+            },
+            自动清理变量: {
+                ...data.auto_cleanup,
+                快照保留间隔: data.快照保留间隔,
+            },
+            兼容性: {
+                更新到聊天变量: data.更新到聊天变量,
+                显示老旧功能: data.legacy.显示老旧功能,
+            },
+            internal: {
+                ...data.internal,
+            },
+        })
+    );
+
+const NewSettings = z
     .object({
         通知: z
             .object({
@@ -85,6 +148,23 @@ export const Settings = z
                 已开启默认不兼容假流式: z.boolean().default(false),
             })
             .prefault({}),
+    })
+    .transform(data => {
+        if (data.internal.已开启默认不兼容假流式 === false) {
+            data.额外模型解析配置.兼容假流式 = false;
+            data.internal.已开启默认不兼容假流式 = true;
+        }
+        return data;
+    })
+    .prefault({});
+
+const Settings = z.union([OldSettings, NewSettings]).catch(() => NewSettings.parse({}));
+
+const Runtimes = z
+    .object({
+        unsupported_warnings: z.string().default(''),
+        is_during_extra_analysis: z.boolean().default(false),
+        is_function_call_enabled: z.boolean().default(false),
         debug: z
             .object({
                 首次额外请求必失败: z.boolean().default(false),
@@ -93,91 +173,8 @@ export const Settings = z
     })
     .prefault({});
 
-const Runtimes = z
-    .object({
-        unsupported_warnings: z.string().default(''),
-        is_during_extra_analysis: z.boolean().default(false),
-        is_function_call_enabled: z.boolean().default(false),
-    })
-    .prefault({});
-
-type LooseSettings = Record<string, unknown>;
-
-function migrateSettings(raw: unknown): LooseSettings {
-    if (!raw || typeof raw !== 'object') {
-        return {};
-    }
-
-    const legacy = raw as LooseSettings;
-    const migrated = _.cloneDeep(legacy) as LooseSettings;
-
-    if (
-        _.has(legacy, '自动触发额外模型解析') &&
-        !_.has(migrated, '额外模型解析配置.启用自动请求')
-    ) {
-        _.set(migrated, '额外模型解析配置.启用自动请求', _.get(legacy, '自动触发额外模型解析'));
-    }
-
-    if (
-        _.has(legacy, '额外模型解析配置.发送预设') &&
-        !_.has(migrated, '额外模型解析配置.破限方案')
-    ) {
-        const sendPreset = _.get(legacy, '额外模型解析配置.发送预设');
-        if (typeof sendPreset === 'boolean') {
-            _.set(
-                migrated,
-                '额外模型解析配置.破限方案',
-                sendPreset ? '使用当前预设' : '使用内置破限'
-            );
-        }
-    }
-
-    if (_.has(legacy, '更新到聊天变量') && !_.has(migrated, '兼容性.更新到聊天变量')) {
-        _.set(migrated, '兼容性.更新到聊天变量', _.get(legacy, '更新到聊天变量'));
-    }
-
-    if (_.has(legacy, 'legacy.显示老旧功能') && !_.has(migrated, '兼容性.显示老旧功能')) {
-        _.set(migrated, '兼容性.显示老旧功能', _.get(legacy, 'legacy.显示老旧功能'));
-    }
-
-    if (_.has(legacy, 'auto_cleanup.启用') && !_.has(migrated, '自动清理变量.启用')) {
-        _.set(migrated, '自动清理变量.启用', _.get(legacy, 'auto_cleanup.启用'));
-    }
-
-    if (_.has(legacy, '快照保留间隔') && !_.has(migrated, '自动清理变量.快照保留间隔')) {
-        _.set(migrated, '自动清理变量.快照保留间隔', _.get(legacy, '快照保留间隔'));
-    }
-
-    if (
-        _.has(legacy, 'auto_cleanup.要保留变量的最近楼层数') &&
-        !_.has(migrated, '自动清理变量.要保留变量的最近楼层数')
-    ) {
-        _.set(
-            migrated,
-            '自动清理变量.要保留变量的最近楼层数',
-            _.get(legacy, 'auto_cleanup.要保留变量的最近楼层数')
-        );
-    }
-
-    if (
-        _.has(legacy, 'auto_cleanup.触发恢复变量的最近楼层数') &&
-        !_.has(migrated, '自动清理变量.触发恢复变量的最近楼层数')
-    ) {
-        _.set(
-            migrated,
-            '自动清理变量.触发恢复变量的最近楼层数',
-            _.get(legacy, 'auto_cleanup.触发恢复变量的最近楼层数')
-        );
-    }
-
-    return migrated;
-}
-
-export const useDataStore = defineStore('data', () => {
-    const parsed = Settings.safeParse(
-        migrateSettings(_.get(SillyTavern.extensionSettings, 'mvu_settings', {}))
-    );
-    const settings = ref(parsed.success ? parsed.data : Settings.parse({}));
+export const useDataStore = defineStore('MVU变量框架', () => {
+    const settings = ref(Settings.parse(_.get(SillyTavern.extensionSettings, 'mvu_settings', {})));
     watch(
         settings,
         new_settings => {
@@ -197,5 +194,17 @@ export const useDataStore = defineStore('data', () => {
         runtimes.value = Runtimes.parse({});
     };
 
-    return { settings, runtimes, resetRuntimes };
+    const versions = ref<{ sillytavern: string; tavernhelper: string }>({
+        sillytavern: '',
+        tavernhelper: '',
+    });
+    const _wait_init = async () => {
+        versions.value.sillytavern = await fetch('/version')
+            .then(res => res.json())
+            .then(data => data.pkgVersion)
+            .catch(() => '1.0.0');
+        versions.value.tavernhelper = await getTavernHelperVersion();
+    };
+
+    return { settings, runtimes, versions, resetRuntimes, _wait_init };
 });

@@ -1,4 +1,4 @@
-import { updateDescriptions } from '@/update_descriptions';
+import { updateDescriptions } from './helpers/legacyFunction';
 import _ from 'lodash';
 
 // Make lodash available globally for the function
