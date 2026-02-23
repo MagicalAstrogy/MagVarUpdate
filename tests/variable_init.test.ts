@@ -120,6 +120,32 @@ describe('loadInitVarData', () => {
         });
     });
 
+    test('parses initvar content wrapped by xml tag and code block', async () => {
+        const mvuData: MvuData = {
+            stat_data: {},
+            initialized_lorebooks: {},
+        };
+
+        mockGetEnabledLorebookList.mockResolvedValue(['version1.2']);
+        mockGetLorebookEntries.mockResolvedValue([
+            {
+                comment: '[initvar]',
+                content: '<initvar>\n```json\n{"from_xml":"ok"}\n```\n</initvar>',
+            },
+        ]);
+
+        const updated = await loadInitVarData(mvuData);
+
+        expect(updated).toBe(true);
+        expect(mockSubstitudeMacros).toHaveBeenCalledWith('{"from_xml":"ok"}');
+        expect(mvuData.stat_data).toEqual({
+            from_xml: 'ok',
+        });
+        expect(mvuData.initialized_lorebooks).toEqual({
+            'version1.2': [],
+        });
+    });
+
     test('merge elements in same lorebook', async () => {
         const mvuData: MvuData = {
             stat_data: {
