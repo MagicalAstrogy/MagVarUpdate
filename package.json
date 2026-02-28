@@ -7,7 +7,7 @@
         "build:webpack-example": "webpack -c ./example_src/webpack.config.js",
         "build:dev": "webpack --mode development",
         "build:dts": "tsc -p tsconfig.dts.json",
-        "build": "webpack --mode production && yarn build:dts && npx typescript-json-schema src/variable_def.ts \"InitVarType\" --topRef --aliasRefs > artifact/stat-data-schema.json",
+        "build": "webpack --mode production && yarn build:dts",
         "watch": "webpack --mode development --watch --progress",
         "lint": "eslint . --ext .ts,.tsx,.js,.jsx",
         "lint:fix": "eslint . --ext .ts,.tsx,.js,.jsx --fix",
