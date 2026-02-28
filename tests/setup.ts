@@ -1,10 +1,11 @@
 // Global test setup
 import _ from 'lodash';
 import { createPinia, setActivePinia } from 'pinia';
+import { klona } from 'klona';
 
 // Make lodash available globally as it's used in the source code
 (globalThis as any)._ = _;
-(globalThis as any).klona = (value: unknown) => _.cloneDeep(value);
+(globalThis as any).klona = klona;
 
 // Provide a default SillyTavern mock so Pinia stores can read/write settings
 (globalThis as any).SillyTavern = {
