@@ -3,9 +3,9 @@ import {
     generateSchema,
     getSchemaForPath,
     reconcileAndApplySchema,
-} from '@/schema';
+} from '@/function/schema';
 import { useDataStore } from '@/store';
-import { isJsonPatch, parseString, saveChatDebounced } from '@/util';
+import { getLastValidVariable, isJsonPatch } from '@/util';
 import {
     assertVWD,
     isArraySchema,
@@ -15,8 +15,8 @@ import {
     TemplateType,
     UpdateContext,
     variable_events,
-    VariableData,
 } from '@/variable_def';
+import { parseString } from '@util/common';
 import { klona } from 'klona';
 import * as math from 'mathjs';
 
@@ -507,15 +507,6 @@ export function parseParameters(paramsString: string): string[] {
     return params;
 }
 
-export async function getLastValidVariable(message_id: number): Promise<MvuData> {
-    return (klona(
-        _(SillyTavern.chat)
-            .slice(0, message_id + 1)
-            .map(chat_message => _.get(chat_message, ['variables', chat_message.swipe_id ?? 0]))
-            .findLast(variables => _.has(variables, 'stat_data'))
-    ) ?? getVariables({ type: 'message' })) as MvuData;
-}
-
 export function pathFix(path: string): string {
     if (!path) return path;
 
@@ -596,11 +587,7 @@ export function pathFix(path: string): string {
 
 /**
  * MVU 风格的变量更新操作，同时会更新 display_data/delta_data
- * @param stat_data 当前的变量状态，来源应当是 mag_variable_updated 回调中提供的 stat_data。其他来源则不会修改 display_data 等。
- * @param path 要更改的变量路径
- * @param new_value 新值
- * @param reason 修改原因（可选，默认为空）
- * @param is_recursive 此次修改是否允许触发 mag_variable_updated 回调（默认不允许）
+ * @deprecated MVU zod 不再需要支持 display_data/delta_data
  */
 export async function updateVariable(
     stat_data: Record<string, any>,
@@ -657,11 +644,7 @@ export async function updateVariable(
     return false;
 }
 
-export function pathFixPass(
-    _unused_data: MvuData,
-    commands: Command[],
-    _unused_content: string
-): void {
+function pathFixPass(_unused_data: MvuData, commands: Command[], _unused_content: string): void {
     for (const command of commands) {
         command.args[0] = pathFix(trimQuotesAndBackslashes(command.args[0]));
     }
@@ -671,7 +654,6 @@ function isNullOrWhiteSpace(str: string): boolean {
     return str == null || str.trim().length === 0;
 }
 
-// 重构 updateVariables 以处理更多命令
 export async function updateVariables(
     current_message_content: string,
     variables: MvuData
@@ -694,7 +676,6 @@ export async function updateVariables(
         display_data: out_status.stat_data,
         delta_data: delta_status.stat_data || {},
     });
-    //@ts-expect-error 这里会有一个variables类型的不一致，一个内部类型，一个外部类型。
     await eventEmit(variable_events.VARIABLE_UPDATE_STARTED, variables);
 
     let error_info: { title: string; content: string } | undefined;
@@ -1405,7 +1386,6 @@ export async function updateVariables(
     variables.display_data = out_status.stat_data;
     variables.delta_data = delta_status.stat_data!;
     // 触发变量更新结束事件
-    //@ts-expect-error 这里会有一个variables类型的不一致，一个内部类型，一个外部类型。
     await eventEmit(variable_events.VARIABLE_UPDATE_ENDED, variables, variables_before_update);
     //在结束事件中也可能设置变量
     _.unset(variables.stat_data, '$internal');
@@ -1437,8 +1417,9 @@ export async function handleVariablesInMessage(message_id: number) {
     if (chat_message.role === 'assistant' && message_content.length < 5) {
         return;
     }
-    const request_message_id = message_id === 0 ? 0 : message_id - 1;
-    const variables = await getLastValidVariable(request_message_id);
+    //在重构后 getLastValidVariable 的语义改编为了 [0, message_id) 区间
+    const request_message_id = message_id === 0 ? 1 : message_id;
+    const variables = getLastValidVariable(request_message_id);
     const settings = useDataStore().settings;
     if (!_.has(variables, 'stat_data')) {
         return;
@@ -1450,7 +1431,6 @@ export async function handleVariablesInMessage(message_id: number) {
             variables: variables,
             message_content: message_content,
         };
-        //@ts-expect-error 新老版本酒馆助手类型信息兼容
         await eventEmit(variable_events.BEFORE_MESSAGE_UPDATE, context);
         message_content = context.message_content;
     }
@@ -1501,62 +1481,4 @@ export async function handleVariablesInMessage(message_id: number) {
             }
         );
     }
-}
-
-export async function handleVariablesInCallback(
-    message_content: string,
-    in_out_variable_info: VariableData
-) {
-    if (in_out_variable_info.old_variables === undefined) {
-        return;
-    }
-    in_out_variable_info.new_variables = klona(in_out_variable_info.old_variables);
-    await updateVariables(message_content, in_out_variable_info.new_variables);
-    return in_out_variable_info.new_variables;
-}
-
-/** 清理 `[start_message_id, end_message_id]` 内, 楼层号不为 `snap_interval` 倍数的楼层变量 */
-export function cleanupVariablesInMessages(
-    start_message_id: number,
-    end_message_id: number,
-    snap_interval: number
-) {
-    let counter = 0;
-    _(SillyTavern.chat)
-        .slice(start_message_id, end_message_id + 1)
-        .forEach((chat_message, msg_index) => {
-            if (chat_message.variables === undefined) {
-                return;
-            }
-            //每个楼层只在counter 中统计一次。
-            let chat_flag = false;
-            chat_message.variables = _.range(0, chat_message.swipes?.length ?? 1).map(i => {
-                if (chat_message?.variables?.[i] === undefined) {
-                    return {};
-                }
-                if (_.get(chat_message?.variables?.[i], 'snapshot') === true) {
-                    return chat_message.variables[i];
-                }
-                if ((start_message_id + msg_index) % snap_interval === 0) {
-                    //需要对已经忽略的snapshot 楼层进行标记
-                    //原因是考虑到用户会修改楼层间隔，比如从 50-> 70 ，因为最小公倍数的原因，会导致之前的楼层实质上 350 层一个快照，有较大风险
-                    _.set(chat_message, ['variables', i, 'snapshot'], true);
-                    return chat_message.variables[i];
-                }
-                if (!chat_flag) {
-                    chat_flag = true;
-                    ++counter;
-                }
-                return _.omit(
-                    chat_message.variables[i],
-                    `initialized_lorebooks`,
-                    `stat_data`,
-                    `display_data`,
-                    `delta_data`,
-                    `schema`
-                );
-            });
-        });
-    saveChatDebounced();
-    return counter;
 }

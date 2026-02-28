@@ -49,7 +49,6 @@ import RangeNumber from '@/panel/component/RangeNumber.vue';
 import Select from '@/panel/component/Select.vue';
 import request_method_help from '@/panel/update/request_method.md';
 import { useDataStore } from '@/store';
-import { getTavernHelperVersion } from '@/util';
 import { compare } from 'compare-versions';
 import { watch } from 'vue';
 
@@ -58,7 +57,7 @@ const store = useDataStore();
 watch(
     () => store.settings.额外模型解析配置.请求方式,
     value => {
-        if (value !== '依次请求，失败后重试' && compare(getTavernHelperVersion(), '4.4.3', '<')) {
+        if (value !== '依次请求，失败后重试' && compare(store.versions.tavernhelper, '4.4.3', '<')) {
             toastr.warning(
                 '请升级酒馆助手到 4.4.3 或更高版本，否则批量请求功能可能让预设的「流式传输」设置失效',
                 '[MVU]批量请求可能有问题',

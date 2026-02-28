@@ -1,9 +1,10 @@
-import { MvuData } from '@/variable_def';
-import { getEnabledLorebookList, loadInitVarData } from '@/variable_init';
+import { getEnabledLorebookList, loadInitVarData } from '@/function/initvar/variable_init';
 import YAML from 'yaml';
 
-jest.mock('@/variable_init', () => {
-    const actual = jest.requireActual('@/variable_init');
+type MvuData = any;
+
+jest.mock('@/function/initvar/variable_init', () => {
+    const actual = jest.requireActual('@/function/initvar/variable_init');
     const mockGetEnabledLorebookList = jest.fn();
     return {
         ...actual,
@@ -43,6 +44,7 @@ describe('loadInitVarData', () => {
                 existing: 'keep',
             },
             initialized_lorebooks: {},
+            schema: { type: 'object', properties: {} },
         };
 
         mockGetEnabledLorebookList.mockResolvedValue(['version1.2', 'bonus']);
@@ -99,6 +101,7 @@ describe('loadInitVarData', () => {
                 悠纪: { 喵: '1' },
             },
             initialized_lorebooks: {},
+            schema: { type: 'object', properties: {} },
         };
 
         mockGetEnabledLorebookList.mockResolvedValue(['version1.2']);
@@ -152,6 +155,7 @@ describe('loadInitVarData', () => {
                 //empty
             },
             initialized_lorebooks: {},
+            schema: { type: 'object', properties: {} },
         };
 
         mockGetEnabledLorebookList.mockResolvedValue(['version1.2', 'version1.3']);
@@ -197,6 +201,7 @@ describe('loadInitVarData', () => {
                 //empty
             },
             initialized_lorebooks: {},
+            schema: { type: 'object', properties: {} },
         };
 
         mockGetEnabledLorebookList.mockResolvedValue(['version1.2']);

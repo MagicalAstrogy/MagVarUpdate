@@ -1,5 +1,7 @@
-import { getLastValidVariable, updateVariables } from '@/function';
+import { updateVariables } from '@/function/update_variables';
 import { useDataStore } from '@/store';
+import { getLastValidVariable, isJsonPatch } from '@/util';
+import { parseString } from '@util/common';
 
 /**
  * 最终的变量更新机制实际上是专门generate 一个新的请求，那个请求会通过 tool_call 直接更新变量。
@@ -28,8 +30,11 @@ const mvu_update_call_function_name = 'mvu_updateRound';
 ]
  */
 
+/** 已知的工具名：先收窄 mvu_VariableUpdate，保留 string 兼容其它 */
+type ToolName = typeof MVU_FUNCTION_NAME | (string & {});
+
 /** 工具调用的“函数体” */
-export interface FunctionCallBody {
+interface FunctionCallBody {
     /** 工具名，例如 "mvu_VariableUpdate"。你也可以扩成联合类型做更强约束 */
     name: ToolName;
     /** 注意：这里是**字符串里包 JSON**。解析请看后面的辅助函数 */
@@ -37,7 +42,7 @@ export interface FunctionCallBody {
 }
 
 /** 单个工具调用（function-calling 形态） */
-export interface ToolFunctionCall {
+interface ToolFunctionCall {
     index: number; // 这条 tool_call 在“本批次”中的顺序
     id: string; // 流式/合并用的临时 ID
     type: 'function'; // 本题场景锁定 function；留扩展点以兼容其它类型
@@ -45,18 +50,10 @@ export interface ToolFunctionCall {
 }
 
 /** 一批（组）工具调用：你示例里的内层数组 */
-export type ToolCallBatch = ToolFunctionCall[];
+type ToolCallBatch = ToolFunctionCall[];
 
 /** 多批（组）工具调用：你示例的最外层 */
-export type ToolCallBatches = ToolCallBatch[];
-
-/** 已知的工具名：先收窄 mvu_VariableUpdate，保留 string 兼容其它 */
-export type ToolName = typeof MVU_FUNCTION_NAME | (string & {});
-
-export function unregisterFunction() {
-    SillyTavern.unregisterFunctionTool(MVU_FUNCTION_NAME);
-    SillyTavern.unregisterFunctionTool(mvu_update_call_function_name);
-}
+type ToolCallBatches = ToolCallBatch[];
 
 /*
 async function _onStoryEndCall(_args: any): Promise<string> {
@@ -88,7 +85,7 @@ async function onVariableUpdatedCall(args: any): Promise<string> {
     }
 
     let message_content = chat_message.message.trimEnd();
-    const variables = await getLastValidVariable(message_id);
+    const variables = getLastValidVariable(message_id + 1);
     if (!_.has(variables, 'stat_data')) {
         return '';
     }
@@ -135,7 +132,7 @@ export function registerFunction() {
     const { registerFunctionTool } = SillyTavern;
     if (!registerFunctionTool) {
         console.debug('MVU: function tools are not supported');
-        return;
+        return () => {};
     }
 
     const mvu_update_schema = Object.freeze({
@@ -212,6 +209,11 @@ export function registerFunction() {
         formatMessage: () => '',
     });
     */
+
+    return () => {
+        SillyTavern.unregisterFunctionTool(MVU_FUNCTION_NAME);
+        SillyTavern.unregisterFunctionTool(mvu_update_call_function_name);
+    };
 }
 
 export function overrideToolRequest(generate_data: any) {
@@ -243,4 +245,70 @@ export function overrideToolRequest(generate_data: any) {
         */
         generate_data.tool_choice = 'required';
     }
+}
+
+export function extractFromToolCall(tool_calls: ToolCallBatches | undefined): string | null {
+    if (!tool_calls) {
+        return null;
+    }
+
+    const tool_call = _.get(tool_calls as ToolCallBatches, '[0]');
+    if (!tool_call) {
+        return null;
+    }
+
+    const mvu_call = _(tool_call).findLast(fn => fn.function.name === MVU_FUNCTION_NAME);
+    if (!mvu_call) {
+        return null;
+    }
+
+    const content = _.get(mvu_call, 'function.arguments');
+    if (!content) {
+        return null;
+    }
+
+    try {
+        const json = parseString(content);
+        if (json.delta && json.delta.length > 5) {
+            let result = '';
+            result += `<UpdateVariable>\n`;
+            result += `<Analyze>\n${json.analysis}\n</Analyze>\n`;
+            //如果返回的内容中已包含 <JsonPatch> 块，则要求这里必须能被解释成有效的对象
+            //否则需要在这里拒绝
+            // 主要有两种情况， llm加了 <json_patch> 和没有加的情况，所以下面是try，解码错误的时候fallback一下。
+            const json_patch_match = /json_?patch/i.test(json.delta);
+            try {
+                const parsed = parseString(
+                    json.delta.replaceAll(/```.*/gm, '').replaceAll(/<\/?json_?patch>/gim, '')
+                );
+                if (!isJsonPatch(parsed)) {
+                    throw new Error(`不是有效的 json patch`);
+                }
+                json.delta = JSON.stringify(parsed, null, 2);
+                result += `<JSONPatch>\n${json.delta}\n</JSONPatch>\n`;
+            } catch (error) {
+                if (json_patch_match) {
+                    console.error(
+                        `[MVU额外模型解析]无法解析的变量更新块。 ${json.delta}, 错误 ${error}`
+                    );
+                    return null;
+                }
+                const fn_call_match =
+                    /_\.(?:set|insert|assign|remove|unset|delete|add)\s*\([\s\S]*?\)\s*;/.test(
+                        json.delta
+                    );
+                //在错误路径上只可能是以往的变量更新语句，因此无效的场合需要拒绝。
+                if (fn_call_match) {
+                    result += `${json.delta}\n`;
+                } else {
+                    return null;
+                }
+            }
+            result += `</UpdateVariable>`;
+            return result;
+        }
+    } catch (e) {
+        console.log(`[MVU额外模型解析]函数调用结果解析失败, ${e}`);
+    }
+    return null;
 }

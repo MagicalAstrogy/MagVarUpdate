@@ -1,21 +1,21 @@
-import { exportGlobals } from '@/export_globals';
-import { handleVariablesInCallback, updateVariable } from '@/function';
-import { MvuData, variable_events } from '@/variable_def';
-import { loadInitVarData } from '@/variable_init';
+import { initGlobals as exportGlobals } from '@/function/global';
+import { updateVariable, updateVariables } from '@/function/update_variables';
+import { variable_events } from '@/variable_def';
+import { loadInitVarData } from '@/function/initvar/variable_init';
 import _ from 'lodash';
 
-jest.mock('@/function', () => ({
-    handleVariablesInCallback: jest.fn(),
+type MvuData = any;
+
+jest.mock('@/function/update_variables', () => ({
+    updateVariables: jest.fn(),
     updateVariable: jest.fn(),
 }));
 
-jest.mock('@/variable_init', () => ({
+jest.mock('@/function/initvar/variable_init', () => ({
     loadInitVarData: jest.fn(),
 }));
 
-const mockHandleVariablesInCallback = handleVariablesInCallback as jest.MockedFunction<
-    typeof handleVariablesInCallback
->;
+const mockUpdateVariables = updateVariables as jest.MockedFunction<typeof updateVariables>;
 const mockUpdateVariable = updateVariable as jest.MockedFunction<typeof updateVariable>;
 const mockLoadInitVarData = loadInitVarData as jest.MockedFunction<typeof loadInitVarData>;
 
@@ -68,6 +68,10 @@ describe('exportGlobals', () => {
                 health_change: -10,
                 mana_change: 5,
             },
+            schema: {
+                type: 'object',
+                properties: {},
+            },
         };
 
         jest.clearAllMocks();
@@ -118,15 +122,15 @@ describe('exportGlobals', () => {
     });
 
     describe('parseMessage', () => {
-        test('should handle variables callback and return new variables', async () => {
+        test('should update variables and return new variables', async () => {
             const newMvuData: MvuData = {
                 ...mockMvuData,
                 stat_data: { ...mockMvuData.stat_data, health: 90 } as MvuData['stat_data'],
             };
 
-            mockHandleVariablesInCallback.mockImplementation(async (_message, variableData) => {
-                variableData.new_variables = newMvuData;
-                return newMvuData;
+            mockUpdateVariables.mockImplementation(async (_message, variableData) => {
+                Object.assign(variableData, newMvuData);
+                return true;
             });
 
             exportGlobals();
@@ -134,16 +138,13 @@ describe('exportGlobals', () => {
 
             const result = await mvu.parseMessage('test message', mockMvuData);
 
-            expect(mockHandleVariablesInCallback).toHaveBeenCalledWith('test message', {
-                old_variables: mockMvuData,
-                new_variables: newMvuData,
-            });
+            expect(mockUpdateVariables).toHaveBeenCalledWith('test message', expect.any(Object));
             expect(result).toEqual(newMvuData);
         });
 
-        test('should return undefined when no new variables are set', async () => {
-            mockHandleVariablesInCallback.mockImplementation(async () => {
-                return undefined;
+        test('should still return cloned data when no updates are applied', async () => {
+            mockUpdateVariables.mockImplementation(async () => {
+                return false;
             });
 
             exportGlobals();
@@ -151,7 +152,7 @@ describe('exportGlobals', () => {
 
             const result = await mvu.parseMessage('test message', mockMvuData);
 
-            expect(result).toBeUndefined();
+            expect(result).toEqual(mockMvuData);
         });
     });
 
@@ -391,15 +392,15 @@ describe('exportGlobals', () => {
 
     describe('Edge Cases', () => {
         test('parseMessage should handle empty message', async () => {
-            mockHandleVariablesInCallback.mockResolvedValue(undefined);
+            mockUpdateVariables.mockResolvedValue(false);
 
             exportGlobals();
             const mvu = global.window.Mvu;
 
             const result = await mvu.parseMessage('', mockMvuData);
 
-            expect(mockHandleVariablesInCallback).toHaveBeenCalledWith('', expect.any(Object));
-            expect(result).toBeUndefined();
+            expect(mockUpdateVariables).toHaveBeenCalledWith('', expect.any(Object));
+            expect(result).toEqual(mockMvuData);
         });
 
         test('getMvuVariable should handle undefined data gracefully', () => {
@@ -408,6 +409,10 @@ describe('exportGlobals', () => {
                 stat_data: {},
                 display_data: {},
                 delta_data: {},
+                schema: {
+                    type: 'object',
+                    properties: {},
+                },
             };
 
             exportGlobals();

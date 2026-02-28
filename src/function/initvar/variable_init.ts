@@ -1,8 +1,7 @@
-// 整体游戏数据类型
-import { getLastValidVariable, updateVariables } from '@/function';
-import { cleanUpMetadata, EXTENSIBLE_MARKER, generateSchema } from '@/schema';
+import { cleanUpMetadata, EXTENSIBLE_MARKER, generateSchema } from '@/function/schema';
+import { updateVariables } from '@/function/update_variables';
 import { useDataStore } from '@/store';
-import { correctlyMerge, parseString } from '@/util';
+import { getLastValidVariable } from '@/util';
 import {
     isObjectSchema,
     MvuData,
@@ -11,6 +10,7 @@ import {
     StatData,
     variable_events,
 } from '@/variable_def';
+import { correctlyMerge, parseString } from '@util/common';
 import { klona } from 'klona';
 
 type LorebookEntry = {
@@ -32,7 +32,7 @@ export async function initCheck() {
             toastr.error('需要有开场白才能初始化变量', '[MVU]变量初始化失败');
             return;
         }
-        variables = (await getLastValidVariable(getLastMessageId())) ?? createEmptyGameData();
+        variables = getLastValidVariable(getLastMessageId() + 1) ?? createEmptyGameData();
     } catch (e) {
         console.error('不存在任何一条消息，退出');
         return;
@@ -380,5 +380,3 @@ export async function updateLorebookSettings(): Promise<void> {
         setLorebookSettings(dst_setting);
     }
 }
-
-//window.initCheck = initCheck;

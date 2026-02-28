@@ -4,7 +4,7 @@ function notify(title: string, message: string) {
     toastr.success(message, title, { timeOut: 10000 });
 }
 
-export function showNotifications() {
+export function initNotification() {
     const store = useDataStore();
 
     if (store.settings.internal.已提醒更新了配置界面 === false) {
@@ -53,4 +53,13 @@ export function showNotifications() {
         );
         store.settings.internal.已提醒额外模型同时请求 = true;
     }
+
+    if (store.settings.通知.MVU框架加载成功) {
+        toastr.info(
+            `构建信息: ${__BUILD_DATE__ ?? 'Unknown'} (${__COMMIT_ID__ ?? 'Unknown'})`,
+            '[MVU]脚本加载成功'
+        );
+    }
+
+    return () => {};
 }

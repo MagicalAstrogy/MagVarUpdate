@@ -1,37 +1,48 @@
+import HtmlWebpackPlugin from 'html-webpack-plugin';
+import _ from 'lodash';
 import MiniCssExtractPlugin from 'mini-css-extract-plugin';
 import child_process from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
-import url from 'node:url';
 import RemarkHTML from 'remark-html';
 import { Server } from 'socket.io';
 import TerserPlugin from 'terser-webpack-plugin';
 import TsconfigPathsPlugin from 'tsconfig-paths-webpack-plugin';
+import unpluginAutoImport from 'unplugin-auto-import/webpack';
+import {
+    VueUseComponentsResolver,
+    VueUseDirectiveResolver,
+} from 'unplugin-vue-components/resolvers';
+import unpluginVueComponents from 'unplugin-vue-components/webpack';
 import { VueLoaderPlugin } from 'vue-loader';
 import webpack from 'webpack';
 
-const __filename = url.fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-
 let io: Server;
-function watch_it(compiler: webpack.Compiler) {
+function watch_tavern_helper(compiler: webpack.Compiler) {
     if (compiler.options.watch) {
         if (!io) {
-            const port = 6621;
-            io = new Server(port, { cors: { origin: '*' } });
-            console.info(`[Listener] 已启动酒馆监听服务, 正在监听: http://0.0.0.0:${port}`);
+            io = new Server(6622, { cors: { origin: '*' } });
+            console.info(`\x1b[36m[tavern_helper]\x1b[0m 已启动酒馆监听服务`);
             io.on('connect', socket => {
-                console.info(`[Listener] 成功连接到酒馆网页 '${socket.id}', 初始化推送...`);
+                console.info(
+                    `\x1b[36m[tavern_helper]\x1b[0m 成功连接到酒馆网页 '${socket.id}', 初始化推送...`
+                );
                 io.emit('iframe_updated');
                 socket.on('disconnect', reason => {
-                    console.info(`[Listener] 与酒馆网页 '${socket.id}' 断开连接: ${reason}`);
+                    console.info(
+                        `\x1b[36m[tavern_helper]\x1b[0m 与酒馆网页 '${socket.id}' 断开连接: ${reason}`
+                    );
                 });
             });
         }
 
-        compiler.hooks.done.tap('updater', () => {
-            console.info('\n[Listener] 检测到完成编译, 推送更新事件...');
-            io.emit('iframe_updated');
+        compiler.hooks.done.tap('watch_tavern_helper', () => {
+            console.info('\n\x1b[36m[tavern_helper]\x1b[0m 检测到完成编译, 推送更新事件...');
+            if (compiler.options.plugins.some(plugin => plugin instanceof HtmlWebpackPlugin)) {
+                io.emit('message_iframe_updated');
+            } else {
+                io.emit('script_iframe_updated');
+            }
         });
     }
 }
@@ -65,7 +76,7 @@ function config(_env: any, argv: any): webpack.Configuration {
         watchOptions: {
             ignored: ['**/dist', '**/node_modules'],
         },
-        entry: path.join(__dirname, 'src/main.ts'),
+        entry: path.join(import.meta.dirname, 'src/main.ts'),
         target: 'browserslist',
         output: {
             devtoolNamespace: 'tavern_helper_template',
@@ -80,7 +91,7 @@ function config(_env: any, argv: any): webpack.Configuration {
                 return `${is_direct === true ? 'src' : 'webpack'}://${info.namespace}/${resource_path}${is_direct || is_vue_script ? '' : '?' + info.hash}`;
             },
             filename: `bundle.js`,
-            path: path.join(__dirname, 'artifact'),
+            path: path.join(import.meta.dirname, 'artifact'),
             chunkFilename: `bundle.[contenthash].chunk.js`,
             asyncChunks: true,
             clean: true,
@@ -133,6 +144,58 @@ function config(_env: any, argv: any): webpack.Configuration {
                             exclude: /node_modules/,
                         },
                         {
+                            test: /\.tsx?$/,
+                            loader: 'ts-loader',
+                            options: {
+                                transpileOnly: true,
+                                onlyCompileBundledFiles: true,
+                                compilerOptions: {
+                                    noUnusedLocals: false,
+                                    noUnusedParameters: false,
+                                },
+                            },
+                            resourceQuery: /url/,
+                            type: 'asset/inline',
+                            exclude: /node_modules/,
+                        },
+                        {
+                            test: /\.(sa|sc)ss$/,
+                            use: ['postcss-loader', 'sass-loader'],
+                            resourceQuery: /url/,
+                            type: 'asset/inline',
+                            exclude: /node_modules/,
+                        },
+                        {
+                            test: /\.css$/,
+                            use: ['postcss-loader'],
+                            resourceQuery: /url/,
+                            type: 'asset/inline',
+                            exclude: /node_modules/,
+                        },
+                        {
+                            resourceQuery: /url/,
+                            type: 'asset/inline',
+                            exclude: /node_modules/,
+                        },
+                        {
+                            test: /\.tsx?$/,
+                            loader: 'ts-loader',
+                            options: {
+                                transpileOnly: true,
+                                onlyCompileBundledFiles: true,
+                                compilerOptions: {
+                                    noUnusedLocals: false,
+                                    noUnusedParameters: false,
+                                },
+                            },
+                            exclude: /node_modules/,
+                        },
+                        {
+                            test: /\.html$/,
+                            use: 'html-loader',
+                            exclude: /node_modules/,
+                        },
+                        {
                             test: /\.md$/,
                             use: [
                                 {
@@ -149,22 +212,14 @@ function config(_env: any, argv: any): webpack.Configuration {
                             ],
                         },
                         {
-                            test: /\.tsx?$/,
-                            loader: 'ts-loader',
-                            options: {
-                                transpileOnly: true,
-                                onlyCompileBundledFiles: true,
-                                compilerOptions: {
-                                    noUnusedLocals: false,
-                                    noUnusedParameters: false,
-                                },
-                            },
-                            exclude: /node_modules/,
+                            test: /\.ya?ml$/,
+                            loader: 'yaml-loader',
+                            options: { asStream: true },
+                            resourceQuery: /stream/,
                         },
                         {
-                            test: /\.html?$/,
-                            use: 'html-loader',
-                            exclude: /node_modules/,
+                            test: /\.ya?ml$/,
+                            loader: 'yaml-loader',
                         },
                         {
                             test: /\.vue\.s(a|c)ss$/,
@@ -213,19 +268,41 @@ function config(_env: any, argv: any): webpack.Configuration {
             plugins: [
                 new TsconfigPathsPlugin({
                     extensions: ['.ts', '.js', '.tsx', '.jsx'],
-                    configFile: path.join(__dirname, 'tsconfig.json'),
+                    configFile: path.join(import.meta.dirname, 'tsconfig.json'),
                 }),
             ],
             alias: {},
         },
         plugins: [
             new MiniCssExtractPlugin(),
-            { apply: watch_it },
+            { apply: watch_tavern_helper },
             new VueLoaderPlugin(),
+            unpluginAutoImport({
+                dts: true,
+                dtsMode: 'overwrite',
+                imports: [
+                    'vue',
+                    'pinia',
+                    '@vueuse/core',
+                    { from: 'dedent', imports: [['default', 'dedent']] },
+                    { from: 'klona', imports: ['klona'] },
+                    { from: 'vue-final-modal', imports: ['useModal'] },
+                    { from: 'zod', imports: ['z'] },
+                ],
+            }),
+            unpluginVueComponents({
+                dts: true,
+                syncMode: 'overwrite',
+                // globs: ['src/panel/component/*.vue'],
+                resolvers: [VueUseComponentsResolver(), VueUseDirectiveResolver()],
+            }),
             new webpack.optimize.LimitChunkCountPlugin({ maxChunks: 1 }),
             new webpack.DefinePlugin({
                 __BUILD_DATE__: JSON.stringify(buildDate),
                 __COMMIT_ID__: JSON.stringify(commitId),
+                __VUE_OPTIONS_API__: false,
+                __VUE_PROD_DEVTOOLS__: process.env.CI !== 'true',
+                __VUE_PROD_HYDRATION_MISMATCH_DETAILS__: false,
             }),
         ],
         optimization: {
@@ -274,12 +351,13 @@ function config(_env: any, argv: any): webpack.Configuration {
             }
 
             if (
-                request.startsWith('@') ||
                 request.startsWith('-') ||
                 request.startsWith('.') ||
                 request.startsWith('/') ||
                 request.startsWith('!') ||
                 request.startsWith('http') ||
+                request.startsWith('@/') ||
+                request.startsWith('@util/') ||
                 path.isAbsolute(request) ||
                 fs.existsSync(path.join(context, request)) ||
                 fs.existsSync(request)
@@ -287,19 +365,21 @@ function config(_env: any, argv: any): webpack.Configuration {
                 return callback();
             }
 
-            const builtin = ['vue3-pixi', 'vue-demi'];
-            if (builtin.includes(request)) {
+            if (
+                ['vue', 'vue-router'].every(key => request !== key) &&
+                ['pixi', 'react', 'vue'].some(key => request.includes(key))
+            ) {
                 return callback();
             }
             const global = {
                 jquery: '$',
                 lodash: '_',
+                showdown: 'showdown',
                 toastr: 'toastr',
                 vue: 'Vue',
                 'vue-router': 'VueRouter',
                 yaml: 'YAML',
                 zod: 'z',
-                'pixi.js': 'PIXI',
             };
             if (request in global) {
                 return callback(null, 'var ' + global[request as keyof typeof global]);

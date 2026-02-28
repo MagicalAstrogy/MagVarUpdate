@@ -1,21 +1,15 @@
+import { extractFromToolCall } from '@/function/function_call';
 import claude_head from '@/prompts/claude_head.txt?raw';
 import claude_tail from '@/prompts/claude_tail.txt?raw';
 import extra_model_task from '@/prompts/extra_model_task.txt?raw';
 import gemini_head from '@/prompts/gemini_head.txt?raw';
 import gemini_tail from '@/prompts/gemini_tail.txt?raw';
-import {
-    getTavernHelperVersion,
-    isJsonPatch,
-    literalYamlify,
-    normalizeBaseURL,
-    parseString,
-    uuidv4,
-} from '@/util';
+import { useDataStore } from '@/store';
+import { normalizeBaseURL } from '@/util';
+import { literalYamlify, uuidv4 } from '@util/common';
 import { compare } from 'compare-versions';
-import { MVU_FUNCTION_NAME, ToolCallBatches } from './function_call';
-import { useDataStore } from './store';
 
-let collected_tool_calls: string | undefined = undefined;
+let toolcall_result: string | undefined = undefined;
 let vanilla_parseToolCalls: any = null;
 //测试用，为了使首次请求必失败
 let debug_extra_request_counter = 0;
@@ -36,7 +30,7 @@ function setExtraAnalysisStates() {
     //因为这个操作是幂等的，所以无所谓。
 
     store.runtimes.is_during_extra_analysis = true;
-    collected_tool_calls = undefined;
+    toolcall_result = undefined;
 
     if (store.settings.额外模型解析配置.使用函数调用) {
         vanilla_parseToolCalls = SillyTavern.ToolManager.parseToolCalls;
@@ -44,9 +38,9 @@ function setExtraAnalysisStates() {
         SillyTavern.ToolManager.parseToolCalls = (tool_calls: any, parsed: any) => {
             vanilla_bound(tool_calls, parsed);
             //在concurrent 的场合，这个上下文只需要获取到 **任意** 一个有效的内容即可，不需要严格要求是请求所对应的那个。
-            const extracted = extractFromToolCall(tool_calls as ToolCallBatches);
+            const extracted = extractFromToolCall(tool_calls);
             if (extracted) {
-                collected_tool_calls = extracted;
+                toolcall_result = extracted;
             }
         };
     }
@@ -64,17 +58,15 @@ function unsetExtraAnalysisStates() {
     store.runtimes.is_function_call_enabled = false;
 }
 
-let is_analysis_inprogress = false;
+let is_analysis_in_progress = false;
 
 export async function invokeExtraModelWithStrategy(): Promise<string | null> {
     const batch_id = generateRandomHeader();
-    if (is_analysis_inprogress) {
-        //考虑到在分析过程中误按的场景。
-        toastr.error('已有在途的额外分析请求', '[MVU额外模型解析]变量更新失败');
+    if (is_analysis_in_progress) {
         return null;
     }
     try {
-        is_analysis_inprogress = true;
+        is_analysis_in_progress = true;
         const store = useDataStore();
 
         debug_extra_request_counter = 0;
@@ -168,7 +160,7 @@ export async function invokeExtraModelWithStrategy(): Promise<string | null> {
                 return concurrentInvoke(store.settings.额外模型解析配置.请求次数 - 1);
         }
     } finally {
-        is_analysis_inprogress = false;
+        is_analysis_in_progress = false;
     }
 }
 
@@ -190,7 +182,7 @@ async function invokeExtraModel(generation_id?: string, batch_id?: string): Prom
     try {
         const direct_reply = await requestReply(generation_id, batch_id);
         // collected_tool_calls 依赖于 requestReply 的结果, 必须在之后
-        const result = collected_tool_calls ?? direct_reply;
+        const result = toolcall_result ?? direct_reply;
 
         // QUESTION: 是在这里直接返回整个结果, 还是返回处理后的结果
 
@@ -259,7 +251,7 @@ async function requestReply(generation_id?: string, batch_id?: string): Promise<
     };
     if (store.settings.额外模型解析配置.模型来源 === '自定义') {
         const unset_if_equal = (value: number, expected: number) =>
-            compare(getTavernHelperVersion(), '4.3.9', '>=') && value === expected
+            compare(store.versions.tavernhelper, '4.3.9', '>=') && value === expected
                 ? 'unset'
                 : value;
         config.custom_api = {
@@ -286,7 +278,7 @@ async function requestReply(generation_id?: string, batch_id?: string): Promise<
     SillyTavern.registerMacro('lastUserMessage', () => {
         return task;
     });
-    if (store.settings.debug.首次额外请求必失败 && debug_extra_request_counter === 0) {
+    if (store.runtimes.debug.首次额外请求必失败 && debug_extra_request_counter === 0) {
         debug_extra_request_counter++;
         throw 'simulated exception';
     }
@@ -347,70 +339,4 @@ async function requestReply(generation_id?: string, batch_id?: string): Promise<
         ],
     });
     return result;
-}
-
-export function extractFromToolCall(tool_calls: ToolCallBatches | undefined): string | null {
-    if (!tool_calls) {
-        return null;
-    }
-
-    const tool_call = _.get(tool_calls as ToolCallBatches, '[0]');
-    if (!tool_call) {
-        return null;
-    }
-
-    const mvu_call = _(tool_call).findLast(fn => fn.function.name === MVU_FUNCTION_NAME);
-    if (!mvu_call) {
-        return null;
-    }
-
-    const content = _.get(mvu_call, 'function.arguments');
-    if (!content) {
-        return null;
-    }
-
-    try {
-        const json = parseString(content);
-        if (json.delta && json.delta.length > 5) {
-            let result = '';
-            result += `<UpdateVariable>\n`;
-            result += `<Analyze>\n${json.analysis}\n</Analyze>\n`;
-            //如果返回的内容中已包含 <JsonPatch> 块，则要求这里必须能被解释成有效的对象
-            //否则需要在这里拒绝
-            // 主要有两种情况， llm加了 <json_patch> 和没有加的情况，所以下面是try，解码错误的时候fallback一下。
-            const json_patch_match = /json_?patch/i.test(json.delta);
-            try {
-                const parsed = parseString(
-                    json.delta.replaceAll(/```.*/gm, '').replaceAll(/<\/?json_?patch>/gim, '')
-                );
-                if (!isJsonPatch(parsed)) {
-                    throw new Error(`不是有效的 json patch`);
-                }
-                json.delta = JSON.stringify(parsed, null, 2);
-                result += `<JSONPatch>\n${json.delta}\n</JSONPatch>\n`;
-            } catch (error) {
-                if (json_patch_match) {
-                    console.error(
-                        `[MVU额外模型解析]无法解析的变量更新块。 ${json.delta}, 错误 ${error}`
-                    );
-                    return null;
-                }
-                const fn_call_match =
-                    /_\.(?:set|insert|assign|remove|unset|delete|add)\s*\([\s\S]*?\)\s*;/.test(
-                        json.delta
-                    );
-                //在错误路径上只可能是以往的变量更新语句，因此无效的场合需要拒绝。
-                if (fn_call_match) {
-                    result += `${json.delta}\n`;
-                } else {
-                    return null;
-                }
-            }
-            result += `</UpdateVariable>`;
-            return result;
-        }
-    } catch (e) {
-        console.log(`[MVU额外模型解析]函数调用结果解析失败, ${e}`);
-    }
-    return null;
 }

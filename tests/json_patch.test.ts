@@ -1,6 +1,6 @@
-import { extractCommands, updateVariables } from '@/function';
-import { generateSchema } from '@/schema';
-import { isArraySchema, isObjectSchema, MvuData, SchemaNode } from '@/variable_def';
+import { updateVariables, extractCommands } from '@/function/update_variables';
+import { generateSchema } from '@/function/schema';
+import { isArraySchema, isObjectSchema, SchemaNode } from '@/variable_def';
 import { describe, expect, it } from '@jest/globals';
 import fs from 'fs';
 import _ from 'lodash';
@@ -14,6 +14,8 @@ type PatchCase = {
     error?: string;
     disabled?: boolean;
 };
+
+type MvuData = any;
 
 const allowedOps = new Set(['add', 'replace', 'remove']);
 

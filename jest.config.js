@@ -10,6 +10,7 @@ module.exports = {
     moduleNameMapper: {
         '^@/(.*)\\?raw$': '<rootDir>/tests/mocks/rawTextMock.ts',
         '\\.txt\\?raw$': '<rootDir>/tests/mocks/rawTextMock.ts',
+        '^@util/(.*)$': '<rootDir>/util/$1',
         '^@/(.*)$': '<rootDir>/src/$1',
     },
     collectCoverageFrom: ['src/**/*.ts', '!src/**/*.d.ts', '!src/**/index.ts'],
