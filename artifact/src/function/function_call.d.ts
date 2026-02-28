@@ -6,26 +6,27 @@
  * 目前的折衷方式是在 generate 中触发函数调用，在这个情况下可以利用 required 肘掉正文的特性，来精简输出。
  */
 export declare const MVU_FUNCTION_NAME = "mvu_VariableUpdate";
+/** 已知的工具名：先收窄 mvu_VariableUpdate，保留 string 兼容其它 */
+type ToolName = typeof MVU_FUNCTION_NAME | (string & {});
 /** 工具调用的“函数体” */
-export interface FunctionCallBody {
+interface FunctionCallBody {
     /** 工具名，例如 "mvu_VariableUpdate"。你也可以扩成联合类型做更强约束 */
     name: ToolName;
     /** 注意：这里是**字符串里包 JSON**。解析请看后面的辅助函数 */
     arguments: string;
 }
 /** 单个工具调用（function-calling 形态） */
-export interface ToolFunctionCall {
+interface ToolFunctionCall {
     index: number;
     id: string;
     type: 'function';
     function: FunctionCallBody;
 }
 /** 一批（组）工具调用：你示例里的内层数组 */
-export type ToolCallBatch = ToolFunctionCall[];
+type ToolCallBatch = ToolFunctionCall[];
 /** 多批（组）工具调用：你示例的最外层 */
-export type ToolCallBatches = ToolCallBatch[];
-/** 已知的工具名：先收窄 mvu_VariableUpdate，保留 string 兼容其它 */
-export type ToolName = typeof MVU_FUNCTION_NAME | (string & {});
-export declare function unregisterFunction(): void;
-export declare function registerFunction(): void;
+type ToolCallBatches = ToolCallBatch[];
+export declare function registerFunction(): () => void;
 export declare function overrideToolRequest(generate_data: any): void;
+export declare function extractFromToolCall(tool_calls: ToolCallBatches | undefined): string | null;
+export {};

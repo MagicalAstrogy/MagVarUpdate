@@ -50,9 +50,13 @@ export type RootAdditionalProps = {
 export type RootAdditionalMetaProps = {
     $meta?: StatDataMeta & RootAdditionalProps;
 };
+export type InternalData = {
+    display_data: Record<string, any>;
+    delta_data: Record<string, any>;
+};
 export type MvuData = {
     /** 已初始化的 lorebook 列表 */
-    initialized_lorebooks?: Record<string, any[]>;
+    initialized_lorebooks: Record<string, any[]>;
     /**
      * 状态数据 - 存储实际的变量值
      * 支持嵌套对象结构，通过路径（如 "player.health"）访问
@@ -66,7 +70,9 @@ export type MvuData = {
     stat_data: StatData & RootAdditionalMetaProps & {
         $internal?: InternalData;
     };
+    schema: ObjectSchemaNode & Partial<RootAdditionalProps>;
     /**
+     * @deprecated
      * 显示数据 - 存储变量变化的可视化表示
      * 格式："{旧值}->{新值} ({原因})"
      * 例如："100->80 (受到伤害)"
@@ -77,6 +83,7 @@ export type MvuData = {
      */
     display_data?: Record<string, any>;
     /**
+     * @deprecated
      * 增量数据 - 存储本次更新中发生变化的变量
      * 格式：与 display_data 相同，"{旧值}->{新值} (原因)"
      *
@@ -88,47 +95,116 @@ export type MvuData = {
      * 用途：仅显示当前消息/操作中实际发生变化的变量，而不是所有历史变化
      */
     delta_data?: Record<string, any>;
-    schema?: ObjectSchemaNode & Partial<RootAdditionalProps>;
+    [key: string]: any;
 };
-export interface VariableData {
-    old_variables: MvuData;
-    /**
-     * 输出变量，仅当实际产生了变量变更的场合，会产生 newVariables
-     */
-    new_variables?: MvuData;
-}
+export declare function isMvuData(variables: Record<string, any>): variables is MvuData;
 export declare const variable_events: {
+    /** 新开聊天对变量初始化时触发的事件  */
     readonly VARIABLE_INITIALIZED: "mag_variable_initialized";
-    readonly SINGLE_VARIABLE_UPDATED: "mag_variable_updated";
-    readonly VARIABLE_UPDATE_ENDED: "mag_variable_update_ended";
+    /** 某轮变量更新开始时触发的事件 */
     readonly VARIABLE_UPDATE_STARTED: "mag_variable_update_started";
+    /**
+     * 某轮变量更新过程中, 对文本成功解析了所有更新命令时触发的事件
+     *
+     * @example
+     * // 修复 gemini 在中文间加入的 '-'', 如将 '角色.络-络' 修复为 '角色.络络'
+     * eventOn(Mvu.events.COMMAND_PARSED, commands => {
+     *   commands.forEach(command => {
+     *     command.args[0] = command.args[0].replace(/-/g, '');
+     *   });
+     * });
+     *
+     * @example
+     * // 修复繁体字, 如将 '絡絡' 修复为 '络络'
+     * eventOn(Mvu.events.COMMAND_PARSED, commands => {
+     *   commands.forEach(command => {
+     *     command.args[0] = command.args[0].replaceAll('絡絡', '络络');
+     *   });
+     * });
+     *
+     * @example
+     * // 添加新的更新命令
+     * eventOn(Mvu.events.COMMAND_PARSED, commands => {
+     *   commands.push({
+     *     type: 'set',
+     *     full_match: `_.set('络络.好感度', 5)`,
+     *     args: ['络络.好感度', 5],
+     *     reason: '脚本强行更新',
+     *   });
+     * });
+     */
     readonly COMMAND_PARSED: "mag_command_parsed";
+    /**
+     * 某轮变量更新结束时触发的事件
+     *
+     * @example
+     * // 保持好感度不低于 0
+     * eventOn(Mvu.events.VARIABLE_UPDATE_ENDED, variables => {
+     *   if (_.get(variables, 'stat_data.角色.络络.好感度') < 0) {
+     *     _.set(variables, 'stat_data.角色.络络.好感度', 0);
+     *   }
+     * })
+     *
+     * @example
+     * // 保持好感度增幅不超过 3
+     * eventOn(Mvu.events.VARIABLE_UPDATE_ENDED, (variables, variables_before_update) => {
+     *   const old_value = _.get(variables_before_update, 'stat_data.角色.络络.好感度');
+     *   const new_value = _.get(variables, 'stat_data.角色.络络.好感度');
+     *
+     *   // 新的好感度必须在 旧好感度-3 和 旧好感度+3 之间
+     *   _.set(variables, 'stat_data.角色.络络.好感度', _.clamp(new_value, old_value - 3, old_value + 3));
+     * });
+     */
+    readonly VARIABLE_UPDATE_ENDED: "mag_variable_update_ended";
+    /** 即将用更新后的变量更新楼层时触发的事件  */
     readonly BEFORE_MESSAGE_UPDATE: "mag_before_message_update";
-};
-export declare const exported_events: {
-    readonly INVOKE_MVU_PROCESS: "mag_invoke_mvu";
-    readonly UPDATE_VARIABLE: "mag_update_variable";
-};
-export type InternalData = {
-    display_data: Record<string, any>;
-    delta_data: Record<string, any>;
+    /** @deprecated */
+    readonly SINGLE_VARIABLE_UPDATED: "mag_variable_updated";
 };
 export type UpdateContext = {
     variables: MvuData;
     message_content: string;
 };
-export type ExtendedListenerType = {
-    [variable_events.SINGLE_VARIABLE_UPDATED]: (stat_data: Record<string, any>, path: string, _oldValue: any, _newValue: any) => void;
-    [variable_events.VARIABLE_UPDATE_STARTED]: (variables: MvuData, out_is_updated: boolean) => void;
-    [variable_events.VARIABLE_UPDATE_ENDED]: (variables: MvuData, variables_before_update: MvuData) => void;
-    [variable_events.VARIABLE_INITIALIZED]: (variables: MvuData, swipe_id: number) => void;
-    [variable_events.COMMAND_PARSED]: (variables: MvuData, commands: any, message_content: string) => void;
-    [variable_events.BEFORE_MESSAGE_UPDATE]: (context: UpdateContext) => void;
-    [exported_events.INVOKE_MVU_PROCESS]: (message_content: string, variable_info: VariableData) => void;
-    [exported_events.UPDATE_VARIABLE]: (stat_data: Record<string, any>, path: string, newValue: any, reason: string, isRecursive: boolean) => void;
+export type CommandInfo = SetCommandInfo | InsertCommandInfo | DeleteCommandInfo | AddCommandInfo | MoveCommandInfo;
+type SetCommandInfo = {
+    type: 'set';
+    full_match: string;
+    args: [path: string, new_value_literal: string] | [path: string, expected_old_value_literal: string, new_value_literal: string];
+    reason: string;
 };
-export type InitVarType = StatData & RootAdditionalMetaProps;
-export type DataCategory = 'stat' | 'display' | 'delta';
-export declare function extractRecord(category: 'stat' | 'display' | 'delta', game_data: MvuData): Record<string, any>;
+type InsertCommandInfo = {
+    type: 'insert';
+    full_match: string;
+    args: [path: string, value_literal: string] | [path: string, index_or_key_literal: string, value_literal: string];
+    reason: string;
+};
+type DeleteCommandInfo = {
+    type: 'delete';
+    full_match: string;
+    args: [path: string] | [path: string, index_or_key_or_value_literal: string];
+    reason: string;
+};
+type AddCommandInfo = {
+    type: 'add';
+    full_match: string;
+    args: [path: string, delta_or_toggle_literal: string];
+    reason: string;
+};
+type MoveCommandInfo = {
+    type: 'move';
+    full_match: string;
+    args: [from: string, to: string];
+    reason: string;
+};
+export interface ListenerType {
+    [variable_events.VARIABLE_INITIALIZED]: (variables: MvuData, swipe_id: number) => void;
+    [variable_events.VARIABLE_UPDATE_STARTED]: (variables: MvuData, out_is_updated: boolean) => void;
+    [variable_events.COMMAND_PARSED]: (variables: MvuData, commands: CommandInfo[], message_content: string) => void;
+    [variable_events.VARIABLE_UPDATE_ENDED]: (variables: MvuData, variables_before_update: MvuData) => void;
+    [variable_events.BEFORE_MESSAGE_UPDATE]: (context: UpdateContext) => void;
+    /** @deprecated */
+    [variable_events.SINGLE_VARIABLE_UPDATED]: (stat_data: Record<string, any>, path: string, _oldValue: any, _newValue: any) => void;
+}
 export declare const UPDATE_REGEX: RegExp;
 export declare const PLOT_REGEX: RegExp;
+export {};

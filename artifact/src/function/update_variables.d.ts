@@ -1,4 +1,4 @@
-import { MvuData, TemplateType, VariableData } from '@/variable_def';
+import { MvuData, TemplateType } from '@/variable_def';
 export declare function trimQuotesAndBackslashes(str: string): string;
 /**
  * 应用模板到值上，值的属性优先级高于模板
@@ -48,21 +48,12 @@ interface Command {
  */
 export declare function extractCommands(inputText: string): Command[];
 export declare function parseParameters(paramsString: string): string[];
-export declare function getLastValidVariable(message_id: number): Promise<MvuData>;
 export declare function pathFix(path: string): string;
 /**
  * MVU 风格的变量更新操作，同时会更新 display_data/delta_data
- * @param stat_data 当前的变量状态，来源应当是 mag_variable_updated 回调中提供的 stat_data。其他来源则不会修改 display_data 等。
- * @param path 要更改的变量路径
- * @param new_value 新值
- * @param reason 修改原因（可选，默认为空）
- * @param is_recursive 此次修改是否允许触发 mag_variable_updated 回调（默认不允许）
+ * @deprecated MVU zod 不再需要支持 display_data/delta_data
  */
 export declare function updateVariable(stat_data: Record<string, any>, path: string, new_value: any, reason?: string, is_recursive?: boolean): Promise<boolean>;
-export declare function pathFixPass(_unused_data: MvuData, commands: Command[], _unused_content: string): void;
 export declare function updateVariables(current_message_content: string, variables: MvuData): Promise<boolean>;
 export declare function handleVariablesInMessage(message_id: number): Promise<void>;
-export declare function handleVariablesInCallback(message_content: string, in_out_variable_info: VariableData): Promise<MvuData | undefined>;
-/** 清理 `[start_message_id, end_message_id]` 内, 楼层号不为 `snap_interval` 倍数的楼层变量 */
-export declare function cleanupVariablesInMessages(start_message_id: number, end_message_id: number, snap_interval: number): number;
 export {};

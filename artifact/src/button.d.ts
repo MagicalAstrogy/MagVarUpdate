@@ -22,3 +22,11 @@
  * }
  */
 export declare function updateDescriptions(_init_path: string, init_data: any, msg_data: any, target_data: any): void;
+interface Button {
+    name: string;
+    function: (() => void) | (() => Promise<void>);
+    is_legacy?: boolean;
+}
+export declare const buttons: Button[];
+export declare function initButtons(): () => void;
+export {};
