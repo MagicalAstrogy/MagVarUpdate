@@ -6,5 +6,5 @@
         "outDir": "artifact",
         "skipLibCheck": true
     },
-    "files": ["src/variable_def.ts", "src/export_globals.ts"]
+    "files": ["src/variable_def.ts", "src/global/index.ts"]
 }
