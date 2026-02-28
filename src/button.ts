@@ -32,7 +32,12 @@ import { klona } from 'klona';
  *   }
  * }
  */
-function updateDescriptions(_init_path: string, init_data: any, msg_data: any, target_data: any) {
+export function updateDescriptions(
+    _init_path: string,
+    init_data: any,
+    msg_data: any,
+    target_data: any
+) {
     _.forEach(init_data, (value, key) => {
         const current_path = key; //init_path ? `${init_path}.${key}` : key;
 

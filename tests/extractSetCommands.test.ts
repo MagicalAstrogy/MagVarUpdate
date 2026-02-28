@@ -1,5 +1,4 @@
-import { updateVariables } from '@/function/update_variables';
-import { extractCommands, parseCommandValue } from './helpers/legacyFunction';
+import { updateVariables, extractCommands, parseCommandValue } from '@/function/update_variables';
 
 type MvuData = any;
 

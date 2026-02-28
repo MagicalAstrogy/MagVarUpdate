@@ -20,7 +20,7 @@ import { parseString } from '@util/common';
 import { klona } from 'klona';
 import * as math from 'mathjs';
 
-function trimQuotesAndBackslashes(str: string): string {
+export function trimQuotesAndBackslashes(str: string): string {
     if (!_.isString(str)) return str;
     // Regular expression to match backslashes and quotes (including backticks) at the beginning and end
     return str.replace(/^[\\"'` ]*(.*?)[\\"'` ]*$/, '$1');
@@ -34,7 +34,7 @@ function trimQuotesAndBackslashes(str: string): string {
  * @param array_merge_concat 指明数组的 合并 行为是指 覆盖 还是 拼接，默认拼接。
  * @returns 合并后的值
  */
-function applyTemplate(
+export function applyTemplate(
     value: any,
     template: TemplateType | undefined,
     strict_array_cast: boolean = false,
@@ -83,7 +83,7 @@ function applyTemplate(
 
 // 一个更安全的、用于解析命令中值的辅助函数
 // 它会尝试将字符串解析为 JSON, 布尔值, null, 数字, 或数学表达式
-function parseCommandValue(valStr: string): any {
+export function parseCommandValue(valStr: string): any {
     if (typeof valStr !== 'string') return valStr;
     const trimmed = valStr.trim();
 
@@ -271,7 +271,7 @@ function extractJsonPatch(patch: any): Command[] {
  * 使用状态机方法，通过计数括号配对来准确找到 _.set() 调用的结束位置
  */
 // 将 extractSetCommands 扩展为 extractCommands 以支持多种命令
-function extractCommands(inputText: string): Command[] {
+export function extractCommands(inputText: string): Command[] {
     // TODO: 应该按照消息中更新命令出现的顺序来排列 json_patch 和自定义命令
     const results: (Command & { $index: number })[] = _.concat(
         [
@@ -444,7 +444,7 @@ function findMatchingCloseParen(str: string, startPos: number): number {
 
 // 解析参数字符串，处理嵌套结构
 // 增加了对圆括号的层级计数。
-function parseParameters(paramsString: string): string[] {
+export function parseParameters(paramsString: string): string[] {
     const params: string[] = [];
     let currentParam = '';
     let inQuote = false;

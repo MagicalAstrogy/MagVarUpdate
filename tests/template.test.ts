@@ -1,13 +1,12 @@
 import { beforeEach, describe, expect, it } from '@jest/globals';
-import { updateVariables } from '../src/function/update_variables';
+import { applyTemplate, updateVariables } from '@/function/update_variables';
 import {
     cleanUpMetadata,
     EXTENSIBLE_MARKER,
     generateSchema,
     reconcileAndApplySchema,
-} from '../src/function/schema';
-import { StatData } from '../src/variable_def';
-import { applyTemplate } from './helpers/legacyFunction';
+} from '@/function/schema';
+import { StatData } from '@/variable_def';
 
 type MvuData = any;
 

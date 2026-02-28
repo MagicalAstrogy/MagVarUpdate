@@ -1,16 +1,36 @@
-import { handleVariablesInMessage, pathFix, updateVariables } from '@/function/update_variables';
-import { getLastValidVariable } from '@/util';
 import {
-    handleVariablesInCallback,
-    parseParameters,
+    handleVariablesInMessage,
+    pathFix,
+    updateVariables,
     trimQuotesAndBackslashes,
-    VariableData,
-} from './helpers/legacyFunction';
+    parseParameters,
+} from '@/function/update_variables';
+import { getLastValidVariable } from '@/util';
 import { useDataStore } from '@/store';
 import { assertVWD } from '@/variable_def';
 import _ from 'lodash';
 
 type MvuData = any;
+
+async function handleVariablesInCallback(
+    message_content: string,
+    in_out_variable_info: VariableData
+) {
+    if (in_out_variable_info.old_variables === undefined) {
+        return;
+    }
+    in_out_variable_info.new_variables = klona(in_out_variable_info.old_variables);
+    await updateVariables(message_content, in_out_variable_info.new_variables);
+    return in_out_variable_info.new_variables;
+}
+
+export interface VariableData {
+    old_variables: MvuData;
+    /**
+     * 输出变量，仅当实际产生了变量变更的场合，会产生 newVariables
+     */
+    new_variables?: MvuData;
+}
 
 describe('parseParameters', () => {
     describe('基本参数解析', () => {

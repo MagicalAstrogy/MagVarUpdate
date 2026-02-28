@@ -8,6 +8,7 @@ import { initResponse } from '@/function/update';
 import { initPanel } from '@/panel';
 import { useDataStore } from '@/store';
 import { checkMinimumVersion } from '@util/common';
+import { createPinia, getActivePinia, setActivePinia } from 'pinia';
 
 setActivePinia(getActivePinia() ?? createPinia());
 

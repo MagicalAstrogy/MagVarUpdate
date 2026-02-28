@@ -1,5 +1,4 @@
-import { updateVariables } from '@/function/update_variables';
-import { extractCommands } from './helpers/legacyFunction';
+import { updateVariables, extractCommands } from '@/function/update_variables';
 import { generateSchema } from '@/function/schema';
 import { isArraySchema, isObjectSchema, SchemaNode } from '@/variable_def';
 import { describe, expect, it } from '@jest/globals';
