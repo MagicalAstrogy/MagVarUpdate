@@ -57,13 +57,14 @@ watch(
                         timeOut: 5000,
                     }
                 );
+                store.settings.额外模型解析配置.使用函数调用 = false;
             }
             if (SillyTavern.chatCompletionSettings.function_calling === false) {
                 toastr.error("请在预设面板勾选'使用函数调用'选项", "[MVU]无法使用'函数调用'", {
                     timeOut: 5000,
                 });
+                store.settings.额外模型解析配置.使用函数调用 = false;
             }
-            store.settings.额外模型解析配置.使用函数调用 = false;
         }
     }
 );
