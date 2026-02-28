@@ -254,6 +254,12 @@ export async function loadInitVarData(
             const merged_data: Record<string, any> = {};
             for (const entry of init_entries) {
                 if (entry.comment?.toLowerCase().includes('[initvar]')) {
+                    const xml_match = entry.content
+                        .trim()
+                        .match(/.*<initvar>.*\n([\s\S]*)\n.*<\/initvar>.*/m);
+                    if (xml_match) {
+                        entry.content = xml_match[1];
+                    }
                     const codeblock_match = entry.content.trim().match(/```.*\n([\s\S]*)\n```/m);
                     if (codeblock_match) {
                         entry.content = codeblock_match[1];
