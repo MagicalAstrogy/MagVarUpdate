@@ -1,4 +1,5 @@
-import { is_jest_environment } from '@/util';
+import { is_jest_environment } from '@/jest';
+import { registerAsUniqueScript } from '@util/script';
 import { defineStore } from 'pinia';
 import { ref, toRaw, watch } from 'vue';
 import * as z from 'zod';
@@ -183,6 +184,9 @@ export const useDataStore = defineStore('MVU变量框架', () => {
         },
         { deep: true }
     );
+    const _reload_settings = () => {
+        settings.value = Settings.parse(_.get(SillyTavern.extensionSettings, 'mvu_settings', {}));
+    };
 
     const runtimes = ref(Runtimes.parse({}));
     watch(
@@ -206,5 +210,23 @@ export const useDataStore = defineStore('MVU变量框架', () => {
         versions.value.tavernhelper = await getTavernHelperVersion();
     };
 
-    return { settings, runtimes, versions, resetRuntimes, _wait_init };
+    const should_enable = ref<boolean>(false);
+    registerAsUniqueScript('MVU变量框架').listenPreferenceState(preferred_script_id => {
+        should_enable.value = preferred_script_id === getScriptId();
+    });
+    watch(should_enable, (new_enable, old_enable) => {
+        if (new_enable && !old_enable) {
+            _reload_settings();
+        }
+    });
+
+    return {
+        settings,
+        _reload_settings,
+        runtimes,
+        resetRuntimes,
+        versions,
+        _wait_init,
+        should_enable,
+    };
 });
