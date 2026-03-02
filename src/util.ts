@@ -39,7 +39,7 @@ export function controlledStoppableEventOn<T extends EventType>(
     const store = useDataStore();
     const wrapper = (...args: any[]) => {
         if (store.should_enable) {
-            listener(...args);
+            return listener(...args);
         }
     };
     eventOn(event_type, wrapper);
