@@ -3,18 +3,24 @@ import { cleanupMessageVariables } from '@/function/cleanup/cleanup_variables';
 import { checkAndCleanupLegacyChat } from '@/function/cleanup/legacy_chat';
 import { restoreVariables } from '@/function/cleanup/restore_variables';
 import { useDataStore } from '@/store';
-import { stoppableEventOn } from '@/util';
+import { controlledStoppableEventOn } from '@/util';
 
 export function initCleanup() {
-    checkAndRemoveChatVariables();
-    checkAndCleanupLegacyChat();
+    const store = useDataStore();
+    if (store.should_enable) {
+        checkAndRemoveChatVariables();
+        checkAndCleanupLegacyChat();
+    }
 
     const stop_list: Array<() => void> = [];
     stop_list.push(
-        stoppableEventOn(tavern_events.MESSAGE_DELETED, _.debounce(restoreVariables, 2000))
+        controlledStoppableEventOn(
+            tavern_events.MESSAGE_DELETED,
+            _.debounce(restoreVariables, 2000)
+        )
     );
     stop_list.push(
-        stoppableEventOn(tavern_events.MESSAGE_RECEIVED, message_id => {
+        controlledStoppableEventOn(tavern_events.MESSAGE_RECEIVED, message_id => {
             const store = useDataStore();
             if (!store.settings.自动清理变量.启用) {
                 return;

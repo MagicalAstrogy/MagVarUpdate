@@ -11,7 +11,7 @@ import { parseString } from '@util/common';
  * 目前的折衷方式是在 generate 中触发函数调用，在这个情况下可以利用 required 肘掉正文的特性，来精简输出。
  */
 
-export const MVU_FUNCTION_NAME = 'mvu_VariableUpdate';
+export const MVU_FUNCTION_NAME = `mvu_VariableUpdate_${getScriptId()}`;
 const mvu_update_call_function_name = 'mvu_updateRound';
 
 /*
@@ -163,7 +163,7 @@ export function registerFunction() {
         parameters: mvu_update_schema,
         shouldRegister: () => {
             const store = useDataStore();
-            if (!store.runtimes.is_function_call_enabled) {
+            if (!store.should_enable || !store.runtimes.is_function_call_enabled) {
                 return false;
             }
             return store.settings.额外模型解析配置.使用函数调用;

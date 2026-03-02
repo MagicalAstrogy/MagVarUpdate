@@ -1,13 +1,8 @@
+import { useDataStore } from '@/store';
 import { isMvuData, MvuData } from '@/variable_def';
 import * as jsonpatch from 'fast-json-patch';
 import { klona } from 'klona';
 
-declare const jest: any;
-declare const process: any;
-
-export const is_jest_environment =
-    typeof jest !== 'undefined' ||
-    (typeof process !== 'undefined' && process.env?.NODE_ENV === 'test');
 
 export const saveChatDebounced = _.debounce(SillyTavern.saveChat, 1000);
 
@@ -37,9 +32,18 @@ export function getLastValidVariable(end_message_id: number): MvuData | undefine
     );
 }
 
-export function stoppableEventOn<T extends EventType>(event_type: T, listener: ListenerType[T]) {
-    eventOn(event_type, listener);
-    return () => eventRemoveListener(event_type, listener);
+export function controlledStoppableEventOn<T extends EventType>(
+    event_type: T,
+    listener: ListenerType[T]
+) {
+    const store = useDataStore();
+    const wrapper = (...args: any[]) => {
+        if (store.should_enable) {
+            listener(...args);
+        }
+    };
+    eventOn(event_type, wrapper);
+    return () => eventRemoveListener(event_type, wrapper);
 }
 
 export function isJsonPatch(patch: any): patch is jsonpatch.Operation[] {
