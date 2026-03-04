@@ -8,6 +8,7 @@ import { useDataStore } from '@/store';
 import { getLastValidMessageId, getLastValidVariable } from '@/util';
 import { MvuData } from '@/variable_def';
 import { klona } from 'klona';
+import { watch } from 'vue';
 
 /**
  * 递归更新描述字段
