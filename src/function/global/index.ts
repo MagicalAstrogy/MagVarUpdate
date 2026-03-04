@@ -1,6 +1,7 @@
 import { loadInitVarData } from '@/function/initvar/variable_init';
 import { updateVariable, updateVariables } from '@/function/update_variables';
 import { isValueWithDescription, MvuData, variable_events } from '@/variable_def';
+import { watch } from 'vue';
 import { useDataStore } from '../../store';
 
 function createMvu() {
