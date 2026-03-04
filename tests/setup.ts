@@ -1,7 +1,9 @@
 // Global test setup
+import $ from 'jquery';
 import _ from 'lodash';
 import { createPinia, setActivePinia } from 'pinia';
 import { klona } from 'klona';
+import { watch } from 'vue';
 
 // Make lodash available globally as it's used in the source code
 (globalThis as any)._ = _;
@@ -29,11 +31,17 @@ import { klona } from 'klona';
 (globalThis as any).appendInexistentScriptButtons = jest.fn();
 (globalThis as any).getButtonEvent = jest.fn((button_name: string) => button_name);
 (globalThis as any).eventOnButton = jest.fn();
+const TEST_SCRIPT_ID = 'test-script-id';
+(globalThis as any).getScriptId = jest.fn(() => TEST_SCRIPT_ID);
+(globalThis as any).$ = $;
+(globalThis as any).jQuery = $;
+(globalThis as any).watch = watch;
+(globalThis as any).structuredClone =
+    (globalThis as any).structuredClone ?? ((value: unknown) => klona(value));
 
 const __eventHandlers = new Map<string, Array<(...args: unknown[]) => unknown>>();
 
 // Mock window object
-(globalThis as any).window = globalThis;
 (globalThis as any).atob =
     (globalThis as any).atob ??
     ((value: string) => Buffer.from(value, 'base64').toString('binary'));
@@ -67,6 +75,11 @@ beforeEach(() => {
         __eventHandlers.set(event, []);
     }
     __eventHandlers.get(event)!.push(handler);
+
+    // Unique-script preference listeners should see current preferred script immediately in tests.
+    if (event.startsWith('th_unique_check.')) {
+        handler(TEST_SCRIPT_ID);
+    }
 });
 (globalThis as any).eventEmit = jest.fn(async (event: string, ...args: unknown[]) => {
     const handlers = __eventHandlers.get(event) ?? [];

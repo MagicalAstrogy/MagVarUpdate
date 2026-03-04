@@ -19,6 +19,7 @@
         "util",
         "tests",
         "slash-runner/@types",
-        "global.d.ts"
+        "global.d.ts",
+        "auto-imports.d.ts"
     ]
 }
