@@ -9,7 +9,7 @@ export async function onMessageReceived(
     { force = false }: { force?: boolean } = {}
 ) {
     const current_chatmsg = getChatMessages(message_id).at(-1);
-    if (!current_chatmsg) {
+    if (!current_chatmsg || current_chatmsg.name !== SillyTavern.name2) {
         return;
     }
 
