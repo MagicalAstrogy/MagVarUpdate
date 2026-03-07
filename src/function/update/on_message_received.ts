@@ -13,13 +13,19 @@ export async function onMessageReceived(
         return;
     }
 
+    const store = useDataStore();
+    if (
+        store.settings.兼容性.sandas不视为user消息 === false &&
+        current_chatmsg.name !== SillyTavern.name2
+    ) {
+        return;
+    }
+
     const message_content = current_chatmsg.message;
     if (message_content.length < 5) {
         //MESSAGE_RECEIVED 有时候也会在请求的一开始递交，会包含一个 "..." 的消息
         return;
     }
-
-    const store = useDataStore();
     store.runtimes.is_during_extra_analysis = false;
 
     if (
