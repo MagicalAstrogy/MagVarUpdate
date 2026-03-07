@@ -9,7 +9,15 @@ export async function onMessageReceived(
     { force = false }: { force?: boolean } = {}
 ) {
     const current_chatmsg = getChatMessages(message_id).at(-1);
-    if (!current_chatmsg || current_chatmsg.name !== SillyTavern.name2) {
+    if (!current_chatmsg) {
+        return;
+    }
+
+    const store = useDataStore();
+    if (
+        store.settings.兼容性.sandas不视为user消息 === false &&
+        current_chatmsg.name !== SillyTavern.name2
+    ) {
         return;
     }
 
@@ -18,8 +26,6 @@ export async function onMessageReceived(
         //MESSAGE_RECEIVED 有时候也会在请求的一开始递交，会包含一个 "..." 的消息
         return;
     }
-
-    const store = useDataStore();
     store.runtimes.is_during_extra_analysis = false;
 
     if (
