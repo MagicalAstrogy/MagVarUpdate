@@ -34,6 +34,7 @@ export declare const useDataStore: import("pinia").StoreDefinition<"MVU变量框
         兼容性: {
             更新到聊天变量: boolean;
             显示老旧功能: boolean;
+            sandas不视为user消息: boolean;
         };
         internal: {
             已提醒更新了配置界面: boolean;
@@ -79,6 +80,7 @@ export declare const useDataStore: import("pinia").StoreDefinition<"MVU变量框
         兼容性: {
             更新到聊天变量: boolean;
             显示老旧功能: boolean;
+            sandas不视为user消息: boolean;
         };
         internal: {
             已提醒更新了配置界面: boolean;
@@ -124,6 +126,7 @@ export declare const useDataStore: import("pinia").StoreDefinition<"MVU变量框
         兼容性: {
             更新到聊天变量: boolean;
             显示老旧功能: boolean;
+            sandas不视为user消息: boolean;
         };
         internal: {
             已提醒更新了配置界面: boolean;
@@ -205,6 +208,7 @@ export declare const useDataStore: import("pinia").StoreDefinition<"MVU变量框
         兼容性: {
             更新到聊天变量: boolean;
             显示老旧功能: boolean;
+            sandas不视为user消息: boolean;
         };
         internal: {
             已提醒更新了配置界面: boolean;
@@ -250,6 +254,7 @@ export declare const useDataStore: import("pinia").StoreDefinition<"MVU变量框
         兼容性: {
             更新到聊天变量: boolean;
             显示老旧功能: boolean;
+            sandas不视为user消息: boolean;
         };
         internal: {
             已提醒更新了配置界面: boolean;
@@ -295,6 +300,7 @@ export declare const useDataStore: import("pinia").StoreDefinition<"MVU变量框
         兼容性: {
             更新到聊天变量: boolean;
             显示老旧功能: boolean;
+            sandas不视为user消息: boolean;
         };
         internal: {
             已提醒更新了配置界面: boolean;
@@ -376,6 +382,7 @@ export declare const useDataStore: import("pinia").StoreDefinition<"MVU变量框
         兼容性: {
             更新到聊天变量: boolean;
             显示老旧功能: boolean;
+            sandas不视为user消息: boolean;
         };
         internal: {
             已提醒更新了配置界面: boolean;
@@ -421,6 +428,7 @@ export declare const useDataStore: import("pinia").StoreDefinition<"MVU变量框
         兼容性: {
             更新到聊天变量: boolean;
             显示老旧功能: boolean;
+            sandas不视为user消息: boolean;
         };
         internal: {
             已提醒更新了配置界面: boolean;
@@ -466,6 +474,7 @@ export declare const useDataStore: import("pinia").StoreDefinition<"MVU变量框
         兼容性: {
             更新到聊天变量: boolean;
             显示老旧功能: boolean;
+            sandas不视为user消息: boolean;
         };
         internal: {
             已提醒更新了配置界面: boolean;
