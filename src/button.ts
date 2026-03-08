@@ -8,6 +8,7 @@ import { useDataStore } from '@/store';
 import { getLastValidMessageId, getLastValidVariable } from '@/util';
 import { MvuData } from '@/variable_def';
 import { klona } from 'klona';
+import { watch } from 'vue';
 
 /**
  * 递归更新描述字段
@@ -535,5 +536,32 @@ export function initButtons() {
         eventOn(getButtonEvent(button.name), button.function);
     });
 
-    return () => {};
+    let prev_states = _.intersectionBy(getScriptButtons(), buttons, button => button.name);
+    const stop = watch(
+        () => useDataStore().should_enable,
+        should_enable => {
+            const current_buttons = getScriptButtons();
+            if (should_enable) {
+                replaceScriptButtons(
+                    _(current_buttons)
+                        .differenceBy(prev_states, button => button.name)
+                        .concat(prev_states)
+                        .value()
+                );
+                return;
+            }
+            const existing_buttons = _.intersectionBy(
+                current_buttons,
+                buttons,
+                button => button.name
+            );
+            prev_states = existing_buttons;
+            existing_buttons.forEach(button => (button.visible = false));
+            replaceScriptButtons(current_buttons);
+        }
+    );
+
+    return () => {
+        stop();
+    };
 }

@@ -1,7 +1,10 @@
 /** @type {import('jest').Config} */
 module.exports = {
     preset: 'ts-jest',
-    testEnvironment: 'node',
+    testEnvironment: 'jsdom',
+    testEnvironmentOptions: {
+        customExportConditions: ['node', 'node-addons'],
+    },
     roots: ['<rootDir>/src', '<rootDir>/tests'],
     testMatch: ['**/__tests__/**/*.ts', '**/?(*.)+(spec|test).ts'],
     transform: {

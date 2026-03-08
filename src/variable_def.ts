@@ -94,6 +94,8 @@ export type RootAdditionalMetaProps = {
     $meta?: StatDataMeta & RootAdditionalProps;
 };
 
+export type InitVarType = StatData & RootAdditionalMetaProps;
+
 export type InternalData = {
     display_data: Record<string, any>;
     delta_data: Record<string, any>;
