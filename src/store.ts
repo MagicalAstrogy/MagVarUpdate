@@ -211,6 +211,7 @@ export const useDataStore = defineStore('MVU变量框架', () => {
     };
 
     const should_enable = ref<boolean>(false);
+    // 当存在多个 MVU 脚本实例时，仅优先实例应启用运行逻辑。
     registerAsUniqueScript('MVU变量框架').listenPreferenceState(preferred_script_id => {
         should_enable.value = preferred_script_id === getScriptId();
     });
