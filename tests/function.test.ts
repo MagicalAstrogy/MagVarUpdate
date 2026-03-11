@@ -7,30 +7,11 @@ import {
 } from '@/function/update_variables';
 import { getLastValidVariable } from '@/util';
 import { useDataStore } from '@/store';
-import { assertVWD } from '@/variable_def';
+import { assertVWD, VariableData } from '@/variable_def';
 import _ from 'lodash';
+import { handleVariablesInCallback } from '@/function/exported_events';
 
 type MvuData = any;
-
-async function handleVariablesInCallback(
-    message_content: string,
-    in_out_variable_info: VariableData
-) {
-    if (in_out_variable_info.old_variables === undefined) {
-        return;
-    }
-    in_out_variable_info.new_variables = klona(in_out_variable_info.old_variables);
-    await updateVariables(message_content, in_out_variable_info.new_variables);
-    return in_out_variable_info.new_variables;
-}
-
-export interface VariableData {
-    old_variables: MvuData;
-    /**
-     * 输出变量，仅当实际产生了变量变更的场合，会产生 newVariables
-     */
-    new_variables?: MvuData;
-}
 
 describe('parseParameters', () => {
     describe('基本参数解析', () => {
@@ -947,6 +928,7 @@ describe('invokeVariableTest', () => {
                 stat_data: { 喵呜: 20 },
                 display_data: {},
                 delta_data: {},
+                schema: { type: 'object', properties: { 喵呜: { type: 'number' } } },
             },
         };
         await handleVariablesInCallback("_.set('喵呜', 114);//测试", inputData);
@@ -961,6 +943,7 @@ describe('invokeVariableTest', () => {
                 stat_data: { 喵呜: 20 },
                 display_data: {},
                 delta_data: {},
+                schema: { type: 'object', properties: { 喵呜: { type: 'number' } } },
             },
         };
         await handleVariablesInCallback('这是一个没有更新的文本。明天见是最好的预言。', inputData);
