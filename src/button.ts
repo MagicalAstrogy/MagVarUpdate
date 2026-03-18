@@ -9,6 +9,7 @@ import { getLastValidMessageId, getLastValidVariable } from '@/util';
 import { MvuData } from '@/variable_def';
 import { klona } from 'klona';
 import { watch } from 'vue';
+import { ScriptButton } from '../slash-runner/src/type/scripts';
 
 /**
  * 递归更新描述字段
@@ -530,13 +531,15 @@ export const buttons: Button[] = [
     },
 ];
 
+let prev_states: ScriptButton[] = [];
+
 export function initButtons() {
     appendInexistentScriptButtons(buttons.map(button => ({ name: button.name, visible: false })));
     buttons.forEach(button => {
         eventOn(getButtonEvent(button.name), button.function);
     });
 
-    let prev_states = _.intersectionBy(getScriptButtons(), buttons, button => button.name);
+    prev_states = _.intersectionBy(getScriptButtons(), buttons, button => button.name);
     const stop = watch(
         () => useDataStore().should_enable,
         should_enable => {
@@ -555,13 +558,20 @@ export function initButtons() {
                 buttons,
                 button => button.name
             );
-            prev_states = existing_buttons;
+            prev_states = klona(existing_buttons);
             existing_buttons.forEach(button => (button.visible = false));
             replaceScriptButtons(current_buttons);
         }
     );
 
     return () => {
+        const current_buttons = getScriptButtons();
+        replaceScriptButtons(
+            _(current_buttons)
+                .differenceBy(prev_states, button => button.name)
+                .concat(prev_states)
+                .value()
+        );
         stop();
     };
 }
