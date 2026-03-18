@@ -11,6 +11,11 @@
             <Checkbox v-model="store.settings.兼容性.显示老旧功能">
                 <span>显示老旧功能</span>
             </Checkbox>
+
+            <Checkbox v-model="store.settings.兼容性.sandas不视为user消息">
+                <span>sandas不视为user消息</span>
+                <HelpIcon :help="sandas_message_help" />
+            </Checkbox>
         </template>
     </Section>
 </template>
@@ -19,6 +24,7 @@
 import Checkbox from '@/panel/component/Checkbox.vue';
 import HelpIcon from '@/panel/component/HelpIcon.vue';
 import Section from '@/panel/component/Section.vue';
+import sandas_message_help from '@/panel/compatibility_sandas_message.md';
 import { useDataStore } from '@/store';
 
 const store = useDataStore();

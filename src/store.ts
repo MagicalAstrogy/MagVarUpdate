@@ -60,6 +60,7 @@ const OldSettings = z
             兼容性: {
                 更新到聊天变量: data.更新到聊天变量,
                 显示老旧功能: data.legacy.显示老旧功能,
+                sandas不视为user消息: false,
             },
             internal: {
                 ...data.internal,
@@ -136,6 +137,7 @@ const NewSettings = z
             .object({
                 更新到聊天变量: z.boolean().default(false),
                 显示老旧功能: z.boolean().default(false),
+                sandas不视为user消息: z.boolean().default(false),
             })
             .prefault({}),
         internal: z

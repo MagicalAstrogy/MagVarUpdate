@@ -54,6 +54,17 @@ export type InternalData = {
     display_data: Record<string, any>;
     delta_data: Record<string, any>;
 };
+export interface VariableData {
+    old_variables: MvuData;
+    /**
+     * 输出变量，仅当实际产生了变量变更的场合，会产生 newVariables
+     */
+    new_variables?: MvuData;
+}
+export declare const exported_events: {
+    readonly INVOKE_MVU_PROCESS: "mag_invoke_mvu";
+    readonly UPDATE_VARIABLE: "mag_update_variable";
+};
 export type MvuData = {
     /** 已初始化的 lorebook 列表 */
     initialized_lorebooks: Record<string, any[]>;

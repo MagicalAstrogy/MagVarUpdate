@@ -9,6 +9,7 @@ import { initPanel } from '@/panel';
 import { useDataStore } from '@/store';
 import { checkMinimumVersion } from '@util/common';
 import { createPinia, getActivePinia, setActivePinia } from 'pinia';
+import { initExportedEvents } from '@/function/exported_events';
 
 setActivePinia(getActivePinia() ?? createPinia());
 
@@ -48,5 +49,6 @@ async function initChatLevel() {
     stop_list.push(initRequest());
     stop_list.push(initResponse());
     stop_list.push(initCleanup());
+    stop_list.push(initExportedEvents());
     return stop_list;
 }

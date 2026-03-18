@@ -101,6 +101,23 @@ export type InternalData = {
     delta_data: Record<string, any>;
 };
 
+//用于 exported_events 中的 INVOKE_MVU_PROCESS
+// 现建议直接使用全局Mvu实例里面的 parseMessage 方法。
+export interface VariableData {
+    old_variables: MvuData;
+    /**
+     * 输出变量，仅当实际产生了变量变更的场合，会产生 newVariables
+     */
+    new_variables?: MvuData;
+}
+
+export const exported_events = {
+    //对外接口，外部可以通过 event 的形式，对 mvu 的分析操作进行调用。
+    INVOKE_MVU_PROCESS: 'mag_invoke_mvu',
+    //调用更新变量函数的事件。
+    UPDATE_VARIABLE: 'mag_update_variable',
+} as const;
+
 export type MvuData = {
     // initialized_lorebooks 从字符串列表变为记录对象
     // 这样可以为每个知识库存储元数据，例如初始化的标记变量
