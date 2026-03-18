@@ -52,6 +52,8 @@ export function registerAsUniqueScript(id: string): {
         if (value === undefined) {
             return new Set([script_id]);
         }
+        //避免重复添加
+        if (value.has(script_id)) return value;
         value.add(script_id);
         return value;
     });
