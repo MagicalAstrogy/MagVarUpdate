@@ -71,7 +71,11 @@ export function registerAsUniqueScript(id: string): {
         },
         getPreferredScriptId,
         // 监听优先实例变化（回调入参是当前优先实例 script id）。
-        listenPreferenceState: (callback: (enabled_script_id: string) => void) =>
-            eventOn(path, callback),
+        listenPreferenceState: (callback: (enabled_script_id: string) => void) => {
+            const ret = eventOn(path, callback);
+            // 广播一次当前优先实例，通知监听方更新启用状态。
+            eventEmit(path, getPreferredScriptId());
+            return ret;
+        },
     };
 }
