@@ -41,6 +41,7 @@ $(async () => {
     $(window).on('pagehide', async () => {
         chat_level_stop_list.forEach(stop => stop());
         stop_list.forEach(stop => stop());
+        registerAsUniqueScript('MVU变量框架').unregister();
     });
 });
 
@@ -51,8 +52,5 @@ async function initChatLevel() {
     stop_list.push(initResponse());
     stop_list.push(initCleanup());
     stop_list.push(initExportedEvents());
-    stop_list.push(() => {
-        registerAsUniqueScript('MVU变量框架').unregister();
-    });
     return stop_list;
 }
