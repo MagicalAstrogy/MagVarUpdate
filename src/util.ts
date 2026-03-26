@@ -3,7 +3,6 @@ import { isMvuData, MvuData } from '@/variable_def';
 import * as jsonpatch from 'fast-json-patch';
 import { klona } from 'klona';
 
-
 export const saveChatDebounced = _.debounce(SillyTavern.saveChat, 1000);
 
 /**
