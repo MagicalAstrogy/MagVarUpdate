@@ -10,6 +10,7 @@ import { useDataStore } from '@/store';
 import { checkMinimumVersion } from '@util/common';
 import { createPinia, getActivePinia, setActivePinia } from 'pinia';
 import { initExportedEvents } from '@/function/exported_events';
+import { registerAsUniqueScript } from '@util/script';
 
 setActivePinia(getActivePinia() ?? createPinia());
 
@@ -40,6 +41,7 @@ $(async () => {
     $(window).on('pagehide', async () => {
         chat_level_stop_list.forEach(stop => stop());
         stop_list.forEach(stop => stop());
+        registerAsUniqueScript('MVU变量框架').unregister();
     });
 });
 

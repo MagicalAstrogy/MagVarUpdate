@@ -1,6 +1,7 @@
 import { loadInitVarData } from '@/function/initvar/variable_init';
 import { updateVariable, updateVariables } from '@/function/update_variables';
 import { isValueWithDescription, MvuData, variable_events } from '@/variable_def';
+import { watch } from 'vue';
 import { useDataStore } from '../../store';
 
 function createMvu() {
@@ -163,12 +164,23 @@ function createMvu() {
 
 export function initGlobals() {
     const mvu = createMvu();
-    _.set(window, 'Mvu', mvu);
-    _.set(window.parent, 'Mvu', mvu);
-    eventEmit('global_Mvu_initialized');
+    const store = useDataStore();
+    const stop = watch(
+        () => store.should_enable,
+        should_enabled => {
+            if (should_enabled) {
+                _.set(window.parent, 'Mvu', mvu);
+                eventEmit('global_Mvu_initialized');
+            }
+        },
+        { immediate: true }
+    );
 
     return () => {
-        deleteVariable('extra_analysis', { type: 'global' });
-        _.unset(window.parent, 'Mvu');
+        if (store.should_enable && _.get(window.parent, 'Mvu') === mvu) {
+            deleteVariable('extra_analysis', { type: 'global' });
+            _.unset(window.parent, 'Mvu');
+        }
+        stop();
     };
 }

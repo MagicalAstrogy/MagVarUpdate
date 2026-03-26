@@ -3,6 +3,7 @@ import { updateVariable, updateVariables } from '@/function/update_variables';
 import { variable_events } from '@/variable_def';
 import { loadInitVarData } from '@/function/initvar/variable_init';
 import _ from 'lodash';
+import { useDataStore } from '@/store';
 
 type MvuData = any;
 
@@ -75,6 +76,7 @@ describe('exportGlobals', () => {
         };
 
         jest.clearAllMocks();
+        useDataStore().should_enable = true;
     });
 
     afterEach(() => {

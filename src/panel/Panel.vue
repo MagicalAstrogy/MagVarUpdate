@@ -1,5 +1,5 @@
 <template>
-    <div class="inline-drawer">
+    <div v-if="store.should_enable" class="inline-drawer">
         <div class="inline-drawer-toggle inline-drawer-header">
             <b>MVU 变量框架</b>
             <div class="inline-drawer-icon fa-solid fa-circle-chevron-down down"></div>
@@ -23,6 +23,9 @@ import Compatibility from '@/panel/Compatibility.vue';
 import Notification from '@/panel/Notification.vue';
 import Update from '@/panel/Update.vue';
 import Version from '@/panel/Version.vue';
+import { useDataStore } from '@/store';
+
+const store = useDataStore();
 </script>
 
 <style scoped>

@@ -1,6 +1,6 @@
 import { updateVariable, updateVariables } from '@/function/update_variables';
 import { exported_events, VariableData } from '@/variable_def';
-import { stoppableEventOn } from '@/util';
+import { controlledStoppableEventOn } from '@/util';
 
 export async function handleVariablesInCallback(
     message_content: string,
@@ -17,8 +17,10 @@ export async function handleVariablesInCallback(
 export function initExportedEvents() {
     const stop_list: Array<() => void> = [];
 
-    stop_list.push(stoppableEventOn(exported_events.INVOKE_MVU_PROCESS, handleVariablesInCallback));
-    stop_list.push(stoppableEventOn(exported_events.UPDATE_VARIABLE, updateVariable));
+    stop_list.push(
+        controlledStoppableEventOn(exported_events.INVOKE_MVU_PROCESS, handleVariablesInCallback)
+    );
+    stop_list.push(controlledStoppableEventOn(exported_events.UPDATE_VARIABLE, updateVariable));
 
     return () => {
         stop_list.forEach(stop => stop());
