@@ -985,10 +985,7 @@ export async function updateVariables(
                     ) {
                         // 目标是数组且索引是数字，插入到指定位置
                         // JSON Patch 中的 "-" 表示追加到数组末尾，而不是字面量键名。
-                        const insertIndex =
-                            keyOrIndex === '-' || keyOrIndex === -1
-                                ? collection.length
-                                : keyOrIndex;
+                        const insertIndex = keyOrIndex === '-' ? collection.length : keyOrIndex;
                         const positionLabel =
                             keyOrIndex === '-' || keyOrIndex === -1 ? 'tail' : keyOrIndex;
                         valueToAssign = applyTemplate(
