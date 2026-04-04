@@ -248,12 +248,12 @@ export function overrideToolRequest(generate_data: any) {
 }
 
 function stripOuterTagBlock(input: string, tagPattern: string): string {
-    const match = input.match(new RegExp(`^\\s*<(${tagPattern})>\\s*([\\s\\S]*?)\\s*</\\1>\\s*$`, 'i'));
-    return match?.[2]?.trim() ?? input.trim();
+    const match = input.match(new RegExp(`^\\s*<${tagPattern}>\\s*([\\s\\S]*?)\\s*</${tagPattern}>\\s*$`, 'i'));
+    return match?.[1]?.trim() ?? input.trim();
 }
 
 function stripLeadingTagBlock(input: string, tagPattern: string): string {
-    const match = input.match(new RegExp(`^\\s*<(${tagPattern})>\\s*[\\s\\S]*?\\s*</\\1>\\s*`, 'i'));
+    const match = input.match(new RegExp(`^\\s*<${tagPattern}>\\s*[\\s\\S]*?\\s*</${tagPattern}>\\s*`, 'i'));
     return match ? input.slice(match[0].length).trim() : input.trim();
 }
 

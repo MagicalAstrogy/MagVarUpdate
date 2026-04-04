@@ -172,6 +172,27 @@ describe('extractFromToolCall', () => {
         expect(extractFromToolCall(toolCalls)).toBe(expected);
     });
 
+    test('accepts mixed JSONPatch tag variants on the outer wrapper', () => {
+        const patch = [{ op: 'replace', path: '/x', value: 1 }];
+        const delta = ['<JSONPatch>', JSON.stringify(patch), '</JSON_Patch>'].join('\n');
+        const analysis = 'Mixed wrapper tags.';
+        const args = JSON.stringify({ delta, analysis });
+        const toolCalls = makeToolCalls(args);
+
+        const expected = [
+            '<UpdateVariable>',
+            '<Analyze>',
+            analysis,
+            '</Analyze>',
+            '<JSONPatch>',
+            JSON.stringify(patch, null, 2),
+            '</JSONPatch>',
+            '</UpdateVariable>',
+        ].join('\n');
+
+        expect(extractFromToolCall(toolCalls)).toBe(expected);
+    });
+
     test('returns null when json patch tag exists but is invalid', () => {
         const delta = '<JSONPatch>{"foo":1}</JSONPatch>';
         const args = JSON.stringify({ delta, analysis: 'bad patch' });
