@@ -278,9 +278,14 @@ export function extractFromToolCall(tool_calls: ToolCallBatches | undefined): st
             // 主要有两种情况， llm加了 <json_patch> 和没有加的情况，所以下面是try，解码错误的时候fallback一下。
             const json_patch_match = /json_?patch/i.test(json.delta);
             try {
-                const parsed = parseString(
-                    json.delta.replaceAll(/```.*/gm, '').replaceAll(/<\/?json_?patch>/gim, '')
-                );
+                var input_str = json.delta
+                    .replaceAll(/```.*/gm, '')
+                    .replaceAll(/<\/?json_?patch>/gim, '')
+                    .replaceAll(/<\/?UpdateVariable>/gim, '')
+                    .replaceAll(/<Analysis>[\s\S]*?<\/Analysis>/gim, '')
+                    .trim();
+
+                const parsed = parseString(input_str);
                 if (!isJsonPatch(parsed)) {
                     throw new Error(`不是有效的 json patch`);
                 }
