@@ -136,6 +136,42 @@ describe('extractFromToolCall', () => {
         expect(extractFromToolCall(toolCalls)).toBe(expected);
     });
 
+    test('preserves literal wrapper tags inside json patch values', () => {
+        const patch = [
+            {
+                op: 'replace',
+                path: '/template',
+                value: '<UpdateVariable><Analysis>literal</Analysis></UpdateVariable>',
+            },
+        ];
+        const delta = [
+            '<UpdateVariable>',
+            '<Analysis>',
+            '    模板内容需要原样保留',
+            '</Analysis>',
+            '<JSONPatch>',
+            JSON.stringify(patch, null, 2),
+            '</JSONPatch>',
+            '</UpdateVariable>',
+        ].join('\n');
+        const analysis = 'Preserve literal tags.';
+        const args = JSON.stringify({ delta, analysis });
+        const toolCalls = makeToolCalls(args);
+
+        const expected = [
+            '<UpdateVariable>',
+            '<Analyze>',
+            analysis,
+            '</Analyze>',
+            '<JSONPatch>',
+            JSON.stringify(patch, null, 2),
+            '</JSONPatch>',
+            '</UpdateVariable>',
+        ].join('\n');
+
+        expect(extractFromToolCall(toolCalls)).toBe(expected);
+    });
+
     test('returns null when json patch tag exists but is invalid', () => {
         const delta = '<JSONPatch>{"foo":1}</JSONPatch>';
         const args = JSON.stringify({ delta, analysis: 'bad patch' });

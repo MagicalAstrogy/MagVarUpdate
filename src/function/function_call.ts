@@ -247,6 +247,16 @@ export function overrideToolRequest(generate_data: any) {
     }
 }
 
+function stripOuterTagBlock(input: string, tagPattern: string): string {
+    const match = input.match(new RegExp(`^\\s*<(${tagPattern})>\\s*([\\s\\S]*?)\\s*</\\1>\\s*$`, 'i'));
+    return match?.[2]?.trim() ?? input.trim();
+}
+
+function stripLeadingTagBlock(input: string, tagPattern: string): string {
+    const match = input.match(new RegExp(`^\\s*<(${tagPattern})>\\s*[\\s\\S]*?\\s*</\\1>\\s*`, 'i'));
+    return match ? input.slice(match[0].length).trim() : input.trim();
+}
+
 export function extractFromToolCall(tool_calls: ToolCallBatches | undefined): string | null {
     if (!tool_calls) {
         return null;
@@ -278,12 +288,10 @@ export function extractFromToolCall(tool_calls: ToolCallBatches | undefined): st
             // 主要有两种情况， llm加了 <json_patch> 和没有加的情况，所以下面是try，解码错误的时候fallback一下。
             const json_patch_match = /json_?patch/i.test(json.delta);
             try {
-                var input_str = json.delta
-                    .replaceAll(/```.*/gm, '')
-                    .replaceAll(/<\/?json_?patch>/gim, '')
-                    .replaceAll(/<\/?UpdateVariable>/gim, '')
-                    .replaceAll(/<Analysis>[\s\S]*?<\/Analysis>/gim, '')
-                    .trim();
+                var input_str = json.delta.replaceAll(/```.*/gm, '').trim();
+                input_str = stripOuterTagBlock(input_str, 'UpdateVariable');
+                input_str = stripLeadingTagBlock(input_str, 'Analysis');
+                input_str = stripOuterTagBlock(input_str, 'json_?patch');
 
                 const parsed = parseString(input_str);
                 if (!isJsonPatch(parsed)) {
