@@ -222,9 +222,16 @@ export async function initCheck() {
 export async function getEnabledLorebookList(): Promise<string[]> {
     const lorebook_settings = await getLorebookSettings();
     const enabled_lorebook_list = [...lorebook_settings.selected_global_lorebooks];
-    const char_lorebook = await getCurrentCharPrimaryLorebook();
-    if (char_lorebook !== null) {
-        enabled_lorebook_list.push(char_lorebook);
+    try {
+        const char_lorebook = await getCharLorebooks();
+        if (char_lorebook.primary !== null) {
+            enabled_lorebook_list.push(char_lorebook.primary);
+        }
+        if (char_lorebook.additional !== null) {
+            enabled_lorebook_list.push(...char_lorebook.additional);
+        }
+    } catch (_e) {
+        console.warn('获取角色主 lorebook 失败，忽略', _e);
     }
     return enabled_lorebook_list;
 }
