@@ -6,7 +6,22 @@
             </template>
             <Select
                 v-model="store.settings.额外模型解析配置.破限方案"
-                :options="['使用内置破限', '使用当前预设']"
+                :options="['使用内置破限', '使用当前预设', '使用其他预设']"
+            />
+        </Field>
+
+        <Field v-if="store.settings.额外模型解析配置.破限方案 === '使用其他预设'" label="目标预设">
+            <Select
+                v-if="available_preset_names.length > 0"
+                v-model="store.settings.额外模型解析配置.其他预设名称"
+                :options="available_preset_names"
+            />
+            <input
+                v-else
+                class="text_pole"
+                type="text"
+                disabled
+                value="未检测到可用的已保存预设"
             />
         </Field>
 
@@ -33,6 +48,7 @@
 </template>
 
 <script setup lang="ts">
+import { getAvailableExtraModelPresetNames } from '@/function/update/extra_model_preset';
 import Checkbox from '@/panel/component/Checkbox.vue';
 import Detail from '@/panel/component/Detail.vue';
 import Field from '@/panel/component/Field.vue';
@@ -40,10 +56,45 @@ import Select from '@/panel/component/Select.vue';
 import prompt_break_help from '@/panel/update/prompt_break.md';
 import prompt_toolcall_help from '@/panel/update/prompt_toolcall.md';
 import { useDataStore } from '@/store';
-import { watch } from 'vue';
+import { computed, watch } from 'vue';
 import HelpIcon from '../component/HelpIcon.vue';
 
 const store = useDataStore();
+const available_preset_names = computed(() => {
+    const names = getAvailableExtraModelPresetNames();
+    const selected = store.settings.额外模型解析配置.其他预设名称;
+
+    if (selected && !names.includes(selected)) {
+        return [selected, ...names];
+    }
+    return names;
+});
+
+function ensureValidPresetSelection() {
+    if (store.settings.额外模型解析配置.破限方案 !== '使用其他预设') {
+        return;
+    }
+
+    if (available_preset_names.value.length === 0) {
+        store.settings.额外模型解析配置.其他预设名称 = '';
+        return;
+    }
+
+    if (
+        !available_preset_names.value.includes(
+            store.settings.额外模型解析配置.其他预设名称
+        )
+    ) {
+        [store.settings.额外模型解析配置.其他预设名称] = available_preset_names.value;
+    }
+}
+
+watch(available_preset_names, ensureValidPresetSelection, { immediate: true });
+watch(
+    () => store.settings.额外模型解析配置.破限方案,
+    () => ensureValidPresetSelection(),
+    { immediate: true }
+);
 
 watch(
     () => store.settings.额外模型解析配置.使用函数调用,

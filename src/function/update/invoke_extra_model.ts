@@ -4,6 +4,14 @@ import claude_tail from '@/prompts/claude_tail.txt?raw';
 import extra_model_task from '@/prompts/extra_model_task.txt?raw';
 import gemini_head from '@/prompts/gemini_head.txt?raw';
 import gemini_tail from '@/prompts/gemini_tail.txt?raw';
+import {
+    buildOtherPresetGenerateConfig,
+    getExtraModelPreset,
+} from '@/function/update/extra_model_preset';
+import {
+    clearExtraModelRequestOverrides,
+    setExtraModelRequestOverrides,
+} from '@/function/request/extra_model_request_override';
 import { useDataStore } from '@/store';
 import { normalizeBaseURL } from '@/util';
 import { literalYamlify, uuidv4 } from '@util/common';
@@ -54,6 +62,7 @@ function unsetExtraAnalysisStates() {
         vanilla_parseToolCalls = null;
     }
     SillyTavern.unregisterMacro('lastUserMessage');
+    clearExtraModelRequestOverrides();
     store.runtimes.is_during_extra_analysis = false;
     store.runtimes.is_function_call_enabled = false;
 }
@@ -284,6 +293,7 @@ async function requestReply(generation_id?: string, batch_id?: string): Promise<
     }
 
     if (store.settings.额外模型解析配置.破限方案 === '使用当前预设') {
+        clearExtraModelRequestOverrides();
         const result = generate({
             ...config,
             injects: [
@@ -313,6 +323,27 @@ async function requestReply(generation_id?: string, batch_id?: string): Promise<
         return result;
     }
 
+    if (store.settings.额外模型解析配置.破限方案 === '使用其他预设') {
+        const preset = getExtraModelPreset(store.settings.额外模型解析配置.其他预设名称);
+        const { ordered_prompts, injects, request_overrides } = buildOtherPresetGenerateConfig(
+            preset,
+            task
+        );
+
+        if (store.settings.额外模型解析配置.模型来源 === '与插头相同') {
+            setExtraModelRequestOverrides(request_overrides);
+        } else {
+            clearExtraModelRequestOverrides();
+        }
+
+        return generateRaw({
+            ...config,
+            injects,
+            ordered_prompts,
+        });
+    }
+
+    clearExtraModelRequestOverrides();
     const model_name =
         store.settings.额外模型解析配置.模型来源 === '与插头相同'
             ? SillyTavern.getChatCompletionModel()
