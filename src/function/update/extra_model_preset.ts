@@ -62,9 +62,7 @@ type ExtraModelGenerateRolePrompt = {
     content: string;
 };
 
-type GenerateRawOrderedPrompt =
-    | ExtraModelGenerateBuiltinPrompt
-    | ExtraModelGenerateRolePrompt;
+type GenerateRawOrderedPrompt = ExtraModelGenerateBuiltinPrompt | ExtraModelGenerateRolePrompt;
 
 type GenerateInjectPrompt = {
     position: 'in_chat';
@@ -217,13 +215,17 @@ export function buildOtherPresetGenerateConfig(
         .map((prompt, index) => ({ prompt, index }))
         .filter(({ prompt }) => prompt.enabled !== false)
         .sort((lhs, rhs) => {
-            const lhs_depth = lhs.prompt.position?.type === 'in_chat' ? lhs.prompt.position.depth : -1;
-            const rhs_depth = rhs.prompt.position?.type === 'in_chat' ? rhs.prompt.position.depth : -1;
+            const lhs_depth =
+                lhs.prompt.position?.type === 'in_chat' ? lhs.prompt.position.depth : -1;
+            const rhs_depth =
+                rhs.prompt.position?.type === 'in_chat' ? rhs.prompt.position.depth : -1;
             if (lhs_depth !== rhs_depth) {
                 return lhs_depth - rhs_depth;
             }
-            const lhs_order = lhs.prompt.position?.type === 'in_chat' ? lhs.prompt.position.order : -1;
-            const rhs_order = rhs.prompt.position?.type === 'in_chat' ? rhs.prompt.position.order : -1;
+            const lhs_order =
+                lhs.prompt.position?.type === 'in_chat' ? lhs.prompt.position.order : -1;
+            const rhs_order =
+                rhs.prompt.position?.type === 'in_chat' ? rhs.prompt.position.order : -1;
             if (lhs_order !== rhs_order) {
                 return lhs_order - rhs_order;
             }
@@ -265,9 +267,7 @@ export function buildOtherPresetGenerateConfig(
                       max_tokens: max_completion_tokens,
                       max_completion_tokens,
                   }),
-            ...(isFiniteNumber(settings.temperature)
-                ? { temperature: settings.temperature }
-                : {}),
+            ...(isFiniteNumber(settings.temperature) ? { temperature: settings.temperature } : {}),
             ...(isFiniteNumber(settings.frequency_penalty)
                 ? { frequency_penalty: settings.frequency_penalty }
                 : {}),
