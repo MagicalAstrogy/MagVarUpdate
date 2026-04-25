@@ -17,7 +17,6 @@ import { watch } from 'vue';
     callGenericPopup: jest.fn().mockResolvedValue(undefined),
     ToolManager: {
         isToolCallingSupported: jest.fn().mockReturnValue(true),
-        parseToolCalls: jest.fn((toolCalls: unknown, parsed: unknown) => ({ toolCalls, parsed })),
         registerFunctionTool: jest.fn(),
         unregisterFunctionTool: jest.fn(),
     },

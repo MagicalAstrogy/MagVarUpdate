@@ -403,7 +403,7 @@ export const buttons: Button[] = [
                 !isFunctionCallingSupported()
             ) {
                 toastr.info(
-                    `当前配置指定的LLM不支持函数调用，请调整额外模型解析设置`,
+                    `当前 TavernHelper 版本或配置指定的 LLM 不支持函数调用，请调整额外模型解析设置`,
                     '[MVU]重试额外模型解析',
                     {
                         timeOut: 3000,

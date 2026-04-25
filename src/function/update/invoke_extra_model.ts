@@ -1,16 +1,22 @@
-import { extractFromToolCall } from '@/function/function_call';
+import { extractFromGenerateToolCallResult, MVU_TOOL_DEFINITION } from '@/function/function_call';
 import claude_head from '@/prompts/claude_head.txt?raw';
 import claude_tail from '@/prompts/claude_tail.txt?raw';
 import extra_model_task from '@/prompts/extra_model_task.txt?raw';
 import gemini_head from '@/prompts/gemini_head.txt?raw';
 import gemini_tail from '@/prompts/gemini_tail.txt?raw';
+import {
+    buildOtherPresetGenerateConfig,
+    getExtraModelPreset,
+} from '@/function/update/extra_model_preset';
+import {
+    clearExtraModelRequestOverrides,
+    setExtraModelRequestOverrides,
+} from '@/function/request/extra_model_request_override';
 import { useDataStore } from '@/store';
 import { normalizeBaseURL } from '@/util';
 import { literalYamlify, uuidv4 } from '@util/common';
 import { compare } from 'compare-versions';
 
-let toolcall_result: string | undefined = undefined;
-let vanilla_parseToolCalls: any = null;
 //测试用，为了使首次请求必失败
 let debug_extra_request_counter = 0;
 
@@ -30,30 +36,13 @@ function setExtraAnalysisStates() {
     //因为这个操作是幂等的，所以无所谓。
 
     store.runtimes.is_during_extra_analysis = true;
-    toolcall_result = undefined;
-
-    if (store.settings.额外模型解析配置.使用函数调用) {
-        vanilla_parseToolCalls = SillyTavern.ToolManager.parseToolCalls;
-        const vanilla_bound = SillyTavern.ToolManager.parseToolCalls.bind(SillyTavern.ToolManager);
-        SillyTavern.ToolManager.parseToolCalls = (tool_calls: any, parsed: any) => {
-            vanilla_bound(tool_calls, parsed);
-            //在concurrent 的场合，这个上下文只需要获取到 **任意** 一个有效的内容即可，不需要严格要求是请求所对应的那个。
-            const extracted = extractFromToolCall(tool_calls);
-            if (extracted) {
-                toolcall_result = extracted;
-            }
-        };
-    }
 }
 
 function unsetExtraAnalysisStates() {
     const store = useDataStore();
 
-    if (vanilla_parseToolCalls !== null) {
-        SillyTavern.ToolManager.parseToolCalls = vanilla_parseToolCalls;
-        vanilla_parseToolCalls = null;
-    }
     SillyTavern.unregisterMacro('lastUserMessage');
+    clearExtraModelRequestOverrides();
     store.runtimes.is_during_extra_analysis = false;
     store.runtimes.is_function_call_enabled = false;
 }
@@ -180,11 +169,7 @@ export async function generateExtraModel(): Promise<string | null> {
 //仅内部使用，因为一部分状态的初始化是在外面执行的。
 async function invokeExtraModel(generation_id?: string, batch_id?: string): Promise<string> {
     try {
-        const direct_reply = await requestReply(generation_id, batch_id);
-        // collected_tool_calls 依赖于 requestReply 的结果, 必须在之后
-        const result = toolcall_result ?? direct_reply;
-
-        // QUESTION: 是在这里直接返回整个结果, 还是返回处理后的结果
+        const result = await requestReply(generation_id, batch_id);
 
         const tag = _([...result.matchAll(/<(update(?:variable)?|variableupdate)>/gi)]).last()?.[1];
         if (!tag) {
@@ -238,15 +223,26 @@ const decoded_claude_tail = decode(claude_tail);
 const decoded_gemini_tail = decode(gemini_tail);
 const decoded_extra_model_task = decode(extra_model_task);
 
+function isGenerateToolCallResult(
+    result: string | GenerateToolCallResult
+): result is GenerateToolCallResult {
+    return typeof result === 'object' && result !== null && Array.isArray(result.tool_calls);
+}
+
+function normalizeGenerateResult(result: string | GenerateToolCallResult): string {
+    if (!isGenerateToolCallResult(result)) {
+        return result;
+    }
+    return extractFromGenerateToolCallResult(result) ?? result.content;
+}
+
 async function requestReply(generation_id?: string, batch_id?: string): Promise<string> {
     const store = useDataStore();
 
     const config: GenerateRawConfig = {
         user_input: '遵循<must>指令',
         max_chat_history: 2,
-        should_stream:
-            store.settings.额外模型解析配置.兼容假流式 ||
-            store.settings.额外模型解析配置.使用函数调用,
+        should_stream: store.settings.额外模型解析配置.兼容假流式,
         generation_id,
     };
     if (store.settings.额外模型解析配置.模型来源 === '自定义') {
@@ -269,8 +265,10 @@ async function requestReply(generation_id?: string, batch_id?: string): Promise<
 
     let task = decoded_extra_model_task;
     if (store.settings.额外模型解析配置.使用函数调用) {
-        task += `\n use \`mvu_VariableUpdate\` tool to update variables.`;
+        task += `\n use \`${MVU_TOOL_DEFINITION.function.name}\` tool to update variables.`;
         store.runtimes.is_function_call_enabled = true;
+        config.tools = [MVU_TOOL_DEFINITION];
+        config.tool_choice = 'required';
     }
 
     //因为部分预设会用到 {{lastUserMessage}}，因此进行修正。
@@ -284,7 +282,8 @@ async function requestReply(generation_id?: string, batch_id?: string): Promise<
     }
 
     if (store.settings.额外模型解析配置.破限方案 === '使用当前预设') {
-        const result = generate({
+        clearExtraModelRequestOverrides();
+        const result = await generate({
             ...config,
             injects: [
                 {
@@ -310,16 +309,39 @@ async function requestReply(generation_id?: string, batch_id?: string): Promise<
                 },
             ],
         });
-        return result;
+        return normalizeGenerateResult(result);
     }
 
+    if (store.settings.额外模型解析配置.破限方案 === '使用其他预设') {
+        const preset = getExtraModelPreset(store.settings.额外模型解析配置.其他预设名称);
+        const { ordered_prompts, injects, request_overrides } = buildOtherPresetGenerateConfig(
+            preset,
+            task
+        );
+
+        if (store.settings.额外模型解析配置.模型来源 === '与插头相同') {
+            setExtraModelRequestOverrides(request_overrides);
+        } else {
+            clearExtraModelRequestOverrides();
+        }
+
+        return normalizeGenerateResult(
+            await generateRaw({
+                ...config,
+                injects,
+                ordered_prompts,
+            })
+        );
+    }
+
+    clearExtraModelRequestOverrides();
     const model_name =
         store.settings.额外模型解析配置.模型来源 === '与插头相同'
             ? SillyTavern.getChatCompletionModel()
             : store.settings.额外模型解析配置.模型名称;
     const is_gemini = model_name.toLowerCase().includes('gemini');
 
-    const result = generateRaw({
+    const result = await generateRaw({
         ...config,
         ordered_prompts: [
             { role: 'system', content: batch_id ?? generateRandomHeader() },
@@ -338,5 +360,5 @@ async function requestReply(generation_id?: string, batch_id?: string): Promise<
             { role: 'system', content: is_gemini ? decoded_gemini_tail : decoded_claude_tail },
         ],
     });
-    return result;
+    return normalizeGenerateResult(result);
 }

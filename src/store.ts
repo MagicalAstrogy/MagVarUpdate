@@ -81,7 +81,10 @@ const NewSettings = z
         更新方式: z.enum(['随AI输出', '额外模型解析']).default('随AI输出'),
         额外模型解析配置: z
             .object({
-                破限方案: z.enum(['使用内置破限', '使用当前预设']).default('使用内置破限'),
+                破限方案: z
+                    .enum(['使用内置破限', '使用当前预设', '使用其他预设'])
+                    .default('使用内置破限'),
+                其他预设名称: z.string().default(''),
                 使用函数调用: z.boolean().default(false),
                 兼容假流式: z.boolean().default(false),
 

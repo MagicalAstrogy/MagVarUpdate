@@ -1,4 +1,8 @@
-import { extractFromToolCall, MVU_FUNCTION_NAME } from '@/function/function_call';
+import {
+    extractFromGenerateToolCallResult,
+    extractFromToolCall,
+    MVU_FUNCTION_NAME,
+} from '@/function/function_call';
 
 type ToolCallBatches = Array<
     Array<{
@@ -291,5 +295,44 @@ describe('extractFromToolCall', () => {
 
             expect(extractFromToolCall(toolCalls)).toBeNull();
         });
+    });
+
+    test('extracts from slash-runner GenerateToolCallResult', () => {
+        const args = JSON.stringify({
+            analysis: 'tool result',
+            delta: '[{"op":"replace","path":"/x","value":1}]',
+        });
+        const result: GenerateToolCallResult = {
+            content: '',
+            tool_calls: [
+                {
+                    id: 'tool_0',
+                    type: 'function',
+                    function: {
+                        name: MVU_FUNCTION_NAME,
+                        arguments: args,
+                    },
+                },
+            ],
+        };
+
+        expect(extractFromGenerateToolCallResult(result)).toBe(
+            [
+                '<UpdateVariable>',
+                '<Analyze>',
+                'tool result',
+                '</Analyze>',
+                '<JSONPatch>',
+                '[',
+                '  {',
+                '    "op": "replace",',
+                '    "path": "/x",',
+                '    "value": 1',
+                '  }',
+                ']',
+                '</JSONPatch>',
+                '</UpdateVariable>',
+            ].join('\n')
+        );
     });
 });
