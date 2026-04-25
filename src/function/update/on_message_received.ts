@@ -30,7 +30,7 @@ export async function onMessageReceived(
 
     if (
         store.settings.更新方式 === '随AI输出' ||
-        (store.settings.额外模型解析配置.使用函数调用 && !isFunctionCallingSupported()) || //与上面相同的退化情况。
+        (store.settings.额外模型解析配置.使用函数调用 && !isFunctionCallingSupported()) ||
         !(await isExtraModelSupported())
     ) {
         await handleVariablesInMessage(message_id);

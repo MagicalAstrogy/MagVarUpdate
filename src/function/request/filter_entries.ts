@@ -18,7 +18,7 @@ export async function filterEntries(lores: {
     }
     if (store.settings.额外模型解析配置.使用函数调用 && !isFunctionCallingSupported()) {
         toastr.warning(
-            '当前预设/API 不支持函数调用，已退化回 `随AI输出`',
+            '当前 TavernHelper 版本或 预设/API 不支持函数调用，已退化回 `随AI输出`',
             '[MVU]无法使用函数调用',
             {
                 timeOut: 2000,

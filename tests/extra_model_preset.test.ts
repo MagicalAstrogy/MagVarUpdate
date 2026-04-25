@@ -66,6 +66,13 @@ describe('extra_model_preset', () => {
                         content: 'A',
                     },
                     {
+                        id: 'custom_depth_user',
+                        enabled: true,
+                        position: { type: 'in_chat', depth: 3, order: 15 },
+                        role: 'user',
+                        content: 'USER',
+                    },
+                    {
                         id: 'chatHistory',
                         enabled: true,
                         position: { type: 'relative' },
@@ -109,7 +116,21 @@ describe('extra_model_preset', () => {
                 depth: 3,
                 should_scan: false,
                 role: 'system',
-                content: 'A\nB',
+                content: 'A',
+            },
+            {
+                position: 'in_chat',
+                depth: 3,
+                should_scan: false,
+                role: 'user',
+                content: 'USER',
+            },
+            {
+                position: 'in_chat',
+                depth: 3,
+                should_scan: false,
+                role: 'system',
+                content: 'B',
             },
         ]);
         expect(result.request_overrides).toEqual({
@@ -126,8 +147,68 @@ describe('extra_model_preset', () => {
         });
     });
 
+    test('ignores max_completion_tokens values that round below one', () => {
+        const result = buildOtherPresetGenerateConfig(
+            {
+                settings: {
+                    max_completion_tokens: 0.5,
+                },
+                prompts: [],
+            },
+            'TASK'
+        );
+
+        expect(result.request_overrides).toEqual({});
+    });
+
+    test('substitutes macros in preset prompt content', () => {
+        const globals = globalThis as unknown as {
+            substitudeMacros?: (content: string) => string;
+        };
+        const previous = globals.substitudeMacros;
+        globals.substitudeMacros = (content: string) =>
+            content.replaceAll('{{lastUserMessage}}', 'TASK_FROM_MACRO');
+
+        try {
+            const result = buildOtherPresetGenerateConfig(
+                {
+                    prompts: [
+                        {
+                            id: 'relative_macro',
+                            enabled: true,
+                            position: { type: 'relative' },
+                            role: 'system',
+                            content: 'relative {{lastUserMessage}}',
+                        },
+                        {
+                            id: 'in_chat_macro',
+                            enabled: true,
+                            position: { type: 'in_chat', depth: 1, order: 10 },
+                            role: 'user',
+                            content: 'in-chat {{lastUserMessage}}',
+                        },
+                    ],
+                },
+                'TASK'
+            );
+
+            expect(result.ordered_prompts).toEqual([
+                { role: 'system', content: 'relative TASK_FROM_MACRO' },
+            ]);
+            expect(result.injects).toContainEqual({
+                position: 'in_chat',
+                depth: 1,
+                should_scan: false,
+                role: 'user',
+                content: 'in-chat TASK_FROM_MACRO',
+            });
+        } finally {
+            globals.substitudeMacros = previous;
+        }
+    });
+
     test('throws when getPreset is unavailable', () => {
-        const globals = globalThis as typeof globalThis & {
+        const globals = globalThis as unknown as {
             getPreset?: (name: string) => unknown;
         };
         const previous = globals.getPreset;

@@ -16,13 +16,7 @@
                 v-model="store.settings.额外模型解析配置.其他预设名称"
                 :options="available_preset_names"
             />
-            <input
-                v-else
-                class="text_pole"
-                type="text"
-                disabled
-                value="未检测到可用的已保存预设"
-            />
+            <input v-else class="text_pole" type="text" disabled value="未检测到可用的已保存预设" />
         </Field>
 
         <Field label="函数调用">
@@ -49,6 +43,7 @@
 
 <script setup lang="ts">
 import { getAvailableExtraModelPresetNames } from '@/function/update/extra_model_preset';
+import { getFunctionCallingApiVersionUnsupportedMessage } from '@/function/is_function_calling_supported';
 import Checkbox from '@/panel/component/Checkbox.vue';
 import Detail from '@/panel/component/Detail.vue';
 import Field from '@/panel/component/Field.vue';
@@ -60,15 +55,7 @@ import { computed, watch } from 'vue';
 import HelpIcon from '../component/HelpIcon.vue';
 
 const store = useDataStore();
-const available_preset_names = computed(() => {
-    const names = getAvailableExtraModelPresetNames();
-    const selected = store.settings.额外模型解析配置.其他预设名称;
-
-    if (selected && !names.includes(selected)) {
-        return [selected, ...names];
-    }
-    return names;
-});
+const available_preset_names = computed(() => getAvailableExtraModelPresetNames());
 
 function ensureValidPresetSelection() {
     if (store.settings.额外模型解析配置.破限方案 !== '使用其他预设') {
@@ -80,11 +67,7 @@ function ensureValidPresetSelection() {
         return;
     }
 
-    if (
-        !available_preset_names.value.includes(
-            store.settings.额外模型解析配置.其他预设名称
-        )
-    ) {
+    if (!available_preset_names.value.includes(store.settings.额外模型解析配置.其他预设名称)) {
         [store.settings.额外模型解析配置.其他预设名称] = available_preset_names.value;
     }
 }
@@ -100,21 +83,24 @@ watch(
     () => store.settings.额外模型解析配置.使用函数调用,
     value => {
         if (value === true) {
+            const version_message = getFunctionCallingApiVersionUnsupportedMessage();
+            if (version_message) {
+                toastr.error(version_message, "[MVU]无法使用'函数调用'", {
+                    timeOut: 5000,
+                });
+                store.settings.额外模型解析配置.使用函数调用 = false;
+                return;
+            }
             if (!SillyTavern.ToolManager.isToolCallingSupported()) {
                 toastr.error(
-                    "请在 API 配置 (插头) 处将提示词后处理改为'含工具'的选项",
+                    '当前 API 源不支持函数调用，请换用支持 tools 的渠道模型或禁用该选项',
                     "[MVU]无法使用'函数调用'",
                     {
                         timeOut: 5000,
                     }
                 );
                 store.settings.额外模型解析配置.使用函数调用 = false;
-            }
-            if (SillyTavern.chatCompletionSettings.function_calling === false) {
-                toastr.error("请在预设面板勾选'使用函数调用'选项", "[MVU]无法使用'函数调用'", {
-                    timeOut: 5000,
-                });
-                store.settings.额外模型解析配置.使用函数调用 = false;
+                return;
             }
         }
     }

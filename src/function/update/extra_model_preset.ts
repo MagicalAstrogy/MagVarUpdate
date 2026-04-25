@@ -97,29 +97,38 @@ function isFiniteNumber(value: unknown): value is number {
     return typeof value === 'number' && Number.isFinite(value);
 }
 
+function substitutePresetMacros(content: string): string {
+    if (typeof substitudeMacros !== 'function') {
+        return content;
+    }
+    return substitudeMacros(content);
+}
+
 function toPositiveInteger(value: unknown): number | undefined {
     if (!isFiniteNumber(value) || value <= 0) {
         return undefined;
     }
-    return Math.floor(value);
+    const integer_value = Math.floor(value);
+    return integer_value > 0 ? integer_value : undefined;
 }
 
-function appendInChatPresetPrompt(
-    aggregate_map: Map<string, { depth: number; role: GenerateInjectPrompt['role']; contents: string[] }>,
-    prompt: ExtraModelPresetPrompt
-) {
+function toInChatPresetInject(prompt: ExtraModelPresetPrompt): GenerateInjectPrompt | null {
     if (prompt.position?.type !== 'in_chat' || !isNonEmptyString(prompt.content)) {
-        return;
+        return null;
     }
 
-    const key = `${prompt.position.depth}:${prompt.role}`;
-    const current = aggregate_map.get(key) ?? {
+    const content = substitutePresetMacros(prompt.content);
+    if (!isNonEmptyString(content)) {
+        return null;
+    }
+
+    return {
+        position: 'in_chat',
         depth: prompt.position.depth,
+        should_scan: false,
         role: prompt.role,
-        contents: [],
+        content,
     };
-    current.contents.push(prompt.content);
-    aggregate_map.set(key, current);
 }
 
 function toOrderedPrompt(prompt: ExtraModelPresetPrompt): GenerateRawOrderedPrompt | null {
@@ -133,9 +142,13 @@ function toOrderedPrompt(prompt: ExtraModelPresetPrompt): GenerateRawOrderedProm
     if (!isNonEmptyString(prompt.content)) {
         return null;
     }
+    const content = substitutePresetMacros(prompt.content);
+    if (!isNonEmptyString(content)) {
+        return null;
+    }
     return {
         role: prompt.role,
-        content: prompt.content,
+        content,
     };
 }
 
@@ -217,14 +230,14 @@ export function buildOtherPresetGenerateConfig(
             return lhs.index - rhs.index;
         });
 
-    const in_chat_aggregate_map = new Map<
-        string,
-        { depth: number; role: GenerateInjectPrompt['role']; contents: string[] }
-    >();
+    const preset_in_chat_injects: GenerateInjectPrompt[] = [];
 
     for (const { prompt } of in_chat_prompts) {
         if (prompt.position?.type === 'in_chat') {
-            appendInChatPresetPrompt(in_chat_aggregate_map, prompt);
+            const inject = toInChatPresetInject(prompt);
+            if (inject !== null) {
+                preset_in_chat_injects.push(inject);
+            }
             continue;
         }
 
@@ -236,13 +249,7 @@ export function buildOtherPresetGenerateConfig(
 
     const injects: GenerateInjectPrompt[] = [
         ...getDefaultTaskInjects(task),
-        ...Array.from(in_chat_aggregate_map.values()).map(item => ({
-            position: 'in_chat' as const,
-            depth: item.depth,
-            should_scan: false,
-            role: item.role,
-            content: item.contents.join('\n'),
-        })),
+        ...preset_in_chat_injects,
     ];
 
     const settings = preset.settings ?? {};

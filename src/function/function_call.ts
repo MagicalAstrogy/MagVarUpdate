@@ -14,6 +14,35 @@ import { parseString } from '@util/common';
 export const MVU_FUNCTION_NAME = `mvu_VariableUpdate_${getScriptId()}`;
 const mvu_update_call_function_name = 'mvu_updateRound';
 
+const mvu_update_schema = Object.freeze({
+    $schema: 'http://json-schema.org/draft-04/schema#',
+    type: 'object',
+    additionalProperties: false,
+    properties: {
+        analysis: {
+            type: 'string',
+            minLength: 1,
+            description:
+                'Write in ENGLISH. A compact reasoning summary that includes: (1) calculate time passed; (2) decide whether dramatic updates are allowed (special case or sufficiently long time); (3) list every variable name BEFORE actual variable analysis, without revealing their contents; (4) for each variable, judge whether it satisfies its change conditions and output only Y/N without reasons; (5) only evaluate stories inside <past_observe> block.',
+        },
+        delta: {
+            type: 'string',
+            minLength: 0,
+            description: 'variable update block',
+        },
+    },
+    required: ['delta'],
+});
+
+export const MVU_TOOL_DEFINITION = Object.freeze({
+    type: 'function',
+    function: {
+        name: MVU_FUNCTION_NAME,
+        description: 'use this tool to UpdateVariable.',
+        parameters: mvu_update_schema,
+    },
+}) satisfies ToolDefinition;
+
 /*
     e.g.: [
     [
@@ -43,7 +72,7 @@ interface FunctionCallBody {
 
 /** 单个工具调用（function-calling 形态） */
 interface ToolFunctionCall {
-    index: number; // 这条 tool_call 在“本批次”中的顺序
+    index?: number; // 这条 tool_call 在“本批次”中的顺序
     id: string; // 流式/合并用的临时 ID
     type: 'function'; // 本题场景锁定 function；留扩展点以兼容其它类型
     function: FunctionCallBody;
@@ -134,26 +163,6 @@ export function registerFunction() {
         console.debug('MVU: function tools are not supported');
         return () => {};
     }
-
-    const mvu_update_schema = Object.freeze({
-        $schema: 'http://json-schema.org/draft-04/schema#',
-        type: 'object',
-        additionalProperties: false,
-        properties: {
-            analysis: {
-                type: 'string',
-                minLength: 1,
-                description:
-                    'Write in ENGLISH. A compact reasoning summary that includes: (1) calculate time passed; (2) decide whether dramatic updates are allowed (special case or sufficiently long time); (3) list every variable name BEFORE actual variable analysis, without revealing their contents; (4) for each variable, judge whether it satisfies its change conditions and output only Y/N without reasons; (5) only evaluate stories inside <past_observe> block.',
-            },
-            delta: {
-                type: 'string',
-                minLength: 0,
-                description: 'variable update block',
-            },
-        },
-        required: ['delta'],
-    });
 
     registerFunctionTool({
         name: MVU_FUNCTION_NAME,
@@ -328,4 +337,8 @@ export function extractFromToolCall(tool_calls: ToolCallBatches | undefined): st
         console.log(`[MVU额外模型解析]函数调用结果解析失败, ${e}`);
     }
     return null;
+}
+
+export function extractFromGenerateToolCallResult(result: GenerateToolCallResult): string | null {
+    return extractFromToolCall([result.tool_calls]);
 }
