@@ -200,11 +200,17 @@ interface Command {
     reason: string;
 }
 
+function jsonPatchPathToCommandPath(path: string | undefined): string {
+    if (!path) return '';
+    const pathWithoutRoot = path.startsWith('/') ? path.substring(1) : path;
+    return pathWithoutRoot.replace(/\//g, '.');
+}
+
 function extractJsonPatch(patch: any): Command[] {
     const translated_commands: Command[] = [];
 
     for (const op of patch) {
-        const path = (op.path ?? op.to).substring(1).replace(/\//g, '.');
+        const path = jsonPatchPathToCommandPath(op.path ?? op.to);
         switch (op.op) {
             case 'replace':
                 translated_commands.push({
@@ -250,7 +256,7 @@ function extractJsonPatch(patch: any): Command[] {
                 translated_commands.push({
                     type: 'move',
                     full_match: JSON.stringify(op),
-                    args: [(op as any).from.substring(1).replace(/\//g, '.'), path],
+                    args: [jsonPatchPathToCommandPath((op as any).from), path],
                     reason: 'json_patch',
                 });
                 break;
