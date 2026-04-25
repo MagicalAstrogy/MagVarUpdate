@@ -3,7 +3,10 @@
 控制额外模型解析请求对 AI 渠道的能力要求, 以及变量更新结果的稳定程度。
 
 - **聊天消息**: 兼容性最好, 不要求提供商支持额外能力。稳定性取决于模型是否能按提示词输出正确格式。
-- **工具调用**: 要求提供商支持 tools/function calling。通常能减少正文干扰, 但不支持工具调用的模型或反代会报错或退化。
-- **格式化输出**: 要求提供商支持 OpenAI 兼容的 `response_format.json_schema`。通常最适合 JsonPatch 变量更新, 因为返回会被约束为结构化 JSON。
+- **工具调用**: 要求提供商支持 tools/function
+  calling。通常能减少正文干扰, 但不支持工具调用的模型或反代会报错或退化。
+- **格式化输出**: 要求提供商支持 OpenAI 兼容的
+  `response_format.json_schema`。通常最适合 JsonPatch 变量更新, 因为返回会被约束为结构化 JSON。
 
-如果你的渠道明确支持 `response_format.json_schema`, 优先尝试 **格式化输出**。如果不支持, 改用 **聊天消息**；如果渠道支持 tools/function calling, 也可以尝试 **工具调用**。
+如果你的渠道明确支持 `response_format.json_schema`, 优先尝试 **格式化输出**。如果不支持, 改用
+**聊天消息**；如果渠道支持 tools/function calling, 也可以尝试 **工具调用**。

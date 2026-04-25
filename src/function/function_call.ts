@@ -43,11 +43,7 @@ const json_primitive_value_schemas = [
 ];
 
 const json_array_item_schema = {
-    anyOf: [
-        ...json_primitive_value_schemas,
-        { type: 'object' },
-        { type: 'array' },
-    ],
+    anyOf: [...json_primitive_value_schemas, { type: 'object' }, { type: 'array' }],
 };
 
 const json_value_schema = {
@@ -497,10 +493,10 @@ export function extractFromFormattedOutput(result: string | GenerateToolCallResu
         const parsed = parseString(cleanStructuredPayload(content));
         const patch_source = isJsonPatch(parsed)
             ? parsed
-            : _.get(parsed, 'json_patch') ??
+            : (_.get(parsed, 'json_patch') ??
               _.get(parsed, 'jsonPatch') ??
               _.get(parsed, 'patch') ??
-              _.get(parsed, 'delta');
+              _.get(parsed, 'delta'));
         const json_patch = normalizeJsonPatchPayload(patch_source);
         if (!json_patch) {
             throw new Error('不是有效的 json patch');

@@ -16,10 +16,7 @@ export async function filterEntries(lores: {
     if (store.settings.更新方式 === '随AI输出') {
         return;
     }
-    if (
-        store.settings.额外模型解析配置.应答格式 === '工具调用' &&
-        !isFunctionCallingSupported()
-    ) {
+    if (store.settings.额外模型解析配置.应答格式 === '工具调用' && !isFunctionCallingSupported()) {
         toastr.warning(
             '当前 TavernHelper 版本或 预设/API 不支持工具调用，已退化回 `随AI输出`',
             '[MVU]无法使用工具调用',
