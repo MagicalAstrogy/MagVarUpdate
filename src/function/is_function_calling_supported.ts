@@ -8,7 +8,7 @@ export function getFunctionCallingApiVersionUnsupportedMessage(): string | null 
     if (version === '' || compare(version, MIN_FUNCTION_CALLING_TAVERN_HELPER_VERSION, '>=')) {
         return null;
     }
-    return `当前酒馆助手版本为 ${version}，函数调用需要酒馆助手 ${MIN_FUNCTION_CALLING_TAVERN_HELPER_VERSION} 或更高版本`;
+    return `当前酒馆助手版本为 ${version}，工具调用需要酒馆助手 ${MIN_FUNCTION_CALLING_TAVERN_HELPER_VERSION} 或更高版本`;
 }
 
 export function isFunctionCallingApiVersionSupported() {

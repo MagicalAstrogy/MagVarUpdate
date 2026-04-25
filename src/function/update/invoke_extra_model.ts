@@ -1,4 +1,9 @@
-import { extractFromGenerateToolCallResult, MVU_TOOL_DEFINITION } from '@/function/function_call';
+import {
+    extractFromFormattedOutput,
+    extractFromGenerateToolCallResult,
+    MVU_JSON_PATCH_RESPONSE_SCHEMA,
+    MVU_TOOL_DEFINITION,
+} from '@/function/function_call';
 import claude_head from '@/prompts/claude_head.txt?raw';
 import claude_tail from '@/prompts/claude_tail.txt?raw';
 import extra_model_task from '@/prompts/extra_model_task.txt?raw';
@@ -236,8 +241,22 @@ function normalizeGenerateResult(result: string | GenerateToolCallResult): strin
     return extractFromGenerateToolCallResult(result) ?? result.content;
 }
 
+function normalizeGenerateResultByResponseFormat(
+    result: string | GenerateToolCallResult,
+    response_format: string
+): string {
+    if (response_format === '格式化输出') {
+        const formatted = extractFromFormattedOutput(result);
+        if (formatted) {
+            return formatted;
+        }
+    }
+    return normalizeGenerateResult(result);
+}
+
 async function requestReply(generation_id?: string, batch_id?: string): Promise<string> {
     const store = useDataStore();
+    const response_format = store.settings.额外模型解析配置.应答格式;
 
     const config: GenerateRawConfig = {
         user_input: '遵循<must>指令',
@@ -264,11 +283,15 @@ async function requestReply(generation_id?: string, batch_id?: string): Promise<
     }
 
     let task = decoded_extra_model_task;
-    if (store.settings.额外模型解析配置.使用函数调用) {
+    if (response_format === '工具调用') {
         task += `\n use \`${MVU_TOOL_DEFINITION.function.name}\` tool to update variables.`;
         store.runtimes.is_function_call_enabled = true;
         config.tools = [MVU_TOOL_DEFINITION];
         config.tool_choice = 'required';
+    } else if (response_format === '格式化输出') {
+        task +=
+            '\n You are in formatted-output mode. Do not output <UpdateVariable> tags, markdown, or prose. Return only a JSON object matching the provided json_schema: {"analysis":"...","json_patch":[...]}. Put MVU JsonPatch dialect operations in `json_patch`.';
+        config.json_schema = MVU_JSON_PATCH_RESPONSE_SCHEMA;
     }
 
     //因为部分预设会用到 {{lastUserMessage}}，因此进行修正。
@@ -309,7 +332,7 @@ async function requestReply(generation_id?: string, batch_id?: string): Promise<
                 },
             ],
         });
-        return normalizeGenerateResult(result);
+        return normalizeGenerateResultByResponseFormat(result, response_format);
     }
 
     if (store.settings.额外模型解析配置.破限方案 === '使用其他预设') {
@@ -325,12 +348,13 @@ async function requestReply(generation_id?: string, batch_id?: string): Promise<
             clearExtraModelRequestOverrides();
         }
 
-        return normalizeGenerateResult(
+        return normalizeGenerateResultByResponseFormat(
             await generateRaw({
                 ...config,
                 injects,
                 ordered_prompts,
-            })
+            }),
+            response_format
         );
     }
 
@@ -360,5 +384,5 @@ async function requestReply(generation_id?: string, batch_id?: string): Promise<
             { role: 'system', content: is_gemini ? decoded_gemini_tail : decoded_claude_tail },
         ],
     });
-    return normalizeGenerateResult(result);
+    return normalizeGenerateResultByResponseFormat(result, response_format);
 }

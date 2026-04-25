@@ -19,13 +19,14 @@
             <input v-else class="text_pole" type="text" disabled value="未检测到可用的已保存预设" />
         </Field>
 
-        <Field label="函数调用">
+        <Field label="应答格式">
             <template #label-suffix>
                 <HelpIcon :help="prompt_toolcall_help" />
             </template>
-            <Checkbox v-model="store.settings.额外模型解析配置.使用函数调用">
-                <span>启用</span>
-            </Checkbox>
+            <Select
+                v-model="store.settings.额外模型解析配置.应答格式"
+                :options="response_format_options"
+            />
         </Field>
 
         <Field label="兼容假流式">
@@ -50,12 +51,13 @@ import Field from '@/panel/component/Field.vue';
 import Select from '@/panel/component/Select.vue';
 import prompt_break_help from '@/panel/update/prompt_break.md';
 import prompt_toolcall_help from '@/panel/update/prompt_toolcall.md';
-import { useDataStore } from '@/store';
+import { EXTRA_MODEL_RESPONSE_FORMATS, useDataStore } from '@/store';
 import { computed, watch } from 'vue';
 import HelpIcon from '../component/HelpIcon.vue';
 
 const store = useDataStore();
 const available_preset_names = computed(() => getAvailableExtraModelPresetNames());
+const response_format_options = [...EXTRA_MODEL_RESPONSE_FORMATS];
 
 function ensureValidPresetSelection() {
     if (store.settings.额外模型解析配置.破限方案 !== '使用其他预设') {
@@ -80,26 +82,26 @@ watch(
 );
 
 watch(
-    () => store.settings.额外模型解析配置.使用函数调用,
+    () => store.settings.额外模型解析配置.应答格式,
     value => {
-        if (value === true) {
+        if (value === '工具调用') {
             const version_message = getFunctionCallingApiVersionUnsupportedMessage();
             if (version_message) {
-                toastr.error(version_message, "[MVU]无法使用'函数调用'", {
+                toastr.error(version_message, "[MVU]无法使用'工具调用'", {
                     timeOut: 5000,
                 });
-                store.settings.额外模型解析配置.使用函数调用 = false;
+                store.settings.额外模型解析配置.应答格式 = '聊天消息';
                 return;
             }
             if (!SillyTavern.ToolManager.isToolCallingSupported()) {
                 toastr.error(
-                    '当前 API 源不支持函数调用，请换用支持 tools 的渠道模型或禁用该选项',
-                    "[MVU]无法使用'函数调用'",
+                    '当前 API 源不支持工具调用，请换用支持 tools 的渠道模型或改用其他应答格式',
+                    "[MVU]无法使用'工具调用'",
                     {
                         timeOut: 5000,
                     }
                 );
-                store.settings.额外模型解析配置.使用函数调用 = false;
+                store.settings.额外模型解析配置.应答格式 = '聊天消息';
                 return;
             }
         }

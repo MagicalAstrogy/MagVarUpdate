@@ -12,7 +12,7 @@ describe('filterEntries', () => {
     beforeEach(() => {
         const store = useDataStore();
         store.settings.更新方式 = '额外模型解析';
-        store.settings.额外模型解析配置.使用函数调用 = false;
+        store.settings.额外模型解析配置.应答格式 = '聊天消息';
 
         store.runtimes.unsupported_warnings = '';
         store.runtimes.is_during_extra_analysis = false;
@@ -63,10 +63,10 @@ describe('filterEntries', () => {
         expect(store.runtimes.unsupported_warnings).toBe('');
     });
 
-    // 场景: 需要函数调用但不支持时，直接提示并退出
-    test('returns early when function calling is required but unsupported', async () => {
+    // 场景: 需要工具调用但不支持时，直接提示并退出
+    test('returns early when tool calling is required but unsupported', async () => {
         const store = useDataStore();
-        store.settings.额外模型解析配置.使用函数调用 = true;
+        store.settings.额外模型解析配置.应答格式 = '工具调用';
 
         (globalThis as any).SillyTavern.ToolManager.isToolCallingSupported.mockReturnValue(false);
 
