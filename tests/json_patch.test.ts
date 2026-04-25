@@ -160,4 +160,39 @@ describe('执行测试', () => {
             { name: '铜钥匙', description: '古铜色小钥匙' },
         ]);
     });
+
+    test('json patch insert tolerates missing leading root slash', async () => {
+        const statData = {
+            主角: {
+                备忘录: {},
+            },
+        };
+        const schema = generateSchema(_.cloneDeep(statData));
+        relaxSchema(schema);
+
+        const variables: MvuData = {
+            stat_data: statData,
+            display_data: {},
+            delta_data: {},
+            schema: schema as any,
+        };
+
+        const message = `<JSONPatch>
+[
+  { "op": "insert", "path": "主角/备忘录/楼道露出任务", "value": "Day1 22:00-23:30 在月光里公寓区消防楼梯间完成露出任务" }
+]
+</JSONPatch>`;
+
+        await updateVariables(message, variables);
+
+        expect(variables.stat_data).toEqual({
+            主角: {
+                备忘录: {
+                    楼道露出任务:
+                        'Day1 22:00-23:30 在月光里公寓区消防楼梯间完成露出任务',
+                },
+            },
+        });
+        expect(variables.stat_data).not.toHaveProperty('角');
+    });
 });
