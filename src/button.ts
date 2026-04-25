@@ -399,11 +399,11 @@ export const buttons: Button[] = [
                 );
                 return;
             } else if (
-                store.settings.额外模型解析配置.使用函数调用 &&
+                store.settings.额外模型解析配置.应答格式 === '工具调用' &&
                 !isFunctionCallingSupported()
             ) {
                 toastr.info(
-                    `当前 TavernHelper 版本或配置指定的 LLM 不支持函数调用，请调整额外模型解析设置`,
+                    `当前 TavernHelper 版本或配置指定的 LLM 不支持工具调用，请调整额外模型解析设置`,
                     '[MVU]重试额外模型解析',
                     {
                         timeOut: 3000,

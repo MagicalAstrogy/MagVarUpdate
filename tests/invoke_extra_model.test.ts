@@ -1,7 +1,9 @@
 import {
+    extractFromFormattedOutput,
     extractFromGenerateToolCallResult,
     extractFromToolCall,
     MVU_FUNCTION_NAME,
+    MVU_JSON_PATCH_RESPONSE_SCHEMA,
 } from '@/function/function_call';
 
 type ToolCallBatches = Array<
@@ -334,5 +336,95 @@ describe('extractFromToolCall', () => {
                 '</UpdateVariable>',
             ].join('\n')
         );
+    });
+});
+
+describe('extractFromFormattedOutput', () => {
+    test('extracts json_patch object response into UpdateVariable block', () => {
+        const content = JSON.stringify({
+            analysis: 'formatted result',
+            json_patch: [
+                { op: 'delta', path: '/主角/体力', value: -2 },
+                {
+                    op: 'add',
+                    path: '/主角/持有物品/-',
+                    value: { name: '铜钥匙', description: '铜钥匙' },
+                },
+            ],
+        });
+
+        expect(extractFromFormattedOutput(content)).toBe(
+            [
+                '<UpdateVariable>',
+                '<Analyze>',
+                'formatted result',
+                '</Analyze>',
+                '<JSONPatch>',
+                '[',
+                '  {',
+                '    "op": "delta",',
+                '    "path": "/主角/体力",',
+                '    "value": -2',
+                '  },',
+                '  {',
+                '    "op": "add",',
+                '    "path": "/主角/持有物品/-",',
+                '    "value": {',
+                '      "name": "铜钥匙",',
+                '      "description": "铜钥匙"',
+                '    }',
+                '  }',
+                ']',
+                '</JSONPatch>',
+                '</UpdateVariable>',
+            ].join('\n')
+        );
+    });
+
+    test('accepts root array response as fallback', () => {
+        const content = JSON.stringify([{ op: 'replace', path: '/x', value: 1 }]);
+
+        expect(extractFromFormattedOutput(content)).toBe(
+            [
+                '<UpdateVariable>',
+                '<Analyze>',
+                '',
+                '</Analyze>',
+                '<JSONPatch>',
+                '[',
+                '  {',
+                '    "op": "replace",',
+                '    "path": "/x",',
+                '    "value": 1',
+                '  }',
+                ']',
+                '</JSONPatch>',
+                '</UpdateVariable>',
+            ].join('\n')
+        );
+    });
+
+    test('extracts real provider formatted-output content string', () => {
+        const content =
+            '{\n  "analysis": "The `理.好感度` is incremented by 8 due to the pleasant interaction, increasing from 15 to 23. `理.情绪状态.pleasure` and `理.情绪状态.arousal` are increased by 0.2 and 0.1 respectively as she experiences a mix of unexpected intimacy and nervousness. `理.情绪状态.dominance` is decreased by 0.1 as she is caught off guard and put in a submissive position. `理.情绪状态.affinity` is increased by 0.1 due to the unexpected physical intimacy. `理.当前所想` is updated to reflect her current focus on the unusual interaction and maintaining composure. `日期` and `时间` are updated to reflect the passage of 5 minutes during the interaction. `天数` remains unchanged as the interaction occurs within the same day.",\n  "json_patch": [\n    {\n      "op": "delta",\n      "path": "/理/好感度",\n      "value": 8\n    },\n    {\n      "op": "delta",\n      "path": "/理/情绪状态/pleasure",\n      "value": 0.2\n    },\n    {\n      "op": "delta",\n      "path": "/理/情绪状态/arousal",\n      "value": 0.1\n    },\n    {\n      "op": "delta",\n      "path": "/理/情绪状态/dominance",\n      "value": -0.1\n    },\n    {\n      "op": "delta",\n      "path": "/理/情绪状态/affinity",\n      "value": 0.1\n    },\n    {\n      "op": "replace",\n      "path": "/理/当前所想",\n      "value": "悠纪大人为什么会...是新的礼节吗？怎样才能表现得更得体一些？"\n    },\n    {\n      "op": "replace",\n      "path": "/时间",\n      "value": "09:05"\n    }\n  ]\n}';
+
+        const result = extractFromFormattedOutput(content);
+
+        expect(result).not.toBeNull();
+        expect(result).toContain('<UpdateVariable>');
+        expect(result).toContain('The `理.好感度` is incremented by 8');
+        expect(result).toContain('"path": "/理/好感度"');
+        expect(result).toContain('"value": 8');
+        expect(result).toContain('"path": "/理/情绪状态/dominance"');
+        expect(result).toContain('"value": -0.1');
+        expect(result).toContain('"path": "/时间"');
+        expect(result).toContain('"value": "09:05"');
+        expect(result).toContain('</UpdateVariable>');
+    });
+
+    test('formatted response schema wraps json patch in a root object', () => {
+        expect(MVU_JSON_PATCH_RESPONSE_SCHEMA.value.type).toBe('object');
+        expect(MVU_JSON_PATCH_RESPONSE_SCHEMA.value.required).toEqual(['analysis', 'json_patch']);
+        expect(MVU_JSON_PATCH_RESPONSE_SCHEMA.value.properties.json_patch.type).toBe('array');
     });
 });

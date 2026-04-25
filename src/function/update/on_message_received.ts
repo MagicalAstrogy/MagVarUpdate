@@ -30,7 +30,8 @@ export async function onMessageReceived(
 
     if (
         store.settings.更新方式 === '随AI输出' ||
-        (store.settings.额外模型解析配置.使用函数调用 && !isFunctionCallingSupported()) ||
+        (store.settings.额外模型解析配置.应答格式 === '工具调用' &&
+            !isFunctionCallingSupported()) ||
         !(await isExtraModelSupported())
     ) {
         await handleVariablesInMessage(message_id);

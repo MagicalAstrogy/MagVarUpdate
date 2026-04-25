@@ -4,6 +4,10 @@ import { defineStore } from 'pinia';
 import { ref, toRaw, watch } from 'vue';
 import * as z from 'zod';
 
+export const EXTRA_MODEL_RESPONSE_FORMATS = ['聊天消息', '工具调用', '格式化输出'] as const;
+
+const ExtraModelResponseFormat = z.enum(EXTRA_MODEL_RESPONSE_FORMATS);
+
 const OldSettings = z
     .object({
         通知: z.object({
@@ -52,6 +56,7 @@ const OldSettings = z
                 ...data.额外模型解析配置,
                 破限方案: data.额外模型解析配置.发送预设 ? '使用当前预设' : '使用内置破限',
                 启用自动请求: data.自动触发额外模型解析,
+                应答格式: data.额外模型解析配置.使用函数调用 ? '工具调用' : '聊天消息',
             },
             自动清理变量: {
                 ...data.auto_cleanup,
@@ -85,7 +90,8 @@ const NewSettings = z
                     .enum(['使用内置破限', '使用当前预设', '使用其他预设'])
                     .default('使用内置破限'),
                 其他预设名称: z.string().default(''),
-                使用函数调用: z.boolean().default(false),
+                使用函数调用: z.boolean().optional(),
+                应答格式: ExtraModelResponseFormat.optional(),
                 兼容假流式: z.boolean().default(false),
 
                 启用自动请求: z.boolean().default(true),
@@ -127,6 +133,10 @@ const NewSettings = z
                     .default(4096)
                     .transform(value => Math.max(0, value)),
             })
+            .transform(({ 使用函数调用, 应答格式, ...data }) => ({
+                ...data,
+                应答格式: 应答格式 ?? (使用函数调用 ? '工具调用' : '聊天消息'),
+            }))
             .prefault({}),
         自动清理变量: z
             .object({
