@@ -347,7 +347,8 @@ export function overrideToolRequest(generate_data: any) {
     if (!store.runtimes.is_function_call_enabled) {
         return;
     }
-    if (generate_data.tools !== undefined && _.size(generate_data.tools) > 0) {
+    const model = _.get(generate_data, 'model', '') as string;
+    if (generate_data.tools !== undefined && _.size(generate_data.tools) > 0 && !model.includes('deepseek')) {
         //如 v3之类的模型， required之后效力会更好。
         /*
         const message_id = getLastMessageId();
