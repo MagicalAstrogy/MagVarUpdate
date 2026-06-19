@@ -164,7 +164,6 @@ describe('parseString', () => {
             'comments/block-comment-preceding-top-level-value.json5',
             'comments/inline-comment-following-top-level-value.json5',
             'comments/inline-comment-preceding-top-level-value.json5',
-            'comments/irregular-block-comment.json',
             'numbers/hexadecimal-uppercase-x.json5',
             'numbers/infinity.json5',
             'numbers/nan.json5',
