@@ -43,4 +43,35 @@ describe('extra model response format settings', () => {
 
         expect(store.settings.额外模型解析配置.应答格式).toBe('格式化输出');
     });
+
+    test('defaults max chat history to the previous hardcoded value', () => {
+        const store = useDataStore();
+
+        expect(store.settings.额外模型解析配置.max_chat_history).toBe(2);
+    });
+
+    test('clamps max chat history to the supported range', () => {
+        (globalThis as any).SillyTavern.extensionSettings = {
+            mvu_settings: {
+                额外模型解析配置: {
+                    max_chat_history: 150,
+                },
+            },
+        };
+
+        expect(useDataStore().settings.额外模型解析配置.max_chat_history).toBe(100);
+
+        (globalThis as any).SillyTavern.extensionSettings = {
+            mvu_settings: {
+                额外模型解析配置: {
+                    max_chat_history: 1,
+                },
+            },
+        };
+
+        const store = useDataStore();
+        store._reload_settings();
+
+        expect(store.settings.额外模型解析配置.max_chat_history).toBe(2);
+    });
 });

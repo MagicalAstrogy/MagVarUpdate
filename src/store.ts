@@ -128,6 +128,10 @@ const NewSettings = z
                     .number()
                     .default(0)
                     .transform(value => _.clamp(value, 0, 500)),
+                max_chat_history: z.coerce
+                    .number()
+                    .default(2)
+                    .transform(value => _.clamp(Math.round(value), 2, 100)),
                 最大回复token数: z.coerce
                     .number()
                     .default(4096)

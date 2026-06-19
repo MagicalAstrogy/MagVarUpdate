@@ -260,7 +260,7 @@ async function requestReply(generation_id?: string, batch_id?: string): Promise<
 
     const config: GenerateRawConfig = {
         user_input: '遵循<must>指令',
-        max_chat_history: 2,
+        max_chat_history: store.settings.额外模型解析配置.max_chat_history,
         should_stream: store.settings.额外模型解析配置.兼容假流式,
         generation_id,
     };
