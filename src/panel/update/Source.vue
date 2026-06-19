@@ -48,6 +48,16 @@
                         />
                     </Field>
 
+                    <Field label="聊天历史条数">
+                        <RangeNumber
+                            v-model="store.settings.额外模型解析配置.max_chat_history"
+                            :disabled="!additional_extra_configuration_supported"
+                            :min="2"
+                            :max="100"
+                            :step="1"
+                        />
+                    </Field>
+
                     <Field label="温度">
                         <RangeNumber
                             v-model="store.settings.额外模型解析配置.温度"
