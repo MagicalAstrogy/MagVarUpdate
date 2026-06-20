@@ -64,6 +64,12 @@ describe('extra model response format settings', () => {
         expect(store.settings.额外模型解析配置.max_chat_history).toBe(2);
     });
 
+    test('defaults v4 compatible thinking override to disabled state off', () => {
+        const store = useDataStore();
+
+        expect(store.settings.额外模型解析配置.关闭thinking).toBe(false);
+    });
+
     test('clamps max chat history to the supported range', () => {
         (globalThis as any).SillyTavern.extensionSettings = {
             mvu_settings: {

@@ -40,6 +40,7 @@ describe('extra model max chat history', () => {
         store.settings.额外模型解析配置.模型来源 = '自定义';
         store.settings.额外模型解析配置.api地址 = 'https://example.com/v1';
         store.settings.额外模型解析配置.模型名称 = 'deepseek-chat';
+        store.settings.额外模型解析配置.关闭thinking = true;
         (globalThis as any).SillyTavern.chatCompletionSettings.custom_include_body =
             'existing_flag: true';
 
@@ -47,6 +48,8 @@ describe('extra model max chat history', () => {
             expect((globalThis as any).builtin.saveSettings).toHaveBeenCalledTimes(1);
             expect((globalThis as any).SillyTavern.chatCompletionSettings.custom_include_body)
                 .toContain(`response_format:\n  type: json_object`);
+            expect((globalThis as any).SillyTavern.chatCompletionSettings.custom_include_body)
+                .toContain(`thinking:\n  type: disabled`);
             expect(config.custom_api).toEqual(
                 expect.objectContaining({
                     source: 'custom',

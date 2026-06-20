@@ -32,6 +32,11 @@ const JSON_OBJECT_CUSTOM_INCLUDE_BODY = Object.freeze({
         type: 'json_object',
     },
 });
+const DISABLED_THINKING_CUSTOM_INCLUDE_BODY = Object.freeze({
+    thinking: {
+        type: 'disabled',
+    },
+});
 
 function generateRandomHeader(): string {
     return _.times(4, () => uuidv4().slice(0, 8)).join('\n');
@@ -73,9 +78,13 @@ function parseCustomIncludeBody(body: unknown): Record<string, unknown> {
 }
 
 function buildJsonObjectCustomIncludeBody(original_body: unknown): string {
+    const store = useDataStore();
     return YAML.stringify({
         ...parseCustomIncludeBody(original_body),
         ...JSON_OBJECT_CUSTOM_INCLUDE_BODY,
+        ...(store.settings.额外模型解析配置.关闭thinking
+            ? DISABLED_THINKING_CUSTOM_INCLUDE_BODY
+            : {}),
     }).trimEnd();
 }
 

@@ -97,6 +97,7 @@ const NewSettings = z
                 其他预设名称: z.string().default(''),
                 使用函数调用: z.boolean().optional(),
                 应答格式: ExtraModelResponseFormat.optional(),
+                关闭thinking: z.boolean().default(false),
                 兼容假流式: z.boolean().default(false),
 
                 启用自动请求: z.boolean().default(true),

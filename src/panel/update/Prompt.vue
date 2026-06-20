@@ -29,6 +29,18 @@
             />
         </Field>
 
+        <Field
+            v-if="store.settings.额外模型解析配置.应答格式 === '格式化输出(v4兼容)'"
+            label="关闭thinking"
+        >
+            <template #label-suffix>
+                <HelpIcon help="关闭后会避免一部分空回状况。" />
+            </template>
+            <Checkbox v-model="store.settings.额外模型解析配置.关闭thinking">
+                <span>关闭</span>
+            </Checkbox>
+        </Field>
+
         <Field label="兼容假流式">
             <template #label-suffix>
                 <HelpIcon
