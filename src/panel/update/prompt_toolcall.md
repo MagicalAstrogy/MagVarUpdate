@@ -7,8 +7,9 @@
   calling。通常能减少正文干扰, 但不支持工具调用的模型或反代会报错或退化。
 - **格式化输出**: 要求提供商支持 OpenAI 兼容的
   `response_format.json_schema`。通常最适合 JsonPatch 变量更新, 因为返回会被约束为结构化 JSON。
-- **格式化输出(v4兼容)**: 用于只支持 `response_format.type = json_object` 的渠道，如 dsv4f 等。
-  这个模式仅在额外模型来源为 **自定义** 时可用。
+- **格式化输出(v4兼容)**: 用于只支持 `response_format.type = json_object`
+  的渠道，如 dsv4f 等。这个模式仅在额外模型来源为 **自定义** 时可用。
 
 如果你的渠道明确支持 `response_format.json_schema`, 优先尝试 **格式化输出**。如果不支持, 改用
-**格式化输出(v4兼容)** 或 **聊天消息**；如果渠道支持 tools/function calling, 也可以尝试 **工具调用**。
+**格式化输出(v4兼容)** 或 **聊天消息**；如果渠道支持 tools/function calling, 也可以尝试
+**工具调用**。
