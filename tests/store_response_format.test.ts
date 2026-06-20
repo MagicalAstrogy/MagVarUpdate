@@ -44,6 +44,20 @@ describe('extra model response format settings', () => {
         expect(store.settings.额外模型解析配置.应答格式).toBe('格式化输出');
     });
 
+    test('accepts v4 compatible formatted output response format', () => {
+        (globalThis as any).SillyTavern.extensionSettings = {
+            mvu_settings: {
+                额外模型解析配置: {
+                    应答格式: '格式化输出(v4兼容)',
+                },
+            },
+        };
+
+        const store = useDataStore();
+
+        expect(store.settings.额外模型解析配置.应答格式).toBe('格式化输出(v4兼容)');
+    });
+
     test('defaults max chat history to the previous hardcoded value', () => {
         const store = useDataStore();
 
