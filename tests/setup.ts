@@ -26,6 +26,9 @@ import { watch } from 'vue';
     chat: [],
     extension_settings: {},
 };
+(globalThis as any).builtin = {
+    saveSettings: jest.fn().mockResolvedValue(undefined),
+};
 
 (globalThis as any).appendInexistentScriptButtons = jest.fn();
 (globalThis as any).getButtonEvent = jest.fn((button_name: string) => button_name);
@@ -61,6 +64,9 @@ const __eventHandlers = new Map<string, Array<(...args: unknown[]) => unknown>>(
 beforeEach(() => {
     setActivePinia(createPinia());
     __eventHandlers.clear();
+    (globalThis as any).SillyTavern.chatCompletionSettings = { function_calling: true };
+    (globalThis as any).builtin.saveSettings = jest.fn().mockResolvedValue(undefined);
+    (globalThis as any).stopGenerationById = jest.fn();
 });
 
 // Mock functions that are not available in test environment
@@ -92,6 +98,7 @@ beforeEach(() => {
 (globalThis as any).getChatMessages = jest.fn();
 (globalThis as any).getVariables = jest.fn();
 (globalThis as any).getLastMessageId = jest.fn();
+(globalThis as any).stopGenerationById = jest.fn();
 (globalThis as any).replaceVariables = jest.fn();
 (globalThis as any).setChatMessage = jest.fn();
 (globalThis as any).setChatMessages = jest.fn();

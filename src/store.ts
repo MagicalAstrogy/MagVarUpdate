@@ -4,7 +4,12 @@ import { defineStore } from 'pinia';
 import { ref, toRaw, watch } from 'vue';
 import * as z from 'zod';
 
-export const EXTRA_MODEL_RESPONSE_FORMATS = ['聊天消息', '工具调用', '格式化输出'] as const;
+export const EXTRA_MODEL_RESPONSE_FORMATS = [
+    '聊天消息',
+    '工具调用',
+    '格式化输出',
+    '格式化输出(v4兼容)',
+] as const;
 
 const ExtraModelResponseFormat = z.enum(EXTRA_MODEL_RESPONSE_FORMATS);
 
@@ -92,6 +97,7 @@ const NewSettings = z
                 其他预设名称: z.string().default(''),
                 使用函数调用: z.boolean().optional(),
                 应答格式: ExtraModelResponseFormat.optional(),
+                关闭thinking: z.boolean().default(false),
                 兼容假流式: z.boolean().default(false),
 
                 启用自动请求: z.boolean().default(true),

@@ -29,6 +29,18 @@
             />
         </Field>
 
+        <Field
+            v-if="store.settings.额外模型解析配置.应答格式 === '格式化输出(v4兼容)'"
+            label="关闭thinking"
+        >
+            <template #label-suffix>
+                <HelpIcon help="关闭后会避免一部分空回状况。" />
+            </template>
+            <Checkbox v-model="store.settings.额外模型解析配置.关闭thinking">
+                <span>关闭</span>
+            </Checkbox>
+        </Field>
+
         <Field label="兼容假流式">
             <template #label-suffix>
                 <HelpIcon
@@ -82,8 +94,12 @@ watch(
 );
 
 watch(
-    () => store.settings.额外模型解析配置.应答格式,
-    value => {
+    () =>
+        [
+            store.settings.额外模型解析配置.应答格式,
+            store.settings.额外模型解析配置.模型来源,
+        ] as const,
+    ([value, model_source]) => {
         if (value === '工具调用') {
             const version_message = getFunctionCallingApiVersionUnsupportedMessage();
             if (version_message) {
@@ -104,6 +120,16 @@ watch(
                 store.settings.额外模型解析配置.应答格式 = '聊天消息';
                 return;
             }
+        }
+        if (value === '格式化输出(v4兼容)' && model_source === '与插头相同') {
+            toastr.error(
+                '格式化输出(v4兼容)需要额外模型来源为自定义，不能与插头相同',
+                "[MVU]无法使用'格式化输出(v4兼容)'",
+                {
+                    timeOut: 5000,
+                }
+            );
+            store.settings.额外模型解析配置.应答格式 = '聊天消息';
         }
     }
 );

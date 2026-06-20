@@ -21,15 +21,143 @@ import { useDataStore } from '@/store';
 import { normalizeBaseURL } from '@/util';
 import { literalYamlify, uuidv4 } from '@util/common';
 import { compare } from 'compare-versions';
+import YAML from 'yaml';
 
 //测试用，为了使首次请求必失败
 let debug_extra_request_counter = 0;
+
+const V4_COMPATIBLE_FORMATTED_OUTPUT = '格式化输出(v4兼容)';
+const JSON_OBJECT_CUSTOM_INCLUDE_BODY = Object.freeze({
+    response_format: {
+        type: 'json_object',
+    },
+});
+const DISABLED_THINKING_CUSTOM_INCLUDE_BODY = Object.freeze({
+    thinking: {
+        type: 'disabled',
+    },
+});
 
 function generateRandomHeader(): string {
     return _.times(4, () => uuidv4().slice(0, 8)).join('\n');
 }
 
-function setExtraAnalysisStates() {
+function isV4CompatibleFormattedOutput(): boolean {
+    return useDataStore().settings.额外模型解析配置.应答格式 === V4_COMPATIBLE_FORMATTED_OUTPUT;
+}
+
+function assertV4CompatibleFormattedOutputUsable() {
+    const store = useDataStore();
+    if (
+        store.settings.额外模型解析配置.应答格式 === V4_COMPATIBLE_FORMATTED_OUTPUT &&
+        store.settings.额外模型解析配置.模型来源 === '与插头相同'
+    ) {
+        throw new Error(
+            '[MVU额外模型解析]格式化输出(v4兼容)需要额外模型来源为自定义，不能与插头相同。'
+        );
+    }
+}
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+    return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function parseCustomIncludeBody(body: unknown): Record<string, unknown> {
+    if (typeof body !== 'string' || body.trim() === '') {
+        return {};
+    }
+
+    const parsed = YAML.parse(body);
+    if (isPlainObject(parsed)) {
+        return parsed;
+    }
+    if (Array.isArray(parsed)) {
+        return Object.assign({}, ...parsed.filter(isPlainObject));
+    }
+    throw new Error('[MVU额外模型解析]custom_include_body 不是 YAML object，无法合并配置。');
+}
+
+function buildJsonObjectCustomIncludeBody(original_body: unknown): string {
+    const store = useDataStore();
+    return YAML.stringify({
+        ...parseCustomIncludeBody(original_body),
+        ...JSON_OBJECT_CUSTOM_INCLUDE_BODY,
+        ...(store.settings.额外模型解析配置.关闭thinking
+            ? DISABLED_THINKING_CUSTOM_INCLUDE_BODY
+            : {}),
+    }).trimEnd();
+}
+
+async function saveSillyTavernSettings() {
+    const save_settings =
+        typeof builtin === 'undefined' ? undefined : builtin.saveSettings.bind(builtin);
+    if (typeof save_settings !== 'function') {
+        throw new Error('[MVU额外模型解析]无法获取 SillyTavern saveSettings，不能临时更新配置。');
+    }
+    await save_settings();
+}
+
+let temporary_json_object_response_format_state: {
+    had_original_body: boolean;
+    original_body: unknown;
+} | null = null;
+
+async function setTemporaryJsonObjectResponseFormat() {
+    if (!isV4CompatibleFormattedOutput()) {
+        temporary_json_object_response_format_state = null;
+        return;
+    }
+
+    assertV4CompatibleFormattedOutputUsable();
+    const oai_settings = SillyTavern.chatCompletionSettings;
+    if (!isPlainObject(oai_settings)) {
+        throw new Error('[MVU额外模型解析]无法获取 SillyTavern OpenAI 设置。');
+    }
+
+    const had_original_body = Object.prototype.hasOwnProperty.call(
+        oai_settings,
+        'custom_include_body'
+    );
+    const original_body = oai_settings.custom_include_body;
+    oai_settings.custom_include_body = buildJsonObjectCustomIncludeBody(original_body);
+    try {
+        await saveSillyTavernSettings();
+        temporary_json_object_response_format_state = {
+            had_original_body,
+            original_body,
+        };
+    } catch (error) {
+        if (had_original_body) {
+            oai_settings.custom_include_body = original_body;
+        } else {
+            delete oai_settings.custom_include_body;
+        }
+        temporary_json_object_response_format_state = null;
+        throw error;
+    }
+}
+
+async function restoreTemporaryJsonObjectResponseFormat() {
+    if (!temporary_json_object_response_format_state) {
+        return;
+    }
+
+    const oai_settings = SillyTavern.chatCompletionSettings;
+    if (!isPlainObject(oai_settings)) {
+        throw new Error('[MVU额外模型解析]无法获取 SillyTavern OpenAI 设置，不能恢复配置。');
+    }
+
+    const { had_original_body, original_body } = temporary_json_object_response_format_state;
+    temporary_json_object_response_format_state = null;
+    if (had_original_body) {
+        oai_settings.custom_include_body = original_body;
+    } else {
+        delete oai_settings.custom_include_body;
+    }
+    await saveSillyTavernSettings();
+}
+
+async function setExtraAnalysisStates() {
     const store = useDataStore();
 
     if (store.runtimes.is_during_extra_analysis === true) {
@@ -41,15 +169,25 @@ function setExtraAnalysisStates() {
     //因为这个操作是幂等的，所以无所谓。
 
     store.runtimes.is_during_extra_analysis = true;
+    try {
+        await setTemporaryJsonObjectResponseFormat();
+    } catch (error) {
+        store.runtimes.is_during_extra_analysis = false;
+        throw error;
+    }
 }
 
-function unsetExtraAnalysisStates() {
+async function unsetExtraAnalysisStates() {
     const store = useDataStore();
 
     SillyTavern.unregisterMacro('lastUserMessage');
     clearExtraModelRequestOverrides();
-    store.runtimes.is_during_extra_analysis = false;
     store.runtimes.is_function_call_enabled = false;
+    try {
+        await restoreTemporaryJsonObjectResponseFormat();
+    } finally {
+        store.runtimes.is_during_extra_analysis = false;
+    }
 }
 
 let is_analysis_in_progress = false;
@@ -78,28 +216,36 @@ export async function invokeExtraModelWithStrategy(): Promise<string | null> {
             is_manual_canceled: boolean;
         }> => {
             let is_manual_canceled = false;
+            let did_set_extra_analysis_states = false;
             try {
-                setExtraAnalysisStates();
+                await setExtraAnalysisStates();
+                did_set_extra_analysis_states = true;
                 return { result: await recordedInvoke(), is_manual_canceled: false };
             } catch (e) {
                 /** 已经记录, 忽略 */
                 if (e === 'Clicked stop button') is_manual_canceled = true;
             } finally {
-                unsetExtraAnalysisStates();
+                if (did_set_extra_analysis_states) {
+                    await unsetExtraAnalysisStates();
+                }
             }
             return { result: null, is_manual_canceled: is_manual_canceled };
         };
         const concurrentInvoke = async (times: number) => {
             const uuids = _.times(times, uuidv4);
+            let did_set_extra_analysis_states = false;
             try {
-                setExtraAnalysisStates();
+                await setExtraAnalysisStates();
+                did_set_extra_analysis_states = true;
                 //在函数调用的模式下，允许接受 **任意** 有效的函数结果，因此被允许被覆盖。
                 return await Promise.any(uuids.map(recordedInvoke));
             } catch (e) {
                 /** 已经记录, 忽略 */
             } finally {
                 uuids.forEach(stopGenerationById);
-                unsetExtraAnalysisStates();
+                if (did_set_extra_analysis_states) {
+                    await unsetExtraAnalysisStates();
+                }
             }
             return null;
         };
@@ -152,6 +298,8 @@ export async function invokeExtraModelWithStrategy(): Promise<string | null> {
                     );
                 }
                 return concurrentInvoke(store.settings.额外模型解析配置.请求次数 - 1);
+            default:
+                return null;
         }
     } finally {
         is_analysis_in_progress = false;
@@ -162,11 +310,15 @@ export async function invokeExtraModelWithStrategy(): Promise<string | null> {
  * @brief 调用额外模型解析，可能会抛出异常。
  */
 export async function generateExtraModel(): Promise<string | null> {
+    let did_set_extra_analysis_states = false;
     try {
-        setExtraAnalysisStates();
+        await setExtraAnalysisStates();
+        did_set_extra_analysis_states = true;
         return await invokeExtraModel();
     } finally {
-        unsetExtraAnalysisStates();
+        if (did_set_extra_analysis_states) {
+            await unsetExtraAnalysisStates();
+        }
     }
 }
 
@@ -245,7 +397,7 @@ function normalizeGenerateResultByResponseFormat(
     result: string | GenerateToolCallResult,
     response_format: string
 ): string {
-    if (response_format === '格式化输出') {
+    if (response_format === '格式化输出' || response_format === V4_COMPATIBLE_FORMATTED_OUTPUT) {
         const formatted = extractFromFormattedOutput(result);
         if (formatted) {
             return formatted;
@@ -257,6 +409,9 @@ function normalizeGenerateResultByResponseFormat(
 async function requestReply(generation_id?: string, batch_id?: string): Promise<string> {
     const store = useDataStore();
     const response_format = store.settings.额外模型解析配置.应答格式;
+    const is_v4_compatible_formatted_output = response_format === V4_COMPATIBLE_FORMATTED_OUTPUT;
+
+    assertV4CompatibleFormattedOutputUsable();
 
     const config: GenerateRawConfig = {
         user_input: '遵循<must>指令',
@@ -280,6 +435,9 @@ async function requestReply(generation_id?: string, batch_id?: string): Promise<
             top_p: unset_if_equal(store.settings.额外模型解析配置.top_p, 1),
             top_k: unset_if_equal(store.settings.额外模型解析配置.top_k, 0),
         };
+        if (is_v4_compatible_formatted_output) {
+            config.custom_api.source = 'custom';
+        }
     }
 
     let task = decoded_extra_model_task;
@@ -292,6 +450,10 @@ async function requestReply(generation_id?: string, batch_id?: string): Promise<
         task +=
             '\n You are in formatted-output mode. Do not output <UpdateVariable> tags, markdown, or prose. Return only a JSON object matching the provided json_schema: {"analysis":"...","json_patch":[...]}. Put MVU JsonPatch dialect operations in `json_patch`.';
         config.json_schema = MVU_JSON_PATCH_RESPONSE_SCHEMA;
+    } else if (is_v4_compatible_formatted_output) {
+        task +=
+            '\n You are in formatted-output mode. Do not output <UpdateVariable> tags, markdown, or prose. Return only a JSON object: {"analysis":"...","json_patch":[...]}. Put MVU JsonPatch dialect operations in `json_patch`. Return exactly one JSON object that conforms to this schema:' +
+            JSON.stringify(MVU_JSON_PATCH_RESPONSE_SCHEMA.value);
     }
 
     //因为部分预设会用到 {{lastUserMessage}}，因此进行修正。
