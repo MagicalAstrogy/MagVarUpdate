@@ -3,6 +3,22 @@ export type EntryCommentRegexCompileResult = {
     error?: string;
 };
 
+export type EntryCommentFilterResult = {
+    lore: 'globalLore' | 'characterLore' | 'chatLore' | 'personaLore';
+    world: string;
+    comment: string;
+    reason: '白名单' | '黑名单';
+};
+
+export const ENTRY_COMMENT_FILTER_LOG_TITLE = '[MVU]世界书条目黑/白名单筛选结果';
+
+export function logEntryCommentFilterResult(result: EntryCommentFilterResult[]) {
+    console.log(
+        ENTRY_COMMENT_FILTER_LOG_TITLE,
+        result.map(entry => ({ ...entry }))
+    );
+}
+
 function isEscaped(value: string, index: number): boolean {
     let backslash_count = 0;
     for (let i = index - 1; i >= 0 && value[i] === '\\'; i--) {

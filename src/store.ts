@@ -193,6 +193,16 @@ const Runtimes = z
         unsupported_warnings: z.string().default(''),
         is_during_extra_analysis: z.boolean().default(false),
         is_function_call_enabled: z.boolean().default(false),
+        上次世界书条目过滤结果: z
+            .array(
+                z.object({
+                    lore: z.enum(['globalLore', 'characterLore', 'chatLore', 'personaLore']),
+                    world: z.string(),
+                    comment: z.string(),
+                    reason: z.enum(['白名单', '黑名单']),
+                })
+            )
+            .default([]),
         debug: z
             .object({
                 首次额外请求必失败: z.boolean().default(false),
