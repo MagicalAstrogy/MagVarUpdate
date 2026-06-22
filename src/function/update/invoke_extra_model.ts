@@ -526,14 +526,14 @@ async function requestReply(generation_id?: string, batch_id?: string): Promise<
             ? SillyTavern.getChatCompletionModel()
             : store.settings.额外模型解析配置.模型名称;
     const is_gemini = model_name.toLowerCase().includes('gemini');
-    const anti_429_header_prompts = store.settings.额外模型解析配置.开启防429
+    const rnd_header_prompts = store.settings.额外模型解析配置.随机头部
         ? [{ role: 'system' as const, content: batch_id ?? generateRandomHeader() }]
         : [];
 
     const result = await generateRaw({
         ...config,
         ordered_prompts: [
-            ...anti_429_header_prompts,
+            ...rnd_header_prompts,
             { role: 'system', content: is_gemini ? decoded_gemini_head : decoded_claude_head },
             { role: 'system', content: '<additional_information>' },
             'persona_description',

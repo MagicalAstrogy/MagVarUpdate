@@ -33,7 +33,7 @@ describe('extra model max chat history', () => {
         );
     });
 
-    test('adds anti-429 random header for built-in jailbreak by default', async () => {
+    test('adds random header for built-in jailbreak by default', async () => {
         await generateExtraModel();
 
         const config = (globalThis as any).generateRaw.mock.calls[0][0];
@@ -43,9 +43,9 @@ describe('extra model max chat history', () => {
         });
     });
 
-    test('omits anti-429 random header when disabled', async () => {
+    test('omits random header when disabled', async () => {
         const store = useDataStore();
-        store.settings.额外模型解析配置.开启防429 = false;
+        store.settings.额外模型解析配置.随机头部 = false;
 
         await generateExtraModel();
 
