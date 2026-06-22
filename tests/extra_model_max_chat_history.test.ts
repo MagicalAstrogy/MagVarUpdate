@@ -33,6 +33,32 @@ describe('extra model max chat history', () => {
         );
     });
 
+    test('adds random header for built-in jailbreak by default', async () => {
+        await generateExtraModel();
+
+        const config = (globalThis as any).generateRaw.mock.calls[0][0];
+        expect(config.ordered_prompts[0]).toEqual({
+            role: 'system',
+            content: expect.stringMatching(/^[0-9a-f]{8}\n[0-9a-f]{8}\n[0-9a-f]{8}\n[0-9a-f]{8}$/i),
+        });
+    });
+
+    test('omits random header when disabled', async () => {
+        const store = useDataStore();
+        store.settings.额外模型解析配置.随机头部 = false;
+
+        await generateExtraModel();
+
+        const config = (globalThis as any).generateRaw.mock.calls[0][0];
+        expect(config.ordered_prompts[0]).not.toEqual(
+            expect.objectContaining({
+                content: expect.stringMatching(
+                    /^[0-9a-f]{8}\n[0-9a-f]{8}\n[0-9a-f]{8}\n[0-9a-f]{8}$/i
+                ),
+            })
+        );
+    });
+
     test('uses temporary saved custom json_object response format for v4 compatible formatted output', async () => {
         const store = useDataStore();
         store.versions.tavernhelper = '4.3.9';
@@ -46,10 +72,12 @@ describe('extra model max chat history', () => {
 
         (globalThis as any).generateRaw = jest.fn().mockImplementation(async config => {
             expect((globalThis as any).builtin.saveSettings).toHaveBeenCalledTimes(1);
-            expect((globalThis as any).SillyTavern.chatCompletionSettings.custom_include_body)
-                .toContain(`response_format:\n  type: json_object`);
-            expect((globalThis as any).SillyTavern.chatCompletionSettings.custom_include_body)
-                .toContain(`thinking:\n  type: disabled`);
+            expect(
+                (globalThis as any).SillyTavern.chatCompletionSettings.custom_include_body
+            ).toContain(`response_format:\n  type: json_object`);
+            expect(
+                (globalThis as any).SillyTavern.chatCompletionSettings.custom_include_body
+            ).toContain(`thinking:\n  type: disabled`);
             expect(config.custom_api).toEqual(
                 expect.objectContaining({
                     source: 'custom',
@@ -104,8 +132,9 @@ describe('extra model max chat history', () => {
 
         (globalThis as any).generateRaw = jest.fn().mockImplementation(async config => {
             expect((globalThis as any).builtin.saveSettings).toHaveBeenCalledTimes(1);
-            expect((globalThis as any).SillyTavern.chatCompletionSettings.custom_include_body)
-                .toContain(`response_format:\n  type: json_object`);
+            expect(
+                (globalThis as any).SillyTavern.chatCompletionSettings.custom_include_body
+            ).toContain(`response_format:\n  type: json_object`);
             expect(config.custom_api).toEqual(
                 expect.objectContaining({
                     source: 'custom',

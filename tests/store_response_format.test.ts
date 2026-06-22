@@ -70,6 +70,12 @@ describe('extra model response format settings', () => {
         expect(store.settings.额外模型解析配置.关闭thinking).toBe(false);
     });
 
+    test('defaults random header to enabled', () => {
+        const store = useDataStore();
+
+        expect(store.settings.额外模型解析配置.随机头部).toBe(true);
+    });
+
     test('clamps max chat history to the supported range', () => {
         (globalThis as any).SillyTavern.extensionSettings = {
             mvu_settings: {
