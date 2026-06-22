@@ -1,5 +1,9 @@
 import { isExtraModelSupported } from '@/function/is_extra_model_supported';
 import { isFunctionCallingSupported } from '@/function/is_function_calling_supported';
+import {
+    compileEntryCommentRegex,
+    testEntryCommentRegex,
+} from '@/function/request/entry_comment_regex';
 import { useDataStore } from '@/store';
 import { PLOT_REGEX, UPDATE_REGEX } from '@/variable_def';
 
@@ -75,4 +79,55 @@ export async function filterEntries(lores: {
         .value();
 
     store.runtimes.unsupported_warnings = Array.from(removed_worlds).join(', ');
+
+    if (!store.runtimes.is_during_extra_analysis) {
+        return;
+    }
+
+    const compile_filter_regex = (label: string, value: string) => {
+        const result = compileEntryCommentRegex(value);
+        if (result.error) {
+            toastr.warning(
+                `${label}无效，已在本轮世界书条目过滤中忽略：${result.error}`,
+                '[MVU]世界书条目过滤正则无效',
+                { timeOut: 5000 }
+            );
+        }
+        return result.regex;
+    };
+
+    const white_regex = compile_filter_regex(
+        '白名单正则',
+        store.settings.额外模型解析配置.世界书条目白名单正则
+    );
+    const black_regex = compile_filter_regex(
+        '黑名单正则',
+        store.settings.额外模型解析配置.世界书条目黑名单正则
+    );
+
+    if (!white_regex && !black_regex) {
+        return;
+    }
+
+    const should_remove_by_comment_regex = (entry: Record<string, any>) => {
+        const comment = String(entry.comment ?? '');
+        if (UPDATE_REGEX.test(comment)) {
+            return false;
+        }
+        if (white_regex && !testEntryCommentRegex(white_regex, comment)) {
+            return true;
+        }
+        if (black_regex && testEntryCommentRegex(black_regex, comment)) {
+            return true;
+        }
+        return false;
+    };
+
+    const apply_comment_regex_filter = (lore: Record<string, any>[]) => {
+        _.remove(lore, should_remove_by_comment_regex);
+    };
+    apply_comment_regex_filter(lores.characterLore);
+    apply_comment_regex_filter(lores.globalLore);
+    apply_comment_regex_filter(lores.chatLore);
+    apply_comment_regex_filter(lores.personaLore);
 }

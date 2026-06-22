@@ -37,10 +37,45 @@
                 <span>启用</span>
             </Checkbox>
         </Field>
+
+        <Field label="世界书条目白名单正则">
+            <template #label-suffix>
+                <HelpIcon
+                    help="留空关闭；非空时，额外模型解析阶段只保留 comment 匹配该正则的世界书条目。支持 角色|地点 或 /角色|地点/i。"
+                />
+            </template>
+            <input
+                v-model="store.settings.额外模型解析配置.世界书条目白名单正则"
+                type="text"
+                class="text_pole"
+                placeholder="角色|地点 或 /角色|地点/i"
+            />
+            <div v-if="whitelist_regex_error" class="mvu-regex-error">
+                {{ whitelist_regex_error }}
+            </div>
+        </Field>
+
+        <Field label="世界书条目黑名单正则">
+            <template #label-suffix>
+                <HelpIcon
+                    help="留空关闭；非空时，额外模型解析阶段会排除 comment 匹配该正则的世界书条目。支持 临时|禁用 或 /临时|禁用/i。"
+                />
+            </template>
+            <input
+                v-model="store.settings.额外模型解析配置.世界书条目黑名单正则"
+                type="text"
+                class="text_pole"
+                placeholder="临时|禁用 或 /临时|禁用/i"
+            />
+            <div v-if="blacklist_regex_error" class="mvu-regex-error">
+                {{ blacklist_regex_error }}
+            </div>
+        </Field>
     </Detail>
 </template>
 
 <script setup lang="ts">
+import { compileEntryCommentRegex } from '@/function/request/entry_comment_regex';
 import Checkbox from '@/panel/component/Checkbox.vue';
 import Detail from '@/panel/component/Detail.vue';
 import Field from '@/panel/component/Field.vue';
@@ -50,14 +85,29 @@ import Select from '@/panel/component/Select.vue';
 import request_method_help from '@/panel/update/request_method.md';
 import { useDataStore } from '@/store';
 import { compare } from 'compare-versions';
-import { watch } from 'vue';
+import { computed, watch } from 'vue';
 
 const store = useDataStore();
+
+function getRegexError(value: string) {
+    const error = compileEntryCommentRegex(value).error;
+    return error ? `正则无效：${error}` : '';
+}
+
+const whitelist_regex_error = computed(() =>
+    getRegexError(store.settings.额外模型解析配置.世界书条目白名单正则)
+);
+const blacklist_regex_error = computed(() =>
+    getRegexError(store.settings.额外模型解析配置.世界书条目黑名单正则)
+);
 
 watch(
     () => store.settings.额外模型解析配置.请求方式,
     value => {
-        if (value !== '依次请求，失败后重试' && compare(store.versions.tavernhelper, '4.4.3', '<')) {
+        if (
+            value !== '依次请求，失败后重试' &&
+            compare(store.versions.tavernhelper, '4.4.3', '<')
+        ) {
             toastr.warning(
                 '请升级酒馆助手到 4.4.3 或更高版本，否则批量请求功能可能让预设的「流式传输」设置失效',
                 '[MVU]批量请求可能有问题',
@@ -69,3 +119,12 @@ watch(
     }
 );
 </script>
+
+<style scoped>
+.mvu-regex-error {
+    color: var(--SmartThemeQuoteColor, #ff6b6b);
+    font-size: calc(var(--mainFontSize, 1rem) * 0.9);
+    line-height: 1.35;
+    word-break: break-word;
+}
+</style>

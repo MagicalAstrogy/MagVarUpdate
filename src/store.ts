@@ -109,6 +109,8 @@ const NewSettings = z
                     ])
                     .default('依次请求，失败后重试'),
                 请求次数: z.number().default(3),
+                世界书条目白名单正则: z.string().default(''),
+                世界书条目黑名单正则: z.string().default(''),
 
                 模型来源: z.enum(['与插头相同', '自定义']).default('与插头相同'),
                 api地址: z.string().default('http://localhost:1234/v1'),
