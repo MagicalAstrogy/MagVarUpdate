@@ -1,3 +1,4 @@
+import { ENTRY_COMMENT_FILTER_LOG_TITLE } from '@/function/request/entry_comment_regex';
 import { filterEntries } from '@/function/request/filter_entries';
 import { useDataStore } from '@/store';
 
@@ -7,15 +8,20 @@ const cloneEntries = (entries: Array<{ world: string; comment: string }>) =>
 
 let mockGetCurrentCharPrimaryLorebook: jest.MockedFunction<() => string | undefined>;
 let mockGetLorebookEntries: jest.MockedFunction<(name: string) => Promise<any[]>>;
+let consoleLogSpy: jest.SpyInstance;
 
 describe('filterEntries', () => {
     beforeEach(() => {
         const store = useDataStore();
         store.settings.更新方式 = '额外模型解析';
         store.settings.额外模型解析配置.应答格式 = '聊天消息';
+        store.settings.额外模型解析配置.世界书条目白名单正则 = '';
+        store.settings.额外模型解析配置.世界书条目黑名单正则 = '';
 
         store.runtimes.unsupported_warnings = '';
         store.runtimes.is_during_extra_analysis = false;
+        store.runtimes.上次世界书条目过滤结果 = [];
+        consoleLogSpy = jest.spyOn(console, 'log').mockImplementation(() => undefined);
 
         (globalThis as any).toastr = {
             warning: jest.fn(),
@@ -40,6 +46,7 @@ describe('filterEntries', () => {
 
     afterEach(() => {
         useDataStore().runtimes.is_during_extra_analysis = false;
+        consoleLogSpy.mockRestore();
     });
 
     // 场景: 更新方式为随AI输出时，不进行任何过滤处理
@@ -202,5 +209,253 @@ describe('filterEntries', () => {
             makeEntry('PlotWorld2', 'untagged'),
         ]);
         expect(store.runtimes.unsupported_warnings).toBe('UntaggedWorld');
+    });
+
+    test('applies whitelist regex to entry comments during extra analysis', async () => {
+        const store = useDataStore();
+
+        store.runtimes.is_during_extra_analysis = true;
+        store.settings.额外模型解析配置.世界书条目白名单正则 = '角色A';
+
+        const lores = {
+            globalLore: [
+                makeEntry('PlotWorld', '[mvu_plot]'),
+                makeEntry('PlotWorld', '角色A设定'),
+                makeEntry('PlotWorld', '地点B设定'),
+            ],
+            characterLore: [makeEntry('WorldA', '[mvu_update]')],
+            chatLore: [],
+            personaLore: [],
+        };
+
+        mockGetLorebookEntries.mockResolvedValue(cloneEntries(lores.characterLore));
+
+        await filterEntries(lores);
+
+        expect(lores.globalLore).toEqual([makeEntry('PlotWorld', '角色A设定')]);
+        expect(store.runtimes.上次世界书条目过滤结果).toEqual([
+            {
+                lore: 'globalLore',
+                world: 'PlotWorld',
+                comment: '地点B设定',
+                reason: '白名单',
+            },
+        ]);
+        expect(consoleLogSpy).toHaveBeenCalledWith(ENTRY_COMMENT_FILTER_LOG_TITLE, [
+            {
+                lore: 'globalLore',
+                world: 'PlotWorld',
+                comment: '地点B设定',
+                reason: '白名单',
+            },
+        ]);
+    });
+
+    test('applies blacklist regex to entry comments during extra analysis', async () => {
+        const store = useDataStore();
+
+        store.runtimes.is_during_extra_analysis = true;
+        store.settings.额外模型解析配置.世界书条目黑名单正则 = '禁用|临时';
+
+        const lores = {
+            globalLore: [
+                makeEntry('PlotWorld', '[mvu_plot]'),
+                makeEntry('PlotWorld', '常驻设定'),
+                makeEntry('PlotWorld', '临时设定'),
+            ],
+            characterLore: [makeEntry('WorldA', '[mvu_update]')],
+            chatLore: [],
+            personaLore: [],
+        };
+
+        mockGetLorebookEntries.mockResolvedValue(cloneEntries(lores.characterLore));
+
+        await filterEntries(lores);
+
+        expect(lores.globalLore).toEqual([makeEntry('PlotWorld', '常驻设定')]);
+    });
+
+    test('requires whitelist match and blacklist miss when both regexes are configured', async () => {
+        const store = useDataStore();
+
+        store.runtimes.is_during_extra_analysis = true;
+        store.settings.额外模型解析配置.世界书条目白名单正则 = '角色|地点';
+        store.settings.额外模型解析配置.世界书条目黑名单正则 = '地点';
+
+        const lores = {
+            globalLore: [
+                makeEntry('PlotWorld', '[mvu_plot]'),
+                makeEntry('PlotWorld', '角色设定'),
+                makeEntry('PlotWorld', '地点设定'),
+                makeEntry('PlotWorld', '物品设定'),
+            ],
+            characterLore: [makeEntry('WorldA', '[mvu_update]')],
+            chatLore: [],
+            personaLore: [],
+        };
+
+        mockGetLorebookEntries.mockResolvedValue(cloneEntries(lores.characterLore));
+
+        await filterEntries(lores);
+
+        expect(lores.globalLore).toEqual([makeEntry('PlotWorld', '角色设定')]);
+        expect(store.runtimes.上次世界书条目过滤结果).toEqual([
+            {
+                lore: 'globalLore',
+                world: 'PlotWorld',
+                comment: '地点设定',
+                reason: '黑名单',
+            },
+            {
+                lore: 'globalLore',
+                world: 'PlotWorld',
+                comment: '物品设定',
+                reason: '白名单',
+            },
+        ]);
+    });
+
+    test('keeps empty last filter result and does not log when no entry is removed', async () => {
+        const store = useDataStore();
+
+        store.runtimes.is_during_extra_analysis = true;
+        store.runtimes.上次世界书条目过滤结果 = [
+            {
+                lore: 'globalLore',
+                world: 'OldWorld',
+                comment: 'old',
+                reason: '黑名单',
+            },
+        ];
+        store.settings.额外模型解析配置.世界书条目白名单正则 = '角色';
+
+        const lores = {
+            globalLore: [makeEntry('PlotWorld', '[mvu_plot]'), makeEntry('PlotWorld', '角色设定')],
+            characterLore: [makeEntry('WorldA', '[mvu_update]')],
+            chatLore: [],
+            personaLore: [],
+        };
+
+        mockGetLorebookEntries.mockResolvedValue(cloneEntries(lores.characterLore));
+
+        await filterEntries(lores);
+
+        expect(lores.globalLore).toEqual([makeEntry('PlotWorld', '角色设定')]);
+        expect(store.runtimes.上次世界书条目过滤结果).toEqual([]);
+        expect(consoleLogSpy).not.toHaveBeenCalledWith(
+            ENTRY_COMMENT_FILTER_LOG_TITLE,
+            expect.anything()
+        );
+    });
+
+    test('lets update entries bypass comment whitelist and blacklist filters', async () => {
+        const store = useDataStore();
+
+        store.runtimes.is_during_extra_analysis = true;
+        store.settings.额外模型解析配置.世界书条目白名单正则 = '角色A';
+        store.settings.额外模型解析配置.世界书条目黑名单正则 = 'mvu_update|禁用';
+
+        const lores = {
+            globalLore: [
+                makeEntry('PlotWorld', '[mvu_plot]'),
+                makeEntry('PlotWorld', '[mvu_update] 禁用'),
+                makeEntry('PlotWorld', '禁用设定'),
+            ],
+            characterLore: [makeEntry('WorldA', '[mvu_update]')],
+            chatLore: [],
+            personaLore: [],
+        };
+
+        mockGetLorebookEntries.mockResolvedValue(cloneEntries(lores.characterLore));
+
+        await filterEntries(lores);
+
+        expect(lores.globalLore).toEqual([makeEntry('PlotWorld', '[mvu_update] 禁用')]);
+        expect(lores.characterLore).toEqual([makeEntry('WorldA', '[mvu_update]')]);
+    });
+
+    test('does not apply comment whitelist and blacklist filters outside extra analysis', async () => {
+        const store = useDataStore();
+
+        store.runtimes.is_during_extra_analysis = false;
+        store.settings.额外模型解析配置.世界书条目白名单正则 = '保留';
+        store.settings.额外模型解析配置.世界书条目黑名单正则 = '排除';
+
+        const lores = {
+            globalLore: [
+                makeEntry('PlotWorld', '[mvu_plot]'),
+                makeEntry('PlotWorld', '排除设定'),
+                makeEntry('PlotWorld', '其他设定'),
+            ],
+            characterLore: [makeEntry('WorldA', '[mvu_plot]')],
+            chatLore: [],
+            personaLore: [],
+        };
+
+        mockGetLorebookEntries.mockResolvedValue(cloneEntries(lores.characterLore));
+
+        await filterEntries(lores);
+
+        expect(lores.globalLore).toEqual([
+            makeEntry('PlotWorld', '[mvu_plot]'),
+            makeEntry('PlotWorld', '排除设定'),
+            makeEntry('PlotWorld', '其他设定'),
+        ]);
+    });
+
+    test('supports JS-style slash regex with flags', async () => {
+        const store = useDataStore();
+
+        store.runtimes.is_during_extra_analysis = true;
+        store.settings.额外模型解析配置.世界书条目白名单正则 = '/ALLOWED/i';
+        store.settings.额外模型解析配置.世界书条目黑名单正则 = '/drop/i';
+
+        const lores = {
+            globalLore: [
+                makeEntry('PlotWorld', '[mvu_plot]'),
+                makeEntry('PlotWorld', 'allowed entry'),
+                makeEntry('PlotWorld', 'ALLOWED drop entry'),
+                makeEntry('PlotWorld', 'other entry'),
+            ],
+            characterLore: [makeEntry('WorldA', '[mvu_update]')],
+            chatLore: [],
+            personaLore: [],
+        };
+
+        mockGetLorebookEntries.mockResolvedValue(cloneEntries(lores.characterLore));
+
+        await filterEntries(lores);
+
+        expect(lores.globalLore).toEqual([makeEntry('PlotWorld', 'allowed entry')]);
+    });
+
+    test('ignores invalid regexes without interrupting valid filters', async () => {
+        const store = useDataStore();
+
+        store.runtimes.is_during_extra_analysis = true;
+        store.settings.额外模型解析配置.世界书条目白名单正则 = '[';
+        store.settings.额外模型解析配置.世界书条目黑名单正则 = 'drop';
+
+        const lores = {
+            globalLore: [
+                makeEntry('PlotWorld', '[mvu_plot]'),
+                makeEntry('PlotWorld', 'keep entry'),
+                makeEntry('PlotWorld', 'drop entry'),
+            ],
+            characterLore: [makeEntry('WorldA', '[mvu_update]')],
+            chatLore: [],
+            personaLore: [],
+        };
+
+        mockGetLorebookEntries.mockResolvedValue(cloneEntries(lores.characterLore));
+
+        await expect(filterEntries(lores)).resolves.toBeUndefined();
+
+        expect(lores.globalLore).toEqual([makeEntry('PlotWorld', 'keep entry')]);
+        expect((globalThis as any).toastr.warning).toHaveBeenCalledWith(
+            expect.stringContaining('白名单正则无效'),
+            '[MVU]世界书条目过滤正则无效',
+            { timeOut: 5000 }
+        );
     });
 });

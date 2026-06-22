@@ -64,6 +64,29 @@ describe('extra model response format settings', () => {
         expect(store.settings.额外模型解析配置.max_chat_history).toBe(2);
     });
 
+    test('defaults worldbook entry comment filters to disabled empty regexes', () => {
+        const store = useDataStore();
+
+        expect(store.settings.额外模型解析配置.世界书条目白名单正则).toBe('');
+        expect(store.settings.额外模型解析配置.世界书条目黑名单正则).toBe('');
+    });
+
+    test('keeps configured worldbook entry comment filters when loading settings', () => {
+        (globalThis as any).SillyTavern.extensionSettings = {
+            mvu_settings: {
+                额外模型解析配置: {
+                    世界书条目白名单正则: '角色|地点',
+                    世界书条目黑名单正则: '/临时/i',
+                },
+            },
+        };
+
+        const store = useDataStore();
+
+        expect(store.settings.额外模型解析配置.世界书条目白名单正则).toBe('角色|地点');
+        expect(store.settings.额外模型解析配置.世界书条目黑名单正则).toBe('/临时/i');
+    });
+
     test('defaults v4 compatible thinking override to disabled state off', () => {
         const store = useDataStore();
 
