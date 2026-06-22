@@ -99,6 +99,7 @@ const NewSettings = z
                 应答格式: ExtraModelResponseFormat.optional(),
                 关闭thinking: z.boolean().default(false),
                 兼容假流式: z.boolean().default(false),
+                开启防429: z.boolean().default(true),
 
                 启用自动请求: z.boolean().default(true),
                 请求方式: z

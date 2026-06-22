@@ -19,6 +19,17 @@
             <input v-else class="text_pole" type="text" disabled value="未检测到可用的已保存预设" />
         </Field>
 
+        <Field v-if="store.settings.额外模型解析配置.破限方案 === '使用内置破限'" label="防 429">
+            <template #label-suffix>
+                <HelpIcon
+                    help="gemini系模型会对破限头部进行记录，因此需要在头部增加随机数。如果您使用的不是Gemini系模型，请关闭这个功能，避免缓存失效。"
+                />
+            </template>
+            <Checkbox v-model="store.settings.额外模型解析配置.开启防429">
+                <span>开启防 429</span>
+            </Checkbox>
+        </Field>
+
         <Field label="应答格式">
             <template #label-suffix>
                 <HelpIcon :help="prompt_toolcall_help" />
