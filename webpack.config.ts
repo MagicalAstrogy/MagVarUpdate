@@ -384,15 +384,8 @@ function config(_env: any, argv: any): webpack.Configuration {
             if (request in global) {
                 return callback(null, 'var ' + global[request as keyof typeof global]);
             }
-            const cdn = {
-                sass: 'https://jspm.dev/sass',
-            };
-            return callback(
-                null,
-                'module-import ' +
-                    (cdn[request as keyof typeof cdn] ??
-                        `https://testingcf.jsdelivr.net/npm/${request}/+esm`)
-            );
+            // 其他所有包从 node_modules 打包，不再从 CDN 加载
+            return callback();
         },
     };
 }
