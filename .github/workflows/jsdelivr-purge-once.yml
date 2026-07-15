@@ -1,0 +1,26 @@
+name: jsDelivr purge (one-shot)
+
+on:
+  push:
+    branches:
+      - automation/jsdelivr-purge-20260715-01
+
+permissions:
+  contents: read
+
+jobs:
+  purge:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Purge master bundle
+        run: |
+          curl --fail-with-body --silent --show-error --retry 3 \
+            'https://purge.jsdelivr.net/gh/MagicalAstrogy/MagVarUpdate@master/artifact/bundle.js'
+          echo
+
+      - name: Purge beta bundle
+        run: |
+          curl --fail-with-body --silent --show-error --retry 3 \
+            'https://purge.jsdelivr.net/gh/MagicalAstrogy/MagVarUpdate@beta/artifact/bundle.js'
+          echo
