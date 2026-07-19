@@ -1,8 +1,18 @@
+import { migrateExtraModelApiProfiles } from '@/function/update/extra_model_api_profiles';
 import { is_jest_environment } from '@/jest';
 import { registerAsUniqueScript } from '@util/script';
 import { defineStore } from 'pinia';
 import { ref, toRaw, watch } from 'vue';
 import * as z from 'zod';
+
+const ExtraModelApiProfile = z
+    .object({
+        名称: z.string().min(1),
+        api地址: z.string().default(''),
+        密钥: z.string().default(''),
+        模型名称: z.string().default(''),
+    })
+    .loose();
 
 export const EXTRA_MODEL_RESPONSE_FORMATS = [
     '聊天消息',
@@ -15,68 +25,93 @@ const ExtraModelResponseFormat = z.enum(EXTRA_MODEL_RESPONSE_FORMATS);
 
 const OldSettings = z
     .object({
-        通知: z.object({
-            变量更新出错: z.boolean(),
-            额外模型解析中: z.boolean(),
-        }),
+        通知: z
+            .object({
+                变量更新出错: z.boolean(),
+                额外模型解析中: z.boolean(),
+            })
+            .loose(),
         更新方式: z.enum(['随AI输出', '额外模型解析']),
         自动触发额外模型解析: z.boolean(),
-        额外模型解析配置: z.object({
-            发送预设: z.boolean(),
-            使用函数调用: z.boolean(),
-            模型来源: z.enum(['与插头相同', '自定义']),
-            api地址: z.string(),
-            密钥: z.string(),
-            模型名称: z.string(),
-            温度: z.coerce.number(),
-            频率惩罚: z.coerce.number(),
-            存在惩罚: z.coerce.number(),
-            top_p: z.coerce.number(),
-            最大回复token数: z.coerce.number(),
-        }),
+        额外模型解析配置: z
+            .object({
+                发送预设: z.boolean(),
+                使用函数调用: z.boolean(),
+                模型来源: z.enum(['与插头相同', '自定义']),
+                api地址: z.string(),
+                密钥: z.string(),
+                模型名称: z.string(),
+                温度: z.coerce.number(),
+                频率惩罚: z.coerce.number(),
+                存在惩罚: z.coerce.number(),
+                top_p: z.coerce.number(),
+                最大回复token数: z.coerce.number(),
+            })
+            .loose(),
         快照保留间隔: z.number(),
         更新到聊天变量: z.boolean(),
-        legacy: z.object({
-            显示老旧功能: z.boolean(),
-        }),
-        auto_cleanup: z.object({
-            启用: z.boolean(),
-            要保留变量的最近楼层数: z.number(),
-            触发恢复变量的最近楼层数: z.number(),
-        }),
-        internal: z.object({
-            已提醒更新了配置界面: z.boolean(),
-            已提醒自动清理旧变量功能: z.boolean(),
-            已提醒更新了API温度等配置: z.boolean(),
-            已默认开启自动清理旧变量功能: z.boolean(),
-        }),
+        legacy: z
+            .object({
+                显示老旧功能: z.boolean(),
+            })
+            .loose(),
+        auto_cleanup: z
+            .object({
+                启用: z.boolean(),
+                要保留变量的最近楼层数: z.number(),
+                触发恢复变量的最近楼层数: z.number(),
+            })
+            .loose(),
+        internal: z
+            .object({
+                已提醒更新了配置界面: z.boolean(),
+                已提醒自动清理旧变量功能: z.boolean(),
+                已提醒更新了API温度等配置: z.boolean(),
+                已默认开启自动清理旧变量功能: z.boolean(),
+            })
+            .loose(),
     })
-    .transform(data =>
-        NewSettings.decode({
-            通知: {
-                ...data.通知,
-            },
-            更新方式: data.更新方式,
+    .loose()
+    .transform(data => {
+        const {
+            自动触发额外模型解析,
+            额外模型解析配置: { 发送预设, 使用函数调用, ...extra_model_settings },
+            快照保留间隔,
+            更新到聊天变量,
+            legacy,
+            auto_cleanup,
+            自动清理变量: existing_auto_cleanup,
+            兼容性: existing_compatibility,
+            ...settings
+        } = data;
+        const existing_auto_cleanup_settings = _.isPlainObject(existing_auto_cleanup)
+            ? (existing_auto_cleanup as Record<string, unknown>)
+            : {};
+        const existing_compatibility_settings = _.isPlainObject(existing_compatibility)
+            ? (existing_compatibility as Record<string, unknown>)
+            : {};
+
+        return NewSettings.decode({
+            ...settings,
             额外模型解析配置: {
-                ...data.额外模型解析配置,
-                破限方案: data.额外模型解析配置.发送预设 ? '使用当前预设' : '使用内置破限',
-                启用自动请求: data.自动触发额外模型解析,
-                应答格式: data.额外模型解析配置.使用函数调用 ? '工具调用' : '聊天消息',
+                破限方案: 发送预设 ? '使用当前预设' : '使用内置破限',
+                启用自动请求: 自动触发额外模型解析,
+                应答格式: 使用函数调用 ? '工具调用' : '聊天消息',
+                ...extra_model_settings,
             },
             自动清理变量: {
-                ...data.auto_cleanup,
-                快照保留间隔: data.快照保留间隔,
+                ...auto_cleanup,
+                快照保留间隔,
+                ...existing_auto_cleanup_settings,
             },
             兼容性: {
-                更新到聊天变量: data.更新到聊天变量,
-                显示老旧功能: data.legacy.显示老旧功能,
+                ...legacy,
+                更新到聊天变量,
                 sandas不视为user消息: false,
+                ...existing_compatibility_settings,
             },
-            internal: {
-                ...data.internal,
-            },
-        })
-    );
+        });
+    });
 
 const NewSettings = z
     .object({
@@ -87,6 +122,7 @@ const NewSettings = z
                 变量更新出错: z.boolean().default(false),
                 额外模型解析中: z.boolean().default(true),
             })
+            .loose()
             .prefault({}),
         更新方式: z.enum(['随AI输出', '额外模型解析']).default('随AI输出'),
         额外模型解析配置: z
@@ -145,11 +181,16 @@ const NewSettings = z
                     .number()
                     .default(4096)
                     .transform(value => Math.max(0, value)),
+                api方案列表: z.array(ExtraModelApiProfile).default([]),
+                当前api方案: z.string().default(''),
             })
-            .transform(({ 使用函数调用, 应答格式, ...data }) => ({
-                ...data,
-                应答格式: 应答格式 ?? (使用函数调用 ? '工具调用' : '聊天消息'),
-            }))
+            .loose()
+            .transform(({ 使用函数调用, 应答格式, ...data }) =>
+                migrateExtraModelApiProfiles({
+                    ...data,
+                    应答格式: 应答格式 ?? (使用函数调用 ? '工具调用' : '聊天消息'),
+                })
+            )
             .prefault({}),
         自动清理变量: z
             .object({
@@ -158,6 +199,7 @@ const NewSettings = z
                 要保留变量的最近楼层数: z.number().default(20),
                 触发恢复变量的最近楼层数: z.number().default(10),
             })
+            .loose()
             .prefault({}),
         兼容性: z
             .object({
@@ -165,6 +207,7 @@ const NewSettings = z
                 显示老旧功能: z.boolean().default(false),
                 sandas不视为user消息: z.boolean().default(false),
             })
+            .loose()
             .prefault({}),
         internal: z
             .object({
@@ -176,8 +219,10 @@ const NewSettings = z
                 已提醒额外模型同时请求: z.boolean().default(false),
                 已开启默认不兼容假流式: z.boolean().default(false),
             })
+            .loose()
             .prefault({}),
     })
+    .loose()
     .transform(data => {
         if (data.internal.已开启默认不兼容假流式 === false) {
             data.额外模型解析配置.兼容假流式 = false;
