@@ -1438,12 +1438,15 @@ export async function handleVariablesInMessage(message_id: number) {
     if (!_.has(variables, 'stat_data')) {
         return;
     }
+    const swipe_id = SillyTavern.chat[message_id]?.swipe_id??0;
 
     const has_variable_modified = await updateVariables(message_content, variables);
     if (has_variable_modified && chat_message.role !== 'user') {
         const context: UpdateContext = {
-            variables: variables,
-            message_content: message_content,
+            variables,
+            message_id,
+            swipe_id,
+            message_content,
         };
         await eventEmit(variable_events.BEFORE_MESSAGE_UPDATE, context);
         message_content = context.message_content;
