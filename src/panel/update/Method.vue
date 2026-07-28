@@ -1,5 +1,5 @@
 <template>
-    <Select v-model="store.settings.更新方式" :options="['随AI输出', '额外模型解析']" />
+    <Select v-model="store.settings.更新方式" :options="update_method_options" />
 
     <template
         v-if="
@@ -10,8 +10,11 @@
         <div class="mvu-warning">
             <span class="mvu-warning__icon">ℹ️</span>
             <span class="mvu-warning__text">
-                世界书 [{{ store.runtimes.unsupported_warnings }}] 未适配额外模型解析, 视为
-                [mvu_plot] 条目 (只会发给剧情 AI、不会发给变量更新 AI).
+                {{
+                    t('panel.update.method.unsupportedWarning', {
+                        worldbooks: store.runtimes.unsupported_warnings,
+                    })
+                }}
                 <HelpIcon :help="update_method_help" />
             </span>
         </div>
@@ -19,12 +22,23 @@
 </template>
 
 <script setup lang="ts">
+import { useMvuI18n } from '@/i18n';
 import HelpIcon from '@/panel/component/HelpIcon.vue';
 import Select from '@/panel/component/Select.vue';
-import update_method_help from '@/panel/update_method.md';
+import update_method_help_en from '@/panel/update_method.en.md';
+import update_method_help_zh_cn from '@/panel/update_method.zh-CN.md';
 import { useDataStore } from '@/store';
+import { computed } from 'vue';
 
 const store = useDataStore();
+const { locale, t } = useMvuI18n();
+const update_method_help = computed(() =>
+    locale.value === 'zh-CN' ? update_method_help_zh_cn : update_method_help_en
+);
+const update_method_options = computed(() => [
+    { value: '随AI输出', label: t('panel.update.method.aiOutput') },
+    { value: '额外模型解析', label: t('panel.update.method.extraModel') },
+]);
 </script>
 
 <style scoped>

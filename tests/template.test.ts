@@ -6,6 +6,7 @@ import {
     generateSchema,
     reconcileAndApplySchema,
 } from '@/function/schema';
+import { tr } from '@/i18n';
 import { StatData } from '@/variable_def';
 
 type MvuData = any;
@@ -919,7 +920,10 @@ describe('Template Feature', () => {
             // 应该有警告信息
             expect(consoleSpy).toHaveBeenCalledWith(
                 expect.stringContaining(
-                    'SCHEMA VIOLATION: Cannot assign elements into non-extensible array'
+                    tr('runtime.variableUpdate.assignNonExtensibleArray', {
+                        path: 'fixedArray',
+                        reason: '',
+                    }).trim()
                 )
             );
 
@@ -957,7 +961,13 @@ describe('Template Feature', () => {
 
             // 应该有警告信息
             expect(consoleSpy).toHaveBeenCalledWith(
-                expect.stringContaining('SCHEMA VIOLATION: Cannot assign new key')
+                expect.stringContaining(
+                    tr('runtime.variableUpdate.assignUnknownKey', {
+                        path: 'config',
+                        key: 'newKey',
+                        reason: '',
+                    }).trim()
+                )
             );
 
             // 对象不应该被修改

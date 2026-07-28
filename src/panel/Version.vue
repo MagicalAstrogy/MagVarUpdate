@@ -1,5 +1,5 @@
 <template>
-    <Section label="当前版本">
+    <Section :label="t('panel.version.section')">
         <template #content>
             <span> {{ build_date }} ({{ commit_id }}) </span>
         </template>
@@ -8,7 +8,10 @@
 
 <script setup lang="ts">
 import Section from '@/panel/component/Section.vue';
+import { useMvuI18n } from '@/i18n';
+import { computed } from 'vue';
 
-const build_date = __BUILD_DATE__ ?? 'Unknown';
-const commit_id = __COMMIT_ID__ ?? 'Unknown';
+const { t } = useMvuI18n();
+const build_date = computed(() => __BUILD_DATE__ ?? t('panel.version.unknown'));
+const commit_id = computed(() => __COMMIT_ID__ ?? t('panel.version.unknown'));
 </script>

@@ -303,6 +303,10 @@ function config(_env: any, argv: any): webpack.Configuration {
                 __VUE_OPTIONS_API__: false,
                 __VUE_PROD_DEVTOOLS__: process.env.CI !== 'true',
                 __VUE_PROD_HYDRATION_MISMATCH_DETAILS__: false,
+                __VUE_I18N_FULL_INSTALL__: true,
+                __VUE_I18N_LEGACY_API__: false,
+                __INTLIFY_DROP_MESSAGE_COMPILER__: false,
+                __INTLIFY_PROD_DEVTOOLS__: false,
             }),
         ],
         optimization: {

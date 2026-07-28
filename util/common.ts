@@ -1,3 +1,4 @@
+import { tr } from '@/i18n';
 import { compare } from 'compare-versions';
 import JSON5 from 'json5';
 import { jsonrepair } from 'jsonrepair';
@@ -15,9 +16,12 @@ export function uuidv4(): string {
     });
 }
 
-export async function checkMinimumVersion(expected: string, title: string) {
+export async function checkMinimumVersion(
+    expected: string,
+    notice: { message: string; title: string }
+) {
     if (compare(await getTavernHelperVersion(), expected, '<')) {
-        toastr.error(`'${title}' 需要酒馆助手版本 >= '${expected}'`, '版本不兼容');
+        toastr.error(notice.message, notice.title);
     }
 }
 export function literalYamlify(value: any) {
@@ -52,11 +56,13 @@ export function parseString(content: string): any {
 
                     throw new Error(
                         literalYamlify({
-                            ['要解析的字符串不是有效的 YAML/JSON/JSON5 格式']: {
-                                字符串内容: content,
-                                YAML错误信息: toError(json_first ? yaml_error2 : yaml_error1),
-                                JSON5错误信息: toError(json5_error),
-                                JSON错误信息: toError(json_error),
+                            [tr('runtime.parseString.invalidFormat')]: {
+                                [tr('runtime.parseString.content')]: content,
+                                [tr('runtime.parseString.yamlError')]: toError(
+                                    json_first ? yaml_error2 : yaml_error1
+                                ),
+                                [tr('runtime.parseString.json5Error')]: toError(json5_error),
+                                [tr('runtime.parseString.jsonError')]: toError(json_error),
                             },
                         })
                     );

@@ -1,4 +1,5 @@
 import { cleanupMessageVariables } from '@/function/cleanup/cleanup_variables';
+import { tr } from '@/i18n';
 import { useDataStore } from '@/store';
 
 export async function checkAndCleanupLegacyChat() {
@@ -13,13 +14,13 @@ export async function checkAndCleanupLegacyChat() {
     }
 
     const result = await SillyTavern.callGenericPopup(
-        '检测可以清理本聊天文件的旧变量从而减少文件体积, 是否清理?(备份会消耗较多内存，手机上建议关闭其他后台应用后进行，或是在计算机上备份)',
+        tr('runtime.cleanup.legacyPrompt'),
         SillyTavern.POPUP_TYPE.CONFIRM,
         '',
         {
-            okButton: '仅清理',
-            cancelButton: '不再提醒',
-            customButtons: ['备份并清理'],
+            okButton: tr('runtime.cleanup.cleanOnlyButton'),
+            cancelButton: tr('runtime.cleanup.doNotRemindButton'),
+            customButtons: [tr('runtime.cleanup.backupAndCleanButton')],
         }
     );
 
@@ -31,8 +32,12 @@ export async function checkAndCleanupLegacyChat() {
         return;
     }
     toastr.info(
-        `即将开始清理就聊天记录的变量${result === SillyTavern.POPUP_RESULT.CUSTOM1 ? '，自动生成备份' : ''}...`,
-        '[MVU]自动清理'
+        tr(
+            result === SillyTavern.POPUP_RESULT.CUSTOM1
+                ? 'runtime.cleanup.startingWithBackup'
+                : 'runtime.cleanup.starting'
+        ),
+        tr('runtime.cleanup.title')
     );
 
     if (result === SillyTavern.POPUP_RESULT.CUSTOM1 || result === 2) {
@@ -52,10 +57,20 @@ export async function checkAndCleanupLegacyChat() {
             });
             const data = await response.json();
             if (!response.ok) {
-                toastr.error(`聊天记录导出失败，放弃清理: ${data.message}`, '[MVU]自动清理');
+                toastr.error(
+                    tr('runtime.cleanup.exportFailed', {
+                        cause: _.escape(String(data.message)),
+                    }),
+                    tr('runtime.cleanup.title')
+                );
                 return;
             }
-            toastr.success(data.message);
+            toastr.success(
+                tr('runtime.cleanup.exportSucceeded', {
+                    message: _.escape(String(data.message)),
+                }),
+                tr('runtime.cleanup.title')
+            );
             const serialized = data.result;
             const blob = new Blob([serialized], { type: 'text/plain' });
             const url = URL.createObjectURL(blob);
@@ -65,7 +80,12 @@ export async function checkAndCleanupLegacyChat() {
             link.click();
             URL.revokeObjectURL(url);
         } catch (error) {
-            toastr.error(`聊天记录导出失败，放弃清理: ${error}`, '[MVU]自动清理');
+            toastr.error(
+                tr('runtime.cleanup.exportFailed', {
+                    cause: _.escape(String(error)),
+                }),
+                tr('runtime.cleanup.title')
+            );
             return;
         }
     }
@@ -76,8 +96,12 @@ export async function checkAndCleanupLegacyChat() {
         store.settings.自动清理变量.快照保留间隔
     );
     if (counter > 0) {
-        toastr.info(`已清理老聊天记录中的 ${counter} 条消息`, '[MVU]自动清理', {
-            timeOut: 1000,
-        });
+        toastr.info(
+            tr('runtime.cleanup.cleanedMessages', { count: counter }),
+            tr('runtime.cleanup.title'),
+            {
+                timeOut: 1000,
+            }
+        );
     }
 }

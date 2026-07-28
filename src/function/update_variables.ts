@@ -4,6 +4,7 @@ import {
     getSchemaForPath,
     reconcileAndApplySchema,
 } from '@/function/schema';
+import { tr } from '@/i18n';
 import { useDataStore } from '@/store';
 import { getLastValidVariable, isJsonPatch } from '@/util';
 import {
@@ -685,13 +686,14 @@ export async function updateVariables(
     });
     await eventEmit(variable_events.VARIABLE_UPDATE_STARTED, variables);
 
-    let error_info: { title: string; content: string } | undefined;
+    let error_info: { command: string; content: string } | undefined;
     let current_command: Command | undefined;
     const outError = function (content: string) {
-        const title = `发生变量更新错误, 可能需要重Roll: ${current_command?.full_match}`;
+        const command = current_command?.full_match ?? tr('runtime.variableUpdate.unknownCommand');
+        const title = tr('runtime.variableUpdate.errorTitle', { command });
         console.warn(`${title}\n${content}`);
         error_info = {
-            title: `[MVU]${title}`,
+            command,
             content,
         };
     };
@@ -747,7 +749,7 @@ export async function updateVariables(
                 // _.has 检查，确保路径存在
                 if (path !== '' && !_.has(variables.stat_data, path)) {
                     outError(
-                        `Path '${path}' does not exist in stat_data, skipping set command ${reason_str}`
+                        tr('runtime.variableUpdate.setPathMissing', { path, reason: reason_str })
                     );
                     continue;
                 }
@@ -853,7 +855,11 @@ export async function updateVariables(
                     !_.isObject(existingValue)
                 ) {
                     outError(
-                        `Cannot assign into path '${targetPath}' because it holds a primitive value (${typeof existingValue}). Operation skipped. ${reason_str}`
+                        tr('runtime.variableUpdate.assignPrimitive', {
+                            path: targetPath,
+                            type: typeof existingValue,
+                            reason: reason_str,
+                        })
                     );
                     continue;
                 }
@@ -864,7 +870,10 @@ export async function updateVariables(
                         if (command.args.length === 2) {
                             // 合并
                             outError(
-                                `SCHEMA VIOLATION: Cannot merge data into non-extensible object at path '${targetPath}'. ${reason_str}`
+                                tr('runtime.variableUpdate.mergeNonExtensibleObject', {
+                                    path: targetPath,
+                                    reason: reason_str,
+                                })
                             );
                             continue;
                         }
@@ -873,7 +882,11 @@ export async function updateVariables(
                             const newKey = String(parseCommandValue(command.args[1]));
                             if (!_.has(targetSchema.properties, newKey)) {
                                 outError(
-                                    `SCHEMA VIOLATION: Cannot assign new key '${newKey}' into non-extensible object at path '${targetPath}'. ${reason_str}`
+                                    tr('runtime.variableUpdate.assignUnknownKey', {
+                                        key: newKey,
+                                        path: targetPath,
+                                        reason: reason_str,
+                                    })
                                 );
                                 continue;
                             }
@@ -883,7 +896,10 @@ export async function updateVariables(
                         (targetSchema.extensible === false || targetSchema.extensible === undefined)
                     ) {
                         outError(
-                            `SCHEMA VIOLATION: Cannot assign elements into non-extensible array at path '${targetPath}'. ${reason_str}`
+                            tr('runtime.variableUpdate.assignNonExtensibleArray', {
+                                path: targetPath,
+                                reason: reason_str,
+                            })
                         );
                         continue;
                     }
@@ -894,7 +910,10 @@ export async function updateVariables(
                 ) {
                     // 验证3：如果要插入到新路径，确保其父路径存在且可扩展
                     outError(
-                        `Cannot assign into non-existent path '${targetPath}' without an extensible parent. ${reason_str}`
+                        tr('runtime.variableUpdate.assignMissingParent', {
+                            path: targetPath,
+                            reason: reason_str,
+                        })
                     );
                     continue;
                 }
@@ -955,7 +974,12 @@ export async function updateVariables(
                         } else {
                             // 不支持将数组或非对象合并到对象，记录错误
                             outError(
-                                `Cannot merge ${Array.isArray(valueToAssign) ? 'array' : 'non-object'} into object at '${path}'`
+                                tr(
+                                    Array.isArray(valueToAssign)
+                                        ? 'runtime.variableUpdate.mergeArrayIntoObject'
+                                        : 'runtime.variableUpdate.mergeNonObjectIntoObject',
+                                    { path }
+                                )
                             );
                             continue;
                         }
@@ -1062,17 +1086,16 @@ export async function updateVariables(
                         cleanUpMetadata(newValue);
                     } catch (error) {
                         // 应用失败，记录错误并继续处理下一命令
-                        if (error instanceof Error) {
-                            outError(
-                                `Failed to resolve template meta at '${path}', '${error.message}'`
-                            );
-                        } else {
-                            outError(`Failed to resolve template meta at '${path}', '${error}'`);
-                        }
+                        outError(
+                            tr('runtime.variableUpdate.templateResolutionFailed', {
+                                path,
+                                cause: error instanceof Error ? error.message : String(error),
+                            })
+                        );
                     }
                 } else {
                     // 插入失败，记录错误并继续处理下一命令
-                    outError(`Invalid arguments for _.assign on path '${path}'`);
+                    outError(tr('runtime.variableUpdate.assignInvalidArguments', { path }));
                     continue;
                 }
                 break;
@@ -1111,7 +1134,7 @@ export async function updateVariables(
                 // 验证路径存在，防止无效删除
                 // 不允许 _.remove('', 'val');
                 if (!_.has(variables.stat_data, path)) {
-                    outError(`undefined Path: ${path} in _.remove command`);
+                    outError(tr('runtime.variableUpdate.removePathUndefined', { path }));
                     continue;
                 }
 
@@ -1138,14 +1161,20 @@ export async function updateVariables(
 
                 if (keyOrIndexToRemove === undefined) {
                     outError(
-                        `Could not determine target for deletion for command on path '${path}' ${reason_str}`
+                        tr('runtime.variableUpdate.deleteTargetUndetermined', {
+                            path,
+                            reason: reason_str,
+                        })
                     );
                     continue;
                 }
                 // 只有当容器路径不是根路径（即不为空）时，才检查其是否存在
                 if (containerPath !== '' && !_.has(variables.stat_data, containerPath)) {
                     outError(
-                        `Cannot remove from non-existent path '${containerPath}'. ${reason_str}`
+                        tr('runtime.variableUpdate.removePathMissing', {
+                            path: containerPath,
+                            reason: reason_str,
+                        })
                     );
                     continue;
                 }
@@ -1156,7 +1185,10 @@ export async function updateVariables(
                     if (containerSchema.type === 'array') {
                         if (containerSchema.extensible !== true) {
                             outError(
-                                `SCHEMA VIOLATION: Cannot remove element from non-extensible array at path '${containerPath}'. ${reason_str}`
+                                tr('runtime.variableUpdate.removeNonExtensibleArray', {
+                                    path: containerPath,
+                                    reason: reason_str,
+                                })
                             );
                             continue;
                         }
@@ -1167,7 +1199,11 @@ export async function updateVariables(
                             containerSchema.properties[keyString].required === true
                         ) {
                             outError(
-                                `SCHEMA VIOLATION: Cannot remove required key '${keyString}' from path '${containerPath}'. ${reason_str}`
+                                tr('runtime.variableUpdate.removeRequiredKey', {
+                                    key: keyString,
+                                    path: containerPath,
+                                    reason: reason_str,
+                                })
                             );
                             continue;
                         }
@@ -1203,7 +1239,10 @@ export async function updateVariables(
                     // 如果目标是原始值（例如字符串），则无法执行删除操作
                     if (!Array.isArray(collection) && !_.isObject(collection)) {
                         outError(
-                            `Cannot remove from path '${path}' because it is not an array or object. Skipping command. ${reason_str}`
+                            tr('runtime.variableUpdate.removeNonCollection', {
+                                path,
+                                reason: reason_str,
+                            })
                         );
                         continue;
                     }
@@ -1261,7 +1300,7 @@ export async function updateVariables(
                     console.info(display_str);
                 } else {
                     // 删除失败，记录警告并继续
-                    outError(`Failed to execute remove on '${path}'`);
+                    outError(tr('runtime.variableUpdate.removeExecutionFailed', { path }));
                     continue;
                 }
                 break;
@@ -1271,7 +1310,10 @@ export async function updateVariables(
                 // 验证路径存在
                 if (!_.has(variables.stat_data, path)) {
                     outError(
-                        `Path '${path}' does not exist in stat_data, skipping add command ${reason_str}`
+                        tr('runtime.variableUpdate.addPathMissing', {
+                            path,
+                            reason: reason_str,
+                        })
                     );
                     continue;
                 }
@@ -1308,7 +1350,10 @@ export async function updateVariables(
                     if (potentialDate) {
                         if (typeof delta !== 'number') {
                             outError(
-                                `Delta '${command.args[1]}' for Date operation is not a number, skipping add command ${reason_str}`
+                                tr('runtime.variableUpdate.dateDeltaNotNumber', {
+                                    delta: command.args[1],
+                                    reason: reason_str,
+                                })
                             );
                             continue;
                         }
@@ -1345,7 +1390,10 @@ export async function updateVariables(
                         // 原有的处理 number 类型的逻辑
                         if (typeof delta !== 'number') {
                             outError(
-                                `Delta '${command.args[1]}' is not a number, skipping add command ${reason_str}`
+                                tr('runtime.variableUpdate.deltaNotNumber', {
+                                    delta: command.args[1],
+                                    reason: reason_str,
+                                })
                             );
                             continue;
                         }
@@ -1376,13 +1424,19 @@ export async function updateVariables(
                     } else {
                         // 如果值不是可识别的类型（日期、数字），则跳过
                         outError(
-                            `Path '${path}' value is not a date or number; skipping add command ${reason_str}`
+                            tr('runtime.variableUpdate.addUnsupportedValue', {
+                                path,
+                                reason: reason_str,
+                            })
                         );
                         continue;
                     }
                 } else {
                     outError(
-                        `Invalid number of arguments for _.add on path '${path}' ${reason_str}`
+                        tr('runtime.variableUpdate.addInvalidArguments', {
+                            path,
+                            reason: reason_str,
+                        })
                     );
                     continue;
                 }
@@ -1414,7 +1468,15 @@ export async function updateVariables(
         variables_before_update
     );
     if (error_info && useDataStore().settings.通知.变量更新出错) {
-        toastr.warning(error_info.content, error_info.title, { timeOut: 6000 });
+        toastr.warning(
+            tr('runtime.variableUpdate.errorDetail', {
+                detail: _.escape(error_info.content),
+            }),
+            tr('runtime.variableUpdate.errorTitle', {
+                command: _.escape(error_info.command),
+            }),
+            { timeOut: 6000 }
+        );
     }
 
     return is_modified;

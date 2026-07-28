@@ -9,6 +9,7 @@ import {
     recoverCharacterSettingsOverridePassthrough,
     serializeCharacterSettingsOverride,
 } from '@/function/character_override/schema';
+import { tr } from '@/i18n';
 import { useDataStore } from '@/store';
 import { klona } from 'klona';
 
@@ -59,7 +60,9 @@ function getMatchingRawEntries(data: RawWorldbookData): RawWorldbookEntry[] {
 async function loadRawWorldbook(worldbook_name: string): Promise<RawWorldbookData> {
     const loaded = (await SillyTavern.loadWorldInfo(worldbook_name)) as unknown;
     if (!_.isPlainObject(loaded) || !_.isPlainObject(_.get(loaded, 'entries'))) {
-        throw new Error(`无法读取角色世界书「${worldbook_name}」`);
+        throw new Error(
+            tr('runtime.characterOverride.worldbookReadFailed', { worldbook: worldbook_name })
+        );
     }
     return klona(loaded) as RawWorldbookData;
 }
@@ -71,7 +74,7 @@ function getFreeUid(data: RawWorldbookData): number {
             return uid;
         }
     }
-    throw new Error('角色世界书中没有可用的条目 UID');
+    throw new Error(tr('runtime.characterOverride.noAvailableUid'));
 }
 
 function makeCharacterBookEntry(uid: number, display_index: number, content: string) {
@@ -104,7 +107,7 @@ function createRawConfigEntry(
     });
     const raw = converted.entries[String(uid)] ?? converted.entries[uid];
     if (!raw) {
-        throw new Error('SillyTavern 未能创建角色卡配置条目');
+        throw new Error(tr('runtime.characterOverride.entryCreationFailed'));
     }
     return raw as RawWorldbookEntry;
 }
@@ -156,12 +159,15 @@ function findRawEntryRecord(
 
 async function confirmConflict(worldbook_name: string): Promise<boolean> {
     const result = await SillyTavern.callGenericPopup(
-        `角色世界书「${_.escape(worldbook_name)}」中的 ${CHARACTER_SETTINGS_OVERRIDE_ENTRY_NAME} 已被其他来源修改。是否使用待保存的角色卡配置覆盖它？`,
+        tr('runtime.characterOverride.conflictPrompt', {
+            worldbook: _.escape(worldbook_name),
+            entry: CHARACTER_SETTINGS_OVERRIDE_ENTRY_NAME,
+        }),
         SillyTavern.POPUP_TYPE.CONFIRM,
         '',
         {
-            okButton: '覆盖',
-            cancelButton: '加载最新配置',
+            okButton: tr('runtime.characterOverride.overwriteButton'),
+            cancelButton: tr('runtime.characterOverride.loadLatestButton'),
         }
     );
     return result === SillyTavern.POPUP_RESULT.AFFIRMATIVE;
@@ -203,7 +209,7 @@ class CharacterSettingsOverrideController {
             this.worldbook_name = getCharWorldbookNames('current').primary;
         } catch (error) {
             this.worldbook_name = null;
-            console.error('[MVU]读取角色世界书绑定失败', error);
+            console.error(tr('runtime.characterOverride.bindingReadFailedLog'), error);
         }
 
         if (!this.worldbook_name) {
@@ -231,8 +237,12 @@ class CharacterSettingsOverrideController {
             await this.reload();
         } catch (error) {
             const message = getErrorMessage(error);
-            console.error('[MVU]读取角色卡配置失败', error);
-            toastr.error(message, '[MVU]读取角色卡配置失败', { timeOut: 5000 });
+            console.error(tr('runtime.characterOverride.readFailedLog'), error);
+            toastr.error(
+                tr('runtime.common.errorCause', { cause: _.escape(message) }),
+                tr('runtime.characterOverride.readFailedTitle'),
+                { timeOut: 5000 }
+            );
             this.mirrorState({
                 status: 'error',
                 worldbook_name: this.worldbook_name,
@@ -265,7 +275,11 @@ class CharacterSettingsOverrideController {
             }
         }
 
-        console.error(`[MVU]停止角色卡配置控制器时仍未能保存「${this.worldbook_name}」中的修改`);
+        console.error(
+            tr('runtime.characterOverride.stopWithUnsavedChangesLog', {
+                worldbook: this.worldbook_name ?? '',
+            })
+        );
     }
 
     private async reload() {
@@ -323,10 +337,16 @@ class CharacterSettingsOverrideController {
                 is_valid: false,
                 revision: this.revision,
             });
-            console.error('[MVU]重新读取角色卡配置失败', error);
-            toastr.error(getErrorMessage(error), '[MVU]重新读取角色卡配置失败', {
-                timeOut: 5000,
-            });
+            console.error(tr('runtime.characterOverride.reloadFailedLog'), error);
+            toastr.error(
+                tr('runtime.common.errorCause', {
+                    cause: _.escape(getErrorMessage(error)),
+                }),
+                tr('runtime.characterOverride.reloadFailedTitle'),
+                {
+                    timeOut: 5000,
+                }
+            );
         }
     }
 
@@ -335,8 +355,12 @@ class CharacterSettingsOverrideController {
         const signature = matches.length > 1 ? matches.map(entry => entry.uid).join(',') : '';
         if (signature !== '' && signature !== this.duplicate_warning_signature) {
             toastr.warning(
-                `角色世界书「${this.worldbook_name}」中存在 ${matches.length} 个关闭的 ${CHARACTER_SETTINGS_OVERRIDE_ENTRY_NAME} 条目，仅使用扫描到的第一个。`,
-                '[MVU]角色卡配置重复',
+                tr('runtime.characterOverride.duplicateEntries', {
+                    worldbook: _.escape(this.worldbook_name ?? ''),
+                    count: matches.length,
+                    entry: CHARACTER_SETTINGS_OVERRIDE_ENTRY_NAME,
+                }),
+                tr('runtime.characterOverride.duplicateEntriesTitle'),
                 { timeOut: 5000 }
             );
         }
@@ -346,7 +370,11 @@ class CharacterSettingsOverrideController {
 
     private async applyWorldbookData(data: RawWorldbookData) {
         if (!_.isPlainObject(data.entries)) {
-            throw new Error(`角色世界书「${this.worldbook_name}」的数据格式无效`);
+            throw new Error(
+                tr('runtime.characterOverride.invalidWorldbookData', {
+                    worldbook: this.worldbook_name ?? '',
+                })
+            );
         }
 
         const matches = this.getMatchingEntries(data);
@@ -369,12 +397,18 @@ class CharacterSettingsOverrideController {
                     this.draft = {};
                 }
                 console.error(
-                    `[MVU]角色世界书「${this.worldbook_name}」的 ${CHARACTER_SETTINGS_OVERRIDE_ENTRY_NAME} 配置无效`,
+                    tr('runtime.characterOverride.invalidConfigurationLog', {
+                        worldbook: this.worldbook_name ?? '',
+                        entry: CHARACTER_SETTINGS_OVERRIDE_ENTRY_NAME,
+                    }),
                     error
                 );
                 toastr.error(
-                    `角色世界书「${this.worldbook_name}」中的配置无效，已按不存在处理：${getErrorMessage(error)}`,
-                    '[MVU]角色卡配置无效',
+                    tr('runtime.characterOverride.invalidConfiguration', {
+                        worldbook: _.escape(this.worldbook_name ?? ''),
+                        cause: _.escape(getErrorMessage(error)),
+                    }),
+                    tr('runtime.characterOverride.invalidConfigurationTitle'),
                     { timeOut: 7000 }
                 );
             }
@@ -481,10 +515,16 @@ class CharacterSettingsOverrideController {
                 failed_revision = this.saving_revision;
                 this.has_pending_save = true;
                 this.mirrorState({ has_pending_save: true });
-                console.error('[MVU]保存角色卡配置失败', error);
-                toastr.error(getErrorMessage(error), '[MVU]保存角色卡配置失败', {
-                    timeOut: 7000,
-                });
+                console.error(tr('runtime.characterOverride.saveFailedLog'), error);
+                toastr.error(
+                    tr('runtime.common.errorCause', {
+                        cause: _.escape(getErrorMessage(error)),
+                    }),
+                    tr('runtime.characterOverride.saveFailedTitle'),
+                    {
+                        timeOut: 7000,
+                    }
+                );
             })
             .finally(() => {
                 this.is_saving = false;
@@ -596,7 +636,7 @@ class CharacterSettingsOverrideController {
         try {
             SillyTavern.reloadWorldInfoEditor(worldbook_name);
         } catch (error) {
-            console.warn('[MVU]角色卡配置已保存，但世界书编辑器刷新失败', error);
+            console.warn(tr('runtime.characterOverride.editorRefreshFailedLog'), error);
         }
         return {
             status: 'saved',

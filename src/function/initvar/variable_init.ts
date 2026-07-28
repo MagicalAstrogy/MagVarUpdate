@@ -1,5 +1,6 @@
 import { cleanUpMetadata, EXTENSIBLE_MARKER, generateSchema } from '@/function/schema';
 import { updateVariables } from '@/function/update_variables';
+import { tr } from '@/i18n';
 import { useDataStore } from '@/store';
 import { getLastValidVariable } from '@/util';
 import {
@@ -28,13 +29,16 @@ export async function initCheck() {
 
     try {
         if (SillyTavern.chat.length === 0) {
-            console.error('不存在任何一条消息，退出');
-            toastr.error('需要有开场白才能初始化变量', '[MVU]变量初始化失败');
+            console.error(tr('runtime.initvar.noMessagesLog'));
+            toastr.error(
+                tr('runtime.initvar.greetingRequired'),
+                tr('runtime.initvar.initializationFailedTitle')
+            );
             return;
         }
         variables = getLastValidVariable(getLastMessageId() + 1) ?? createEmptyGameData();
-    } catch (e) {
-        console.error('不存在任何一条消息，退出');
+    } catch (_error) {
+        console.error(tr('runtime.initvar.noMessagesLog'));
         return;
     }
 
@@ -46,9 +50,7 @@ export async function initCheck() {
         variables.initialized_lorebooks = {};
     }
     if (Array.isArray(variables.initialized_lorebooks)) {
-        console.warn(
-            'Old "initialized_lorebooks" array format detected. Migrating to the new object format.'
-        );
+        console.warn(tr('runtime.initvar.oldLorebookFormatLog'));
         const oldArray = variables.initialized_lorebooks as string[];
         const newObject: Record<string, any[]> = {};
         for (const lorebookName of oldArray) {
@@ -126,7 +128,7 @@ export async function initCheck() {
     }
 
     if (useDataStore().effective_settings.兼容性.更新到聊天变量) {
-        console.info(`Init chat variables.`);
+        console.info(tr('runtime.initvar.chatVariablesInitializedLog'));
         await updateVariablesWith(data => _.assign(data, variables), { type: 'chat' });
     }
 
@@ -164,7 +166,11 @@ export async function initCheck() {
                                 correctlyMerge(overrided_initvar, init_variables);
                                 is_initvar_applied = true;
                             } catch (e) {
-                                console.error('failed to parse initvar block:' + e);
+                                console.error(
+                                    tr('runtime.initvar.blockParseFailedLog', {
+                                        cause: String(e),
+                                    })
+                                );
                             }
                         }
                         if (is_initvar_applied) {
@@ -183,7 +189,7 @@ export async function initCheck() {
                         // 此处调用的是新版 updateVariables，它将支持更多命令
                         // 不再需要手动调用 substitudeMacros，updateVariables 会处理
                         await updateVariables(swipe, current_data);
-                        console.log(`变量初始化完成`);
+                        console.log(tr('runtime.initvar.initializationCompletedLog'));
                         return current_data;
                     })
                 ),
@@ -196,13 +202,15 @@ export async function initCheck() {
     try {
         if (useDataStore().settings.通知.变量初始化成功) {
             // 输出构建信息
-            toastr.info(
-                `有新的世界书初始化变量被加载，当前使用世界书:<br>${Object.entries(
-                    variables.initialized_lorebooks ?? {}
+            const books = Object.entries(variables.initialized_lorebooks ?? {})
+                .map(
+                    ([key, value]) =>
+                        `- ${_.escape(key)}: ${_.escape(String(JSON.stringify(value)))}`
                 )
-                    .map(([key, value]) => `- ${key}: ${JSON.stringify(value)}`)
-                    .join('<br>')}`,
-                '[MVU]变量初始化成功',
+                .join('<br>');
+            toastr.info(
+                tr('runtime.initvar.initializationSucceeded', { books }),
+                tr('runtime.initvar.initializationSucceededTitle'),
                 {
                     escapeHtml: false,
                 }
@@ -231,7 +239,7 @@ export async function getEnabledLorebookList(): Promise<string[]> {
             enabled_lorebook_list.push(...char_lorebook.additional);
         }
     } catch (_e) {
-        console.warn('获取角色主 lorebook 失败，忽略', _e);
+        console.warn(tr('runtime.initvar.primaryLorebookReadFailedLog'), _e);
     }
     return enabled_lorebook_list;
 }
@@ -283,10 +291,19 @@ export async function loadInitVarData(
                     }
 
                     if (parseError) {
-                        console.error(`解析世界书条目'${entry.comment}'失败: ${parseError}`);
+                        console.error(
+                            tr('runtime.initvar.entryParseFailedLog', {
+                                comment: entry.comment ?? '',
+                                cause: String(parseError),
+                            })
+                        );
                         toastr.error(
-                            parseError.message,
-                            `[MVU] 解析世界书条目'${entry.comment}'失败`,
+                            tr('runtime.common.errorCause', {
+                                cause: _.escape(parseError.message),
+                            }),
+                            tr('runtime.initvar.entryParseFailedTitle', {
+                                comment: _.escape(entry.comment ?? ''),
+                            }),
                             {
                                 timeOut: 5000,
                             }
@@ -349,7 +366,7 @@ export async function getLastMessageVariables(): Promise<{
         if (first_msg && first_msg.length > 0) {
             last_chat_msg = first_msg;
         } else {
-            throw new Error('不存在任何一条消息');
+            throw new Error(tr('runtime.initvar.noMessages'));
         }
     }
 

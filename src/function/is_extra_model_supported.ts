@@ -1,3 +1,4 @@
+import { tr } from '@/i18n';
 import { PLOT_REGEX, UPDATE_REGEX } from '@/variable_def';
 
 export async function isExtraModelSupported(): Promise<boolean> {
@@ -12,7 +13,7 @@ export async function isExtraModelSupported(): Promise<boolean> {
             )
         );
     } catch {
-        console.warn('无法找到角色世界书，在多人聊天下不支持额外模型解析。');
+        console.warn(tr('runtime.extraModel.characterLorebookUnavailableLog'));
         return false;
     }
 }

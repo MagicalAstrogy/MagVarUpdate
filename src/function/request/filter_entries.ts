@@ -7,8 +7,25 @@ import {
     logEntryCommentFilterResult,
     testEntryCommentRegex,
 } from '@/function/request/entry_comment_regex';
+import { tr } from '@/i18n';
 import { useDataStore } from '@/store';
 import { PLOT_REGEX, UPDATE_REGEX } from '@/variable_def';
+
+function getFilterSourceLabel(source: EntryCommentFilterSource): string {
+    return tr(
+        source === '用户全局配置'
+            ? 'runtime.filter.globalSettingsSource'
+            : 'runtime.filter.characterSettingsSource'
+    );
+}
+
+function getFilterRegexLabel(label: '白名单正则' | '黑名单正则'): string {
+    return tr(
+        label === '白名单正则'
+            ? 'runtime.filter.whitelistRegexLabel'
+            : 'runtime.filter.blacklistRegexLabel'
+    );
+}
 
 export async function filterEntries(lores: {
     globalLore: Record<string, any>[];
@@ -28,8 +45,8 @@ export async function filterEntries(lores: {
     }
     if (store.settings.额外模型解析配置.应答格式 === '工具调用' && !isFunctionCallingSupported()) {
         toastr.warning(
-            '当前 TavernHelper 版本或 预设/API 不支持工具调用，已退化回 `随AI输出`',
-            '[MVU]无法使用工具调用',
+            tr('runtime.filter.toolCallingUnsupported'),
+            tr('runtime.filter.toolCallingUnsupportedTitle'),
             {
                 timeOut: 2000,
             }
@@ -98,8 +115,12 @@ export async function filterEntries(lores: {
         const result = compileEntryCommentRegex(value);
         if (result.error) {
             toastr.warning(
-                `${source}的${label}无效，已在本轮世界书条目过滤中忽略：${result.error}`,
-                '[MVU]世界书条目过滤正则无效',
+                tr('runtime.filter.invalidRegex', {
+                    source: getFilterSourceLabel(source),
+                    label: getFilterRegexLabel(label),
+                    cause: _.escape(result.error),
+                }),
+                tr('runtime.filter.invalidRegexTitle'),
                 { timeOut: 5000 }
             );
         }

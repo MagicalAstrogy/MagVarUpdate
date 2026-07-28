@@ -1,3 +1,5 @@
+import { tr } from '@/i18n';
+
 type ExtraModelPresetSettings = {
     max_completion_tokens?: number;
     temperature?: number;
@@ -186,17 +188,21 @@ export function getAvailableExtraModelPresetNames(): string[] {
 
 export function getExtraModelPreset(preset_name: string): ExtraModelPreset {
     if (!isNonEmptyString(preset_name)) {
-        throw new Error('未选择额外模型预设');
+        throw new Error(tr('runtime.preset.notSelected'));
     }
 
     const getPreset = getPresetGlobals().getPreset;
     if (typeof getPreset !== 'function') {
-        throw new Error('当前环境未提供 getPreset 接口');
+        throw new Error(tr('runtime.preset.apiUnavailable'));
     }
 
     const preset = getPreset(preset_name);
     if (!preset || !Array.isArray(preset.prompts)) {
-        throw new Error(`无法读取预设 '${preset_name}'`);
+        throw new Error(
+            tr('runtime.preset.readFailed', {
+                name: preset_name,
+            })
+        );
     }
 
     return preset;

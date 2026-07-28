@@ -7,6 +7,7 @@ import { initInitvar } from '@/function/initvar';
 import { initNotification } from '@/function/notification';
 import { initRequest } from '@/function/request';
 import { initResponse } from '@/function/update';
+import { tr } from '@/i18n';
 import { initPanel } from '@/panel';
 import { useDataStore } from '@/store';
 import { checkMinimumVersion } from '@util/common';
@@ -18,7 +19,13 @@ type Stop = () => void | Promise<void>;
 setActivePinia(getActivePinia() ?? createPinia());
 
 $(async () => {
-    await checkMinimumVersion('3.4.17', 'MVU变量框架');
+    const minimum_tavern_helper_version = '3.4.17';
+    await checkMinimumVersion(minimum_tavern_helper_version, {
+        message: tr('runtime.main.minimumVersionRequired', {
+            version: minimum_tavern_helper_version,
+        }),
+        title: tr('runtime.main.versionIncompatibleTitle'),
+    });
 
     const store = useDataStore();
     await store._wait_init();
@@ -72,8 +79,12 @@ $(async () => {
                 }
             })
             .catch(error => {
-                console.error('[MVU]切换聊天后重新初始化失败', error);
-                toastr.error(String(error), '[MVU]重新初始化失败', { timeOut: 5000 });
+                console.error(tr('runtime.main.chatReinitializeFailedLog'), error);
+                toastr.error(
+                    tr('runtime.common.errorCause', { cause: _.escape(String(error)) }),
+                    tr('runtime.main.reinitializeFailedTitle'),
+                    { timeOut: 5000 }
+                );
             });
         return chat_level_transition;
     };

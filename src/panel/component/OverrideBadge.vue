@@ -1,10 +1,12 @@
 <template>
     <span class="mvu-override-badge" :class="`mvu-override-badge--${kind}`">
-        {{ kind === 'override' ? '角色卡覆盖' : '角色卡规则叠加' }}
+        {{ kind === 'override' ? t('panel.badge.override') : t('panel.badge.additive') }}
     </span>
 </template>
 
 <script setup lang="ts">
+import { useMvuI18n } from '@/i18n';
+
 withDefaults(
     defineProps<{
         kind?: 'override' | 'additive';
@@ -13,6 +15,7 @@ withDefaults(
         kind: 'override',
     }
 );
+const { t } = useMvuI18n();
 </script>
 
 <style scoped>

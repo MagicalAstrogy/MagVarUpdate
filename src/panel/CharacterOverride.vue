@@ -1,16 +1,18 @@
 <template>
     <Detail :title="title">
         <dl class="mvu-character-override__metadata">
-            <dt>角色</dt>
-            <dd>{{ store.character_settings.character_name || '未检测到当前角色' }}</dd>
+            <dt>{{ t('panel.character.character') }}</dt>
+            <dd>
+                {{ store.character_settings.character_name || t('panel.character.noCharacter') }}
+            </dd>
 
-            <dt>角色世界书</dt>
+            <dt>{{ t('panel.character.worldBook') }}</dt>
             <dd>{{ worldbook_label }}</dd>
 
-            <dt>配置条目</dt>
+            <dt>{{ t('panel.character.configEntry') }}</dt>
             <dd>{{ entry_label }}</dd>
 
-            <dt>自动保存</dt>
+            <dt>{{ t('panel.character.autoSave') }}</dt>
             <dd aria-live="polite">{{ save_status_label }}</dd>
         </dl>
 
@@ -28,134 +30,204 @@
         </div>
 
         <fieldset class="mvu-character-override__fieldset" :disabled="!is_editable">
-            <Field label="更新方式">
+            <Field :label="t('panel.update.section')">
                 <select v-model="update_method_model" class="text_pole">
                     <option :value="INHERIT">
-                        跟随用户配置（当前：{{ store.settings.更新方式 }}）
+                        {{
+                            t('panel.character.inherit', {
+                                value: format_update_method(store.settings.更新方式),
+                            })
+                        }}
                     </option>
-                    <option value="随AI输出">随AI输出</option>
-                    <option value="额外模型解析">额外模型解析</option>
+                    <option value="随AI输出">{{ t('panel.update.method.aiOutput') }}</option>
+                    <option value="额外模型解析">
+                        {{ t('panel.update.method.extraModel') }}
+                    </option>
                 </select>
                 <div class="mvu-character-override__values">
-                    <span>用户配置：{{ store.settings.更新方式 }}</span>
-                    <span>当前生效：{{ store.effective_settings.更新方式 }}</span>
+                    <span>
+                        {{
+                            t('panel.character.userConfig', {
+                                value: format_update_method(store.settings.更新方式),
+                            })
+                        }}
+                    </span>
+                    <span>
+                        {{
+                            t('panel.character.effectiveConfig', {
+                                value: format_update_method(store.effective_settings.更新方式),
+                            })
+                        }}
+                    </span>
                 </div>
             </Field>
 
             <div class="mvu-character-override__group">
-                <strong class="mvu-character-override__group-title">额外模型解析</strong>
+                <strong class="mvu-character-override__group-title">
+                    {{ t('panel.character.extraModelGroup') }}
+                </strong>
 
-                <Field label="自动请求">
+                <Field :label="t('panel.character.autoRequest')">
                     <select v-model="auto_request_model" class="text_pole">
                         <option :value="INHERIT">
-                            跟随用户配置（当前：{{
-                                format_boolean(store.settings.额外模型解析配置.启用自动请求)
-                            }}）
+                            {{
+                                t('panel.character.inherit', {
+                                    value: format_boolean(
+                                        store.settings.额外模型解析配置.启用自动请求
+                                    ),
+                                })
+                            }}
                         </option>
-                        <option value="true">开启</option>
-                        <option value="false">关闭</option>
+                        <option value="true">{{ t('common.enabled') }}</option>
+                        <option value="false">{{ t('common.disabled') }}</option>
                     </select>
                     <div class="mvu-character-override__values">
                         <span>
-                            用户配置：{{
-                                format_boolean(store.settings.额外模型解析配置.启用自动请求)
+                            {{
+                                t('panel.character.userConfig', {
+                                    value: format_boolean(
+                                        store.settings.额外模型解析配置.启用自动请求
+                                    ),
+                                })
                             }}
                         </span>
                         <span>
-                            当前生效：{{
-                                format_boolean(
-                                    store.effective_settings.额外模型解析配置.启用自动请求
-                                )
+                            {{
+                                t('panel.character.effectiveConfig', {
+                                    value: format_boolean(
+                                        store.effective_settings.额外模型解析配置.启用自动请求
+                                    ),
+                                })
                             }}
                         </span>
                     </div>
                 </Field>
 
-                <Field label="角色卡世界书条目白名单正则">
+                <Field :label="t('panel.character.whitelist')">
                     <input
                         v-model="whitelist_model"
                         type="text"
                         class="text_pole"
-                        placeholder="角色|地点 或 /角色|地点/i"
+                        :placeholder="t('panel.prompt.whitelistPlaceholder', { or: '|' })"
                     />
                     <div v-if="whitelist_regex_error" class="mvu-character-override__regex-error">
-                        角色卡配置正则无效：{{ whitelist_regex_error }}
+                        {{
+                            t('panel.character.regexInvalid', {
+                                error: whitelist_regex_error,
+                            })
+                        }}
                     </div>
                     <div class="mvu-character-override__values">
                         <span>
-                            用户规则：{{
-                                format_rule(store.settings.额外模型解析配置.世界书条目白名单正则)
+                            {{
+                                t('panel.character.userRule', {
+                                    value: format_rule(
+                                        store.settings.额外模型解析配置.世界书条目白名单正则
+                                    ),
+                                })
                             }}
                         </span>
-                        <span>生效规则：用户白名单 OR 角色卡白名单</span>
+                        <span>{{ t('panel.character.whitelistEffective') }}</span>
                     </div>
                 </Field>
 
-                <Field label="角色卡世界书条目黑名单正则">
+                <Field :label="t('panel.character.blacklist')">
                     <input
                         v-model="blacklist_model"
                         type="text"
                         class="text_pole"
-                        placeholder="临时|禁用 或 /临时|禁用/i"
+                        :placeholder="t('panel.prompt.blacklistPlaceholder', { or: '|' })"
                     />
                     <div v-if="blacklist_regex_error" class="mvu-character-override__regex-error">
-                        角色卡配置正则无效：{{ blacklist_regex_error }}
+                        {{
+                            t('panel.character.regexInvalid', {
+                                error: blacklist_regex_error,
+                            })
+                        }}
                     </div>
                     <div class="mvu-character-override__values">
                         <span>
-                            用户规则：{{
-                                format_rule(store.settings.额外模型解析配置.世界书条目黑名单正则)
+                            {{
+                                t('panel.character.userRule', {
+                                    value: format_rule(
+                                        store.settings.额外模型解析配置.世界书条目黑名单正则
+                                    ),
+                                })
                             }}
                         </span>
-                        <span>生效规则：用户黑名单 OR 角色卡黑名单</span>
+                        <span>{{ t('panel.character.blacklistEffective') }}</span>
                     </div>
                 </Field>
             </div>
 
             <div class="mvu-character-override__group">
-                <strong class="mvu-character-override__group-title">兼容性</strong>
+                <strong class="mvu-character-override__group-title">
+                    {{ t('panel.compatibility.section') }}
+                </strong>
 
-                <Field label="变量更新到聊天变量">
+                <Field :label="t('panel.compatibility.updateChatVariables')">
                     <select v-model="update_chat_variables_model" class="text_pole">
                         <option :value="INHERIT">
-                            跟随用户配置（当前：{{
-                                format_boolean(store.settings.兼容性.更新到聊天变量)
-                            }}）
+                            {{
+                                t('panel.character.inherit', {
+                                    value: format_boolean(store.settings.兼容性.更新到聊天变量),
+                                })
+                            }}
                         </option>
-                        <option value="true">开启</option>
-                        <option value="false">关闭</option>
+                        <option value="true">{{ t('common.enabled') }}</option>
+                        <option value="false">{{ t('common.disabled') }}</option>
                     </select>
                     <div class="mvu-character-override__values">
                         <span>
-                            用户配置：{{ format_boolean(store.settings.兼容性.更新到聊天变量) }}
+                            {{
+                                t('panel.character.userConfig', {
+                                    value: format_boolean(store.settings.兼容性.更新到聊天变量),
+                                })
+                            }}
                         </span>
                         <span>
-                            当前生效：{{
-                                format_boolean(store.effective_settings.兼容性.更新到聊天变量)
+                            {{
+                                t('panel.character.effectiveConfig', {
+                                    value: format_boolean(
+                                        store.effective_settings.兼容性.更新到聊天变量
+                                    ),
+                                })
                             }}
                         </span>
                     </div>
                 </Field>
 
-                <Field label="sendas 不视为 user 消息">
+                <Field :label="t('panel.compatibility.sendasNotUser')">
                     <select v-model="sendas_not_user_model" class="text_pole">
                         <option :value="INHERIT">
-                            跟随用户配置（当前：{{
-                                format_boolean(store.settings.兼容性.sendas不视为user消息)
-                            }}）
+                            {{
+                                t('panel.character.inherit', {
+                                    value: format_boolean(
+                                        store.settings.兼容性.sendas不视为user消息
+                                    ),
+                                })
+                            }}
                         </option>
-                        <option value="true">开启</option>
-                        <option value="false">关闭</option>
+                        <option value="true">{{ t('common.enabled') }}</option>
+                        <option value="false">{{ t('common.disabled') }}</option>
                     </select>
                     <div class="mvu-character-override__values">
                         <span>
-                            用户配置：{{
-                                format_boolean(store.settings.兼容性.sendas不视为user消息)
+                            {{
+                                t('panel.character.userConfig', {
+                                    value: format_boolean(
+                                        store.settings.兼容性.sendas不视为user消息
+                                    ),
+                                })
                             }}
                         </span>
                         <span>
-                            当前生效：{{
-                                format_boolean(store.effective_settings.兼容性.sendas不视为user消息)
+                            {{
+                                t('panel.character.effectiveConfig', {
+                                    value: format_boolean(
+                                        store.effective_settings.兼容性.sendas不视为user消息
+                                    ),
+                                })
                             }}
                         </span>
                     </div>
@@ -169,6 +241,7 @@
 import { setCharacterSettingsOverride } from '@/function/character_override';
 import type { CharacterSettingsOverridePath } from '@/function/character_override/schema';
 import { compileEntryCommentRegex } from '@/function/request/entry_comment_regex';
+import { useMvuI18n } from '@/i18n';
 import Detail from '@/panel/component/Detail.vue';
 import Field from '@/panel/component/Field.vue';
 import { useDataStore } from '@/store';
@@ -177,9 +250,14 @@ import type { WritableComputedRef } from 'vue';
 
 const INHERIT = '__inherit__';
 const store = useDataStore();
+const { t } = useMvuI18n();
 
-const title = computed(
-    () => `当前角色卡配置（${store.is_character_settings_override_active ? '覆盖中' : '未启用'}）`
+const title = computed(() =>
+    t(
+        store.is_character_settings_override_active
+            ? 'panel.character.titleActive'
+            : 'panel.character.titleInactive'
+    )
 );
 
 const is_editable = computed(
@@ -190,65 +268,65 @@ const is_editable = computed(
 
 const worldbook_label = computed(() => {
     if (store.character_settings.status === 'loading') {
-        return '正在读取…';
+        return t('panel.character.reading');
     }
     if (!store.character_settings.worldbook_name) {
-        return '未绑定';
+        return t('panel.character.unbound');
     }
     return store.character_settings.worldbook_name;
 });
 
 const entry_label = computed(() => {
     if (store.character_settings.status === 'loading') {
-        return '尚未读取';
+        return t('panel.character.notRead');
     }
     if (
         store.character_settings.status === 'unbound' ||
         store.character_settings.status === 'error'
     ) {
-        return '不可用';
+        return t('common.unavailable');
     }
     if (store.character_settings.entry_uid === null) {
-        return '尚未创建';
+        return t('panel.character.notCreated');
     }
-    return `[config_override]（UID ${store.character_settings.entry_uid}，关闭）`;
+    return t('panel.character.entry', { uid: store.character_settings.entry_uid });
 });
 
 const save_status_label = computed(() => {
     if (store.character_settings.status === 'loading') {
-        return '尚未读取';
+        return t('panel.character.notRead');
     }
     if (
         store.character_settings.status === 'unbound' ||
         store.character_settings.status === 'error'
     ) {
-        return '不可用';
+        return t('common.unavailable');
     }
     if (store.character_settings.is_saving) {
-        return '正在保存…';
+        return t('panel.character.saving');
     }
     if (store.character_settings.has_pending_save) {
-        return '等待自动保存';
+        return t('panel.character.pendingSave');
     }
-    return '无待保存修改';
+    return t('panel.character.noPendingSave');
 });
 
 const status_message = computed(() => {
     switch (store.character_settings.status) {
         case 'loading':
-            return '正在读取当前角色卡绑定的世界书。';
+            return t('panel.character.status.loading');
         case 'unbound':
-            return '当前角色卡未绑定角色世界书，角色卡配置不可用。';
+            return t('panel.character.status.unbound');
         case 'error':
-            return '角色世界书读取失败，暂时无法编辑角色卡配置。';
+            return t('panel.character.status.error');
         case 'ready':
             if (!store.character_settings.is_valid) {
-                return '现有 [config_override] 配置无效，修改任一配置后将自动保存以修复该条目。';
+                return t('panel.character.status.invalid');
             }
             if (store.character_settings.entry_uid === null) {
-                return '修改配置时将自动创建关闭的 [config_override] 条目。';
+                return t('panel.character.status.willCreate');
             }
-            return 'MVU 会主动读取这个关闭的 [config_override] 条目；关闭状态不会使配置失效。';
+            return t('panel.character.status.disabledStillActive');
     }
     return '';
 });
@@ -302,11 +380,17 @@ const blacklist_regex_error = computed(
 );
 
 function format_boolean(value: boolean): string {
-    return value ? '开启' : '关闭';
+    return value ? t('common.enabled') : t('common.disabled');
+}
+
+function format_update_method(value: '随AI输出' | '额外模型解析'): string {
+    return value === '随AI输出'
+        ? t('panel.update.method.aiOutput')
+        : t('panel.update.method.extraModel');
 }
 
 function format_rule(value: string): string {
-    return value.trim() === '' ? '未设置' : value;
+    return value.trim() === '' ? t('common.notSet') : value;
 }
 </script>
 

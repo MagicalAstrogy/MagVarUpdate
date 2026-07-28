@@ -702,6 +702,43 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@intlify/core-base@npm:11.1.12":
+  version: 11.1.12
+  resolution: "@intlify/core-base@npm:11.1.12"
+  dependencies:
+    "@intlify/message-compiler": 11.1.12
+    "@intlify/shared": 11.1.12
+  checksum: 95bd3cceb182806a556ad0bfe65160ed5643225429583f6f0daa21adef550a3db172fa7e67a84d335f7c0a83cd94a6667fb8013d007edc0ea497b00db92e5c41
+  languageName: node
+  linkType: hard
+
+"@intlify/devtools-types@npm:11.1.12":
+  version: 11.1.12
+  resolution: "@intlify/devtools-types@npm:11.1.12"
+  dependencies:
+    "@intlify/core-base": 11.1.12
+    "@intlify/shared": 11.1.12
+  checksum: ed6a7b3a545a040e0d4b039463dbbe0f7f31ee090294daccfcf6213cc50908603c553f905ff23c1d817ed16603aa7040198c75cf07a256e0c2784e64b749c69c
+  languageName: node
+  linkType: hard
+
+"@intlify/message-compiler@npm:11.1.12":
+  version: 11.1.12
+  resolution: "@intlify/message-compiler@npm:11.1.12"
+  dependencies:
+    "@intlify/shared": 11.1.12
+    source-map-js: ^1.0.2
+  checksum: eb801a63d8ae8b0f6860624ea1a5017739d511deeeef2457b7cd67da6152b217b6f46ced1ceb6b0de2863ed71dea3555f7e19ab3aef4f410e75413b6799ea3eb
+  languageName: node
+  linkType: hard
+
+"@intlify/shared@npm:11.1.12":
+  version: 11.1.12
+  resolution: "@intlify/shared@npm:11.1.12"
+  checksum: 733fb7d4321faa465a5b66972fa1e20d50ff8c37ff33536f65ae1269a72c859ade7a5fca6567837fe5a4330f59348d1be2949068f36d26ad39a06ea5c6a54eb5
+  languageName: node
+  linkType: hard
+
 "@isaacs/balanced-match@npm:^4.0.1":
   version: 4.0.1
   resolution: "@isaacs/balanced-match@npm:4.0.1"
@@ -2195,6 +2232,13 @@ __metadata:
     "@vue/compiler-dom": 3.5.22
     "@vue/shared": 3.5.22
   checksum: 75c50989d214a8a0dfa6e3424abe53be1b8064fd2148cf5c9245996a3ab9ec6547010bc911083f539108e777e5a2e106f2f5aa890049004b0e8a12c9a238c485
+  languageName: node
+  linkType: hard
+
+"@vue/devtools-api@npm:^6.5.0":
+  version: 6.6.4
+  resolution: "@vue/devtools-api@npm:6.6.4"
+  checksum: beccd79c7c7794ea511e35581fbbe5411d3c5d63b2418bc3771efc66959966df4cbfc391ff5954028e2728eb0f0e37b41722e1c39fde61295f2814a143d2ef0e
   languageName: node
   linkType: hard
 
@@ -6121,6 +6165,7 @@ __metadata:
   resolution: "mag-variable-update@workspace:."
   dependencies:
     "@eslint/js": ^9.29.0
+    "@intlify/devtools-types": 11.1.12
     "@tailwindcss/postcss": ^4.1.13
     "@types/jest": ^29.5.14
     "@types/jquery": ^3.5.32
@@ -6181,6 +6226,7 @@ __metadata:
     unplugin-vue-components: ^31.0.0
     vue: ^3.5.21
     vue-eslint-parser: ^10.2.0
+    vue-i18n: 11.1.12
     vue-loader: ^17.4.2
     vue-style-loader: ^4.1.3
     webpack: ^5.105.0
@@ -8043,7 +8089,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"source-map-js@npm:^1.0.1, source-map-js@npm:^1.2.1":
+"source-map-js@npm:^1.0.1, source-map-js@npm:^1.0.2, source-map-js@npm:^1.2.1":
   version: 1.2.1
   resolution: "source-map-js@npm:1.2.1"
   checksum: 4eb0cd997cdf228bc253bcaff9340afeb706176e64868ecd20efbe6efea931465f43955612346d6b7318789e5265bdc419bc7669c1cebe3db0eb255f57efa76b
@@ -9161,6 +9207,19 @@ __metadata:
   peerDependencies:
     eslint: ^8.57.0 || ^9.0.0
   checksum: 164089513ebe12edc0855d35577c5e12f06d7e1d519ce481561e8ac2cad7c7247496c838b76627bf86c932ce7b2094b30c61e2d607c6793787c4b8a2ca142579
+  languageName: node
+  linkType: hard
+
+"vue-i18n@npm:11.1.12":
+  version: 11.1.12
+  resolution: "vue-i18n@npm:11.1.12"
+  dependencies:
+    "@intlify/core-base": 11.1.12
+    "@intlify/shared": 11.1.12
+    "@vue/devtools-api": ^6.5.0
+  peerDependencies:
+    vue: ^3.0.0
+  checksum: 0785714ed4a9a9190719eda3787f9ac942c3b62d2c06d3ad9207a39224494958c42778158d4e87e7749f4836f0c30b9737d27e20718a6561421cff75c4ee7bc4
   languageName: node
   linkType: hard
 

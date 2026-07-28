@@ -1,4 +1,5 @@
 import { compileEntryCommentRegex } from '@/function/request/entry_comment_regex';
+import { tr } from '@/i18n';
 import { klona } from 'klona';
 import * as z from 'zod';
 
@@ -115,7 +116,7 @@ export function getCharacterSettingsOverrideJsonSchema(): Record<string, unknown
 export function parseCharacterSettingsOverrideContent(content: string): CharacterSettingsOverride {
     const document = JSON.parse(content) as unknown;
     if (!_.isPlainObject(document)) {
-        throw new Error('配置正文必须是 JSON 对象');
+        throw new Error(tr('runtime.characterOverride.contentMustBeObject'));
     }
 
     const { schema: _embedded_schema, ...draft } = document as Record<string, unknown>;

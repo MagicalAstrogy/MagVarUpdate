@@ -12,6 +12,7 @@ import { watch } from 'vue';
 // Provide a default SillyTavern mock so Pinia stores can read/write settings
 (globalThis as any).SillyTavern = {
     extensionSettings: {},
+    getCurrentLocale: jest.fn().mockReturnValue('zh-CN'),
     saveSettingsDebounced: jest.fn(),
     saveChat: jest.fn().mockResolvedValue(undefined),
     callGenericPopup: jest.fn().mockResolvedValue(undefined),
@@ -113,6 +114,12 @@ const __eventHandlers = new Map<string, Array<(...args: unknown[]) => unknown>>(
 beforeEach(() => {
     setActivePinia(createPinia());
     __eventHandlers.clear();
+    const silly_tavern = (globalThis as any).SillyTavern;
+    if (jest.isMockFunction(silly_tavern.getCurrentLocale)) {
+        silly_tavern.getCurrentLocale.mockReturnValue('zh-CN');
+    } else {
+        silly_tavern.getCurrentLocale = jest.fn().mockReturnValue('zh-CN');
+    }
     (globalThis as any).SillyTavern.chatCompletionSettings = { function_calling: true };
     (globalThis as any).builtin.saveSettings = jest.fn().mockResolvedValue(undefined);
     (globalThis as any).stopGenerationById = jest.fn();

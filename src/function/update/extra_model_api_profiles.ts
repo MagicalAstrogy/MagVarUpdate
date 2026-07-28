@@ -1,3 +1,5 @@
+import { tr } from '@/i18n';
+
 export type ExtraModelApiProfile = {
     [key: string]: unknown;
     名称: string;
@@ -46,7 +48,7 @@ export function upsertExtraModelApiProfile(
 ): ExtraModelApiProfile[] {
     const normalized_name = profile.名称.trim();
     if (!normalized_name) {
-        throw new Error('API 方案名称不能为空');
+        throw new Error(tr('runtime.apiProfile.nameRequired'));
     }
 
     const next_profile = {
@@ -214,7 +216,11 @@ export function selectExtraModelApiProfile(
 ): ExtraModelApiProfileFields {
     const profile = config.api方案列表.find(item => item.名称 === profile_name);
     if (!profile) {
-        throw new Error(`未找到 API 方案: ${profile_name}`);
+        throw new Error(
+            tr('runtime.apiProfile.notFound', {
+                name: profile_name,
+            })
+        );
     }
     return applyExtraModelApiProfile(config, profile);
 }
@@ -225,14 +231,18 @@ export function saveCurrentExtraModelApiProfile(
 ): ExtraModelApiProfileFields {
     const target_name = (profile_name ?? config.当前api方案).trim();
     if (!target_name) {
-        throw new Error('请先输入或选择一个 API 方案名称');
+        throw new Error(tr('runtime.apiProfile.selectOrEnterName'));
     }
 
     if (
         hasExtraModelApiProfile(config.api方案列表, target_name) &&
         config.当前api方案.trim() !== target_name
     ) {
-        throw new Error(`API 方案「${target_name}」已存在`);
+        throw new Error(
+            tr('runtime.apiProfile.alreadyExists', {
+                name: target_name,
+            })
+        );
     }
 
     const source_profile = config.api方案列表.find(item => item.名称 === config.当前api方案.trim());
@@ -254,10 +264,14 @@ export function saveAsNewExtraModelApiProfile(
 ): ExtraModelApiProfileFields {
     const target_name = profile_name.trim();
     if (!target_name) {
-        throw new Error('请先输入新方案名称');
+        throw new Error(tr('runtime.apiProfile.enterNewName'));
     }
     if (hasExtraModelApiProfile(config.api方案列表, target_name)) {
-        throw new Error(`API 方案「${target_name}」已存在`);
+        throw new Error(
+            tr('runtime.apiProfile.alreadyExists', {
+                name: target_name,
+            })
+        );
     }
     return saveCurrentExtraModelApiProfile(config, target_name);
 }
