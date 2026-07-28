@@ -248,7 +248,7 @@ function showLastFilteredEntriesPopup() {
         content.append(table);
     }
 
-    SillyTavern.callGenericPopup(content, SillyTavern.POPUP_TYPE.TEXT, '', {
+    SillyTavern.callGenericPopup(content.outerHTML, SillyTavern.POPUP_TYPE.TEXT, '', {
         allowVerticalScrolling: true,
         leftAlign: true,
         wide: true,
