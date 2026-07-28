@@ -17,6 +17,7 @@ describe('filterEntries', () => {
         store.settings.额外模型解析配置.应答格式 = '聊天消息';
         store.settings.额外模型解析配置.世界书条目白名单正则 = '';
         store.settings.额外模型解析配置.世界书条目黑名单正则 = '';
+        store.resetCharacterSettings();
 
         store.runtimes.unsupported_warnings = '';
         store.runtimes.is_during_extra_analysis = false;
@@ -239,6 +240,7 @@ describe('filterEntries', () => {
                 world: 'PlotWorld',
                 comment: '地点B设定',
                 reason: '白名单',
+                sources: ['用户全局配置'],
             },
         ]);
         expect(consoleLogSpy).toHaveBeenCalledWith(ENTRY_COMMENT_FILTER_LOG_TITLE, [
@@ -247,6 +249,7 @@ describe('filterEntries', () => {
                 world: 'PlotWorld',
                 comment: '地点B设定',
                 reason: '白名单',
+                sources: ['用户全局配置'],
             },
         ]);
     });
@@ -305,12 +308,14 @@ describe('filterEntries', () => {
                 world: 'PlotWorld',
                 comment: '地点设定',
                 reason: '黑名单',
+                sources: ['用户全局配置'],
             },
             {
                 lore: 'globalLore',
                 world: 'PlotWorld',
                 comment: '物品设定',
                 reason: '白名单',
+                sources: ['用户全局配置'],
             },
         ]);
     });
@@ -325,6 +330,7 @@ describe('filterEntries', () => {
                 world: 'OldWorld',
                 comment: 'old',
                 reason: '黑名单',
+                sources: ['用户全局配置'],
             },
         ];
         store.settings.额外模型解析配置.世界书条目白名单正则 = '角色';
@@ -454,6 +460,175 @@ describe('filterEntries', () => {
         expect(lores.globalLore).toEqual([makeEntry('PlotWorld', 'keep entry')]);
         expect((globalThis as any).toastr.warning).toHaveBeenCalledWith(
             expect.stringContaining('白名单正则无效'),
+            '[MVU]世界书条目过滤正则无效',
+            { timeOut: 5000 }
+        );
+    });
+
+    test('combines global and character whitelist regexes with OR and records both sources on failure', async () => {
+        const store = useDataStore();
+
+        store.runtimes.is_during_extra_analysis = true;
+        store.settings.额外模型解析配置.世界书条目白名单正则 = '全局允许';
+        store.character_settings.draft = {
+            额外模型解析配置: {
+                世界书条目白名单正则: '角色允许',
+            },
+        };
+        store.character_settings.is_valid = true;
+
+        const lores = {
+            globalLore: [
+                makeEntry('PlotWorld', '[mvu_plot]'),
+                makeEntry('PlotWorld', '全局允许条目'),
+                makeEntry('PlotWorld', '角色允许条目'),
+                makeEntry('PlotWorld', '其他条目'),
+            ],
+            characterLore: [makeEntry('WorldA', '[mvu_update]')],
+            chatLore: [],
+            personaLore: [],
+        };
+
+        mockGetLorebookEntries.mockResolvedValue(cloneEntries(lores.characterLore));
+
+        await filterEntries(lores);
+
+        expect(lores.globalLore).toEqual([
+            makeEntry('PlotWorld', '全局允许条目'),
+            makeEntry('PlotWorld', '角色允许条目'),
+        ]);
+        expect(store.runtimes.上次世界书条目过滤结果).toEqual([
+            {
+                lore: 'globalLore',
+                world: 'PlotWorld',
+                comment: '其他条目',
+                reason: '白名单',
+                sources: ['用户全局配置', '角色卡配置'],
+            },
+        ]);
+    });
+
+    test('combines global and character blacklist regexes with OR and records only matching sources', async () => {
+        const store = useDataStore();
+
+        store.runtimes.is_during_extra_analysis = true;
+        store.settings.额外模型解析配置.世界书条目黑名单正则 = '全局禁用|共同禁用';
+        store.character_settings.draft = {
+            额外模型解析配置: {
+                世界书条目黑名单正则: '角色禁用|共同禁用',
+            },
+        };
+        store.character_settings.is_valid = true;
+
+        const lores = {
+            globalLore: [
+                makeEntry('PlotWorld', '[mvu_plot]'),
+                makeEntry('PlotWorld', '保留条目'),
+                makeEntry('PlotWorld', '全局禁用条目'),
+                makeEntry('PlotWorld', '角色禁用条目'),
+                makeEntry('PlotWorld', '共同禁用条目'),
+            ],
+            characterLore: [makeEntry('WorldA', '[mvu_update]')],
+            chatLore: [],
+            personaLore: [],
+        };
+
+        mockGetLorebookEntries.mockResolvedValue(cloneEntries(lores.characterLore));
+
+        await filterEntries(lores);
+
+        expect(lores.globalLore).toEqual([makeEntry('PlotWorld', '保留条目')]);
+        expect(store.runtimes.上次世界书条目过滤结果).toEqual([
+            {
+                lore: 'globalLore',
+                world: 'PlotWorld',
+                comment: '全局禁用条目',
+                reason: '黑名单',
+                sources: ['用户全局配置'],
+            },
+            {
+                lore: 'globalLore',
+                world: 'PlotWorld',
+                comment: '角色禁用条目',
+                reason: '黑名单',
+                sources: ['角色卡配置'],
+            },
+            {
+                lore: 'globalLore',
+                world: 'PlotWorld',
+                comment: '共同禁用条目',
+                reason: '黑名单',
+                sources: ['用户全局配置', '角色卡配置'],
+            },
+        ]);
+    });
+
+    test('ignores character regexes while character settings are invalid', async () => {
+        const store = useDataStore();
+
+        store.runtimes.is_during_extra_analysis = true;
+        store.settings.额外模型解析配置.世界书条目白名单正则 = '全局允许';
+        store.character_settings.draft = {
+            额外模型解析配置: {
+                世界书条目白名单正则: '角色允许',
+                世界书条目黑名单正则: '[',
+            },
+        };
+        store.character_settings.is_valid = false;
+
+        const lores = {
+            globalLore: [
+                makeEntry('PlotWorld', '[mvu_plot]'),
+                makeEntry('PlotWorld', '全局允许条目'),
+                makeEntry('PlotWorld', '角色允许条目'),
+            ],
+            characterLore: [makeEntry('WorldA', '[mvu_update]')],
+            chatLore: [],
+            personaLore: [],
+        };
+
+        mockGetLorebookEntries.mockResolvedValue(cloneEntries(lores.characterLore));
+
+        await filterEntries(lores);
+
+        expect(lores.globalLore).toEqual([makeEntry('PlotWorld', '全局允许条目')]);
+        expect((globalThis as any).toastr.warning).not.toHaveBeenCalledWith(
+            expect.stringContaining('角色卡配置'),
+            '[MVU]世界书条目过滤正则无效',
+            expect.anything()
+        );
+    });
+
+    test('identifies the configuration source of each invalid regex warning', async () => {
+        const store = useDataStore();
+
+        store.runtimes.is_during_extra_analysis = true;
+        store.settings.额外模型解析配置.世界书条目白名单正则 = '[';
+        store.character_settings.draft = {
+            额外模型解析配置: {
+                世界书条目黑名单正则: '(',
+            },
+        };
+        store.character_settings.is_valid = true;
+
+        const lores = {
+            globalLore: [makeEntry('PlotWorld', '[mvu_plot]'), makeEntry('PlotWorld', '条目')],
+            characterLore: [makeEntry('WorldA', '[mvu_update]')],
+            chatLore: [],
+            personaLore: [],
+        };
+
+        mockGetLorebookEntries.mockResolvedValue(cloneEntries(lores.characterLore));
+
+        await filterEntries(lores);
+
+        expect((globalThis as any).toastr.warning).toHaveBeenCalledWith(
+            expect.stringContaining('用户全局配置的白名单正则无效'),
+            '[MVU]世界书条目过滤正则无效',
+            { timeOut: 5000 }
+        );
+        expect((globalThis as any).toastr.warning).toHaveBeenCalledWith(
+            expect.stringContaining('角色卡配置的黑名单正则无效'),
             '[MVU]世界书条目过滤正则无效',
             { timeOut: 5000 }
         );

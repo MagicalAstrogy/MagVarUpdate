@@ -2,11 +2,17 @@
     <Section label="变量更新方式">
         <template #label-suffix>
             <HelpIcon :help="update_method_help" />
+            <OverrideBadge v-if="store.has_character_settings_override('更新方式')" />
         </template>
         <template #content>
             <Method />
 
-            <template v-if="store.settings.更新方式 === '额外模型解析'">
+            <template
+                v-if="
+                    store.settings.更新方式 === '额外模型解析' ||
+                    store.effective_settings.更新方式 === '额外模型解析'
+                "
+            >
                 <Prompt />
                 <Request />
                 <Source />
@@ -17,6 +23,7 @@
 
 <script setup lang="ts">
 import HelpIcon from '@/panel/component/HelpIcon.vue';
+import OverrideBadge from '@/panel/component/OverrideBadge.vue';
 import Section from '@/panel/component/Section.vue';
 import Method from '@/panel/update/Method.vue';
 import Prompt from '@/panel/update/Prompt.vue';

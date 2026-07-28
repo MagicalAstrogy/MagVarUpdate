@@ -231,7 +231,7 @@ async function onVariableUpdatedCall(args: any): Promise<string> {
     }
 
     const has_variable_modified = await updateVariables(args.delta, variables);
-    if (has_variable_modified && useDataStore().settings.兼容性.更新到聊天变量) {
+    if (has_variable_modified && useDataStore().effective_settings.兼容性.更新到聊天变量) {
         await replaceVariables(variables, { type: 'chat' });
     }
     await replaceVariables(variables, { type: 'message', message_id: message_id });
@@ -339,7 +339,7 @@ export function registerFunction() {
 export function overrideToolRequest(generate_data: any) {
     const store = useDataStore();
     if (
-        store.settings.更新方式 !== '额外模型解析' ||
+        store.effective_settings.更新方式 !== '额外模型解析' ||
         store.settings.额外模型解析配置.应答格式 !== '工具调用'
     ) {
         return;

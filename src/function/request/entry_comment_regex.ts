@@ -3,11 +3,14 @@ export type EntryCommentRegexCompileResult = {
     error?: string;
 };
 
+export type EntryCommentFilterSource = '用户全局配置' | '角色卡配置';
+
 export type EntryCommentFilterResult = {
     lore: 'globalLore' | 'characterLore' | 'chatLore' | 'personaLore';
     world: string;
     comment: string;
     reason: '白名单' | '黑名单';
+    sources: EntryCommentFilterSource[];
 };
 
 export const ENTRY_COMMENT_FILTER_LOG_TITLE = '[MVU]世界书条目黑/白名单筛选结果';

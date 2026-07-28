@@ -68,6 +68,7 @@
                 <HelpIcon
                     help="留空关闭；非空时，额外模型解析阶段只保留 comment 匹配该正则的世界书条目。支持 角色|地点 或 /角色|地点/i。"
                 />
+                <OverrideBadge v-if="has_active_character_whitelist" kind="additive" />
             </template>
             <input
                 v-model="store.settings.额外模型解析配置.世界书条目白名单正则"
@@ -85,6 +86,7 @@
                 <HelpIcon
                     help="留空关闭；非空时，额外模型解析阶段会排除 comment 匹配该正则的世界书条目。支持 临时|禁用 或 /临时|禁用/i。"
                 />
+                <OverrideBadge v-if="has_active_character_blacklist" kind="additive" />
             </template>
             <input
                 v-model="store.settings.额外模型解析配置.世界书条目黑名单正则"
@@ -115,6 +117,7 @@ import { getAvailableExtraModelPresetNames } from '@/function/update/extra_model
 import Checkbox from '@/panel/component/Checkbox.vue';
 import Detail from '@/panel/component/Detail.vue';
 import Field from '@/panel/component/Field.vue';
+import OverrideBadge from '@/panel/component/OverrideBadge.vue';
 import Select from '@/panel/component/Select.vue';
 import prompt_break_help from '@/panel/update/prompt_break.md';
 import prompt_toolcall_help from '@/panel/update/prompt_toolcall.md';
@@ -137,6 +140,14 @@ const whitelist_regex_error = computed(() =>
 const blacklist_regex_error = computed(() =>
     getRegexError(store.settings.额外模型解析配置.世界书条目黑名单正则)
 );
+const has_active_character_whitelist = computed(() => {
+    const value = store.get_character_settings_override('额外模型解析配置.世界书条目白名单正则');
+    return typeof value === 'string' && compileEntryCommentRegex(value).regex !== undefined;
+});
+const has_active_character_blacklist = computed(() => {
+    const value = store.get_character_settings_override('额外模型解析配置.世界书条目黑名单正则');
+    return typeof value === 'string' && compileEntryCommentRegex(value).regex !== undefined;
+});
 
 function ensureValidPresetSelection() {
     if (store.settings.额外模型解析配置.破限方案 !== '使用其他预设') {
@@ -164,9 +175,10 @@ function showLastFilteredEntriesPopup() {
                     <table style="width: 100%; border-collapse: collapse;">
                         <thead>
                             <tr>
-                                <th style="text-align: left; border-bottom: 1px solid currentColor; padding: 0.35rem;">来源</th>
+                                <th style="text-align: left; border-bottom: 1px solid currentColor; padding: 0.35rem;">条目来源</th>
                                 <th style="text-align: left; border-bottom: 1px solid currentColor; padding: 0.35rem;">世界书</th>
                                 <th style="text-align: left; border-bottom: 1px solid currentColor; padding: 0.35rem;">原因</th>
+                                <th style="text-align: left; border-bottom: 1px solid currentColor; padding: 0.35rem;">配置来源</th>
                                 <th style="text-align: left; border-bottom: 1px solid currentColor; padding: 0.35rem;">comment</th>
                             </tr>
                         </thead>
@@ -178,6 +190,7 @@ function showLastFilteredEntriesPopup() {
                                             <td style="vertical-align: top; padding: 0.35rem;">${_.escape(entry.lore)}</td>
                                             <td style="vertical-align: top; padding: 0.35rem;">${_.escape(entry.world)}</td>
                                             <td style="vertical-align: top; padding: 0.35rem;">${_.escape(entry.reason)}</td>
+                                            <td style="vertical-align: top; padding: 0.35rem;">${_.escape(getFilterSources(entry))}</td>
                                             <td style="vertical-align: top; padding: 0.35rem; word-break: break-word;">${_.escape(entry.comment)}</td>
                                         </tr>
                                     `
@@ -193,6 +206,15 @@ function showLastFilteredEntriesPopup() {
         leftAlign: true,
         wide: true,
     });
+}
+
+function getFilterSources(entry: unknown): string {
+    const sources = _.get(entry, 'sources');
+    if (!Array.isArray(sources)) {
+        return '—';
+    }
+    const labels = sources.filter((source): source is string => typeof source === 'string');
+    return labels.length > 0 ? labels.join('、') : '—';
 }
 
 watch(available_preset_names, ensureValidPresetSelection, { immediate: true });

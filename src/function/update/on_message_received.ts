@@ -15,7 +15,7 @@ export async function onMessageReceived(
 
     const store = useDataStore();
     if (
-        store.settings.兼容性.sandas不视为user消息 === false &&
+        store.effective_settings.兼容性.sendas不视为user消息 === false &&
         current_chatmsg.name !== SillyTavern.name2
     ) {
         return;
@@ -29,7 +29,7 @@ export async function onMessageReceived(
     store.runtimes.is_during_extra_analysis = false;
 
     if (
-        store.settings.更新方式 === '随AI输出' ||
+        store.effective_settings.更新方式 === '随AI输出' ||
         (store.settings.额外模型解析配置.应答格式 === '工具调用' &&
             !isFunctionCallingSupported()) ||
         !(await isExtraModelSupported())
@@ -43,7 +43,7 @@ export async function onMessageReceived(
         return;
     }
 
-    if (!force && store.settings.额外模型解析配置.启用自动请求 === false) {
+    if (!force && store.effective_settings.额外模型解析配置.启用自动请求 === false) {
         console.log('[MVU] 不自动触发额外模型解析');
         return;
     }

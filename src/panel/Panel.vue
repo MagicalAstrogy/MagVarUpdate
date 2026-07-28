@@ -7,6 +7,7 @@
 
         <div class="inline-drawer-content">
             <Version />
+            <CharacterOverride />
             <Notification />
             <Update />
             <Button />
@@ -18,6 +19,7 @@
 
 <script setup lang="ts">
 import Button from '@/panel/Button.vue';
+import CharacterOverride from '@/panel/CharacterOverride.vue';
 import Cleanup from '@/panel/Cleanup.vue';
 import Compatibility from '@/panel/Compatibility.vue';
 import Notification from '@/panel/Notification.vue';

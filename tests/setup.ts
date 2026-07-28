@@ -15,6 +15,53 @@ import { watch } from 'vue';
     saveSettingsDebounced: jest.fn(),
     saveChat: jest.fn().mockResolvedValue(undefined),
     callGenericPopup: jest.fn().mockResolvedValue(undefined),
+    POPUP_TYPE: {
+        TEXT: 1,
+        CONFIRM: 2,
+    },
+    POPUP_RESULT: {
+        AFFIRMATIVE: 1,
+        NEGATIVE: 0,
+        CANCELLED: -1,
+    },
+    loadWorldInfo: jest.fn().mockResolvedValue({ entries: {} }),
+    saveWorldInfo: jest.fn().mockResolvedValue(undefined),
+    reloadWorldInfoEditor: jest.fn(),
+    convertCharacterBook: jest.fn((book: any) => {
+        const entry = book.entries[0];
+        return {
+            entries: {
+                [entry.id]: {
+                    uid: entry.id,
+                    displayIndex: entry.extensions?.display_index ?? 0,
+                    comment: entry.comment,
+                    disable: !entry.enabled,
+                    constant: entry.constant,
+                    selective: entry.selective,
+                    key: entry.keys,
+                    keysecondary: entry.secondary_keys,
+                    selectiveLogic: 0,
+                    scanDepth: null,
+                    vectorized: false,
+                    position: 1,
+                    role: 0,
+                    depth: 4,
+                    order: entry.insertion_order,
+                    content: entry.content,
+                    useProbability: true,
+                    probability: 100,
+                    excludeRecursion: false,
+                    preventRecursion: false,
+                    delayUntilRecursion: false,
+                    sticky: null,
+                    cooldown: null,
+                    delay: null,
+                },
+            },
+            originalData: book,
+        };
+    }),
+    getCharacterCardFields: jest.fn().mockReturnValue({ name: 'Test Character' }),
     ToolManager: {
         isToolCallingSupported: jest.fn().mockReturnValue(true),
         registerFunctionTool: jest.fn(),
@@ -58,6 +105,8 @@ const __eventHandlers = new Map<string, Array<(...args: unknown[]) => unknown>>(
     GENERATION_ENDED: 'GENERATION_ENDED',
     MESSAGE_SENT: 'MESSAGE_SENT',
     GENERATION_STARTED: 'GENERATION_STARTED',
+    WORLDINFO_UPDATED: 'WORLDINFO_UPDATED',
+    CHAT_CHANGED: 'CHAT_CHANGED',
 };
 
 // Ensure each test runs with a fresh Pinia instance
@@ -86,6 +135,18 @@ beforeEach(() => {
         handler(TEST_SCRIPT_ID);
     }
 });
+(globalThis as any).eventRemoveListener = jest.fn(
+    (event: string, handler: (...args: unknown[]) => unknown) => {
+        const handlers = __eventHandlers.get(event);
+        if (!handlers) {
+            return;
+        }
+        const index = handlers.indexOf(handler);
+        if (index !== -1) {
+            handlers.splice(index, 1);
+        }
+    }
+);
 (globalThis as any).eventEmit = jest.fn(async (event: string, ...args: unknown[]) => {
     const handlers = __eventHandlers.get(event) ?? [];
     for (const handler of handlers) {
@@ -103,6 +164,7 @@ beforeEach(() => {
 (globalThis as any).setChatMessage = jest.fn();
 (globalThis as any).setChatMessages = jest.fn();
 (globalThis as any).getCurrentCharPrimaryLorebook = jest.fn();
+(globalThis as any).getCharWorldbookNames = jest.fn(() => ({ primary: null, additional: [] }));
 (globalThis as any).getAvailableLorebooks = jest.fn();
 (globalThis as any).substitudeMacros = jest.fn(input => input);
 (globalThis as any).insertOrAssignVariables = jest.fn();

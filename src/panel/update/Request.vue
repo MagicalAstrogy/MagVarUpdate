@@ -32,6 +32,9 @@
                 <HelpIcon
                     help="如果关闭, 当 AI 回复完成时将不再自动触发额外模型解析, 而是需要你主动点击`重试额外模型解析`按钮才会进行解析工作并添加状态栏占位符 `<StatusPlaceHolderImpl/>`"
                 />
+                <OverrideBadge
+                    v-if="store.has_character_settings_override('额外模型解析配置.启用自动请求')"
+                />
             </template>
             <Checkbox v-model="store.settings.额外模型解析配置.启用自动请求">
                 <span>启用</span>
@@ -45,6 +48,7 @@ import Checkbox from '@/panel/component/Checkbox.vue';
 import Detail from '@/panel/component/Detail.vue';
 import Field from '@/panel/component/Field.vue';
 import HelpIcon from '@/panel/component/HelpIcon.vue';
+import OverrideBadge from '@/panel/component/OverrideBadge.vue';
 import RangeNumber from '@/panel/component/RangeNumber.vue';
 import Select from '@/panel/component/Select.vue';
 import request_method_help from '@/panel/update/request_method.md';

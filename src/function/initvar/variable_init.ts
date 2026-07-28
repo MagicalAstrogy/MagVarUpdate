@@ -125,7 +125,7 @@ export async function initCheck() {
         return;
     }
 
-    if (useDataStore().settings.兼容性.更新到聊天变量) {
+    if (useDataStore().effective_settings.兼容性.更新到聊天变量) {
         console.info(`Init chat variables.`);
         await updateVariablesWith(data => _.assign(data, variables), { type: 'chat' });
     }

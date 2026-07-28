@@ -232,7 +232,7 @@ export const buttons: Button[] = [
             // @ts-expect-error 该函数可用
             await setChatMessage({}, message_id);
 
-            if (useDataStore().settings.兼容性.更新到聊天变量) {
+            if (useDataStore().effective_settings.兼容性.更新到聊天变量) {
                 await replaceVariables(merged_data, { type: 'chat' });
             }
 
@@ -389,7 +389,7 @@ export const buttons: Button[] = [
         name: '重试额外模型解析',
         function: async () => {
             const store = useDataStore();
-            if (store.settings.更新方式 === '随AI输出') {
+            if (store.effective_settings.更新方式 === '随AI输出') {
                 toastr.info(
                     `当前配置没有启用额外模型解析，不需要进行此操作`,
                     '[MVU]重试额外模型解析',

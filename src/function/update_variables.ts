@@ -1434,7 +1434,7 @@ export async function handleVariablesInMessage(message_id: number) {
     //在重构后 getLastValidVariable 的语义改编为了 [0, message_id) 区间
     const request_message_id = message_id === 0 ? 1 : message_id;
     const variables = getLastValidVariable(request_message_id);
-    const settings = useDataStore().settings;
+    const settings = useDataStore().effective_settings;
     if (!_.has(variables, 'stat_data')) {
         return;
     }

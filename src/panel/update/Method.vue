@@ -3,7 +3,8 @@
 
     <template
         v-if="
-            store.runtimes.unsupported_warnings !== '' && store.settings.更新方式 === '额外模型解析'
+            store.runtimes.unsupported_warnings !== '' &&
+            store.effective_settings.更新方式 === '额外模型解析'
         "
     >
         <div class="mvu-warning">
