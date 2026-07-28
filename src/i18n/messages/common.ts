@@ -25,12 +25,4 @@ export const commonMessages = defineMessages({
         'zh-CN': '取消',
         en: 'Cancel',
     },
-    'common.unavailable': {
-        'zh-CN': '不可用',
-        en: 'Unavailable',
-    },
-    'common.notSet': {
-        'zh-CN': '未设置',
-        en: 'Not set',
-    },
 });

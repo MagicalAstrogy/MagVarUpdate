@@ -2,7 +2,10 @@
     <Section :label="t('panel.update.section')">
         <template #label-suffix>
             <HelpIcon :help="update_method_help" />
-            <OverrideBadge v-if="store.has_character_settings_override('更新方式')" />
+            <OverrideBadge
+                v-if="store.has_character_settings_override('更新方式')"
+                :value="update_method_override_label"
+            />
         </template>
         <template #content>
             <Method />
@@ -39,5 +42,12 @@ const store = useDataStore();
 const { locale, t } = useMvuI18n();
 const update_method_help = computed(() =>
     locale.value === 'zh-CN' ? update_method_help_zh_cn : update_method_help_en
+);
+const update_method_override_label = computed(() =>
+    t(
+        store.effective_settings.更新方式 === '随AI输出'
+            ? 'panel.update.method.aiOutput'
+            : 'panel.update.method.extraModel'
+    )
 );
 </script>

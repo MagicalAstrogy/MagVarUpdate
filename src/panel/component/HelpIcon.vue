@@ -4,7 +4,8 @@
         role="button"
         tabindex="0"
         :aria-label="t('panel.help.ariaLabel')"
-        @click="showHelpPopup(help)"
+        @click.stop.prevent="showHelpPopup(help)"
+        @keydown.enter.space.stop.prevent="showHelpPopup(help)"
     />
 </template>
 

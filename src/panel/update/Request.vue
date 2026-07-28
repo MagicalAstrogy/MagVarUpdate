@@ -28,6 +28,7 @@
                 <HelpIcon :help="t('panel.request.autoHelp')" />
                 <OverrideBadge
                     v-if="store.has_character_settings_override('额外模型解析配置.启用自动请求')"
+                    :value="auto_request_override_label"
                 />
             </template>
             <Checkbox v-model="store.settings.额外模型解析配置.启用自动请求">
@@ -56,6 +57,9 @@ const store = useDataStore();
 const { locale, t } = useMvuI18n();
 const request_method_help = computed(() =>
     locale.value === 'zh-CN' ? request_method_help_zh_cn : request_method_help_en
+);
+const auto_request_override_label = computed(() =>
+    t(store.effective_settings.额外模型解析配置.启用自动请求 ? 'common.enabled' : 'common.disabled')
 );
 const request_method_options = computed(() => [
     { value: '依次请求，失败后重试', label: t('panel.request.sequential') },

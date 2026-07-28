@@ -69,6 +69,18 @@ describe('MVU localization', () => {
         }
     });
 
+    test('formats character-card override badges with the effective state', () => {
+        locale_ref.value = 'zh-CN';
+        expect(tr('panel.badge.overrideWithValue', { value: tr('common.enabled') })).toBe(
+            '角色卡覆盖：启用'
+        );
+
+        locale_ref.value = 'en';
+        expect(tr('panel.badge.overrideWithValue', { value: tr('common.enabled') })).toBe(
+            'Character-card override: Enabled'
+        );
+    });
+
     test('every resource key has non-empty translations with matching placeholders', () => {
         const seen_keys = new Set<string>();
         let message_count = 0;

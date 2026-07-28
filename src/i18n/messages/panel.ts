@@ -114,6 +114,10 @@ export const panelMessages = defineMessages({
         'zh-CN': '角色卡覆盖',
         en: 'Character-card override',
     },
+    'panel.badge.overrideWithValue': {
+        'zh-CN': '角色卡覆盖：{value}',
+        en: 'Character-card override: {value}',
+    },
     'panel.badge.additive': {
         'zh-CN': '角色卡规则叠加',
         en: 'Character-card rule added',
@@ -548,25 +552,9 @@ export const panelMessages = defineMessages({
         'zh-CN': '当前角色卡配置（未启用）',
         en: 'Current character-card settings (not enabled)',
     },
-    'panel.character.character': {
-        'zh-CN': '角色',
-        en: 'Character',
-    },
-    'panel.character.noCharacter': {
-        'zh-CN': '未检测到当前角色',
-        en: 'No current character detected',
-    },
     'panel.character.worldBook': {
         'zh-CN': '角色世界书',
         en: 'Character world book',
-    },
-    'panel.character.configEntry': {
-        'zh-CN': '配置条目',
-        en: 'Configuration entry',
-    },
-    'panel.character.autoSave': {
-        'zh-CN': '自动保存',
-        en: 'Auto-save',
     },
     'panel.character.reading': {
         'zh-CN': '正在读取…',
@@ -576,65 +564,9 @@ export const panelMessages = defineMessages({
         'zh-CN': '未绑定',
         en: 'Not bound',
     },
-    'panel.character.notRead': {
-        'zh-CN': '尚未读取',
-        en: 'Not read yet',
-    },
-    'panel.character.notCreated': {
-        'zh-CN': '尚未创建',
-        en: 'Not created yet',
-    },
-    'panel.character.entry': {
-        'zh-CN': '[config_override]（UID {uid}，关闭）',
-        en: '[config_override] (UID {uid}, disabled)',
-    },
-    'panel.character.saving': {
-        'zh-CN': '正在保存…',
-        en: 'Saving…',
-    },
-    'panel.character.pendingSave': {
-        'zh-CN': '等待自动保存',
-        en: 'Waiting to auto-save',
-    },
-    'panel.character.noPendingSave': {
-        'zh-CN': '无待保存修改',
-        en: 'No pending changes',
-    },
-    'panel.character.status.loading': {
-        'zh-CN': '正在读取当前角色卡绑定的世界书。',
-        en: 'Reading the world book bound to the current character card.',
-    },
-    'panel.character.status.unbound': {
-        'zh-CN': '当前角色卡未绑定角色世界书，角色卡配置不可用。',
-        en: 'The current character card has no bound character world book, so character-card settings are unavailable.',
-    },
-    'panel.character.status.error': {
-        'zh-CN': '角色世界书读取失败，暂时无法编辑角色卡配置。',
-        en: 'The character world book could not be read. Character-card settings cannot be edited for now.',
-    },
-    'panel.character.status.invalid': {
-        'zh-CN': '现有 [config_override] 配置无效，修改任一配置后将自动保存以修复该条目。',
-        en: 'The existing [config_override] settings are invalid. Changing any setting will auto-save and repair the entry.',
-    },
-    'panel.character.status.willCreate': {
-        'zh-CN': '修改配置时将自动创建关闭的 [config_override] 条目。',
-        en: 'Changing a setting will automatically create a disabled [config_override] entry.',
-    },
-    'panel.character.status.disabledStillActive': {
-        'zh-CN': 'MVU 会主动读取这个关闭的 [config_override] 条目；关闭状态不会使配置失效。',
-        en: 'MVU reads this disabled [config_override] entry directly; its disabled state does not deactivate the settings.',
-    },
     'panel.character.inherit': {
-        'zh-CN': '跟随用户配置（当前：{value}）',
-        en: 'Inherit user settings (current: {value})',
-    },
-    'panel.character.userConfig': {
-        'zh-CN': '用户配置：{value}',
-        en: 'User setting: {value}',
-    },
-    'panel.character.effectiveConfig': {
-        'zh-CN': '当前生效：{value}',
-        en: 'Effective setting: {value}',
+        'zh-CN': '跟随用户配置',
+        en: 'Inherit user settings',
     },
     'panel.character.extraModelGroup': {
         'zh-CN': '额外模型解析',
@@ -655,17 +587,5 @@ export const panelMessages = defineMessages({
     'panel.character.regexInvalid': {
         'zh-CN': '角色卡配置正则无效：{error}',
         en: 'Invalid character-card regex: {error}',
-    },
-    'panel.character.userRule': {
-        'zh-CN': '用户规则：{value}',
-        en: 'User rule: {value}',
-    },
-    'panel.character.whitelistEffective': {
-        'zh-CN': '生效规则：用户白名单 OR 角色卡白名单',
-        en: 'Effective rule: user whitelist OR character-card whitelist',
-    },
-    'panel.character.blacklistEffective': {
-        'zh-CN': '生效规则：用户黑名单 OR 角色卡黑名单',
-        en: 'Effective rule: user blacklist OR character-card blacklist',
     },
 });
