@@ -28,6 +28,7 @@ function getHostLocale(): string {
 type LocaleMessages = Record<string, LocaleMessageValue>;
 
 function buildLocaleMessages(locale: AppLocale): LocaleMessages {
+    // 消息源使用便于类型检查的扁平键，这里再展开成 vue-i18n 所需的嵌套对象。
     const result: LocaleMessages = {};
     for (const [key, translations] of Object.entries(allMessages) as [
         MessageKey,

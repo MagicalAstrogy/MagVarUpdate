@@ -218,6 +218,21 @@ describe('character settings override manager', () => {
         );
     });
 
+    test('assigns a new entry the largest used uid plus one instead of filling a gap', async () => {
+        worldbook.entries = {
+            2: makeRawEntry(2, 'unrelated', { comment: 'unrelated', disable: false }),
+            7: makeRawEntry(7, 'unrelated', { comment: 'unrelated', disable: false }),
+        };
+        stop = await initCharacterSettingsOverride();
+
+        setCharacterSettingsOverride('更新方式', '额外模型解析');
+        await flushCharacterSettingsOverrideSave();
+
+        expect(useDataStore().character_settings.entry_uid).toBe(8);
+        expect(worldbook.entries[8]).toBeDefined();
+        expect(worldbook.entries[0]).toBeUndefined();
+    });
+
     test('preserves passthrough fields and keeps a schema-only entry after clearing the last override', async () => {
         worldbook.entries = {
             3: makeRawEntry(

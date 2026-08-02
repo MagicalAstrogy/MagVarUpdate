@@ -176,10 +176,6 @@ export const runtimeMessages = defineMessages({
         'zh-CN': '无法读取角色世界书“{worldbook}”',
         en: 'Unable to read character lorebook “{worldbook}”',
     },
-    'runtime.characterOverride.noAvailableUid': {
-        'zh-CN': '角色世界书中没有可用的条目 UID',
-        en: 'No entry UID is available in the character lorebook',
-    },
     'runtime.characterOverride.entryCreationFailed': {
         'zh-CN': 'SillyTavern 未能创建角色卡配置条目',
         en: 'SillyTavern could not create the character-card configuration entry',

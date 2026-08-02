@@ -130,6 +130,8 @@ export async function filterEntries(lores: {
     const character_extra_model_settings = store.character_settings.is_valid
         ? store.character_settings.draft.额外模型解析配置
         : undefined;
+    // 白名单任一来源命中即可保留，角色卡规则不会抹掉用户的全局规则；
+    // 黑名单则是任一来源命中即过滤。
     const white_regexes = [
         compile_filter_regex(
             '白名单正则',

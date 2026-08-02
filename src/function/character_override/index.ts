@@ -14,6 +14,8 @@ import { useDataStore } from '@/store';
 import { klona } from 'klona';
 
 type RawWorldbookEntry = SillyTavern.FlattenedWorldInfoEntry & Record<string, unknown>;
+
+// SillyTavern 同时维护扁平化条目和角色卡原始数据，保存时必须让两份数据保持一致。
 type RawWorldbookData = {
     entries: Record<string, RawWorldbookEntry>;
     originalData?: Record<string, unknown>;
@@ -33,7 +35,6 @@ type SaveResult =
       };
 
 const REGEX_SAVE_DEBOUNCE_MS = 350;
-const MAX_WORLD_INFO_UID = 1_000_000;
 
 function getErrorMessage(error: unknown): string {
     return error instanceof Error ? error.message : String(error);
@@ -51,6 +52,7 @@ function getSortedRawEntries(data: RawWorldbookData): RawWorldbookEntry[] {
     return _(data.entries).values().sortBy('displayIndex').value();
 }
 
+// 配置条目必须关闭，避免其中的 JSON 被当作普通世界书内容注入提示词。
 function getMatchingRawEntries(data: RawWorldbookData): RawWorldbookEntry[] {
     return getSortedRawEntries(data).filter(
         entry => entry.disable === true && isCharacterSettingsOverrideEntryName(entry.comment)
@@ -68,13 +70,9 @@ async function loadRawWorldbook(worldbook_name: string): Promise<RawWorldbookDat
 }
 
 function getFreeUid(data: RawWorldbookData): number {
-    const used_uids = new Set(getSortedRawEntries(data).map(entry => Number(entry.uid)));
-    for (let uid = 0; uid < MAX_WORLD_INFO_UID; uid++) {
-        if (!used_uids.has(uid)) {
-            return uid;
-        }
-    }
-    throw new Error(tr('runtime.characterOverride.noAvailableUid'));
+    const used_uids = getSortedRawEntries(data).map(entry => Number(entry.uid));
+    // 沿用 SillyTavern 新建世界书条目的编号方式，不复用中间因删除产生的空洞。
+    return (_.max(used_uids) ?? -1) + 1;
 }
 
 function makeCharacterBookEntry(uid: number, display_index: number, content: string) {
@@ -100,6 +98,7 @@ function createRawConfigEntry(
     display_index: number,
     content: string
 ): RawWorldbookEntry {
+    // convertCharacterBook 负责补齐扁平化条目的宿主字段，避免自行复制其内部默认值。
     const original = makeCharacterBookEntry(uid, display_index, content);
     const converted = SillyTavern.convertCharacterBook({
         name: '',
@@ -118,6 +117,7 @@ function syncOriginalEntry(
     display_index: number,
     content: string
 ) {
+    // saveWorldInfo 会同时读取 entries 与 originalData；只更新前者会导致下次加载时内容回退。
     const original_entries = _.get(data, 'originalData.entries');
     if (!Array.isArray(original_entries) && !_.isPlainObject(original_entries)) {
         return;
@@ -173,6 +173,7 @@ async function confirmConflict(worldbook_name: string): Promise<boolean> {
     return result === SillyTavern.POPUP_RESULT.AFFIRMATIVE;
 }
 
+// 每个聊天对应一个控制器，负责加载角色配置、同步界面状态并串行保存修改。
 class CharacterSettingsOverrideController {
     private worldbook_name: string | null = null;
     private entry_uid: number | null = null;
@@ -195,6 +196,7 @@ class CharacterSettingsOverrideController {
     }
 
     private mirrorState(values: Partial<ReturnType<typeof useDataStore>['character_settings']>) {
+        // 旧聊天的异步任务可能较晚结束，禁止它覆盖当前聊天的 Pinia 状态。
         if (this.isCurrent()) {
             Object.assign(useDataStore().character_settings, values);
         }
@@ -229,6 +231,7 @@ class CharacterSettingsOverrideController {
 
         const worldinfo_listener = (name: string, data: unknown) =>
             this.handleWorldinfoUpdated(name, data);
+        // 先监听再读取，避免初始化期间发生的世界书更新被较旧的读取结果覆盖。
         eventOn(tavern_events.WORLDINFO_UPDATED, worldinfo_listener);
         this.stop_event = () =>
             eventRemoveListener(tavern_events.WORLDINFO_UPDATED, worldinfo_listener);
@@ -295,6 +298,7 @@ class CharacterSettingsOverrideController {
     }
 
     private async handleWorldinfoUpdated(name: string, data: unknown) {
+        // 本地存在草稿或正在保存时，以冲突检查流程为准，不直接用外部事件覆盖编辑内容。
         if (
             name !== this.worldbook_name ||
             this.stopped ||
@@ -392,6 +396,7 @@ class CharacterSettingsOverrideController {
             } catch (error) {
                 this.is_valid = false;
                 try {
+                    // 已知字段损坏时仍保留扩展字段，用户修正后保存不会误删第三方配置。
                     this.draft = recoverCharacterSettingsOverridePassthrough(entry.content);
                 } catch {
                     this.draft = {};
@@ -474,6 +479,7 @@ class CharacterSettingsOverrideController {
         });
 
         if (path.endsWith('白名单正则') || path.endsWith('黑名单正则')) {
+            // 正则输入框会连续触发更新，短暂防抖可避免每次击键都写入世界书。
             if (this.save_timer !== undefined) {
                 clearTimeout(this.save_timer);
             }
@@ -535,6 +541,7 @@ class CharacterSettingsOverrideController {
                     this.save_timer === undefined &&
                     (failed_revision === undefined || this.revision > failed_revision)
                 ) {
+                    // 保存期间出现的新修订需要继续保存；同一修订失败则留待显式重试，避免死循环。
                     this.startSaveLoop();
                 }
             });
@@ -542,6 +549,7 @@ class CharacterSettingsOverrideController {
 
     private async runSaveLoop() {
         while (this.has_pending_save && this.worldbook_name && this.save_timer === undefined) {
+            // 每轮固定保存一个草稿快照，新修改通过 revision 留给下一轮处理。
             this.has_pending_save = false;
             const revision = this.revision;
             this.saving_revision = revision;
@@ -589,6 +597,7 @@ class CharacterSettingsOverrideController {
                 : expected_record === undefined ||
                   expected_record[1].content !== this.expected_content;
 
+        // 以首次读取的 UID 和正文做乐观并发检查，避免静默覆盖其他编辑来源。
         if (has_conflict) {
             if (!(await confirmConflict(worldbook_name))) {
                 return {
