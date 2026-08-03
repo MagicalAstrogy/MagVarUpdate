@@ -80,6 +80,17 @@ describe('CharacterSettingsOverride schema', () => {
         });
     });
 
+    test('uses the shared tolerant parser when recovering passthrough fields', () => {
+        expect(
+            recoverCharacterSettingsOverridePassthrough(`{
+                更新方式: 'invalid',
+                custom_top_level: { kept: true },
+            }`)
+        ).toEqual({
+            custom_top_level: { kept: true },
+        });
+    });
+
     test('serializes schema last and removes empty known regex values', () => {
         const serialized = serializeCharacterSettingsOverride({
             passthrough: true,

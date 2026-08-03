@@ -9,8 +9,11 @@ import { klona } from 'klona';
 
 type TestWorldbook = {
     entries: Record<string, SillyTavern.FlattenedWorldInfoEntry & Record<string, unknown>>;
-    originalData?: { entries: Record<string, unknown>[] };
 };
+
+type TestWorldbookUpdater = (
+    worldbook: WorldbookEntry[]
+) => WorldbookEntry[] | Promise<WorldbookEntry[]>;
 
 function makeRawEntry(
     uid: number,
@@ -49,12 +52,42 @@ function makeRawEntry(
     };
 }
 
+function toWorldbookEntry(entry: TestWorldbook['entries'][string]): WorldbookEntry {
+    return {
+        uid: Number(entry.uid),
+        name: String(entry.comment ?? ''),
+        enabled: entry.disable !== true,
+        strategy: {
+            type: 'selective',
+            keys: [],
+            keys_secondary: { logic: 'and_any', keys: [] },
+            scan_depth: 'same_as_global',
+        },
+        position: {
+            type: 'after_character_definition',
+            role: 'system',
+            depth: 4,
+            order: 100,
+        },
+        content: entry.content,
+        probability: 100,
+        recursion: {
+            prevent_incoming: false,
+            prevent_outgoing: false,
+            delay_until: null,
+        },
+        effect: { sticky: null, cooldown: null, delay: null },
+    };
+}
+
 describe('character settings override manager', () => {
     let worldbook: TestWorldbook;
     let stop: (() => void | Promise<void>) | undefined;
+    let applyWorldbookUpdater: (updater: TestWorldbookUpdater) => Promise<WorldbookEntry[]>;
+    let persistWorldbook: (name: string, entries: WorldbookEntry[]) => Promise<WorldbookEntry[]>;
 
     beforeEach(() => {
-        worldbook = { entries: {}, originalData: { entries: [] } };
+        worldbook = { entries: {} };
         jest.spyOn(console, 'error').mockImplementation(() => undefined);
         (globalThis as any).toastr = {
             warning: jest.fn(),
@@ -65,20 +98,51 @@ describe('character settings override manager', () => {
             primary: 'Character Book',
             additional: [],
         });
+        useDataStore().should_enable = true;
         (SillyTavern.loadWorldInfo as jest.Mock).mockImplementation(async () => klona(worldbook));
         (SillyTavern.loadWorldInfo as jest.Mock).mockClear();
         (SillyTavern.saveWorldInfo as jest.Mock).mockClear();
-        (SillyTavern.saveWorldInfo as jest.Mock).mockImplementation(
-            async (name: string, data: TestWorldbook) => {
-                worldbook = klona(data);
-                await eventEmit(tavern_events.WORLDINFO_UPDATED, name, klona(data));
-            }
+        applyWorldbookUpdater = async updater => {
+            const entries = _(worldbook.entries)
+                .values()
+                .sortBy('displayIndex')
+                .map(toWorldbookEntry)
+                .value();
+            return await updater(klona(entries));
+        };
+        persistWorldbook = async (name, entries) => {
+            worldbook = {
+                entries: Object.fromEntries(
+                    entries.map((entry, display_index) => {
+                        const previous = Object.values(worldbook.entries).find(
+                            raw_entry => Number(raw_entry.uid) === entry.uid
+                        );
+                        return [
+                            String(entry.uid),
+                            {
+                                ...previous,
+                                ...makeRawEntry(entry.uid, entry.content, {
+                                    comment: entry.name,
+                                    disable: !entry.enabled,
+                                    displayIndex: display_index,
+                                }),
+                            },
+                        ];
+                    })
+                ),
+            };
+            await eventEmit(tavern_events.WORLDINFO_UPDATED, name, klona(worldbook));
+            return klona(entries);
+        };
+        (globalThis as any).updateWorldbookWith.mockReset();
+        (globalThis as any).updateWorldbookWith.mockImplementation(
+            async (name: string, updater: TestWorldbookUpdater) =>
+                persistWorldbook(name, await applyWorldbookUpdater(updater))
         );
         (SillyTavern.callGenericPopup as jest.Mock).mockResolvedValue(
             SillyTavern.POPUP_RESULT.AFFIRMATIVE
         );
         (SillyTavern.callGenericPopup as jest.Mock).mockClear();
-        (SillyTavern.reloadWorldInfoEditor as jest.Mock).mockClear();
     });
 
     afterEach(async () => {
@@ -144,7 +208,7 @@ describe('character settings override manager', () => {
         expect(useDataStore().character_settings.draft.更新方式).toBe('额外模型解析');
     });
 
-    test('treats invalid content as absent but keeps the source snapshot so the UI can repair it', async () => {
+    test('recovers repairable passthrough content and keeps the source snapshot for editing', async () => {
         worldbook.entries = {
             7: makeRawEntry(7, '{invalid'),
         };
@@ -153,7 +217,7 @@ describe('character settings override manager', () => {
         const store = useDataStore();
 
         expect(store.character_settings.is_valid).toBe(false);
-        expect(store.character_settings.draft).toEqual({});
+        expect(store.character_settings.draft).toEqual({ invalid: null });
         expect(store.character_settings.entry_uid).toBe(7);
         expect(store.character_settings.expected_content).toBe('{invalid');
 
@@ -162,7 +226,10 @@ describe('character settings override manager', () => {
         await flushCharacterSettingsOverrideSave();
 
         expect(store.character_settings.is_valid).toBe(true);
-        expect(JSON.parse(worldbook.entries[7].content).更新方式).toBe('额外模型解析');
+        expect(JSON.parse(worldbook.entries[7].content)).toMatchObject({
+            invalid: null,
+            更新方式: '额外模型解析',
+        });
     });
 
     test('preserves recoverable passthrough fields when repairing an invalid known field', async () => {
@@ -211,11 +278,11 @@ describe('character settings override manager', () => {
         expect(entry.disable).toBe(true);
         expect(document.兼容性.更新到聊天变量).toBe(true);
         expect(Object.keys(document).at(-1)).toBe('schema');
-        expect(SillyTavern.saveWorldInfo).toHaveBeenCalledWith(
-            'Character Book',
-            expect.any(Object),
-            true
-        );
+        expect(updateWorldbookWith).toHaveBeenCalledWith('Character Book', expect.any(Function), {
+            render: 'immediate',
+        });
+        expect(SillyTavern.saveWorldInfo).not.toHaveBeenCalled();
+        expect(SillyTavern.reloadWorldInfoEditor).not.toHaveBeenCalled();
     });
 
     test('assigns a new entry the largest used uid plus one instead of filling a gap', async () => {
@@ -267,7 +334,7 @@ describe('character settings override manager', () => {
         (SillyTavern.callGenericPopup as jest.Mock).mockResolvedValue(
             SillyTavern.POPUP_RESULT.NEGATIVE
         );
-        const save_count = (SillyTavern.saveWorldInfo as jest.Mock).mock.calls.length;
+        const save_count = (updateWorldbookWith as jest.Mock).mock.calls.length;
 
         setCharacterSettingsOverride('更新方式', '额外模型解析');
         await flushCharacterSettingsOverrideSave();
@@ -277,7 +344,7 @@ describe('character settings override manager', () => {
         expect(store.character_settings.draft).toEqual({
             兼容性: { 更新到聊天变量: true },
         });
-        expect(SillyTavern.saveWorldInfo).toHaveBeenCalledTimes(save_count);
+        expect(updateWorldbookWith).toHaveBeenCalledTimes(save_count);
     });
 
     test('overwrites the latest entry after a conflict is confirmed', async () => {
@@ -322,7 +389,7 @@ describe('character settings override manager', () => {
 
     test('keeps a failed save pending and retries it on the next flush', async () => {
         stop = await initCharacterSettingsOverride();
-        (SillyTavern.saveWorldInfo as jest.Mock).mockRejectedValueOnce(
+        (updateWorldbookWith as jest.Mock).mockRejectedValueOnce(
             new Error('temporary save failure')
         );
 
@@ -342,53 +409,17 @@ describe('character settings override manager', () => {
         );
     });
 
-    test('normalizes string ids and repairs a missing originalData entry', async () => {
+    test('normalizes string ids before updating through the worldbook interface', async () => {
         const entry = makeRawEntry(8, JSON.stringify({ 更新方式: '随AI输出' }));
         (entry as any).uid = '8';
         worldbook.entries = { 8: entry };
-        worldbook.originalData = { entries: [] };
         stop = await initCharacterSettingsOverride();
 
         setCharacterSettingsOverride('更新方式', '额外模型解析');
         await flushCharacterSettingsOverrideSave();
 
         expect(useDataStore().character_settings.entry_uid).toBe(8);
-        expect(worldbook.originalData?.entries).toEqual([
-            expect.objectContaining({
-                id: 8,
-                comment: CHARACTER_SETTINGS_OVERRIDE_ENTRY_NAME,
-                enabled: false,
-            }),
-        ]);
-    });
-
-    test('updates originalData entries identified by uid while preserving passthrough fields', async () => {
-        worldbook.entries = {
-            8: makeRawEntry(8, JSON.stringify({ 更新方式: '随AI输出' })),
-        };
-        worldbook.originalData = {
-            entries: [
-                {
-                    uid: '8',
-                    comment: 'old',
-                    content: 'old',
-                    disable: false,
-                    custom: 'kept',
-                },
-            ],
-        };
-        stop = await initCharacterSettingsOverride();
-
-        setCharacterSettingsOverride('更新方式', '额外模型解析');
-        await flushCharacterSettingsOverrideSave();
-
-        expect(worldbook.originalData.entries[0]).toMatchObject({
-            uid: '8',
-            comment: CHARACTER_SETTINGS_OVERRIDE_ENTRY_NAME,
-            enabled: false,
-            disable: true,
-            custom: 'kept',
-        });
+        expect(JSON.parse(worldbook.entries[8].content).更新方式).toBe('额外模型解析');
     });
 
     test('serializes saves without letting an older result replace a newer draft', async () => {
@@ -401,17 +432,16 @@ describe('character settings override manager', () => {
         const first_save_gate = new Promise<void>(resolve => {
             release_first_save = resolve;
         });
-        (SillyTavern.saveWorldInfo as jest.Mock)
-            .mockImplementationOnce(async (name: string, data: TestWorldbook) => {
+        (updateWorldbookWith as jest.Mock)
+            .mockImplementationOnce(async (name: string, updater: TestWorldbookUpdater) => {
+                const entries = await applyWorldbookUpdater(updater);
                 mark_first_save_started();
                 await first_save_gate;
-                worldbook = klona(data);
-                await eventEmit(tavern_events.WORLDINFO_UPDATED, name, klona(data));
+                return persistWorldbook(name, entries);
             })
-            .mockImplementation(async (name: string, data: TestWorldbook) => {
-                worldbook = klona(data);
-                await eventEmit(tavern_events.WORLDINFO_UPDATED, name, klona(data));
-            });
+            .mockImplementation(async (name: string, updater: TestWorldbookUpdater) =>
+                persistWorldbook(name, await applyWorldbookUpdater(updater))
+            );
 
         setCharacterSettingsOverride('更新方式', '额外模型解析');
         await first_save_started;
@@ -427,8 +457,7 @@ describe('character settings override manager', () => {
             更新方式: '额外模型解析',
             额外模型解析配置: { 启用自动请求: false },
         });
-        expect(SillyTavern.saveWorldInfo).toHaveBeenCalledTimes(2);
-        expect(SillyTavern.reloadWorldInfoEditor).toHaveBeenLastCalledWith('Character Book');
+        expect(updateWorldbookWith).toHaveBeenCalledTimes(2);
     });
 
     test('flush waits for a newer save loop spawned after an older revision fails', async () => {
@@ -449,16 +478,17 @@ describe('character settings override manager', () => {
         const second_save_gate = new Promise<void>(resolve => {
             release_second_save = resolve;
         });
-        (SillyTavern.saveWorldInfo as jest.Mock)
-            .mockImplementationOnce(async () => {
+        (updateWorldbookWith as jest.Mock)
+            .mockImplementationOnce(async (_name: string, updater: TestWorldbookUpdater) => {
+                await applyWorldbookUpdater(updater);
                 mark_first_save_started();
                 await first_save_gate;
             })
-            .mockImplementationOnce(async (name: string, data: TestWorldbook) => {
+            .mockImplementationOnce(async (name: string, updater: TestWorldbookUpdater) => {
+                const entries = await applyWorldbookUpdater(updater);
                 mark_second_save_started();
                 await second_save_gate;
-                worldbook = klona(data);
-                await eventEmit(tavern_events.WORLDINFO_UPDATED, name, klona(data));
+                return persistWorldbook(name, entries);
             });
 
         setCharacterSettingsOverride('更新方式', '额外模型解析');
@@ -493,12 +523,12 @@ describe('character settings override manager', () => {
         const save_gate = new Promise<void>(resolve => {
             release_save = resolve;
         });
-        (SillyTavern.saveWorldInfo as jest.Mock).mockImplementationOnce(
-            async (name: string, data: TestWorldbook) => {
+        (updateWorldbookWith as jest.Mock).mockImplementationOnce(
+            async (name: string, updater: TestWorldbookUpdater) => {
+                const entries = await applyWorldbookUpdater(updater);
                 mark_save_started();
                 await save_gate;
-                worldbook = klona(data);
-                await eventEmit(tavern_events.WORLDINFO_UPDATED, name, klona(data));
+                return persistWorldbook(name, entries);
             }
         );
 
@@ -522,7 +552,7 @@ describe('character settings override manager', () => {
 
     test('retries a failed pending save while stopping the controller', async () => {
         stop = await initCharacterSettingsOverride();
-        (SillyTavern.saveWorldInfo as jest.Mock)
+        (updateWorldbookWith as jest.Mock)
             .mockRejectedValueOnce(new Error('initial save failure'))
             .mockRejectedValueOnce(new Error('first stop retry failure'));
 
@@ -533,7 +563,7 @@ describe('character settings override manager', () => {
         await stop();
         stop = undefined;
 
-        expect(SillyTavern.saveWorldInfo).toHaveBeenCalledTimes(3);
+        expect(updateWorldbookWith).toHaveBeenCalledTimes(3);
         expect(JSON.parse(Object.values(worldbook.entries)[0].content).更新方式).toBe(
             '额外模型解析'
         );
@@ -544,7 +574,6 @@ describe('character settings override manager', () => {
             6: makeRawEntry(6, JSON.stringify({ 更新方式: '随AI输出' })),
         };
         stop = await initCharacterSettingsOverride();
-        useDataStore().should_enable = false;
         const external = klona(worldbook);
         external.entries[6].content = JSON.stringify({ 更新方式: '额外模型解析' });
 
@@ -608,11 +637,11 @@ describe('character settings override manager', () => {
         });
 
         stop = await initCharacterSettingsOverride();
-        const save_count = (SillyTavern.saveWorldInfo as jest.Mock).mock.calls.length;
+        const save_count = (updateWorldbookWith as jest.Mock).mock.calls.length;
 
         expect(useDataStore().character_settings.status).toBe('unbound');
         setCharacterSettingsOverride('更新方式', '额外模型解析');
         await flushCharacterSettingsOverrideSave();
-        expect(SillyTavern.saveWorldInfo).toHaveBeenCalledTimes(save_count);
+        expect(updateWorldbookWith).toHaveBeenCalledTimes(save_count);
     });
 });

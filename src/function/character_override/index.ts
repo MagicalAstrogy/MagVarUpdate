@@ -11,15 +11,14 @@ import {
 } from '@/function/character_override/schema';
 import { tr } from '@/i18n';
 import { useDataStore } from '@/store';
+import { controlledStoppableEventOn } from '@/util';
 import { klona } from 'klona';
 
 type RawWorldbookEntry = SillyTavern.FlattenedWorldInfoEntry & Record<string, unknown>;
 
-// SillyTavern 同时维护扁平化条目和角色卡原始数据，保存时必须让两份数据保持一致。
+// 世界书事件提供的是 ST 原始格式；它只用于读取和冲突检测，保存统一走 Slash-runner 接口。
 type RawWorldbookData = {
     entries: Record<string, RawWorldbookEntry>;
-    originalData?: Record<string, unknown>;
-    [key: string]: unknown;
 };
 
 type SaveResult =
@@ -69,85 +68,48 @@ async function loadRawWorldbook(worldbook_name: string): Promise<RawWorldbookDat
     return klona(loaded) as RawWorldbookData;
 }
 
-function getFreeUid(data: RawWorldbookData): number {
-    const used_uids = getSortedRawEntries(data).map(entry => Number(entry.uid));
+function getMatchingWorldbookEntries(worldbook: WorldbookEntry[]): WorldbookEntry[] {
+    return worldbook.filter(
+        entry => entry.enabled === false && isCharacterSettingsOverrideEntryName(entry.name)
+    );
+}
+
+function getFreeUid(worldbook: WorldbookEntry[]): number {
+    const used_uids = worldbook.map(entry => entry.uid);
     // 沿用 SillyTavern 新建世界书条目的编号方式，不复用中间因删除产生的空洞。
     return (_.max(used_uids) ?? -1) + 1;
 }
 
-function makeCharacterBookEntry(uid: number, display_index: number, content: string) {
+function makeWorldbookConfigEntry(uid: number, content: string): WorldbookEntry {
     return {
-        id: uid,
-        keys: [],
-        secondary_keys: [],
-        comment: CHARACTER_SETTINGS_OVERRIDE_ENTRY_NAME,
-        content,
-        constant: false,
-        selective: false,
-        insertion_order: 100,
+        uid,
+        name: CHARACTER_SETTINGS_OVERRIDE_ENTRY_NAME,
         enabled: false,
-        position: 'after_char',
-        extensions: {
-            display_index,
+        strategy: {
+            type: 'selective',
+            keys: [],
+            keys_secondary: { logic: 'and_any', keys: [] },
+            scan_depth: 'same_as_global',
+        },
+        position: {
+            type: 'after_character_definition',
+            role: 'system',
+            depth: 4,
+            order: 100,
+        },
+        content,
+        probability: 100,
+        recursion: {
+            prevent_incoming: false,
+            prevent_outgoing: false,
+            delay_until: null,
+        },
+        effect: {
+            sticky: null,
+            cooldown: null,
+            delay: null,
         },
     };
-}
-
-function createRawConfigEntry(
-    uid: number,
-    display_index: number,
-    content: string
-): RawWorldbookEntry {
-    // convertCharacterBook 负责补齐扁平化条目的宿主字段，避免自行复制其内部默认值。
-    const original = makeCharacterBookEntry(uid, display_index, content);
-    const converted = SillyTavern.convertCharacterBook({
-        name: '',
-        entries: [original],
-    });
-    const raw = converted.entries[String(uid)] ?? converted.entries[uid];
-    if (!raw) {
-        throw new Error(tr('runtime.characterOverride.entryCreationFailed'));
-    }
-    return raw as RawWorldbookEntry;
-}
-
-function syncOriginalEntry(
-    data: RawWorldbookData,
-    uid: number,
-    display_index: number,
-    content: string
-) {
-    // saveWorldInfo 会同时读取 entries 与 originalData；只更新前者会导致下次加载时内容回退。
-    const original_entries = _.get(data, 'originalData.entries');
-    if (!Array.isArray(original_entries) && !_.isPlainObject(original_entries)) {
-        return;
-    }
-
-    const entries = Array.isArray(original_entries)
-        ? original_entries
-        : Object.values(original_entries as Record<string, unknown>);
-    const existing = entries.find(entry => {
-        const identifier = _.get(entry, 'id') ?? _.get(entry, 'uid');
-        return identifier !== undefined && Number(identifier) === uid;
-    });
-    if (_.isPlainObject(existing)) {
-        Object.assign(existing, {
-            comment: CHARACTER_SETTINGS_OVERRIDE_ENTRY_NAME,
-            content,
-            enabled: false,
-        });
-        if (_.has(existing, 'disable')) {
-            _.set(existing, 'disable', true);
-        }
-        return;
-    }
-
-    const new_original = makeCharacterBookEntry(uid, display_index, content);
-    if (Array.isArray(original_entries)) {
-        original_entries.push(new_original);
-    } else {
-        (original_entries as Record<string, unknown>)[String(uid)] = new_original;
-    }
 }
 
 function findRawEntryRecord(
@@ -229,12 +191,11 @@ class CharacterSettingsOverrideController {
             worldbook_name: this.worldbook_name,
         });
 
-        const worldinfo_listener = (name: string, data: unknown) =>
-            this.handleWorldinfoUpdated(name, data);
         // 先监听再读取，避免初始化期间发生的世界书更新被较旧的读取结果覆盖。
-        eventOn(tavern_events.WORLDINFO_UPDATED, worldinfo_listener);
-        this.stop_event = () =>
-            eventRemoveListener(tavern_events.WORLDINFO_UPDATED, worldinfo_listener);
+        this.stop_event = controlledStoppableEventOn(
+            tavern_events.WORLDINFO_UPDATED,
+            (name, data) => this.handleWorldinfoUpdated(name, data)
+        );
 
         try {
             await this.reload();
@@ -586,10 +547,10 @@ class CharacterSettingsOverrideController {
     private async saveSnapshot(draft: CharacterSettingsOverride): Promise<SaveResult> {
         const worldbook_name = this.worldbook_name!;
         const content = serializeCharacterSettingsOverride(draft);
-        let data = await loadRawWorldbook(worldbook_name);
-        let matches = this.getMatchingEntries(data);
+        const data = await loadRawWorldbook(worldbook_name);
+        const matches = this.getMatchingEntries(data);
 
-        let expected_record =
+        const expected_record =
             this.entry_uid === null ? undefined : findRawEntryRecord(data, this.entry_uid);
         const has_conflict =
             this.entry_uid === null
@@ -605,51 +566,41 @@ class CharacterSettingsOverrideController {
                     data: await loadRawWorldbook(worldbook_name),
                 };
             }
-
-            // 弹框期间世界书中的其他条目仍可能变化；确认只授权覆盖配置条目，
-            // 因此必须基于最新整本数据重新定位目标，避免回滚无关修改。
-            data = await loadRawWorldbook(worldbook_name);
-            matches = this.getMatchingEntries(data);
-            expected_record =
-                this.entry_uid === null ? undefined : findRawEntryRecord(data, this.entry_uid);
         }
 
-        let target_record = expected_record;
-        if (!target_record && matches[0]) {
-            target_record = findRawEntryRecord(data, Number(matches[0].uid));
-        }
+        let entry_uid = -1;
+        // Slash-runner 会重新读取最新世界书，并交由 ST 完成格式转换、保存事件及编辑器刷新。
+        // 因此即使确认弹框期间其他条目发生变化，也只会定点修改配置条目，不会回滚整本数据。
+        await updateWorldbookWith(
+            worldbook_name,
+            worldbook => {
+                const current_matches = getMatchingWorldbookEntries(worldbook);
+                const target_entry =
+                    (this.entry_uid === null
+                        ? undefined
+                        : worldbook.find(entry => entry.uid === this.entry_uid)) ??
+                    current_matches[0];
 
-        let entry_uid: number;
-        if (target_record) {
-            entry_uid = Number(target_record[1].uid);
-            const display_index = Number(target_record[1].displayIndex ?? 0);
-            Object.assign(target_record[1], {
-                comment: CHARACTER_SETTINGS_OVERRIDE_ENTRY_NAME,
-                content,
-                disable: true,
-            });
-            syncOriginalEntry(data, entry_uid, display_index, content);
-        } else {
-            entry_uid = getFreeUid(data);
-            const display_index =
-                (_.max(getSortedRawEntries(data).map(entry => Number(entry.displayIndex ?? -1))) ??
-                    -1) + 1;
-            const created = createRawConfigEntry(entry_uid, display_index, content);
-            data.entries[String(entry_uid)] = created;
-            syncOriginalEntry(data, entry_uid, display_index, content);
-        }
+                if (target_entry) {
+                    entry_uid = target_entry.uid;
+                    Object.assign(target_entry, {
+                        name: CHARACTER_SETTINGS_OVERRIDE_ENTRY_NAME,
+                        content,
+                        enabled: false,
+                    });
+                } else {
+                    entry_uid = getFreeUid(worldbook);
+                    worldbook.push(makeWorldbookConfigEntry(entry_uid, content));
+                }
+                return worldbook;
+            },
+            { render: 'immediate' }
+        );
 
-        // 立即保存，确保返回前 WORLDINFO_UPDATED 已触发，便于区分自身更新和外部更新。
-        // SillyTavern 的立即保存会提交 loadWorldInfo 缓存中的最新整本数据；这里只定点修改配置条目。
-        await SillyTavern.saveWorldInfo(worldbook_name, data, true);
-        try {
-            SillyTavern.reloadWorldInfoEditor(worldbook_name);
-        } catch (error) {
-            console.warn(tr('runtime.characterOverride.editorRefreshFailedLog'), error);
-        }
+        const saved_data = await loadRawWorldbook(worldbook_name);
         return {
             status: 'saved',
-            data,
+            data: saved_data,
             entry_uid,
             content,
         };

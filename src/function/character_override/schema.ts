@@ -1,5 +1,6 @@
 import { compileEntryCommentRegex } from '@/function/request/entry_comment_regex';
 import { tr } from '@/i18n';
+import { parseString } from '@util/common';
 import { klona } from 'klona';
 import * as z from 'zod';
 
@@ -130,7 +131,7 @@ export function parseCharacterSettingsOverrideContent(content: string): Characte
 export function recoverCharacterSettingsOverridePassthrough(
     content: string
 ): CharacterSettingsOverride {
-    const document = JSON.parse(content) as unknown;
+    const document = parseString(content) as unknown;
     if (!_.isPlainObject(document)) {
         return {};
     }

@@ -6,7 +6,7 @@ import { onMessageReceived } from '@/function/update/on_message_received';
 import { handleVariablesInMessage, updateVariables } from '@/function/update_variables';
 import { tr, type MessageKey } from '@/i18n';
 import { useDataStore } from '@/store';
-import { getLastValidMessageId, getLastValidVariable } from '@/util';
+import { controlledStoppableEventOn, getLastValidMessageId, getLastValidVariable } from '@/util';
 import { MvuData } from '@/variable_def';
 import { klona } from 'klona';
 import { watch } from 'vue';
@@ -589,9 +589,9 @@ let prev_states: ScriptButton[] = [];
 
 export function initButtons() {
     appendInexistentScriptButtons(buttons.map(button => ({ name: button.name, visible: false })));
-    buttons.forEach(button => {
-        eventOn(getButtonEvent(button.name), button.function);
-    });
+    const stop_events = buttons.map(button =>
+        controlledStoppableEventOn(getButtonEvent(button.name), button.function)
+    );
 
     prev_states = _.intersectionBy(getScriptButtons(), buttons, button => button.name);
     const stop = watch(
@@ -626,6 +626,7 @@ export function initButtons() {
                 .concat(prev_states)
                 .value()
         );
+        stop_events.forEach(stop_event => stop_event());
         stop();
     };
 }

@@ -10,6 +10,7 @@ import { initResponse } from '@/function/update';
 import { tr } from '@/i18n';
 import { initPanel } from '@/panel';
 import { useDataStore } from '@/store';
+import { controlledStoppableEventOn } from '@/util';
 import { checkMinimumVersion } from '@util/common';
 import { registerAsUniqueScript } from '@util/script';
 import { createPinia, getActivePinia, setActivePinia } from 'pinia';
@@ -90,7 +91,11 @@ $(async () => {
         return chat_level_transition;
     };
 
-    eventOn(tavern_events.CHAT_CHANGED, (chat_id: string) => transitionToChat(chat_id));
+    stop_list.push(
+        controlledStoppableEventOn(tavern_events.CHAT_CHANGED, (chat_id: string) =>
+            transitionToChat(chat_id)
+        )
+    );
     await transitionToChat(current_chat_id, true);
 
     stop_list.push(initNotification());
