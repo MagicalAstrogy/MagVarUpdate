@@ -1,4 +1,5 @@
 import { updateVariables } from '@/function/update_variables';
+import { tr } from '@/i18n';
 import { useDataStore } from '@/store';
 import { getLastValidMessageId } from '@/util';
 import { MvuData } from '@/variable_def';
@@ -18,7 +19,11 @@ export async function restoreVariables() {
     );
     if (last_10th_message_id > last_not_has_variable_message_id) {
         // 最近 10 楼都还有楼层变量
-        console.info(`最近 ${触发恢复变量的最近楼层数} 层都包含变量数据，不需要进行恢复。`);
+        console.info(
+            tr('runtime.cleanup.restoreNotNeededLog', {
+                count: 触发恢复变量的最近楼层数,
+            })
+        );
         return;
     }
 
@@ -30,8 +35,8 @@ export async function restoreVariables() {
     if (snapshot_message_id === -1) {
         // 无法恢复
         toastr.warning(
-            `在 0 ~ ${last_20th_message_id} 层找不到有效的变量信息, 无法进行楼层变量恢复`,
-            '[MVU]恢复旧楼层变量'
+            tr('runtime.cleanup.restoreUnavailable', { floor: last_20th_message_id }),
+            tr('runtime.cleanup.restoreTitle')
         );
         return;
     }

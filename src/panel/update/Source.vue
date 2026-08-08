@@ -1,20 +1,20 @@
 <template>
-    <Detail title="模型来源">
+    <Detail :title="t('panel.source.section')">
         <Select
             v-model="store.settings.额外模型解析配置.模型来源"
-            :options="['与插头相同', '自定义']"
+            :options="model_source_options"
         />
 
         <template v-if="store.settings.额外模型解析配置.模型来源 === '自定义'">
-            <Detail title="API 方案">
-                <Field label="当前方案">
+            <Detail :title="t('panel.source.profile.section')">
+                <Field :label="t('panel.source.profile.current')">
                     <div class="mvu-api-profile-controls">
                         <select
                             v-model="selectedProfileName"
                             class="text_pole"
-                            aria-label="API 方案"
+                            :aria-label="t('panel.source.profile.ariaLabel')"
                         >
-                            <option value="">（手动编辑，未绑定方案）</option>
+                            <option value="">{{ t('panel.source.profile.manual') }}</option>
                             <option
                                 v-for="profile in store.settings.额外模型解析配置.api方案列表"
                                 :key="profile.名称"
@@ -28,7 +28,7 @@
                             v-model="newProfileName"
                             type="text"
                             class="text_pole"
-                            placeholder="新方案名称"
+                            :placeholder="t('panel.source.profile.newName')"
                         />
                     </div>
                 </Field>
@@ -37,19 +37,19 @@
                     <input
                         class="menu_button menu_button_icon interactable"
                         type="button"
-                        value="保存当前方案"
+                        :value="t('panel.source.profile.save')"
                         @click="saveCurrentProfile"
                     />
                     <input
                         class="menu_button menu_button_icon interactable"
                         type="button"
-                        value="另存为新方案"
+                        :value="t('panel.source.profile.saveAs')"
                         @click="saveAsNewProfile"
                     />
                     <input
                         class="menu_button menu_button_icon interactable"
                         type="button"
-                        value="删除当前方案"
+                        :value="t('panel.source.profile.delete')"
                         :disabled="!canDeleteCurrentProfile"
                         @click="deleteCurrentProfile"
                     />
@@ -57,7 +57,7 @@
             </Detail>
 
             <div class="mvu-field-grid">
-                <Field label="API 地址">
+                <Field :label="t('panel.source.apiAddress')">
                     <input
                         v-model="store.settings.额外模型解析配置.api地址"
                         type="text"
@@ -66,27 +66,27 @@
                     />
                 </Field>
 
-                <Field label="API 密钥">
+                <Field :label="t('panel.source.apiKey')">
                     <input
                         v-model="store.settings.额外模型解析配置.密钥"
                         type="password"
                         class="text_pole"
-                        placeholder="留空表示无需密钥"
+                        :placeholder="t('panel.source.apiKeyPlaceholder')"
                     />
                 </Field>
 
-                <Field label="模型名称">
+                <Field :label="t('panel.source.modelName')">
                     <ModelSelect />
                 </Field>
             </div>
 
-            <Detail title="高级参数">
+            <Detail :title="t('panel.source.advanced')">
                 <div v-if="!additional_extra_configuration_supported" class="mvu-note">
-                    ⚠️酒馆助手版本过低，不支持以下配置
+                    {{ t('panel.source.unsupportedAdvanced') }}
                 </div>
 
                 <div class="mvu-field-grid">
-                    <Field label="最大回复 token">
+                    <Field :label="t('panel.source.maxTokens')">
                         <input
                             v-model.number="store.settings.额外模型解析配置.最大回复token数"
                             :disabled="!additional_extra_configuration_supported"
@@ -98,7 +98,7 @@
                         />
                     </Field>
 
-                    <Field label="聊天历史条数">
+                    <Field :label="t('panel.source.chatHistory')">
                         <RangeNumber
                             v-model="store.settings.额外模型解析配置.max_chat_history"
                             :disabled="!additional_extra_configuration_supported"
@@ -108,7 +108,7 @@
                         />
                     </Field>
 
-                    <Field label="温度">
+                    <Field :label="t('panel.source.temperature')">
                         <RangeNumber
                             v-model="store.settings.额外模型解析配置.温度"
                             :disabled="!additional_extra_configuration_supported"
@@ -118,7 +118,7 @@
                         />
                     </Field>
 
-                    <Field label="频率惩罚">
+                    <Field :label="t('panel.source.frequencyPenalty')">
                         <RangeNumber
                             v-model="store.settings.额外模型解析配置.频率惩罚"
                             :disabled="!additional_extra_configuration_supported"
@@ -128,7 +128,7 @@
                         />
                     </Field>
 
-                    <Field label="存在惩罚">
+                    <Field :label="t('panel.source.presencePenalty')">
                         <RangeNumber
                             v-model="store.settings.额外模型解析配置.存在惩罚"
                             :disabled="!additional_extra_configuration_supported"
@@ -138,7 +138,7 @@
                         />
                     </Field>
 
-                    <Field label="Top P">
+                    <Field :label="t('panel.source.topP')">
                         <RangeNumber
                             v-model="store.settings.额外模型解析配置.top_p"
                             :disabled="!additional_extra_configuration_supported"
@@ -148,7 +148,7 @@
                         />
                     </Field>
 
-                    <Field label="Top K">
+                    <Field :label="t('panel.source.topK')">
                         <RangeNumber
                             v-model="store.settings.额外模型解析配置.top_k"
                             :disabled="!additional_extra_configuration_supported"
@@ -172,6 +172,7 @@ import {
     saveCurrentExtraModelApiProfile,
     selectExtraModelApiProfile,
 } from '@/function/update/extra_model_api_profiles';
+import { useMvuI18n } from '@/i18n';
 import Detail from '@/panel/component/Detail.vue';
 import Field from '@/panel/component/Field.vue';
 import ModelSelect from '@/panel/component/ModelSelect.vue';
@@ -182,8 +183,17 @@ import { compare } from 'compare-versions';
 import { computed, ref, watch } from 'vue';
 
 const store = useDataStore();
+const { t } = useMvuI18n();
 
-const additional_extra_configuration_supported = compare(store.versions.tavernhelper, '4.0.14', '>=');
+const additional_extra_configuration_supported = compare(
+    store.versions.tavernhelper,
+    '4.0.14',
+    '>='
+);
+const model_source_options = computed(() => [
+    { value: '与插头相同', label: t('panel.source.sameAsConnection') },
+    { value: '自定义', label: t('panel.source.custom') },
+]);
 
 const selectedProfileName = ref(store.settings.额外模型解析配置.当前api方案);
 const newProfileName = ref('');
@@ -219,12 +229,12 @@ watch(selectedProfileName, async (value, old_value) => {
 
     if (isActiveExtraModelApiProfileDirty(store.settings.额外模型解析配置)) {
         const result = await SillyTavern.callGenericPopup(
-            '当前方案有未保存的修改，切换将丢弃这些修改。是否继续？',
+            t('panel.source.switchDirty'),
             SillyTavern.POPUP_TYPE.CONFIRM,
             '',
             {
-                okButton: '继续',
-                cancelButton: '取消',
+                okButton: t('panel.source.continue'),
+                cancelButton: t('common.cancel'),
             }
         );
         if (
@@ -239,9 +249,7 @@ watch(selectedProfileName, async (value, old_value) => {
 
     if (!value) {
         isApplyingProfile.value = true;
-        const next_config = clearUnboundExtraModelApiProfileFields(
-            store.settings.额外模型解析配置
-        );
+        const next_config = clearUnboundExtraModelApiProfileFields(store.settings.额外模型解析配置);
         store.settings.额外模型解析配置.当前api方案 = next_config.当前api方案;
         store.settings.额外模型解析配置.api地址 = next_config.api地址;
         store.settings.额外模型解析配置.密钥 = next_config.密钥;
@@ -252,16 +260,13 @@ watch(selectedProfileName, async (value, old_value) => {
 
     try {
         isApplyingProfile.value = true;
-        const next_config = selectExtraModelApiProfile(
-            store.settings.额外模型解析配置,
-            value
-        );
+        const next_config = selectExtraModelApiProfile(store.settings.额外模型解析配置, value);
         store.settings.额外模型解析配置.api地址 = next_config.api地址;
         store.settings.额外模型解析配置.密钥 = next_config.密钥;
         store.settings.额外模型解析配置.模型名称 = next_config.模型名称;
         store.settings.额外模型解析配置.当前api方案 = next_config.当前api方案;
     } catch (error) {
-        toastr.error(String((error as Error)?.message ?? error), '[MVU]切换 API 方案失败');
+        toastr.error(format_error(error), t('panel.source.switchFailureTitle'));
         isRevertingProfileSelection.value = true;
         selectedProfileName.value = store.settings.额外模型解析配置.当前api方案;
     } finally {
@@ -278,31 +283,34 @@ function saveCurrentProfile() {
         store.settings.额外模型解析配置.api方案列表 = saved.api方案列表;
         store.settings.额外模型解析配置.当前api方案 = saved.当前api方案;
         selectedProfileName.value = saved.当前api方案;
-        toastr.success(`已保存 API 方案「${saved.当前api方案}」`, '[MVU]');
+        toastr.success(
+            t('panel.source.profileSaved', { name: _.escape(saved.当前api方案) }),
+            t('runtime.common.mvuTitle')
+        );
     } catch (error) {
-        toastr.error(String((error as Error)?.message ?? error), '[MVU]保存 API 方案失败');
+        toastr.error(format_error(error), t('panel.source.saveFailureTitle'));
     }
 }
 
 function saveAsNewProfile() {
     const profile_name = newProfileName.value.trim();
     if (!profile_name) {
-        toastr.warning('请先输入新方案名称', '[MVU]');
+        toastr.warning(t('panel.source.enterProfileName'), t('runtime.common.mvuTitle'));
         return;
     }
 
     try {
-        const saved = saveAsNewExtraModelApiProfile(
-            store.settings.额外模型解析配置,
-            profile_name
-        );
+        const saved = saveAsNewExtraModelApiProfile(store.settings.额外模型解析配置, profile_name);
         store.settings.额外模型解析配置.api方案列表 = saved.api方案列表;
         store.settings.额外模型解析配置.当前api方案 = saved.当前api方案;
         selectedProfileName.value = saved.当前api方案;
         newProfileName.value = '';
-        toastr.success(`已另存为 API 方案「${saved.当前api方案}」`, '[MVU]');
+        toastr.success(
+            t('panel.source.profileSavedAs', { name: _.escape(saved.当前api方案) }),
+            t('runtime.common.mvuTitle')
+        );
     } catch (error) {
-        toastr.error(String((error as Error)?.message ?? error), '[MVU]保存 API 方案失败');
+        toastr.error(format_error(error), t('panel.source.saveFailureTitle'));
     }
 }
 
@@ -313,7 +321,7 @@ async function deleteCurrentProfile() {
     }
     // 与 canDeleteCurrentProfile 同一产品规则，见上方注释
     if (store.settings.额外模型解析配置.api方案列表.length < 2) {
-        toastr.warning('至少保留两个 API 方案时才可删除', '[MVU]');
+        toastr.warning(t('panel.source.keepTwoProfiles'), t('runtime.common.mvuTitle'));
         return;
     }
 
@@ -323,15 +331,22 @@ async function deleteCurrentProfile() {
             profile_name,
             async confirmation => {
                 const is_discard_confirmation = confirmation === 'discard_unsaved_changes';
-                const result = await SillyTavern.callGenericPopup(
+                const content = document.createElement('span');
+                content.textContent = t(
                     is_discard_confirmation
-                        ? `当前方案「${profile_name}」有未保存的修改，删除将丢弃这些修改。是否继续？`
-                        : `确定删除 API 方案「${profile_name}」吗？此操作不可撤销。`,
+                        ? 'panel.source.deleteDirty'
+                        : 'panel.source.deleteConfirm',
+                    { name: profile_name }
+                );
+                const result = await SillyTavern.callGenericPopup(
+                    content,
                     SillyTavern.POPUP_TYPE.CONFIRM,
                     '',
                     {
-                        okButton: is_discard_confirmation ? '丢弃修改' : '删除',
-                        cancelButton: '取消',
+                        okButton: is_discard_confirmation
+                            ? t('panel.source.discardChanges')
+                            : t('panel.source.delete'),
+                        cancelButton: t('common.cancel'),
                     }
                 );
                 return result === SillyTavern.POPUP_RESULT.AFFIRMATIVE;
@@ -347,10 +362,19 @@ async function deleteCurrentProfile() {
         store.settings.额外模型解析配置.密钥 = next_config.密钥;
         store.settings.额外模型解析配置.模型名称 = next_config.模型名称;
         selectedProfileName.value = next_config.当前api方案;
-        toastr.info(`已删除 API 方案「${profile_name}」`, '[MVU]');
+        toastr.info(
+            t('panel.source.profileDeleted', { name: _.escape(profile_name) }),
+            t('runtime.common.mvuTitle')
+        );
     } catch (error) {
-        toastr.error(String((error as Error)?.message ?? error), '[MVU]删除 API 方案失败');
+        toastr.error(format_error(error), t('panel.source.deleteFailureTitle'));
     }
+}
+
+function format_error(error: unknown): string {
+    return t('runtime.common.errorCause', {
+        cause: _.escape(error instanceof Error ? error.message : String(error)),
+    });
 }
 </script>
 

@@ -17,6 +17,7 @@ import {
     clearExtraModelRequestOverrides,
     setExtraModelRequestOverrides,
 } from '@/function/request/extra_model_request_override';
+import { tr } from '@/i18n';
 import { useDataStore } from '@/store';
 import { normalizeBaseURL } from '@/util';
 import { literalYamlify, uuidv4 } from '@util/common';
@@ -52,9 +53,7 @@ function assertV4CompatibleFormattedOutputUsable() {
         store.settings.额外模型解析配置.应答格式 === V4_COMPATIBLE_FORMATTED_OUTPUT &&
         store.settings.额外模型解析配置.模型来源 === '与插头相同'
     ) {
-        throw new Error(
-            '[MVU额外模型解析]格式化输出(v4兼容)需要额外模型来源为自定义，不能与插头相同。'
-        );
+        throw new Error(tr('runtime.extraModel.v4RequiresCustomSource'));
     }
 }
 
@@ -74,7 +73,7 @@ function parseCustomIncludeBody(body: unknown): Record<string, unknown> {
     if (Array.isArray(parsed)) {
         return Object.assign({}, ...parsed.filter(isPlainObject));
     }
-    throw new Error('[MVU额外模型解析]custom_include_body 不是 YAML object，无法合并配置。');
+    throw new Error(tr('runtime.extraModel.customIncludeBodyInvalid'));
 }
 
 function buildJsonObjectCustomIncludeBody(original_body: unknown): string {
@@ -92,7 +91,7 @@ async function saveSillyTavernSettings() {
     const save_settings =
         typeof builtin === 'undefined' ? undefined : builtin.saveSettings.bind(builtin);
     if (typeof save_settings !== 'function') {
-        throw new Error('[MVU额外模型解析]无法获取 SillyTavern saveSettings，不能临时更新配置。');
+        throw new Error(tr('runtime.extraModel.saveSettingsUnavailable'));
     }
     await save_settings();
 }
@@ -111,7 +110,7 @@ async function setTemporaryJsonObjectResponseFormat() {
     assertV4CompatibleFormattedOutputUsable();
     const oai_settings = SillyTavern.chatCompletionSettings;
     if (!isPlainObject(oai_settings)) {
-        throw new Error('[MVU额外模型解析]无法获取 SillyTavern OpenAI 设置。');
+        throw new Error(tr('runtime.extraModel.openAiSettingsUnavailable'));
     }
 
     const had_original_body = Object.prototype.hasOwnProperty.call(
@@ -144,7 +143,7 @@ async function restoreTemporaryJsonObjectResponseFormat() {
 
     const oai_settings = SillyTavern.chatCompletionSettings;
     if (!isPlainObject(oai_settings)) {
-        throw new Error('[MVU额外模型解析]无法获取 SillyTavern OpenAI 设置，不能恢复配置。');
+        throw new Error(tr('runtime.extraModel.openAiSettingsRestoreUnavailable'));
     }
 
     const { had_original_body, original_body } = temporary_json_object_response_format_state;
@@ -255,8 +254,13 @@ export async function invokeExtraModelWithStrategy(): Promise<string | null> {
                 for (let i = 0; i < store.settings.额外模型解析配置.请求次数; i++) {
                     if (store.settings.通知.额外模型解析中) {
                         toastr.info(
-                            `${i === 0 ? '' : ` 重试 ${i}/3`}`,
-                            '[MVU额外模型解析]变量更新中'
+                            i === 0
+                                ? tr('runtime.extraModel.requesting')
+                                : tr('runtime.extraModel.retrying', {
+                                      attempt: i,
+                                      total: store.settings.额外模型解析配置.请求次数 - 1,
+                                  }),
+                            tr('runtime.extraModel.updateInProgressTitle')
                         );
                     }
                     const { result, is_manual_canceled } = await safeInvoke();
@@ -272,14 +276,19 @@ export async function invokeExtraModelWithStrategy(): Promise<string | null> {
             case '同时请求多次':
                 if (store.settings.通知.额外模型解析中) {
                     toastr.info(
-                        `将同时请求 ${store.settings.额外模型解析配置.请求次数} 次AI回复以提高成功率...`,
-                        '[MVU额外模型解析]变量更新中'
+                        tr('runtime.extraModel.concurrentRequests', {
+                            count: store.settings.额外模型解析配置.请求次数,
+                        }),
+                        tr('runtime.extraModel.updateInProgressTitle')
                     );
                 }
                 return concurrentInvoke(store.settings.额外模型解析配置.请求次数);
             case '先请求一次, 失败后再同时请求多次':
                 if (store.settings.通知.额外模型解析中) {
-                    toastr.info(`将先请求一次尝试是否能成功...`, '[MVU额外模型解析]变量更新中');
+                    toastr.info(
+                        tr('runtime.extraModel.firstRequest'),
+                        tr('runtime.extraModel.updateInProgressTitle')
+                    );
                 }
                 {
                     const { result, is_manual_canceled } = await safeInvoke();
@@ -293,8 +302,10 @@ export async function invokeExtraModelWithStrategy(): Promise<string | null> {
                 }
                 if (store.settings.通知.额外模型解析中) {
                     toastr.info(
-                        `首次请求失败, 将同时请求 ${store.settings.额外模型解析配置.请求次数 - 1} 次AI回复以提高成功率...`,
-                        '[MVU额外模型解析]变量更新中'
+                        tr('runtime.extraModel.firstRequestFailed', {
+                            count: store.settings.额外模型解析配置.请求次数 - 1,
+                        }),
+                        tr('runtime.extraModel.updateInProgressTitle')
                     );
                 }
                 return concurrentInvoke(store.settings.额外模型解析配置.请求次数 - 1);
@@ -332,7 +343,7 @@ async function invokeExtraModel(generation_id?: string, batch_id?: string): Prom
         if (!tag) {
             throw new Error(
                 literalYamlify({
-                    ['[MVU额外模型解析]没有能从回复中找到<UpdateVariable>标签']: result,
+                    [tr('runtime.extraModel.updateTagMissing')]: result,
                 })
             );
         }
@@ -355,7 +366,7 @@ async function invokeExtraModel(generation_id?: string, batch_id?: string): Prom
 
         throw new Error(
             literalYamlify({
-                ['[MVU额外模型解析]从回复找到了<UpdateVariable>标签，但其内的更新命令无效']: result,
+                [tr('runtime.extraModel.updateCommandsInvalid')]: result,
             })
         );
     } finally {

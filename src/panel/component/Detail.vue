@@ -1,6 +1,16 @@
 <template>
     <details class="mvu-details">
-        <summary class="mvu-details__summary">{{ title }}</summary>
+        <summary class="mvu-details__summary">
+            <span>{{ title }}</span>
+            <span
+                v-if="$slots['title-suffix']"
+                class="mvu-details__title-suffix"
+                @click.stop
+                @keydown.stop
+            >
+                <slot name="title-suffix" />
+            </span>
+        </summary>
         <div class="mvu-details__content">
             <slot />
         </div>
@@ -29,6 +39,13 @@ defineProps<{ title: string }>();
     user-select: none;
     font-weight: 600;
     opacity: 0.95;
+}
+
+.mvu-details__title-suffix {
+    display: inline-flex;
+    align-items: center;
+    margin-inline-start: 0.35rem;
+    vertical-align: middle;
 }
 
 .mvu-details__content {

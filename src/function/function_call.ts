@@ -1,4 +1,5 @@
 import { updateVariables } from '@/function/update_variables';
+import { tr } from '@/i18n';
 import { useDataStore } from '@/store';
 import { getLastValidVariable, isJsonPatch } from '@/util';
 import { parseString } from '@util/common';
@@ -231,7 +232,7 @@ async function onVariableUpdatedCall(args: any): Promise<string> {
     }
 
     const has_variable_modified = await updateVariables(args.delta, variables);
-    if (has_variable_modified && useDataStore().settings.兼容性.更新到聊天变量) {
+    if (has_variable_modified && useDataStore().effective_settings.兼容性.更新到聊天变量) {
         await replaceVariables(variables, { type: 'chat' });
     }
     await replaceVariables(variables, { type: 'message', message_id: message_id });
@@ -339,7 +340,7 @@ export function registerFunction() {
 export function overrideToolRequest(generate_data: any) {
     const store = useDataStore();
     if (
-        store.settings.更新方式 !== '额外模型解析' ||
+        store.effective_settings.更新方式 !== '额外模型解析' ||
         store.settings.额外模型解析配置.应答格式 !== '工具调用'
     ) {
         return;
@@ -452,14 +453,17 @@ export function extractFromToolCall(tool_calls: ToolCallBatches | undefined): st
             try {
                 const json_patch = normalizeJsonPatchPayload(json.delta);
                 if (!json_patch) {
-                    throw new Error(`不是有效的 json patch`);
+                    throw new Error(tr('runtime.functionCall.invalidJsonPatch'));
                 }
                 json.delta = json_patch;
                 result += `<JSONPatch>\n${json.delta}\n</JSONPatch>\n`;
             } catch (error) {
                 if (json_patch_match) {
                     console.error(
-                        `[MVU额外模型解析]无法解析的变量更新块。 ${json.delta}, 错误 ${error}`
+                        tr('runtime.functionCall.updateBlockParseFailedLog', {
+                            content: String(json.delta),
+                            cause: String(error),
+                        })
                     );
                     return null;
                 }
@@ -478,7 +482,11 @@ export function extractFromToolCall(tool_calls: ToolCallBatches | undefined): st
             return result;
         }
     } catch (e) {
-        console.log(`[MVU额外模型解析]函数调用结果解析失败, ${e}`);
+        console.log(
+            tr('runtime.functionCall.resultParseFailedLog', {
+                cause: String(e),
+            })
+        );
     }
     return null;
 }
@@ -499,14 +507,19 @@ export function extractFromFormattedOutput(result: string | GenerateToolCallResu
               _.get(parsed, 'delta'));
         const json_patch = normalizeJsonPatchPayload(patch_source);
         if (!json_patch) {
-            throw new Error('不是有效的 json patch');
+            throw new Error(tr('runtime.functionCall.invalidJsonPatch'));
         }
         const analysis = isJsonPatch(parsed)
             ? ''
             : (_.get(parsed, 'analysis') ?? _.get(parsed, 'analyze') ?? '');
         return formatJsonPatchUpdate(analysis, json_patch);
     } catch (error) {
-        console.error(`[MVU额外模型解析]格式化输出解析失败。 ${content}, 错误 ${error}`);
+        console.error(
+            tr('runtime.functionCall.formattedOutputParseFailedLog', {
+                content,
+                cause: String(error),
+            })
+        );
         return null;
     }
 }

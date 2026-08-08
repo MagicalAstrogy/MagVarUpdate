@@ -1,5 +1,5 @@
 <template>
-    <Section label="修复按钮">
+    <Section :label="t('panel.button.section')">
         <template #content>
             <div class="mvu-button-wrap">
                 <div
@@ -10,7 +10,7 @@
                     role="button"
                     @click="button.function"
                 >
-                    {{ button.name }}
+                    {{ t(button.label_key) }}
                 </div>
             </div>
         </template>
@@ -19,11 +19,13 @@
 
 <script setup lang="ts">
 import { buttons } from '@/button';
+import { useMvuI18n } from '@/i18n';
 import Section from '@/panel/component/Section.vue';
 import { useDataStore } from '@/store';
 import { computed } from 'vue';
 
 const store = useDataStore();
+const { t } = useMvuI18n();
 const visible_buttons = computed(() =>
     buttons.filter(
         button => !(button.is_legacy ?? false) || store.settings.兼容性.显示老旧功能 === true

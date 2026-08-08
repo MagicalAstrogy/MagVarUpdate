@@ -79,6 +79,7 @@ describe('reloadInit function', () => {
         // Setup default mocks
         (getScriptId as jest.Mock).mockReturnValue('test-script');
         (getScriptButtons as jest.Mock).mockReturnValue([]);
+        useDataStore().should_enable = true;
         (createEmptyGameData as jest.Mock).mockReturnValue({
             stat_data: {},
             schema: {},
@@ -97,6 +98,15 @@ describe('reloadInit function', () => {
     });
 
     describe('Basic error handling', () => {
+        test('should ignore button events while this MVU instance is disabled', async () => {
+            useDataStore().should_enable = false;
+
+            await reloadInit();
+
+            expect(createEmptyGameData).not.toHaveBeenCalled();
+            expect(loadInitVarData).not.toHaveBeenCalled();
+        });
+
         test('should handle missing InitVar data', async () => {
             (loadInitVarData as jest.Mock).mockResolvedValue(false);
 
@@ -537,6 +547,7 @@ describe('RecurVariable function', () => {
 
         (getScriptId as jest.Mock).mockReturnValue('test-script');
         (getScriptButtons as jest.Mock).mockReturnValue([]);
+        useDataStore().should_enable = true;
 
         const silly = (globalThis as any).SillyTavern as any;
         silly.chat = [];

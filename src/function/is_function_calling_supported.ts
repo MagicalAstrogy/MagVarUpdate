@@ -1,3 +1,4 @@
+import { tr } from '@/i18n';
 import { useDataStore } from '@/store';
 import { compare } from 'compare-versions';
 
@@ -8,7 +9,10 @@ export function getFunctionCallingApiVersionUnsupportedMessage(): string | null 
     if (version === '' || compare(version, MIN_FUNCTION_CALLING_TAVERN_HELPER_VERSION, '>=')) {
         return null;
     }
-    return `当前酒馆助手版本为 ${version}，工具调用需要酒馆助手 ${MIN_FUNCTION_CALLING_TAVERN_HELPER_VERSION} 或更高版本`;
+    return tr('runtime.functionCalling.versionUnsupported', {
+        current: version,
+        required: MIN_FUNCTION_CALLING_TAVERN_HELPER_VERSION,
+    });
 }
 
 export function isFunctionCallingApiVersionSupported() {

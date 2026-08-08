@@ -2,6 +2,7 @@ import { isExtraModelSupported } from '@/function/is_extra_model_supported';
 import { isFunctionCallingSupported } from '@/function/is_function_calling_supported';
 import { invokeExtraModelWithStrategy } from '@/function/update/invoke_extra_model';
 import { handleVariablesInMessage } from '@/function/update_variables';
+import { tr } from '@/i18n';
 import { useDataStore } from '@/store';
 
 export async function onMessageReceived(
@@ -15,7 +16,7 @@ export async function onMessageReceived(
 
     const store = useDataStore();
     if (
-        store.settings.兼容性.sandas不视为user消息 === false &&
+        store.effective_settings.兼容性.sendas不视为user消息 === false &&
         current_chatmsg.name !== SillyTavern.name2
     ) {
         return;
@@ -29,7 +30,7 @@ export async function onMessageReceived(
     store.runtimes.is_during_extra_analysis = false;
 
     if (
-        store.settings.更新方式 === '随AI输出' ||
+        store.effective_settings.更新方式 === '随AI输出' ||
         (store.settings.额外模型解析配置.应答格式 === '工具调用' &&
             !isFunctionCallingSupported()) ||
         !(await isExtraModelSupported())
@@ -39,12 +40,12 @@ export async function onMessageReceived(
     }
 
     if (SillyTavern.chat.length <= 1) {
-        console.log('[MVU] 对第一层永不进行额外模型解析');
+        console.log(tr('runtime.extraModel.firstFloorSkippedLog'));
         return;
     }
 
-    if (!force && store.settings.额外模型解析配置.启用自动请求 === false) {
-        console.log('[MVU] 不自动触发额外模型解析');
+    if (!force && store.effective_settings.额外模型解析配置.启用自动请求 === false) {
+        console.log(tr('runtime.extraModel.autoRequestDisabledLog'));
         return;
     }
 
@@ -65,8 +66,8 @@ export async function onMessageReceived(
         );
     } else {
         toastr.error(
-            '建议调整变量更新方式, 「输入框左下角魔棒-日志查看器」可查看具体情况',
-            '[MVU额外模型解析]变量更新失败'
+            tr('runtime.extraModel.updateFailed'),
+            tr('runtime.extraModel.updateFailedTitle')
         );
     }
     await handleVariablesInMessage(message_id);

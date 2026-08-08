@@ -1,16 +1,21 @@
+import { tr } from '@/i18n';
+
 export type EntryCommentRegexCompileResult = {
     regex?: RegExp;
     error?: string;
 };
+
+export type EntryCommentFilterSource = '用户全局配置' | '角色卡配置';
 
 export type EntryCommentFilterResult = {
     lore: 'globalLore' | 'characterLore' | 'chatLore' | 'personaLore';
     world: string;
     comment: string;
     reason: '白名单' | '黑名单';
+    sources: EntryCommentFilterSource[];
 };
 
-export const ENTRY_COMMENT_FILTER_LOG_TITLE = '[MVU]世界书条目黑/白名单筛选结果';
+export const ENTRY_COMMENT_FILTER_LOG_TITLE = tr('runtime.filter.logTitle');
 
 export function logEntryCommentFilterResult(result: EntryCommentFilterResult[]) {
     console.log(
@@ -46,7 +51,7 @@ export function compileEntryCommentRegex(value: string): EntryCommentRegexCompil
         if (trimmed.startsWith('/')) {
             const closing_slash = findClosingSlash(trimmed);
             if (closing_slash <= 0) {
-                throw new Error('JS 风格正则需要以 /pattern/flags 形式书写');
+                throw new Error(tr('runtime.regex.jsStyleSyntax'));
             }
             return {
                 regex: new RegExp(

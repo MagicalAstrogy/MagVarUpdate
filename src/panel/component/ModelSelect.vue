@@ -15,16 +15,16 @@
                 v-model="selected"
                 class="text_pole"
                 :disabled="models.length === 0"
-                aria-label="模型列表"
+                :aria-label="t('panel.modelSelect.ariaLabel')"
             >
-                <option value="">（从列表选择）</option>
+                <option value="">{{ t('panel.modelSelect.chooseFromList') }}</option>
                 <option v-for="model in models" :key="model" :value="model">{{ model }}</option>
             </select>
 
             <input
                 class="mvu-model-select__btn menu_button menu_button_icon interactable"
                 type="button"
-                :value="loading ? '获取中…' : '获取模型'"
+                :value="loading ? t('panel.modelSelect.loading') : t('panel.modelSelect.fetch')"
                 :disabled="loading"
                 @click="refresh"
             />
@@ -33,11 +33,13 @@
 </template>
 
 <script setup lang="ts">
+import { useMvuI18n } from '@/i18n';
 import { useDataStore } from '@/store';
 import { normalizeBaseURL } from '@/util';
 import { ref, watch } from 'vue';
 
 const store = useDataStore();
+const { t } = useMvuI18n();
 
 const loading = ref(false);
 const models = ref<string[]>([]);
@@ -79,10 +81,15 @@ async function refresh() {
             : '';
 
         if (models.value.length === 0) {
-            toastr.warning('模型列表为空或获取失败', '[MVU]获取模型列表');
+            toastr.warning(t('panel.modelSelect.empty'), t('panel.modelSelect.fetchTitle'));
         }
     } catch (error) {
-        toastr.error(String((error as Error)?.message ?? error), '[MVU]获取模型列表失败');
+        toastr.error(
+            t('runtime.common.errorCause', {
+                cause: _.escape(error instanceof Error ? error.message : String(error)),
+            }),
+            t('panel.modelSelect.fetchFailureTitle')
+        );
     } finally {
         loading.value = false;
     }

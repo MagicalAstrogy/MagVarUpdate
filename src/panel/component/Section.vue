@@ -33,4 +33,11 @@ defineProps<{ label: string }>();
 .mvu-section__content {
     gap: 0.5rem;
 }
+
+.mvu-section__title {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.3rem;
+}
 </style>

@@ -1,8 +1,16 @@
 import { migrateExtraModelApiProfiles } from '@/function/update/extra_model_api_profiles';
+import {
+    CharacterSettingsOverride,
+    CharacterSettingsOverridePath,
+    getCharacterSettingsOverrideValue,
+    hasActiveCharacterSettingsOverride,
+    hasOwnCharacterSettingsOverride,
+} from '@/function/character_override/schema';
 import { is_jest_environment } from '@/jest';
 import { registerAsUniqueScript } from '@util/script';
+import { klona } from 'klona';
 import { defineStore } from 'pinia';
-import { ref, toRaw, watch } from 'vue';
+import { computed, ref, toRaw, watch } from 'vue';
 import * as z from 'zod';
 
 const ExtraModelApiProfile = z
@@ -107,7 +115,6 @@ const OldSettings = z
             兼容性: {
                 ...legacy,
                 更新到聊天变量,
-                sandas不视为user消息: false,
                 ...existing_compatibility_settings,
             },
         });
@@ -205,9 +212,16 @@ const NewSettings = z
             .object({
                 更新到聊天变量: z.boolean().default(false),
                 显示老旧功能: z.boolean().default(false),
-                sandas不视为user消息: z.boolean().default(false),
+                sendas不视为user消息: z.boolean().optional(),
+                sandas不视为user消息: z.boolean().optional(),
             })
             .loose()
+            .transform(({ sendas不视为user消息, sandas不视为user消息, ...data }) => ({
+                ...data,
+                更新到聊天变量: data.更新到聊天变量,
+                显示老旧功能: data.显示老旧功能,
+                sendas不视为user消息: sendas不视为user消息 ?? sandas不视为user消息 ?? false,
+            }))
             .prefault({}),
         internal: z
             .object({
@@ -234,6 +248,36 @@ const NewSettings = z
 
 const Settings = z.union([OldSettings, NewSettings]).catch(() => NewSettings.parse({}));
 
+export type MvuSettings = z.infer<typeof NewSettings>;
+
+export type CharacterSettingsState = {
+    status: 'loading' | 'unbound' | 'ready' | 'error';
+    character_name: string;
+    worldbook_name: string | null;
+    entry_uid: number | null;
+    expected_content: string | null;
+    draft: CharacterSettingsOverride;
+    is_valid: boolean;
+    revision: number;
+    has_pending_save: boolean;
+    is_saving: boolean;
+};
+
+function createCharacterSettingsState(): CharacterSettingsState {
+    return {
+        status: 'loading',
+        character_name: '',
+        worldbook_name: null,
+        entry_uid: null,
+        expected_content: null,
+        draft: {},
+        is_valid: true,
+        revision: 0,
+        has_pending_save: false,
+        is_saving: false,
+    };
+}
+
 const Runtimes = z
     .object({
         unsupported_warnings: z.string().default(''),
@@ -246,6 +290,7 @@ const Runtimes = z
                     world: z.string(),
                     comment: z.string(),
                     reason: z.enum(['白名单', '黑名单']),
+                    sources: z.array(z.enum(['用户全局配置', '角色卡配置'])).default([]),
                 })
             )
             .default([]),
@@ -269,6 +314,46 @@ export const useDataStore = defineStore('MVU变量框架', () => {
     );
     const _reload_settings = () => {
         settings.value = Settings.parse(_.get(SillyTavern.extensionSettings, 'mvu_settings', {}));
+    };
+
+    const character_settings = ref<CharacterSettingsState>(createCharacterSettingsState());
+    const effective_settings = computed<MvuSettings>(() => {
+        // 运行时读取合并后的配置，但不修改用户持久化的全局设置。
+        const result = klona(settings.value);
+        if (!character_settings.value.is_valid) {
+            return result;
+        }
+
+        const draft = character_settings.value.draft;
+        // 正则采用“全局 + 角色卡”的叠加语义，由 filterEntries 单独合并，不在此处覆盖。
+        if (_.has(draft, '更新方式')) {
+            result.更新方式 = draft.更新方式!;
+        }
+        if (_.has(draft, '额外模型解析配置.启用自动请求')) {
+            result.额外模型解析配置.启用自动请求 = draft.额外模型解析配置!.启用自动请求!;
+        }
+        if (_.has(draft, '兼容性.更新到聊天变量')) {
+            result.兼容性.更新到聊天变量 = draft.兼容性!.更新到聊天变量!;
+        }
+        if (_.has(draft, '兼容性.sendas不视为user消息')) {
+            result.兼容性.sendas不视为user消息 = draft.兼容性!.sendas不视为user消息!;
+        }
+        return result;
+    });
+    const has_character_settings_override = (path: CharacterSettingsOverridePath) =>
+        character_settings.value.is_valid &&
+        hasOwnCharacterSettingsOverride(character_settings.value.draft, path);
+    const get_character_settings_override = (path: CharacterSettingsOverridePath) =>
+        character_settings.value.is_valid
+            ? getCharacterSettingsOverrideValue(character_settings.value.draft, path)
+            : undefined;
+    const is_character_settings_override_active = computed(
+        () =>
+            character_settings.value.is_valid &&
+            hasActiveCharacterSettingsOverride(character_settings.value.draft)
+    );
+    const resetCharacterSettings = () => {
+        character_settings.value = createCharacterSettingsState();
     };
 
     const runtimes = ref(Runtimes.parse({}));
@@ -308,6 +393,12 @@ export const useDataStore = defineStore('MVU变量框架', () => {
     return {
         settings,
         _reload_settings,
+        character_settings,
+        effective_settings,
+        has_character_settings_override,
+        get_character_settings_override,
+        is_character_settings_override_active,
+        resetCharacterSettings,
         runtimes,
         resetRuntimes,
         versions,

@@ -2,6 +2,7 @@ import { checkAndRemoveChatVariables } from '@/function/cleanup/chat_variables';
 import { cleanupMessageVariables } from '@/function/cleanup/cleanup_variables';
 import { checkAndCleanupLegacyChat } from '@/function/cleanup/legacy_chat';
 import { restoreVariables } from '@/function/cleanup/restore_variables';
+import { tr } from '@/i18n';
 import { useDataStore } from '@/store';
 import { controlledStoppableEventOn } from '@/util';
 
@@ -39,7 +40,7 @@ export function initCleanup() {
                     old_message_id,
                     store.settings.自动清理变量.快照保留间隔
                 );
-                console.log(`[MVU]已清理 ${counter} 层的消息`);
+                console.log(tr('runtime.cleanup.cleanedFloorsLog', { count: counter }));
             }
         })
     );

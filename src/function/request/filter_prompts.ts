@@ -8,7 +8,10 @@ export function filterPrompts({ messages }: { messages: SillyTavern.SendingMessa
         content: string;
     }[];
 
-    if (store.settings.更新方式 === '额外模型解析' && !store.runtimes.is_during_extra_analysis) {
+    if (
+        store.effective_settings.更新方式 === '额外模型解析' &&
+        !store.runtimes.is_during_extra_analysis
+    ) {
         text_messages
             .filter(message => message.content.includes('<UpdateVariable>'))
             .forEach(

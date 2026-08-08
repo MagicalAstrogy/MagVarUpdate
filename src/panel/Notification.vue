@@ -1,17 +1,17 @@
 <template>
-    <Section label="通知设置">
+    <Section :label="t('panel.notification.section')">
         <template #content>
             <Checkbox v-model="store.settings.通知.MVU框架加载成功">
-                <span>MVU框架加载成功时通知</span>
+                <span>{{ t('panel.notification.frameworkLoaded') }}</span>
             </Checkbox>
             <Checkbox v-model="store.settings.通知.变量初始化成功">
-                <span>变量初始化成功时通知</span>
+                <span>{{ t('panel.notification.variablesInitialized') }}</span>
             </Checkbox>
             <Checkbox v-model="store.settings.通知.变量更新出错">
-                <span>变量初始化/更新出错时通知</span>
+                <span>{{ t('panel.notification.variableError') }}</span>
             </Checkbox>
             <Checkbox v-model="store.settings.通知.额外模型解析中">
-                <span>额外模型解析中通知</span>
+                <span>{{ t('panel.notification.extraModelParsing') }}</span>
             </Checkbox>
         </template>
     </Section>
@@ -20,7 +20,9 @@
 <script setup lang="ts">
 import Checkbox from '@/panel/component/Checkbox.vue';
 import Section from '@/panel/component/Section.vue';
+import { useMvuI18n } from '@/i18n';
 import { useDataStore } from '@/store';
 
 const store = useDataStore();
+const { t } = useMvuI18n();
 </script>
