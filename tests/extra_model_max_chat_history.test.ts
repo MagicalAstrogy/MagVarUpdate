@@ -4,6 +4,8 @@ import {
 } from '@/function/update/invoke_extra_model';
 import { useDataStore } from '@/store';
 
+const RANDOM_HEADER_PATTERN = /^[0-9a-f]{8}\n[0-9a-f]{8}\n[0-9a-f]{8}\n[0-9a-f]{8}$/i;
+
 describe('extra model max chat history', () => {
     beforeEach(() => {
         (globalThis as any).SillyTavern.extensionSettings = {};
@@ -34,28 +36,42 @@ describe('extra model max chat history', () => {
         );
     });
 
-    test('adds random header for built-in jailbreak by default', async () => {
+    test('adds random header for Gemini built-in jailbreak by default', async () => {
+        (globalThis as any).SillyTavern.getChatCompletionModel.mockReturnValue('gemini-test');
+
         await generateExtraModel();
 
         const config = (globalThis as any).generateRaw.mock.calls[0][0];
         expect(config.ordered_prompts[0]).toEqual({
             role: 'system',
-            content: expect.stringMatching(/^[0-9a-f]{8}\n[0-9a-f]{8}\n[0-9a-f]{8}\n[0-9a-f]{8}$/i),
+            content: expect.stringMatching(RANDOM_HEADER_PATTERN),
         });
     });
 
-    test('omits random header when disabled', async () => {
+    test('omits random header for non-Gemini models when enabled', async () => {
+        await generateExtraModel();
+
+        const config = (globalThis as any).generateRaw.mock.calls[0][0];
+        expect(config.ordered_prompts).not.toContainEqual(
+            expect.objectContaining({
+                role: 'system',
+                content: expect.stringMatching(RANDOM_HEADER_PATTERN),
+            })
+        );
+    });
+
+    test('omits random header for Gemini when disabled', async () => {
         const store = useDataStore();
         store.settings.额外模型解析配置.随机头部 = false;
+        (globalThis as any).SillyTavern.getChatCompletionModel.mockReturnValue('gemini-test');
 
         await generateExtraModel();
 
         const config = (globalThis as any).generateRaw.mock.calls[0][0];
-        expect(config.ordered_prompts[0]).not.toEqual(
+        expect(config.ordered_prompts).not.toContainEqual(
             expect.objectContaining({
-                content: expect.stringMatching(
-                    /^[0-9a-f]{8}\n[0-9a-f]{8}\n[0-9a-f]{8}\n[0-9a-f]{8}$/i
-                ),
+                role: 'system',
+                content: expect.stringMatching(RANDOM_HEADER_PATTERN),
             })
         );
     });
