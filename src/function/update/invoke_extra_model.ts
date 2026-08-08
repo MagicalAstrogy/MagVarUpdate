@@ -28,6 +28,7 @@ import YAML from 'yaml';
 let debug_extra_request_counter = 0;
 
 const V4_COMPATIBLE_FORMATTED_OUTPUT = '格式化输出(v4兼容)';
+const MIN_CUSTOM_API_BODY_TAVERN_HELPER_VERSION = '4.8.13';
 const JSON_OBJECT_CUSTOM_INCLUDE_BODY = Object.freeze({
     response_format: {
         type: 'json_object',
@@ -45,6 +46,13 @@ function generateRandomHeader(): string {
 
 function isV4CompatibleFormattedOutput(): boolean {
     return useDataStore().settings.额外模型解析配置.应答格式 === V4_COMPATIBLE_FORMATTED_OUTPUT;
+}
+
+function supportsCustomApiBody(): boolean {
+    const version = useDataStore().versions.tavernhelper;
+    return (
+        version !== '' && compare(version, MIN_CUSTOM_API_BODY_TAVERN_HELPER_VERSION, '>=')
+    );
 }
 
 function assertV4CompatibleFormattedOutputUsable() {
@@ -76,15 +84,15 @@ function parseCustomIncludeBody(body: unknown): Record<string, unknown> {
     throw new Error(tr('runtime.extraModel.customIncludeBodyInvalid'));
 }
 
-function buildJsonObjectCustomIncludeBody(original_body: unknown): string {
+function buildJsonObjectCustomIncludeBody(original_body: unknown): Record<string, unknown> {
     const store = useDataStore();
-    return YAML.stringify({
+    return {
         ...parseCustomIncludeBody(original_body),
         ...JSON_OBJECT_CUSTOM_INCLUDE_BODY,
         ...(store.settings.额外模型解析配置.关闭thinking
             ? DISABLED_THINKING_CUSTOM_INCLUDE_BODY
             : {}),
-    }).trimEnd();
+    };
 }
 
 async function saveSillyTavernSettings() {
@@ -102,7 +110,7 @@ let temporary_json_object_response_format_state: {
 } | null = null;
 
 async function setTemporaryJsonObjectResponseFormat() {
-    if (!isV4CompatibleFormattedOutput()) {
+    if (!isV4CompatibleFormattedOutput() || supportsCustomApiBody()) {
         temporary_json_object_response_format_state = null;
         return;
     }
@@ -118,7 +126,9 @@ async function setTemporaryJsonObjectResponseFormat() {
         'custom_include_body'
     );
     const original_body = oai_settings.custom_include_body;
-    oai_settings.custom_include_body = buildJsonObjectCustomIncludeBody(original_body);
+    oai_settings.custom_include_body = YAML.stringify(
+        buildJsonObjectCustomIncludeBody(original_body)
+    ).trimEnd();
     try {
         await saveSillyTavernSettings();
         temporary_json_object_response_format_state = {
@@ -448,6 +458,15 @@ async function requestReply(generation_id?: string, batch_id?: string): Promise<
         };
         if (is_v4_compatible_formatted_output) {
             config.custom_api.source = 'custom';
+            if (supportsCustomApiBody()) {
+                const oai_settings = SillyTavern.chatCompletionSettings;
+                if (!isPlainObject(oai_settings)) {
+                    throw new Error(tr('runtime.extraModel.openAiSettingsUnavailable'));
+                }
+                config.custom_api.custom_include_body = buildJsonObjectCustomIncludeBody(
+                    oai_settings.custom_include_body
+                );
+            }
         }
     }
 
