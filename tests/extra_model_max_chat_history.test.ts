@@ -16,6 +16,7 @@ describe('extra model max chat history', () => {
     });
 
     afterEach(() => {
+        delete (globalThis as any).generate;
         delete (globalThis as any).generateRaw;
         delete (globalThis as any).SillyTavern.getChatCompletionModel;
     });
@@ -59,9 +60,46 @@ describe('extra model max chat history', () => {
         );
     });
 
-    test('uses temporary saved custom json_object response format for v4 compatible formatted output', async () => {
+    test('uses request-scoped custom json_object body on TavernHelper 4.8.13+', async () => {
         const store = useDataStore();
-        store.versions.tavernhelper = '4.3.9';
+        store.versions.tavernhelper = '4.8.13';
+        store.settings.额外模型解析配置.应答格式 = '格式化输出(v4兼容)';
+        store.settings.额外模型解析配置.模型来源 = '自定义';
+        store.settings.额外模型解析配置.破限方案 = '使用当前预设';
+        store.settings.额外模型解析配置.关闭thinking = true;
+        (globalThis as any).SillyTavern.chatCompletionSettings.custom_include_body =
+            'existing_flag: true';
+        (globalThis as any).generate = jest.fn().mockResolvedValue(
+            JSON.stringify({
+                analysis: 'ok',
+                json_patch: [{ op: 'replace', path: '/x', value: 1 }],
+            })
+        );
+
+        const result = await generateExtraModel();
+
+        expect(result).toContain('<JSONPatch>');
+        expect((globalThis as any).generate).toHaveBeenCalledWith(
+            expect.objectContaining({
+                custom_api: expect.objectContaining({
+                    source: 'custom',
+                    custom_include_body: {
+                        existing_flag: true,
+                        response_format: { type: 'json_object' },
+                        thinking: { type: 'disabled' },
+                    },
+                }),
+            })
+        );
+        expect((globalThis as any).SillyTavern.chatCompletionSettings.custom_include_body).toBe(
+            'existing_flag: true'
+        );
+        expect((globalThis as any).builtin.saveSettings).not.toHaveBeenCalled();
+    });
+
+    test('uses temporary saved custom json_object response format before TavernHelper 4.8.13', async () => {
+        const store = useDataStore();
+        store.versions.tavernhelper = '4.8.12';
         store.settings.额外模型解析配置.应答格式 = '格式化输出(v4兼容)';
         store.settings.额外模型解析配置.模型来源 = '自定义';
         store.settings.额外模型解析配置.api地址 = 'https://example.com/v1';
