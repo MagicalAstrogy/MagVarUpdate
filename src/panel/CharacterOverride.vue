@@ -114,6 +114,7 @@ import { useDataStore } from '@/store';
 import { computed } from 'vue';
 import type { WritableComputedRef } from 'vue';
 
+// 下拉框用哨兵值表达“角色卡未设置，继续继承用户全局配置”。
 const INHERIT = '__inherit__';
 const store = useDataStore();
 const { locale, t } = useMvuI18n();

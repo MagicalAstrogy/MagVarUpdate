@@ -1,4 +1,5 @@
 import { initButtons } from '@/button';
+import { watchPreferredChatSync } from '@/function/chat_lifecycle';
 import { initCleanup } from '@/function/cleanup';
 import { initCharacterSettingsOverride } from '@/function/character_override';
 import { initExportedEvents } from '@/function/exported_events';
@@ -10,6 +11,7 @@ import { initResponse } from '@/function/update';
 import { tr } from '@/i18n';
 import { initPanel } from '@/panel';
 import { useDataStore } from '@/store';
+import { controlledStoppableEventOn } from '@/util';
 import { checkMinimumVersion } from '@util/common';
 import { registerAsUniqueScript } from '@util/script';
 import { createPinia, getActivePinia, setActivePinia } from 'pinia';
@@ -41,6 +43,7 @@ $(async () => {
     let chat_level_generation = 0;
     let chat_level_transition = Promise.resolve();
 
+    // 串行销毁和初始化聊天级模块，并用代次号淘汰快速切换聊天时产生的过期任务。
     const transitionToChat = (chat_id: string, force = false): Promise<void> => {
         if (!force && current_chat_id === chat_id) {
             return chat_level_transition;
@@ -89,7 +92,12 @@ $(async () => {
         return chat_level_transition;
     };
 
-    eventOn(tavern_events.CHAT_CHANGED, (chat_id: string) => transitionToChat(chat_id));
+    stop_list.push(
+        controlledStoppableEventOn(tavern_events.CHAT_CHANGED, (chat_id: string) =>
+            transitionToChat(chat_id)
+        )
+    );
+    stop_list.push(watchPreferredChatSync(() => store.should_enable, transitionToChat));
     await transitionToChat(current_chat_id, true);
 
     stop_list.push(initNotification());
@@ -104,6 +112,7 @@ $(async () => {
 });
 
 async function stopAll(stop_list: Stop[]): Promise<void> {
+    // 单个模块清理失败不应阻止其他模块释放监听器和未完成任务。
     await Promise.allSettled(
         stop_list.map(async stop => {
             await stop();
@@ -118,6 +127,7 @@ async function initChatLevel(is_current: () => boolean = () => true): Promise<St
             return stop_list;
         }
 
+        // 初始化步骤之间都检查聊天是否仍然有效，防止慢请求把旧聊天重新挂载回来。
         const stop_character_settings = await initCharacterSettingsOverride();
         if (!is_current()) {
             await stop_character_settings();

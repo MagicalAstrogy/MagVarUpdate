@@ -1,10 +1,12 @@
 import { compileEntryCommentRegex } from '@/function/request/entry_comment_regex';
 import { tr } from '@/i18n';
+import { parseString } from '@util/common';
 import { klona } from 'klona';
 import * as z from 'zod';
 
 export const CHARACTER_SETTINGS_OVERRIDE_ENTRY_NAME = '[config_override]';
 
+// loose 模式用于保留未来版本或其他扩展写入的未知配置字段。
 export const CharacterSettingsOverrideSchema = z
     .object({
         更新方式: z.enum(['随AI输出', '额外模型解析']).optional(),
@@ -60,6 +62,7 @@ export function getCharacterSettingsOverrideValue(
 }
 
 function removeEmptyKnownValues(draft: CharacterSettingsOverride): CharacterSettingsOverride {
+    // “继承全局配置”在文件中表示字段不存在，而不是保存空字符串或空对象。
     const result = klona(draft);
     const extra_model = result.额外模型解析配置;
     if (extra_model) {
@@ -85,6 +88,7 @@ export function normalizeCharacterSettingsOverride(
 }
 
 function makeAdditionalPropertiesExplicit(schema: unknown): unknown {
+    // Zod 会用空对象表示允许附加属性；显式改为 true 便于其他 JSON Schema 工具识别。
     if (Array.isArray(schema)) {
         return schema.map(makeAdditionalPropertiesExplicit);
     }
@@ -119,6 +123,7 @@ export function parseCharacterSettingsOverrideContent(content: string): Characte
         throw new Error(tr('runtime.characterOverride.contentMustBeObject'));
     }
 
+    // schema 仅供角色卡编辑器展示，不属于实际覆盖配置。
     const { schema: _embedded_schema, ...draft } = document as Record<string, unknown>;
     return normalizeCharacterSettingsOverride(CharacterSettingsOverrideSchema.parse(draft));
 }
@@ -126,11 +131,12 @@ export function parseCharacterSettingsOverrideContent(content: string): Characte
 export function recoverCharacterSettingsOverridePassthrough(
     content: string
 ): CharacterSettingsOverride {
-    const document = JSON.parse(content) as unknown;
+    const document = parseString(content) as unknown;
     if (!_.isPlainObject(document)) {
         return {};
     }
 
+    // 丢弃可能损坏的已知字段，只抢救能够安全原样写回的未知扩展字段。
     const recovered = klona(document) as Record<string, unknown>;
     delete recovered.schema;
     delete recovered.更新方式;
@@ -160,6 +166,7 @@ export function recoverCharacterSettingsOverridePassthrough(
 export function serializeCharacterSettingsOverride(draft: CharacterSettingsOverride): string {
     const normalized = normalizeCharacterSettingsOverride(draft);
     const { schema: _existing_schema, ...config } = normalized;
+    // schema 固定放在最后，兼顾人工阅读和 SillyTavern 的编辑体验。
     const document = {
         ...config,
         schema: getCharacterSettingsOverrideJsonSchema(),
@@ -178,6 +185,7 @@ export function hasActiveCharacterSettingsOverride(draft: CharacterSettingsOverr
         return true;
     }
 
+    // 空白或无效正则不会参与过滤，也不应让界面显示为“覆盖中”。
     return (
         compileEntryCommentRegex(draft.额外模型解析配置?.世界书条目白名单正则 ?? '').regex !==
             undefined ||

@@ -176,14 +176,6 @@ export const runtimeMessages = defineMessages({
         'zh-CN': '无法读取角色世界书“{worldbook}”',
         en: 'Unable to read character lorebook “{worldbook}”',
     },
-    'runtime.characterOverride.noAvailableUid': {
-        'zh-CN': '角色世界书中没有可用的条目 UID',
-        en: 'No entry UID is available in the character lorebook',
-    },
-    'runtime.characterOverride.entryCreationFailed': {
-        'zh-CN': 'SillyTavern 未能创建角色卡配置条目',
-        en: 'SillyTavern could not create the character-card configuration entry',
-    },
     'runtime.characterOverride.contentMustBeObject': {
         'zh-CN': '配置正文必须是 JSON 对象',
         en: 'The settings content must be a JSON object',
@@ -257,10 +249,6 @@ export const runtimeMessages = defineMessages({
     'runtime.characterOverride.saveFailedTitle': {
         'zh-CN': '[MVU]保存角色卡配置失败',
         en: '[MVU] Failed to save character-card configuration',
-    },
-    'runtime.characterOverride.editorRefreshFailedLog': {
-        'zh-CN': '[MVU]角色卡配置已保存，但世界书编辑器刷新失败',
-        en: '[MVU] Character-card configuration was saved, but the lorebook editor did not refresh',
     },
 
     'runtime.cleanup.title': {

@@ -318,12 +318,14 @@ export const useDataStore = defineStore('MVU变量框架', () => {
 
     const character_settings = ref<CharacterSettingsState>(createCharacterSettingsState());
     const effective_settings = computed<MvuSettings>(() => {
+        // 运行时读取合并后的配置，但不修改用户持久化的全局设置。
         const result = klona(settings.value);
         if (!character_settings.value.is_valid) {
             return result;
         }
 
         const draft = character_settings.value.draft;
+        // 正则采用“全局 + 角色卡”的叠加语义，由 filterEntries 单独合并，不在此处覆盖。
         if (_.has(draft, '更新方式')) {
             result.更新方式 = draft.更新方式!;
         }
