@@ -50,9 +50,7 @@ function isV4CompatibleFormattedOutput(): boolean {
 
 function supportsCustomApiBody(): boolean {
     const version = useDataStore().versions.tavernhelper;
-    return (
-        version !== '' && compare(version, MIN_CUSTOM_API_BODY_TAVERN_HELPER_VERSION, '>=')
-    );
+    return version !== '' && compare(version, MIN_CUSTOM_API_BODY_TAVERN_HELPER_VERSION, '>=');
 }
 
 function assertV4CompatibleFormattedOutputUsable() {
