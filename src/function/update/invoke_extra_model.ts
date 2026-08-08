@@ -554,9 +554,10 @@ async function requestReply(generation_id?: string, batch_id?: string): Promise<
             ? SillyTavern.getChatCompletionModel()
             : store.settings.额外模型解析配置.模型名称;
     const is_gemini = model_name.toLowerCase().includes('gemini');
-    const rnd_header_prompts = store.settings.额外模型解析配置.随机头部
-        ? [{ role: 'system' as const, content: batch_id ?? generateRandomHeader() }]
-        : [];
+    const rnd_header_prompts =
+        store.settings.额外模型解析配置.随机头部 && is_gemini
+            ? [{ role: 'system' as const, content: batch_id ?? generateRandomHeader() }]
+            : [];
 
     const result = await generateRaw({
         ...config,
