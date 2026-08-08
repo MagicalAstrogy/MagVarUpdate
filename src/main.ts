@@ -1,4 +1,5 @@
 import { initButtons } from '@/button';
+import { watchPreferredChatSync } from '@/function/chat_lifecycle';
 import { initCleanup } from '@/function/cleanup';
 import { initCharacterSettingsOverride } from '@/function/character_override';
 import { initExportedEvents } from '@/function/exported_events';
@@ -96,6 +97,7 @@ $(async () => {
             transitionToChat(chat_id)
         )
     );
+    stop_list.push(watchPreferredChatSync(() => store.should_enable, transitionToChat));
     await transitionToChat(current_chat_id, true);
 
     stop_list.push(initNotification());
