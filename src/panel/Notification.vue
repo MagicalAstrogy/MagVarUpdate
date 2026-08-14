@@ -7,7 +7,8 @@
             <Checkbox v-model="store.settings.通知.变量初始化成功">
                 <span>{{ t('panel.notification.variablesInitialized') }}</span>
             </Checkbox>
-            <Checkbox v-model="store.settings.通知.变量更新出错">
+            <!-- 保留旧版 mvu_zod 使用的 DOM ID，兼容外部脚本读取通知开关。 -->
+            <Checkbox id="mvu_notification_error" v-model="store.settings.通知.变量更新出错">
                 <span>{{ t('panel.notification.variableError') }}</span>
             </Checkbox>
             <Checkbox v-model="store.settings.通知.额外模型解析中">
