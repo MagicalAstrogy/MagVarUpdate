@@ -1,10 +1,13 @@
 import { updateVariables, extractCommands } from '@/function/update_variables';
 import { generateSchema } from '@/function/schema';
 import { isArraySchema, isObjectSchema, SchemaNode } from '@/variable_def';
+import { loadLatestMvuZod } from './helpers/load_remote_mvu_zod';
+import type { RegisterMvuSchema } from './helpers/load_remote_mvu_zod';
 import { describe, expect, it } from '@jest/globals';
 import fs from 'fs';
 import _ from 'lodash';
 import path from 'path';
+import * as zod from 'zod';
 
 type PatchCase = {
     comment?: string;
@@ -18,6 +21,16 @@ type PatchCase = {
 type MvuData = any;
 
 const allowedOps = new Set(['add', 'replace', 'remove']);
+
+let registerMvuSchema: RegisterMvuSchema;
+
+beforeAll(async () => {
+    registerMvuSchema = await loadLatestMvuZod();
+}, 30_000);
+
+beforeEach(() => {
+    registerMvuSchema(zod.z.any());
+});
 
 function loadCases(fileName: string): PatchCase[] {
     const filePath = path.resolve(__dirname, 'json-patch-tests', fileName);
@@ -50,33 +63,34 @@ function relaxSchema(schema: SchemaNode | null | undefined) {
 // , ...loadCases('tests.json') 这个集合还不能全部通过
 const fixtureCases = [...loadCases('spec_tests.json')].filter(shouldRunCase);
 
+async function runPatchCase(testCase: PatchCase) {
+    const statData = _.cloneDeep(testCase.doc);
+    const schema = generateSchema(_.cloneDeep(testCase.doc));
+    relaxSchema(schema);
+
+    const variables: MvuData = {
+        stat_data: statData,
+        display_data: {},
+        delta_data: {},
+        schema: schema as any,
+    };
+    console.log(JSON.stringify(testCase, null, 2));
+
+    const message = `<JsonPatch>${JSON.stringify(testCase.patch)}</JsonPatch>`;
+    await updateVariables(message, variables);
+
+    expect(variables.stat_data).toEqual(testCase.expected);
+}
+
 describe('JSON Patch fixtures', () => {
     beforeEach(() => {
         jest.clearAllMocks();
         (globalThis as any).YAML = { parse: JSON.parse };
-        (globalThis as any).eventEmit = jest.fn().mockResolvedValue(undefined);
     });
 
     test.each(
         fixtureCases.map((testCase, index) => [testCase.comment ?? `case #${index + 1}`, testCase])
-    )('%s', async (_label, testCase) => {
-        const statData = _.cloneDeep(testCase.doc);
-        const schema = generateSchema(_.cloneDeep(testCase.doc));
-        relaxSchema(schema);
-
-        const variables: MvuData = {
-            stat_data: statData,
-            display_data: {},
-            delta_data: {},
-            schema: schema as any,
-        };
-        console.log(JSON.stringify(testCase, null, 2));
-
-        const message = `<JsonPatch>${JSON.stringify(testCase.patch)}</JsonPatch>`;
-        await updateVariables(message, variables);
-
-        expect(variables.stat_data).toEqual(testCase.expected);
-    });
+    )('%s', async (_label, testCase) => runPatchCase(testCase));
 });
 
 describe('JsonPatchMiscTest', () => {
@@ -188,8 +202,7 @@ describe('执行测试', () => {
         expect(variables.stat_data).toEqual({
             主角: {
                 备忘录: {
-                    楼道露出任务:
-                        'Day1 22:00-23:30 在月光里公寓区消防楼梯间完成露出任务',
+                    楼道露出任务: 'Day1 22:00-23:30 在月光里公寓区消防楼梯间完成露出任务',
                 },
             },
         });
@@ -260,6 +273,39 @@ describe('执行测试', () => {
         expect(variables.stat_data).toEqual({
             outer: {
                 [itemName]: 'preserved',
+            },
+        });
+    });
+
+    test('mvu_zod removes an array item below an object key containing dots', async () => {
+        const parentKey = 'inventory.v2';
+        const statData = {
+            [parentKey]: {
+                items: ['first', 'second', 'third'],
+            },
+        };
+        const schema = generateSchema(_.cloneDeep(statData));
+        relaxSchema(schema);
+
+        const variables: MvuData = {
+            stat_data: statData,
+            display_data: {},
+            delta_data: {},
+            schema: schema as any,
+        };
+
+        const message = `<JsonPatch>${JSON.stringify([
+            {
+                op: 'remove',
+                path: `/${parentKey}/items/1`,
+            },
+        ])}</JsonPatch>`;
+
+        await updateVariables(message, variables);
+
+        expect(variables.stat_data).toEqual({
+            [parentKey]: {
+                items: ['first', 'third'],
             },
         });
     });
