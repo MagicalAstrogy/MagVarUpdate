@@ -195,4 +195,40 @@ describe('执行测试', () => {
         });
         expect(variables.stat_data).not.toHaveProperty('角');
     });
+
+    test('json patch insert preserves dots in object keys', async () => {
+        const itemName = 'Precision Accuracy International AXMC .338 LM 特战重型狙击系统';
+        const statData = {
+            主角: {
+                背包: {},
+            },
+        };
+        const schema = generateSchema(_.cloneDeep(statData));
+        relaxSchema(schema);
+
+        const variables: MvuData = {
+            stat_data: statData,
+            display_data: {},
+            delta_data: {},
+            schema: schema as any,
+        };
+
+        const message = `<JsonPatch>${JSON.stringify([
+            {
+                op: 'insert',
+                path: `/主角/背包/${itemName}`,
+                value: {},
+            },
+        ])}</JsonPatch>`;
+
+        await updateVariables(message, variables);
+
+        expect(variables.stat_data).toEqual({
+            主角: {
+                背包: {
+                    [itemName]: {},
+                },
+            },
+        });
+    });
 });
