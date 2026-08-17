@@ -202,7 +202,9 @@ interface Command {
 }
 
 function pathSegmentsToLodashPath(pathSegments: string[]): string {
-    return pathSegments.map(segment => `[${JSON.stringify(segment)}]`).join('');
+    return pathSegments
+        .map(segment => `["${segment.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"]`)
+        .join('');
 }
 
 function jsonPatchPathToCommandPath(path: string | undefined): string {

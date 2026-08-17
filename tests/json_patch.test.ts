@@ -231,4 +231,36 @@ describe('执行测试', () => {
             },
         });
     });
+
+    test('json patch insert preserves control characters in object keys', async () => {
+        const itemName = 'line\nbreak\tvalue';
+        const statData = {
+            outer: {},
+        };
+        const schema = generateSchema(_.cloneDeep(statData));
+        relaxSchema(schema);
+
+        const variables: MvuData = {
+            stat_data: statData,
+            display_data: {},
+            delta_data: {},
+            schema: schema as any,
+        };
+
+        const message = `<JsonPatch>${JSON.stringify([
+            {
+                op: 'insert',
+                path: `/outer/${itemName}`,
+                value: 'preserved',
+            },
+        ])}</JsonPatch>`;
+
+        await updateVariables(message, variables);
+
+        expect(variables.stat_data).toEqual({
+            outer: {
+                [itemName]: 'preserved',
+            },
+        });
+    });
 });
