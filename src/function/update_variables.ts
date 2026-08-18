@@ -201,10 +201,19 @@ interface Command {
     reason: string;
 }
 
+function pathSegmentsToLodashPath(pathSegments: string[]): string {
+    return pathSegments
+        .map(segment => `["${segment.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"]`)
+        .join('');
+}
+
 function jsonPatchPathToCommandPath(path: string | undefined): string {
     if (!path) return '';
     const pathWithoutRoot = path.startsWith('/') ? path.substring(1) : path;
-    return pathWithoutRoot.replace(/\//g, '.');
+    const pathSegments = pathWithoutRoot
+        .split('/')
+        .map(segment => segment.replace(/~1/g, '/').replace(/~0/g, '~'));
+    return pathSegmentsToLodashPath(pathSegments);
 }
 
 function extractJsonPatch(patch: any): Command[] {
@@ -234,9 +243,9 @@ function extractJsonPatch(patch: any): Command[] {
             case 'add': {
                 const pathParts = _.toPath(path);
                 const lastPart = pathParts[pathParts.length - 1];
-                const containerPath = pathParts.slice(0, -1).join('.');
+                const containerPath = pathSegmentsToLodashPath(pathParts.slice(0, -1));
                 // 保留 JSON Patch 的 "-" 特殊 token，交给执行阶段结合目标集合类型解释。
-                const keyOrIndexArg = /^\d+$/.test(lastPart) ? lastPart : `'${lastPart}'`;
+                const keyOrIndexArg = /^\d+$/.test(lastPart) ? lastPart : JSON.stringify(lastPart);
                 translated_commands.push({
                     type: 'insert',
                     full_match: JSON.stringify(op),
@@ -654,6 +663,9 @@ export async function updateVariable(
 
 function pathFixPass(_unused_data: MvuData, commands: Command[], _unused_content: string): void {
     for (const command of commands) {
+        // JSON Patch 路径已由 jsonPatchPathToCommandPath 按 JSON Pointer 的原始分段编码。
+        // 再运行 pathFix 会破坏 bracket path 中作为字面量的点号或方括号。
+        if (command.reason === 'json_patch') continue;
         command.args[0] = pathFix(trimQuotesAndBackslashes(command.args[0]));
     }
 }
@@ -906,7 +918,10 @@ export async function updateVariables(
                 } else if (
                     // 增加 targetPath !== '' 条件，防止对根路径进行父路径检查
                     targetPath !== '' &&
-                    !_.get(variables.stat_data, _.toPath(targetPath).slice(0, -1).join('.'))
+                    !_.get(
+                        variables.stat_data,
+                        pathSegmentsToLodashPath(_.toPath(targetPath).slice(0, -1))
+                    )
                 ) {
                     // 验证3：如果要插入到新路径，确保其父路径存在且可扩展
                     outError(
@@ -1110,7 +1125,7 @@ export async function updateVariables(
                 const isArrayElementPath = /^\d+$/.test(lastPart);
 
                 if (command.args.length === 1 && isArrayElementPath) {
-                    const containerPath = pathParts.slice(0, -1).join('.');
+                    const containerPath = pathSegmentsToLodashPath(pathParts.slice(0, -1));
                     //根对象必不是一个数组，在下面 isArray 部分会失败
                     const container = _.get(variables.stat_data, containerPath);
                     const indexToRemove = parseInt(lastPart, 10);
@@ -1155,7 +1170,7 @@ export async function updateVariables(
                     const lastPart = pathParts.pop();
                     if (lastPart) {
                         keyOrIndexToRemove = /^\d+$/.test(lastPart) ? Number(lastPart) : lastPart;
-                        containerPath = pathParts.join('.');
+                        containerPath = pathSegmentsToLodashPath(pathParts);
                     }
                 }
 
