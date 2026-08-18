@@ -2,8 +2,25 @@ import type { CommandInfo } from '@/variable_def';
 import { initGlobals as exportGlobals } from '@/function/global';
 import { variable_events } from '@/variable_def';
 import _ from 'lodash';
+import { setupLatestMvuZod } from './helpers/load_remote_mvu_zod';
 
 type MvuData = any;
+
+setupLatestMvuZod({
+    // 这些用例断言 mvu_zod 接管后有意不同的显示数据、命令生命周期或类型转换行为。
+    excludedTests: [
+        'should update stat_data, display_data and delta_data correctly',
+        'should emit COMMAND_PARSED with parsed command payload',
+        'Mvu.parseMessage should handle ValueWithDescription arrays correctly',
+        'Mvu.parseMessage should handle number type conversions correctly',
+        'Complex integration test with all Mvu methods',
+    ],
+});
+
+const emitRegisteredEvent = (globalThis as any).eventEmit as (
+    event: string,
+    ...args: unknown[]
+) => Promise<void>;
 
 describe('export_globals integration test - Variable Update with display_data and delta_data', () => {
     let originalWindow: any;
@@ -28,12 +45,17 @@ describe('export_globals integration test - Variable Update with display_data an
         //@ts-ignore
         mvu = global.window.Mvu;
 
+        mockEventEmit.mockImplementation((event: string, ...args: unknown[]) =>
+            emitRegisteredEvent(event, ...args)
+        );
+
         jest.clearAllMocks();
     });
 
     afterEach(() => {
         //@ts-ignore
         global.window = originalWindow;
+        (global as any).eventEmit = emitRegisteredEvent;
         jest.restoreAllMocks();
     });
 

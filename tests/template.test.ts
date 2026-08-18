@@ -8,8 +8,39 @@ import {
 } from '@/function/schema';
 import { tr } from '@/i18n';
 import { StatData } from '@/variable_def';
+import { setupLatestMvuZod } from './helpers/load_remote_mvu_zod';
 
 type MvuData = any;
+
+setupLatestMvuZod({
+    // 下列用例断言 MVU 内建 template/schema 语义；mvu_zod 启用后由 Zod schema 接管。
+    excludedTests: [
+        'should apply template when assigning to array (2 args)',
+        'should apply template when assigning to array with index (3 args)',
+        'should apply template when assigning to object property (3 args)',
+        'should clean metadata for nested template insert and allow subsequent insert',
+        'should handle cascading inserts with nested templates after metadata cleanup',
+        'should handle type mismatch between template and value',
+        'should not create object and apply template when target does not exist',
+        'should apply any[] template in array assign operation',
+        'should apply literal-to-array-template in assign operation',
+        'should validate extensible property for arrays',
+        'should validate extensible property for objects',
+        'should handle template with primitive array correctly',
+        'should handle Date objects in templates',
+        'should handle complex nested template application',
+        'should handle type mismatch when assigning object to array with template (3 params)',
+        'should merge array template with array value (3 params)',
+        'should merge array of literal value with array value (3 params)',
+        'should create new array with literal value prepended to template (3 params)',
+        'should handle 3-param assignment with object template correctly',
+        'should prevent primitive to array conversion with concat behavior',
+        'should allow primitive conversion with merge behavior',
+        'should merge arrays by position',
+        'should prevent conversion and use merge for arrays',
+        'should handle nested operations with both switches',
+    ],
+});
 
 describe('Template Feature', () => {
     describe('applyTemplate function', () => {

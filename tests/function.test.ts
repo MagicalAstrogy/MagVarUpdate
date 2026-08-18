@@ -10,8 +10,21 @@ import { useDataStore } from '@/store';
 import { assertVWD, VariableData } from '@/variable_def';
 import _ from 'lodash';
 import { handleVariablesInCallback } from '@/function/exported_events';
+import { setupLatestMvuZod } from './helpers/load_remote_mvu_zod';
 
 type MvuData = any;
+
+setupLatestMvuZod({
+    // mvu_zod 会移除 display/delta，并以 Zod 语义替代 strictSet 与 ValueWithDescription。
+    excludedTests: [
+        '应该更新变量并保留原始变量结构',
+        '应该保留chat级别变量的其他属性，只更新必要的字段',
+        '覆盖消息级别变量',
+        'strictSet=false 应该处理 ValueWithDescription 类型',
+        'strictSet=true 应该允许替换整个数组',
+        'strictSet=false 保持数组描述不变',
+    ],
+});
 
 describe('parseParameters', () => {
     describe('基本参数解析', () => {
@@ -646,7 +659,6 @@ describe('updateVariables', () => {
         jest.clearAllMocks();
         (globalThis as any)._ = _;
         (globalThis as any).YAML = { parse: JSON.parse };
-        (globalThis as any).eventEmit = jest.fn().mockResolvedValue(undefined);
     });
 
     test('应该更新变量并保留原始变量结构', async () => {
@@ -702,7 +714,6 @@ describe('handleVariablesInMessage', () => {
         jest.clearAllMocks();
         (globalThis as any)._ = _;
         (globalThis as any).YAML = { parse: JSON.parse };
-        (globalThis as any).eventEmit = jest.fn().mockResolvedValue(undefined);
         (globalThis as any).replaceVariables = jest.fn().mockResolvedValue(undefined);
         (globalThis as any).insertOrAssignVariables = jest.fn().mockResolvedValue(undefined);
         (globalThis as any).updateVariablesWith = jest.fn().mockResolvedValue(undefined);

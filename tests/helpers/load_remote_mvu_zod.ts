@@ -1,6 +1,7 @@
 // Jest's jsdom environment does not provide a browser module loader, so fetch the raw bundle in Node.
 // eslint-disable-next-line import-x/no-nodejs-modules
 import https from 'https';
+import { beforeAll, beforeEach, expect } from '@jest/globals';
 import { klona } from 'klona';
 import YAML from 'yaml';
 import type { ZodType } from 'zod';
@@ -9,8 +10,13 @@ import { toDotPath } from 'zod/v4/core';
 
 export type RegisterMvuSchema = (input: ZodType) => void;
 
+type SetupLatestMvuZodOptions = {
+    excludedTests?: readonly (string | RegExp)[];
+};
+
 const mvuZodUrl =
     'https://raw.githubusercontent.com/StageDog/tavern_resource/main/dist/util/mvu_zod.js';
+const mvuZodSourceCacheKey = '__magVarUpdateLatestMvuZodSource';
 
 function fetchText(url: string, redirectCount = 0): Promise<string> {
     return new Promise((resolve, reject) => {
@@ -68,8 +74,36 @@ function fetchText(url: string, redirectCount = 0): Promise<string> {
     });
 }
 
+async function fetchTextWithRetry(url: string, maxAttempts = 5): Promise<string> {
+    for (let attempt = 1; ; attempt++) {
+        try {
+            return await fetchText(url);
+        } catch (error) {
+            if (attempt >= maxAttempts) {
+                throw error;
+            }
+            await new Promise(resolve => setTimeout(resolve, 2 ** (attempt - 1) * 500));
+        }
+    }
+}
+
+async function fetchLatestMvuZodSource(): Promise<string> {
+    // 同一个 Jest worker 中的多个测试文件共用一次下载，避免并发请求放大 GitHub Raw 的网络抖动。
+    const sharedProcess = process as typeof process & {
+        [mvuZodSourceCacheKey]?: Promise<string>;
+    };
+    sharedProcess[mvuZodSourceCacheKey] ??= fetchTextWithRetry(mvuZodUrl);
+
+    try {
+        return await sharedProcess[mvuZodSourceCacheKey];
+    } catch (error) {
+        delete sharedProcess[mvuZodSourceCacheKey];
+        throw error;
+    }
+}
+
 export async function loadLatestMvuZod(): Promise<RegisterMvuSchema> {
-    const source = await fetchText(mvuZodUrl);
+    const source = await fetchLatestMvuZodSource();
     let runnableSource = source.replace(/\bimport\s*['"][^'"]+['"]\s*;?/g, '');
 
     const replaceImport = (importedName: string, globalName: string) => {
@@ -113,8 +147,9 @@ export async function loadLatestMvuZod(): Promise<RegisterMvuSchema> {
     (globalThis as any).toastr = {
         error: () => undefined,
         warning: () => undefined,
+        ...(globalThis as any).toastr,
     };
-    (globalThis as any).registerVariableSchema = () => undefined;
+    (globalThis as any).registerVariableSchema ??= () => undefined;
 
     Function(runnableSource)();
 
@@ -123,4 +158,24 @@ export async function loadLatestMvuZod(): Promise<RegisterMvuSchema> {
         throw new Error(`Invalid registerMvuSchema export loaded from ${mvuZodUrl}`);
     }
     return registerMvuSchema;
+}
+
+export function setupLatestMvuZod({ excludedTests = [] }: SetupLatestMvuZodOptions = {}): void {
+    let registerMvuSchema: RegisterMvuSchema;
+
+    beforeAll(async () => {
+        registerMvuSchema = await loadLatestMvuZod();
+    }, 90_000);
+
+    beforeEach(() => {
+        const currentTestName = expect.getState().currentTestName ?? '';
+        const isExcluded = excludedTests.some(pattern =>
+            typeof pattern === 'string'
+                ? currentTestName.includes(pattern)
+                : pattern.test(currentTestName)
+        );
+        if (!isExcluded) {
+            registerMvuSchema(zod.z.any());
+        }
+    });
 }

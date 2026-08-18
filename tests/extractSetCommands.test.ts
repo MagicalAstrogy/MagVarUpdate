@@ -1,6 +1,12 @@
 import { updateVariables, extractCommands, parseCommandValue } from '@/function/update_variables';
+import { setupLatestMvuZod } from './helpers/load_remote_mvu_zod';
 
 type MvuData = any;
+
+setupLatestMvuZod({
+    // mvu_zod 不支持数组按值删除；这些组合用例都包含该操作，保留原生 MVU 路径。
+    excludedTests: ['按值删除', '删除（综合测试）', '混合使用所有别名进行复杂操作'],
+});
 
 // 命令别名定义
 const ASSIGN_ALIASES = ['assign', 'insert'] as const;

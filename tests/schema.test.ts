@@ -12,8 +12,14 @@ import {
     StatData,
     isArraySchema,
 } from '@/variable_def';
+import { setupLatestMvuZod } from './helpers/load_remote_mvu_zod';
 
 type MvuData = any;
+
+setupLatestMvuZod({
+    // mvu_zod 会用占位值替换内建 schema，本用例专门断言原生 schema 调和结果。
+    excludedTests: ['测试部分导致 schema 丢失的情况'],
+});
 
 describe('generateSchema', () => {
     describe('基本类型生成', () => {

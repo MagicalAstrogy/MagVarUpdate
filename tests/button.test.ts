@@ -5,8 +5,14 @@ import { useDataStore } from '@/store';
 import { variable_events } from '@/variable_def';
 import { createEmptyGameData, loadInitVarData } from '@/function/initvar/variable_init';
 import _ from 'lodash';
+import { setupLatestMvuZod } from './helpers/load_remote_mvu_zod';
 
 type MvuData = any;
+
+setupLatestMvuZod({
+    // 楼层重演用例断言 display/delta，而 mvu_zod 会显式移除两者。
+    excludedTests: ['should replay variable updates from the selected floor'],
+});
 
 // Mock only external dependencies
 jest.mock('@/util', () => ({
