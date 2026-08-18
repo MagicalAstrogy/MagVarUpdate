@@ -34,8 +34,7 @@ export function registerExportGlobalsIntegrationTests({
 
             // Export globals to create Mvu object
             exportGlobals();
-            // @ts-expect-error Mvu is installed dynamically by exportGlobals
-            mvu = global.window.Mvu;
+            mvu = (global.window as any).Mvu;
 
             mockEventEmit.mockImplementation((event: string, ...args: unknown[]) =>
                 emitRegisteredEvent(event, ...args)
