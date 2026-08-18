@@ -1,7 +1,7 @@
 // Jest's jsdom environment does not provide a browser module loader, so fetch the raw bundle in Node.
 // eslint-disable-next-line import-x/no-nodejs-modules
 import https from 'https';
-import { beforeAll, beforeEach, expect } from '@jest/globals';
+import { beforeAll, beforeEach } from '@jest/globals';
 import { klona } from 'klona';
 import YAML from 'yaml';
 import type { ZodType } from 'zod';
@@ -9,10 +9,6 @@ import * as zod from 'zod';
 import { toDotPath } from 'zod/v4/core';
 
 export type RegisterMvuSchema = (input: ZodType) => void;
-
-type SetupLatestMvuZodOptions = {
-    excludedTests?: readonly (string | RegExp)[];
-};
 
 const mvuZodUrl =
     'https://raw.githubusercontent.com/StageDog/tavern_resource/main/dist/util/mvu_zod.js';
@@ -160,7 +156,7 @@ export async function loadLatestMvuZod(): Promise<RegisterMvuSchema> {
     return registerMvuSchema;
 }
 
-export function setupLatestMvuZod({ excludedTests = [] }: SetupLatestMvuZodOptions = {}): void {
+export function setupLatestMvuZod(): void {
     let registerMvuSchema: RegisterMvuSchema;
 
     beforeAll(async () => {
@@ -168,14 +164,6 @@ export function setupLatestMvuZod({ excludedTests = [] }: SetupLatestMvuZodOptio
     }, 90_000);
 
     beforeEach(() => {
-        const currentTestName = expect.getState().currentTestName ?? '';
-        const isExcluded = excludedTests.some(pattern =>
-            typeof pattern === 'string'
-                ? currentTestName.includes(pattern)
-                : pattern.test(currentTestName)
-        );
-        if (!isExcluded) {
-            registerMvuSchema(zod.z.any());
-        }
+        registerMvuSchema(zod.z.any());
     });
 }
