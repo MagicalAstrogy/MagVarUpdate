@@ -2,6 +2,8 @@ import {
     generateExtraModel,
     invokeExtraModelWithStrategy,
 } from '@/function/update/invoke_extra_model';
+import { MVU_TOOL_DEFINITION } from '@/function/function_call';
+import { MIN_FUNCTION_CALLING_TAVERN_HELPER_VERSION } from '@/function/is_function_calling_supported';
 import { useDataStore } from '@/store';
 
 const RANDOM_HEADER_PATTERN = /^[0-9a-f]{8}\n[0-9a-f]{8}\n[0-9a-f]{8}\n[0-9a-f]{8}$/i;
@@ -34,6 +36,70 @@ describe('extra model max chat history', () => {
                 max_chat_history: 42,
             })
         );
+    });
+
+    test.each(['聊天消息', '格式化输出'] as const)(
+        'passes an empty tools list for %s requests on supported TavernHelper versions',
+        async response_format => {
+            const store = useDataStore();
+            store.versions.tavernhelper = MIN_FUNCTION_CALLING_TAVERN_HELPER_VERSION;
+            store.settings.额外模型解析配置.应答格式 = response_format;
+            if (response_format === '格式化输出') {
+                (globalThis as any).generateRaw.mockResolvedValue(
+                    JSON.stringify({
+                        analysis: 'ok',
+                        json_patch: [{ op: 'replace', path: '/x', value: 1 }],
+                    })
+                );
+            }
+
+            await generateExtraModel();
+
+            expect((globalThis as any).generateRaw).toHaveBeenCalledWith(
+                expect.objectContaining({ tools: [] })
+            );
+        }
+    );
+
+    test('passes an empty tools list through the current-preset request path', async () => {
+        const store = useDataStore();
+        store.versions.tavernhelper = MIN_FUNCTION_CALLING_TAVERN_HELPER_VERSION;
+        store.settings.额外模型解析配置.破限方案 = '使用当前预设';
+        (globalThis as any).generate = jest
+            .fn()
+            .mockResolvedValue("<UpdateVariable>\n_.set('x', 1);\n</UpdateVariable>");
+
+        await generateExtraModel();
+
+        expect((globalThis as any).generate).toHaveBeenCalledWith(
+            expect.objectContaining({ tools: [] })
+        );
+    });
+
+    test('only passes the MVU tool for tool-call requests on supported TavernHelper versions', async () => {
+        const store = useDataStore();
+        store.versions.tavernhelper = MIN_FUNCTION_CALLING_TAVERN_HELPER_VERSION;
+        store.settings.额外模型解析配置.应答格式 = '工具调用';
+
+        await generateExtraModel();
+
+        expect((globalThis as any).generateRaw).toHaveBeenCalledWith(
+            expect.objectContaining({
+                tools: [MVU_TOOL_DEFINITION],
+                tool_choice: 'required',
+            })
+        );
+    });
+
+    test('does not pass an empty tools list to unsupported TavernHelper versions', async () => {
+        const store = useDataStore();
+        store.versions.tavernhelper = '4.8.3';
+        store.settings.额外模型解析配置.应答格式 = '聊天消息';
+
+        await generateExtraModel();
+
+        const config = (globalThis as any).generateRaw.mock.calls[0][0];
+        expect(config).not.toHaveProperty('tools');
     });
 
     test('adds random header for Gemini built-in jailbreak by default', async () => {
@@ -97,6 +163,7 @@ describe('extra model max chat history', () => {
         expect(result).toContain('<JSONPatch>');
         expect((globalThis as any).generate).toHaveBeenCalledWith(
             expect.objectContaining({
+                tools: [],
                 custom_api: expect.objectContaining({
                     source: 'custom',
                     custom_include_body: {
