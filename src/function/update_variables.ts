@@ -1503,7 +1503,7 @@ export async function handleVariablesInMessage(message_id: number) {
         return;
     }
 
-    let message_content = chat_message.message;
+    const message_content = chat_message.message;
 
     if (chat_message.role === 'assistant' && message_content.length < 5) {
         return;
@@ -1516,14 +1516,35 @@ export async function handleVariablesInMessage(message_id: number) {
         return;
     }
 
-    const has_variable_modified = await updateVariables(message_content, variables);
-    if (has_variable_modified && chat_message.role !== 'user') {
+    await updateVariables(message_content, variables);
+    const latest_chat_message = getChatMessages(message_id).at(-1) ?? chat_message;
+    if (latest_chat_message.role !== 'user') {
+        // updateVariables() emits events and awaits their listeners. Re-read immediately before
+        // BEFORE_MESSAGE_UPDATE so its listeners receive the newest available message text.
         const context: UpdateContext = {
             variables: variables,
-            message_content: message_content,
+            message_content: latest_chat_message.message,
         };
         await eventEmit(variable_events.BEFORE_MESSAGE_UPDATE, context);
-        message_content = context.message_content;
+
+        let new_message_content = context.message_content;
+        if (!new_message_content.includes('<StatusPlaceHolderImpl/>')) {
+            new_message_content += '\n\n<StatusPlaceHolderImpl/>';
+        }
+        if (new_message_content.includes('<status_current_variable>')) {
+            new_message_content = new_message_content.replaceAll(
+                /<(status_current_variable)>(?:(?!<\1>).)*<\/\1?>/gis,
+                ''
+            );
+        }
+
+        // Persist event-driven text changes before awaiting any variable writes. Do not include a
+        // message field when the text is unchanged, since setChatMessages replaces the whole text.
+        if (new_message_content !== latest_chat_message.message) {
+            await setChatMessages([{ message_id: message_id, message: new_message_content }], {
+                refresh: 'none',
+            });
+        }
     }
     const updater = (data: Record<string, any>) => {
         data.initialized_lorebooks = variables.initialized_lorebooks;
@@ -1545,31 +1566,14 @@ export async function handleVariablesInMessage(message_id: number) {
         }
         return data;
     };
-    if (has_variable_modified && settings.兼容性.更新到聊天变量) {
+    if (settings.兼容性.更新到聊天变量) {
         await updateVariablesWith(updater, { type: 'chat' });
     }
     await updateVariablesWith(updater, { type: 'message', message_id: message_id });
 
-    if (chat_message.role !== 'user') {
-        if (!message_content.includes('<StatusPlaceHolderImpl/>')) {
-            message_content += '\n\n<StatusPlaceHolderImpl/>';
-        }
-        if (message_content.includes('<status_current_variable>')) {
-            message_content = message_content.replaceAll(
-                /<(status_current_variable)>(?:(?!<\1>).)*<\/\1?>/gis,
-                ''
-            );
-        }
-        await setChatMessages(
-            [
-                {
-                    message_id: message_id,
-                    message: message_content,
-                },
-            ],
-            {
-                refresh: 'affected',
-            }
-        );
+    if (latest_chat_message.role !== 'user') {
+        await setChatMessages([{ message_id: message_id }], {
+            refresh: 'affected',
+        });
     }
 }
