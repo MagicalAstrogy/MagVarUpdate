@@ -4,6 +4,7 @@ import {
     MVU_JSON_PATCH_RESPONSE_SCHEMA,
     MVU_TOOL_DEFINITION,
 } from '@/function/function_call';
+import { MIN_FUNCTION_CALLING_TAVERN_HELPER_VERSION } from '@/function/is_function_calling_supported';
 import claude_head from '@/prompts/claude_head.txt?raw';
 import claude_tail from '@/prompts/claude_tail.txt?raw';
 import extra_model_task from '@/prompts/extra_model_task.txt?raw';
@@ -51,6 +52,11 @@ function isV4CompatibleFormattedOutput(): boolean {
 function supportsCustomApiBody(): boolean {
     const version = useDataStore().versions.tavernhelper;
     return version !== '' && compare(version, MIN_CUSTOM_API_BODY_TAVERN_HELPER_VERSION, '>=');
+}
+
+function supportsRequestScopedTools(): boolean {
+    const version = useDataStore().versions.tavernhelper;
+    return version !== '' && compare(version, MIN_FUNCTION_CALLING_TAVERN_HELPER_VERSION, '>=');
 }
 
 function assertV4CompatibleFormattedOutputUsable() {
@@ -429,6 +435,7 @@ async function requestReply(generation_id?: string, batch_id?: string): Promise<
     const store = useDataStore();
     const response_format = store.settings.额外模型解析配置.应答格式;
     const is_v4_compatible_formatted_output = response_format === V4_COMPATIBLE_FORMATTED_OUTPUT;
+    const supports_request_scoped_tools = supportsRequestScopedTools();
 
     assertV4CompatibleFormattedOutputUsable();
 
@@ -438,6 +445,9 @@ async function requestReply(generation_id?: string, batch_id?: string): Promise<
         should_stream: store.settings.额外模型解析配置.兼容假流式,
         generation_id,
     };
+    if (supports_request_scoped_tools) {
+        config.tools = response_format === '工具调用' ? [MVU_TOOL_DEFINITION] : [];
+    }
     if (store.settings.额外模型解析配置.模型来源 === '自定义') {
         const unset_if_equal = (value: number, expected: number) =>
             compare(store.versions.tavernhelper, '4.3.9', '>=') && value === expected
@@ -472,7 +482,9 @@ async function requestReply(generation_id?: string, batch_id?: string): Promise<
     if (response_format === '工具调用') {
         task += `\n use \`${MVU_TOOL_DEFINITION.function.name}\` tool to update variables.`;
         store.runtimes.is_function_call_enabled = true;
-        config.tools = [MVU_TOOL_DEFINITION];
+        if (!supports_request_scoped_tools) {
+            config.tools = [MVU_TOOL_DEFINITION];
+        }
         config.tool_choice = 'required';
     } else if (response_format === '格式化输出') {
         task +=
