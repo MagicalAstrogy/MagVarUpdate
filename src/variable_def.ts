@@ -243,6 +243,8 @@ export const variable_events = {
 
 export type UpdateContext = {
     variables: MvuData;
+    message_id: number;
+    swipe_id: number;
     message_content: string;
 };
 
