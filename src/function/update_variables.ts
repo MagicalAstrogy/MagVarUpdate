@@ -1516,7 +1516,7 @@ export async function handleVariablesInMessage(message_id: number) {
         return;
     }
 
-    const has_variable_modified = await updateVariables(message_content, variables);
+    await updateVariables(message_content, variables);
     const latest_chat_message = getChatMessages(message_id).at(-1) ?? chat_message;
     if (latest_chat_message.role !== 'user') {
         // updateVariables() emits events and awaits their listeners. Re-read immediately before
@@ -1566,7 +1566,7 @@ export async function handleVariablesInMessage(message_id: number) {
         }
         return data;
     };
-    if (has_variable_modified && settings.兼容性.更新到聊天变量) {
+    if (settings.兼容性.更新到聊天变量) {
         await updateVariablesWith(updater, { type: 'chat' });
     }
     await updateVariablesWith(updater, { type: 'message', message_id: message_id });

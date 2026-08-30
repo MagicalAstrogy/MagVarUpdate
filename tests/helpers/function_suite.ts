@@ -1066,7 +1066,9 @@ export function registerFunctionTests({ mvuZod = false }: FunctionTestOptions = 
             expect(updatedMessageVariables.initialized_lorebooks).toEqual(['book1']); // 更新后的值
         });
 
-        test('当没有变量修改时不应该更新chat级别变量', async () => {
+        test('变量未修改但启用兼容选项时仍应更新chat级别变量', async () => {
+            useDataStore().settings.兼容性.更新到聊天变量 = true;
+
             (globalThis as any).getChatMessages = jest.fn().mockReturnValue([
                 {
                     message: '这是一段没有变量更新的文本',
@@ -1098,14 +1100,12 @@ export function registerFunctionTests({ mvuZod = false }: FunctionTestOptions = 
 
             await handleVariablesInMessage(0);
 
-            // 验证只调用了一次 insertOrAssignVariables (仅 message 级别)
-            expect((globalThis as any).updateVariablesWith).toHaveBeenCalledTimes(1);
+            expect((globalThis as any).updateVariablesWith).toHaveBeenCalledTimes(2);
 
-            const call = (globalThis as any).updateVariablesWith.mock.calls[0];
-            expect(call[1]).toEqual({ type: 'message', message_id: 0 });
-
-            // 验证没有调用 getVariables 获取 chat 级别变量
-            expect((globalThis as any).getVariables).not.toHaveBeenCalledWith({ type: 'chat' });
+            const chatCall = (globalThis as any).updateVariablesWith.mock.calls[0];
+            expect(chatCall[1]).toEqual({ type: 'chat' });
+            const messageCall = (globalThis as any).updateVariablesWith.mock.calls[1];
+            expect(messageCall[1]).toEqual({ type: 'message', message_id: 0 });
         });
     });
 
