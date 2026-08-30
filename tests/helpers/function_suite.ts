@@ -7,7 +7,7 @@ import {
 } from '@/function/update_variables';
 import { getLastValidVariable } from '@/util';
 import { useDataStore } from '@/store';
-import { assertVWD, VariableData } from '@/variable_def';
+import { assertVWD, variable_events, VariableData } from '@/variable_def';
 import _ from 'lodash';
 import { handleVariablesInCallback } from '@/function/exported_events';
 
@@ -715,6 +715,186 @@ export function registerFunctionTests({ mvuZod = false }: FunctionTestOptions = 
             (globalThis as any).insertOrAssignVariables = jest.fn().mockResolvedValue(undefined);
             (globalThis as any).updateVariablesWith = jest.fn().mockResolvedValue(undefined);
             (globalThis as any).setChatMessages = jest.fn().mockResolvedValue(undefined);
+        });
+
+        nativeTest('变量未修改时仍应基于最新消息触发更新事件，并在变量写入前保存文本', async () => {
+            useDataStore().settings.兼容性.更新到聊天变量 = false;
+
+            const initialMessage = '解析时读取的消息';
+            const latestMessage = '事件前读取的最新消息\n\n<StatusPlaceHolderImpl/>';
+            let currentMessage = initialMessage;
+            (globalThis as any).getChatMessages = jest.fn(() => [
+                { message: currentMessage, role: 'assistant' },
+            ]);
+            (globalThis as any).SillyTavern = {
+                chat: [
+                    {
+                        swipe_id: 0,
+                        variables: [
+                            {
+                                stat_data: { health: 100 },
+                                display_data: {},
+                                delta_data: {},
+                                schema: mockSchema,
+                            },
+                        ],
+                    },
+                ],
+            };
+            (globalThis as any).getVariables = jest.fn().mockReturnValue({
+                stat_data: { health: 100 },
+                display_data: {},
+                delta_data: {},
+                schema: mockSchema,
+            });
+
+            let markVariableEventStarted!: () => void;
+            let releaseVariableEvent!: () => void;
+            const variableEventStarted = new Promise<void>(resolve => {
+                markVariableEventStarted = resolve;
+            });
+            const variableEventGate = new Promise<void>(resolve => {
+                releaseVariableEvent = resolve;
+            });
+
+            let markMessageWriteStarted!: () => void;
+            let releaseMessageWrite!: () => void;
+            const messageWriteStarted = new Promise<void>(resolve => {
+                markMessageWriteStarted = resolve;
+            });
+            const messageWriteGate = new Promise<void>(resolve => {
+                releaseMessageWrite = resolve;
+            });
+
+            let markVariableWriteStarted!: () => void;
+            let releaseVariableWrite!: () => void;
+            const variableWriteStarted = new Promise<void>(resolve => {
+                markVariableWriteStarted = resolve;
+            });
+            const variableWriteGate = new Promise<void>(resolve => {
+                releaseVariableWrite = resolve;
+            });
+
+            const callOrder: string[] = [];
+            (globalThis as any).eventOn(variable_events.VARIABLE_UPDATE_ENDED, async () => {
+                markVariableEventStarted();
+                await variableEventGate;
+            });
+            const beforeMessageUpdate = jest.fn((context: { message_content: string }) => {
+                callOrder.push('event');
+                expect(context.message_content).toBe(latestMessage);
+                context.message_content += '\n事件追加内容';
+            });
+            (globalThis as any).eventOn(variable_events.BEFORE_MESSAGE_UPDATE, beforeMessageUpdate);
+            (globalThis as any).setChatMessages.mockImplementation(
+                async (_messages: unknown, option: { refresh: string }) => {
+                    callOrder.push(`message:${option.refresh}`);
+                    if (option.refresh === 'none') {
+                        markMessageWriteStarted();
+                        await messageWriteGate;
+                    }
+                }
+            );
+            (globalThis as any).updateVariablesWith.mockImplementation(
+                async (_updater: unknown, option: { type: string }) => {
+                    callOrder.push(`variables:${option.type}`);
+                    markVariableWriteStarted();
+                    await variableWriteGate;
+                }
+            );
+
+            const handling = handleVariablesInMessage(0);
+
+            // Interleave another writer while updateVariables() is awaiting an event listener.
+            await variableEventStarted;
+            expect(beforeMessageUpdate).not.toHaveBeenCalled();
+            currentMessage = latestMessage;
+            releaseVariableEvent();
+
+            // The message write must finish before any variable write may start.
+            await messageWriteStarted;
+            expect((globalThis as any).updateVariablesWith).not.toHaveBeenCalled();
+            releaseMessageWrite();
+
+            // The final affected refresh must wait for the variable write as well.
+            await variableWriteStarted;
+            expect((globalThis as any).setChatMessages).toHaveBeenCalledTimes(1);
+            releaseVariableWrite();
+            await handling;
+
+            expect((globalThis as any).eventEmit).toHaveBeenCalledWith(
+                variable_events.BEFORE_MESSAGE_UPDATE,
+                expect.objectContaining({
+                    message_content: `${latestMessage}\n事件追加内容`,
+                })
+            );
+            expect((globalThis as any).setChatMessages).toHaveBeenNthCalledWith(
+                1,
+                [
+                    {
+                        message_id: 0,
+                        message: `${latestMessage}\n事件追加内容`,
+                    },
+                ],
+                { refresh: 'none' }
+            );
+            expect((globalThis as any).setChatMessages).toHaveBeenNthCalledWith(
+                2,
+                [{ message_id: 0 }],
+                { refresh: 'affected' }
+            );
+            expect(callOrder).toEqual([
+                'event',
+                'message:none',
+                'variables:message',
+                'message:affected',
+            ]);
+        });
+
+        nativeTest('事件未修改已有占位符的消息时只应在变量写入后刷新', async () => {
+            useDataStore().settings.兼容性.更新到聊天变量 = false;
+
+            const message = '已有状态栏的消息\n\n<StatusPlaceHolderImpl/>';
+            (globalThis as any).getChatMessages = jest
+                .fn()
+                .mockReturnValue([{ message: message, role: 'assistant' }]);
+            (globalThis as any).SillyTavern = {
+                chat: [
+                    {
+                        swipe_id: 0,
+                        variables: [
+                            {
+                                stat_data: { health: 100 },
+                                display_data: {},
+                                delta_data: {},
+                                schema: mockSchema,
+                            },
+                        ],
+                    },
+                ],
+            };
+            (globalThis as any).getVariables = jest.fn().mockReturnValue({
+                stat_data: { health: 100 },
+                display_data: {},
+                delta_data: {},
+                schema: mockSchema,
+            });
+
+            (globalThis as any).eventOn(variable_events.BEFORE_MESSAGE_UPDATE, jest.fn());
+
+            await handleVariablesInMessage(0);
+
+            expect((globalThis as any).eventEmit).toHaveBeenCalledWith(
+                variable_events.BEFORE_MESSAGE_UPDATE,
+                expect.objectContaining({ message_content: message })
+            );
+            expect((globalThis as any).setChatMessages).toHaveBeenCalledTimes(1);
+            expect((globalThis as any).setChatMessages).toHaveBeenCalledWith([{ message_id: 0 }], {
+                refresh: 'affected',
+            });
+            expect(
+                (globalThis as any).updateVariablesWith.mock.invocationCallOrder[0]
+            ).toBeLessThan((globalThis as any).setChatMessages.mock.invocationCallOrder[0]);
         });
 
         nativeTest('应该保留chat级别变量的其他属性，只更新必要的字段', async () => {

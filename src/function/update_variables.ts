@@ -1503,7 +1503,7 @@ export async function handleVariablesInMessage(message_id: number) {
         return;
     }
 
-    let message_content = chat_message.message;
+    const message_content = chat_message.message;
 
     if (chat_message.role === 'assistant' && message_content.length < 5) {
         return;
@@ -1517,20 +1517,34 @@ export async function handleVariablesInMessage(message_id: number) {
     }
 
     const has_variable_modified = await updateVariables(message_content, variables);
-    // `message_content` was read at the top of this function, before the await above. That await
-    // is long: updateVariables() emits VARIABLE_UPDATE_ENDED, and the emitter runs every listener
-    // in turn, which on a busy chat is seconds. Other extensions legitimately write this message
-    // during that window. Re-read so everything below - the event seam included - works from the
-    // text as it is NOW instead of a copy that predates their edits.
-    message_content = getChatMessages(message_id).at(-1)?.message ?? message_content;
-    const message_content_before_event = message_content;
-    if (has_variable_modified && chat_message.role !== 'user') {
+    const latest_chat_message = getChatMessages(message_id).at(-1) ?? chat_message;
+    if (latest_chat_message.role !== 'user') {
+        // updateVariables() emits events and awaits their listeners. Re-read immediately before
+        // BEFORE_MESSAGE_UPDATE so its listeners receive the newest available message text.
         const context: UpdateContext = {
             variables: variables,
-            message_content: message_content,
+            message_content: latest_chat_message.message,
         };
         await eventEmit(variable_events.BEFORE_MESSAGE_UPDATE, context);
-        message_content = context.message_content;
+
+        let new_message_content = context.message_content;
+        if (!new_message_content.includes('<StatusPlaceHolderImpl/>')) {
+            new_message_content += '\n\n<StatusPlaceHolderImpl/>';
+        }
+        if (new_message_content.includes('<status_current_variable>')) {
+            new_message_content = new_message_content.replaceAll(
+                /<(status_current_variable)>(?:(?!<\1>).)*<\/\1?>/gis,
+                ''
+            );
+        }
+
+        // Persist event-driven text changes before awaiting any variable writes. Do not include a
+        // message field when the text is unchanged, since setChatMessages replaces the whole text.
+        if (new_message_content !== latest_chat_message.message) {
+            await setChatMessages([{ message_id: message_id, message: new_message_content }], {
+                refresh: 'none',
+            });
+        }
     }
     const updater = (data: Record<string, any>) => {
         data.initialized_lorebooks = variables.initialized_lorebooks;
@@ -1557,36 +1571,8 @@ export async function handleVariablesInMessage(message_id: number) {
     }
     await updateVariablesWith(updater, { type: 'message', message_id: message_id });
 
-    if (chat_message.role !== 'user') {
-        // updateVariablesWith() above awaits as well, so re-anchor once more on the current text.
-        const current_message_content =
-            getChatMessages(message_id).at(-1)?.message ?? message_content;
-        // Whatever BEFORE_MESSAGE_UPDATE contributed stays authoritative; when the seam changed
-        // nothing (or never ran) the text on the floor wins.
-        if (message_content === message_content_before_event) {
-            message_content = current_message_content;
-        }
-        let new_message_content = message_content;
-        if (!new_message_content.includes('<StatusPlaceHolderImpl/>')) {
-            new_message_content += '\n\n<StatusPlaceHolderImpl/>';
-        }
-        if (new_message_content.includes('<status_current_variable>')) {
-            new_message_content = new_message_content.replaceAll(
-                /<(status_current_variable)>(?:(?!<\1>).)*<\/\1?>/gis,
-                ''
-            );
-        }
-        // setChatMessages replaces `mes` and the active swipe wholesale - it has no append mode -
-        // so a TEXT write that changes nothing can only lose a concurrent edit. Drop the text and
-        // keep the refresh: the variables were still replaced above, and a status implementation
-        // that reads message_data at iframe init (example_src/status.html) would otherwise keep
-        // showing the pre-update values. Omitting `message` leaves setChatMessages nothing to
-        // modify, so this is a re-render and a save, with no overwrite.
-        const message_to_write =
-            new_message_content === current_message_content
-                ? { message_id: message_id }
-                : { message_id: message_id, message: new_message_content };
-        await setChatMessages([message_to_write], {
+    if (latest_chat_message.role !== 'user') {
+        await setChatMessages([{ message_id: message_id }], {
             refresh: 'affected',
         });
     }
