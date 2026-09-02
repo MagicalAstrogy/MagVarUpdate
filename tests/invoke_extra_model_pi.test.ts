@@ -290,6 +290,74 @@ describe('invoke extra model through Pi', () => {
         }
     });
 
+    test('propagates the last sanitized Pi provider error after all retries fail', async () => {
+        const store = configurePiSource();
+        store.settings.额外模型解析配置.请求次数 = 2;
+        const first_error = Object.assign(new Error('first provider failure'), {
+            name: 'PiRuntimeError',
+            code: 'provider',
+            retryable: true,
+        });
+        const last_error = Object.assign(
+            new Error('last failure echoed Authorization: Bearer final-secret'),
+            {
+                name: 'PiRuntimeError',
+                code: 'provider',
+                retryable: true,
+            }
+        );
+        mockRunPiRequest.mockRejectedValueOnce(first_error).mockRejectedValueOnce(last_error);
+        const console_error = jest.spyOn(console, 'error').mockImplementation(() => {});
+
+        await expect(invokeExtraModelWithStrategy()).rejects.toBe(last_error);
+
+        expect(mockRunPiRequest).toHaveBeenCalledTimes(2);
+        expect(last_error.message).toBe(i18n.global.t('runtime.pi.requestFailed'));
+        expect(`${last_error.message}\n${last_error.stack}`).not.toContain('final-secret');
+        console_error.mockRestore();
+    });
+
+    test('propagates a sanitized Pi provider error after all concurrent attempts fail', async () => {
+        const store = configurePiSource();
+        store.settings.额外模型解析配置.请求方式 = '同时请求多次';
+        store.settings.额外模型解析配置.请求次数 = 2;
+        const provider_error = Object.assign(new Error('provider rejected request'), {
+            name: 'PiRuntimeError',
+            code: 'provider',
+            retryable: true,
+        });
+        mockRunPiRequest.mockRejectedValue(provider_error);
+        const console_error = jest.spyOn(console, 'error').mockImplementation(() => {});
+
+        await expect(invokeExtraModelWithStrategy()).rejects.toBe(provider_error);
+
+        expect(mockRunPiRequest).toHaveBeenCalledTimes(2);
+        expect(provider_error.message).toBe(i18n.global.t('runtime.pi.requestFailed'));
+        console_error.mockRestore();
+    });
+
+    test('treats a mixed concurrent failure as cancellation when one attempt was aborted', async () => {
+        const store = configurePiSource();
+        store.settings.额外模型解析配置.请求方式 = '同时请求多次';
+        store.settings.额外模型解析配置.请求次数 = 2;
+        const provider_error = Object.assign(new Error('provider rejected request'), {
+            name: 'PiRuntimeError',
+            code: 'provider',
+            retryable: true,
+        });
+        const abort_error = new Error('Pi request aborted');
+        mockRunPiRequest
+            .mockRejectedValueOnce(provider_error)
+            .mockRejectedValueOnce(abort_error);
+        mockIsPiRequestAbortedError.mockImplementation(error => error === abort_error);
+        const console_error = jest.spyOn(console, 'error').mockImplementation(() => {});
+
+        await expect(invokeExtraModelWithStrategy()).resolves.toBeNull();
+
+        expect(mockRunPiRequest).toHaveBeenCalledTimes(2);
+        console_error.mockRestore();
+    });
+
     test.each([
         ['missing update tag', 'provider echoed Authorization: Bearer sk-live-missing-tag-token'],
         [

@@ -272,6 +272,8 @@ export async function invokeExtraModelWithStrategy(): Promise<string | null> {
         is_analysis_in_progress = true;
         const store = useDataStore();
         const pi_preflight = await preparePiRuntimePreflight();
+        let last_pi_error: unknown;
+        let did_abort_pi_request = false;
 
         debug_extra_request_counter = 0;
 
@@ -281,8 +283,21 @@ export async function invokeExtraModelWithStrategy(): Promise<string | null> {
             } catch (e) {
                 const localized_error = localizePiError(e);
                 console.error(localized_error);
+                if (pi_preflight) {
+                    if (isPiRequestAbortedError(localized_error)) {
+                        did_abort_pi_request = true;
+                    } else {
+                        last_pi_error = localized_error;
+                    }
+                }
                 throw localized_error;
             }
+        };
+        const throwLastPiErrorOrReturnNull = (): null => {
+            if (pi_preflight && last_pi_error !== undefined) {
+                throw last_pi_error;
+            }
+            return null;
         };
         const safeInvoke = async (): Promise<{
             result: string | null;
@@ -330,6 +345,12 @@ export async function invokeExtraModelWithStrategy(): Promise<string | null> {
                 if (non_retryable_error !== undefined) {
                     throw non_retryable_error;
                 }
+                if (did_abort_pi_request) {
+                    return null;
+                }
+                if (pi_preflight && last_pi_error !== undefined) {
+                    throw last_pi_error;
+                }
             } finally {
                 uuids.forEach(generation_id => stopExtraModelRequestById(generation_id));
                 await Promise.allSettled(attempts);
@@ -363,7 +384,7 @@ export async function invokeExtraModelWithStrategy(): Promise<string | null> {
                         return null;
                     }
                 }
-                return null;
+                return throwLastPiErrorOrReturnNull();
             case '同时请求多次':
                 if (store.settings.通知.额外模型解析中) {
                     toastr.info(
@@ -401,7 +422,7 @@ export async function invokeExtraModelWithStrategy(): Promise<string | null> {
                 }
                 return concurrentInvoke(store.settings.额外模型解析配置.请求次数 - 1);
             default:
-                return null;
+                return throwLastPiErrorOrReturnNull();
         }
     } catch (error) {
         throw localizePiError(error);

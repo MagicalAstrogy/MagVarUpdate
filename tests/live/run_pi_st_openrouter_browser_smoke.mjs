@@ -1018,7 +1018,7 @@ async function configurePiCase(configuration) {
     setInputValue(apiSelect, configuration.api, 'change');
     await new Promise(resolve => setTimeout(resolve, 100));
 
-    const modelInput = panelDocument.querySelector('.mvu-pi-model-controls > input[type="text"]');
+    const modelInput = panelDocument.querySelector('.mvu-pi-model-controls input[type="text"]');
     const piGrid = modelInput?.closest('.mvu-field-grid');
     const endpointInput = [
         ...(piGrid?.querySelectorAll('.mvu-field > input[type="text"]') ?? []),

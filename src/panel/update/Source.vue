@@ -81,7 +81,11 @@
                 </Field>
 
                 <Field :label="t('panel.source.modelName')">
-                    <ModelSelect />
+                    <ModelSelect
+                        v-model="store.settings.额外模型解析配置.模型名称"
+                        :load-models="loadCustomModels"
+                        :reset-key="custom_model_list_revision"
+                    />
                 </Field>
             </div>
         </template>
@@ -127,6 +131,9 @@
                 </Field>
 
                 <Field v-if="show_pi_endpoint" :label="t('panel.source.pi.endpoint')">
+                    <template #label-suffix>
+                        <HelpIcon :help="t('panel.source.pi.endpointHelp')" />
+                    </template>
                     <input
                         :value="store.settings.额外模型解析配置.pi.endpoint"
                         type="text"
@@ -135,7 +142,6 @@
                         @input="selectPiEndpoint"
                         @change="normalizePiEndpointInput"
                     />
-                    <small class="mvu-note">{{ t('panel.source.pi.endpointHelp') }}</small>
                 </Field>
 
                 <Field v-if="show_pi_api_key" :label="t('panel.source.apiKey')">
@@ -148,38 +154,22 @@
                 </Field>
 
                 <Field :label="t('panel.source.pi.model')">
-                    <div class="mvu-pi-model-controls">
-                        <input
-                            v-model="store.settings.额外模型解析配置.pi.model"
-                            type="text"
-                            class="text_pole"
-                            autocomplete="off"
-                        />
-                        <select
-                            v-model="selected_catalog_model_id"
-                            class="text_pole"
-                            :aria-label="t('panel.source.pi.catalogModel')"
-                            :disabled="pi_catalog_models.length === 0"
-                        >
-                            <option value="">{{ t('panel.source.pi.customModel') }}</option>
-                            <option
-                                v-for="model in pi_catalog_models"
-                                :key="`${model.api}:${model.id}`"
-                                :value="model.id"
-                            >
-                                {{ getPiModelLabel(model) }}
-                            </option>
-                        </select>
-                    </div>
+                    <template #label-suffix>
+                        <HelpIcon v-if="pi_capability_summary" :help="pi_capability_summary" />
+                    </template>
+                    <ModelSelect
+                        v-model="store.settings.额外模型解析配置.pi.model"
+                        class="mvu-pi-model-controls"
+                        :catalog-models="pi_catalog_model_options"
+                        :load-models="loadPiModels"
+                        :reset-key="pi_model_list_revision"
+                        :disabled="Boolean(pi_configuration_error) || oauthBusy"
+                    />
                 </Field>
             </div>
 
             <div v-if="pi_configuration_error" class="mvu-field-error">
                 {{ pi_configuration_error }}
-            </div>
-
-            <div v-if="pi_capability_summary" class="mvu-note">
-                {{ pi_capability_summary }}
             </div>
 
             <Detail v-if="show_pi_oauth" :title="t('panel.source.pi.oauth.section')">
@@ -247,8 +237,10 @@
                         />
                     </div>
 
-                    <div class="mvu-note">{{ t('panel.source.pi.oauth.callbackHelp') }}</div>
                     <Field :label="t('panel.source.pi.oauth.callbackUrl')">
+                        <template #label-suffix>
+                            <HelpIcon :help="t('panel.source.pi.oauth.callbackHelp')" />
+                        </template>
                         <input
                             v-model="oauthCallbackUrl"
                             type="password"
@@ -274,12 +266,21 @@
         </template>
 
         <Detail v-if="is_profile_source" :title="t('panel.source.advanced')">
+            <template #title-suffix>
+                <HelpIcon
+                    v-if="is_pi_source"
+                    :help="t('panel.source.pi.customOverridesSwitchHelp')"
+                />
+            </template>
             <div v-if="custom_advanced_disabled" class="mvu-note">
                 {{ t('panel.source.unsupportedAdvanced') }}
             </div>
 
             <div class="mvu-field-grid">
                 <Field v-if="is_pi_source" :label="t('panel.source.pi.contextWindow')">
+                    <template #label-suffix>
+                        <HelpIcon v-if="pi_context_window_help" :help="pi_context_window_help" />
+                    </template>
                     <input
                         :value="pi_context_window_input_value"
                         type="number"
@@ -288,16 +289,6 @@
                         step="1"
                         @input="updatePiContextWindow"
                     />
-                    <small v-if="uses_catalog_context_window" class="mvu-note">
-                        {{
-                            t('panel.source.pi.contextWindowCatalog', {
-                                value: effective_context_window,
-                            })
-                        }}
-                    </small>
-                    <small v-else-if="uses_manual_context_window" class="mvu-note">
-                        {{ t('panel.source.pi.contextWindowOverride') }}
-                    </small>
                     <div
                         v-if="pi_token_errors.includes('context-window-required')"
                         class="mvu-field-error"
@@ -391,9 +382,9 @@
                 </Field>
 
                 <Field v-if="is_pi_source" :label="t('panel.source.pi.customHeaders')">
-                    <small class="mvu-note">{{
-                        t('panel.source.pi.customOverridesSwitchHelp')
-                    }}</small>
+                    <template #label-suffix>
+                        <HelpIcon :help="t('panel.source.pi.customHeadersHelp')" />
+                    </template>
                     <textarea
                         v-model="store.settings.额外模型解析配置.pi.customHeaders"
                         class="text_pole mvu-pi-advanced-textarea"
@@ -402,7 +393,6 @@
                         spellcheck="false"
                         placeholder="X-Client-Name: MVU"
                     ></textarea>
-                    <small class="mvu-note">{{ t('panel.source.pi.customHeadersHelp') }}</small>
                     <div class="mvu-api-profile-actions">
                         <input
                             class="menu_button menu_button_icon interactable"
@@ -417,6 +407,9 @@
                 </Field>
 
                 <Field v-if="is_pi_source" :label="t('panel.source.pi.customIncludeBody')">
+                    <template #label-suffix>
+                        <HelpIcon :help="t('panel.source.pi.customIncludeBodyHelp')" />
+                    </template>
                     <textarea
                         v-model="store.settings.额外模型解析配置.pi.customIncludeBody"
                         class="text_pole mvu-pi-advanced-textarea"
@@ -425,7 +418,6 @@
                         spellcheck="false"
                         placeholder="metadata:&#10;  source: mvu"
                     ></textarea>
-                    <small class="mvu-note">{{ t('panel.source.pi.customIncludeBodyHelp') }}</small>
                     <div class="mvu-api-profile-actions">
                         <input
                             class="menu_button menu_button_icon interactable"
@@ -440,6 +432,9 @@
                 </Field>
 
                 <Field v-if="is_pi_source" :label="t('panel.source.pi.customExcludeBody')">
+                    <template #label-suffix>
+                        <HelpIcon :help="t('panel.source.pi.customExcludeBodyHelp')" />
+                    </template>
                     <textarea
                         v-model="store.settings.额外模型解析配置.pi.customExcludeBody"
                         class="text_pole mvu-pi-advanced-textarea"
@@ -448,7 +443,6 @@
                         spellcheck="false"
                         placeholder="- store"
                     ></textarea>
-                    <small class="mvu-note">{{ t('panel.source.pi.customExcludeBodyHelp') }}</small>
                     <div class="mvu-api-profile-actions">
                         <input
                             class="menu_button menu_button_icon interactable"
@@ -478,6 +472,11 @@ import {
     type ExtraModelApiProfileFields,
 } from '@/function/update/extra_model_api_profiles';
 import {
+    fetchOpenAICompatibleModelList,
+    fetchPiModelList,
+    resolvePiModelListOAuthCredential,
+} from '@/function/update/model_list';
+import {
     beginPiOAuth,
     cancelPiOAuth,
     completePiOAuth,
@@ -504,6 +503,7 @@ import {
 import { useMvuI18n } from '@/i18n';
 import Detail from '@/panel/component/Detail.vue';
 import Field from '@/panel/component/Field.vue';
+import HelpIcon from '@/panel/component/HelpIcon.vue';
 import ModelSelect from '@/panel/component/ModelSelect.vue';
 import RangeNumber from '@/panel/component/RangeNumber.vue';
 import Select from '@/panel/component/Select.vue';
@@ -530,6 +530,8 @@ import { computed, onBeforeUnmount, ref, watch } from 'vue';
 
 const store = useDataStore();
 const { locale, t } = useMvuI18n();
+const custom_model_list_revision = ref(0);
+const pi_model_list_revision = ref(0);
 
 const additional_extra_configuration_supported = compare(
     store.versions.tavernhelper,
@@ -765,14 +767,9 @@ const pi_catalog_models = computed<readonly Model<Api>[]>(() => {
 const selected_catalog_model = computed(() =>
     findPiCatalogModel(pi_catalog_models.value, store.settings.额外模型解析配置.pi.model)
 );
-const selected_catalog_model_id = computed<string>({
-    get: () => selected_catalog_model.value?.id ?? '',
-    set: value => {
-        if (value) {
-            store.settings.额外模型解析配置.pi.model = value;
-        }
-    },
-});
+const pi_catalog_model_options = computed(() =>
+    pi_catalog_models.value.map(model => ({ id: model.id, label: getPiModelLabel(model) }))
+);
 const effective_context_window = computed(() =>
     resolvePiContextWindow(
         store.settings.额外模型解析配置.pi.contextWindow,
@@ -790,6 +787,14 @@ const uses_catalog_context_window = computed(
 const uses_manual_context_window = computed(() => {
     const configured = store.settings.额外模型解析配置.pi.contextWindow;
     return typeof configured === 'number' && Number.isInteger(configured) && configured > 0;
+});
+const pi_context_window_help = computed(() => {
+    if (uses_catalog_context_window.value) {
+        return t('panel.source.pi.contextWindowCatalog', {
+            value: effective_context_window.value,
+        });
+    }
+    return uses_manual_context_window.value ? t('panel.source.pi.contextWindowOverride') : '';
 });
 const pi_token_errors = computed(() =>
     is_pi_source.value
@@ -992,6 +997,43 @@ function getPiAuthLabel(auth_type: string): string {
 
 function getPiModelLabel(model: Model<Api>): string {
     return model.name && model.name !== model.id ? `${model.name} (${model.id})` : model.id;
+}
+
+async function loadCustomModels(signal: AbortSignal): Promise<readonly string[]> {
+    const config = store.settings.额外模型解析配置;
+    return fetchOpenAICompatibleModelList(config.api地址, config.密钥, signal, {
+        sillyTavernRequestHeaders: () => SillyTavern.getRequestHeaders(),
+    });
+}
+
+async function loadPiModels(signal: AbortSignal): Promise<readonly string[]> {
+    const config = store.settings.额外模型解析配置;
+    const pi = config.pi;
+    const snapshot = {
+        provider: pi.provider,
+        api: pi.api,
+        authType: pi.authType,
+        endpoint: pi.endpoint,
+        apiKey: config.密钥,
+        customHeaders: pi.customHeaders,
+    };
+    const definition = getPiProviderDefinition(snapshot.provider);
+    const oauthCredential =
+        snapshot.authType === 'oauth' && definition
+            ? await resolvePiModelListOAuthCredential(definition, signal)
+            : undefined;
+    signal.throwIfAborted();
+    if (oauthCredential) {
+        oauthStatus.value = {
+            loggedIn: true,
+            type: 'oauth',
+            expiresAt: oauthCredential.expiresAt,
+        };
+    }
+    return fetchPiModelList(
+        { ...snapshot, oauthCredential, signal },
+        { sillyTavernRequestHeaders: () => SillyTavern.getRequestHeaders() }
+    );
 }
 
 function updatePiContextWindow(event: Event): void {
@@ -1235,6 +1277,37 @@ const oauth_expiry_label = computed(() =>
               time: new Date(oauthStatus.value.expiresAt).toLocaleString(),
           })
         : ''
+);
+
+watch(
+    () =>
+        [
+            store.settings.额外模型解析配置.模型来源,
+            store.settings.额外模型解析配置.当前api方案,
+            store.settings.额外模型解析配置.api地址,
+            store.settings.额外模型解析配置.密钥,
+        ] as const,
+    () => {
+        custom_model_list_revision.value += 1;
+    }
+);
+
+watch(
+    () =>
+        [
+            store.settings.额外模型解析配置.模型来源,
+            store.settings.额外模型解析配置.当前api方案,
+            store.settings.额外模型解析配置.pi.provider,
+            store.settings.额外模型解析配置.pi.api,
+            store.settings.额外模型解析配置.pi.authType,
+            store.settings.额外模型解析配置.pi.endpoint,
+            store.settings.额外模型解析配置.pi.customHeaders,
+            store.settings.额外模型解析配置.密钥,
+            oauthBusy.value,
+        ] as const,
+    () => {
+        pi_model_list_revision.value += 1;
+    }
 );
 
 function closeOAuthAttempt(options: { cancel: boolean; keepProgress?: boolean }): void {
@@ -1541,8 +1614,7 @@ onBeforeUnmount(() => {
     gap: 0.5rem;
 }
 
-.mvu-api-profile-controls,
-.mvu-pi-model-controls {
+.mvu-api-profile-controls {
     display: grid;
     grid-template-columns: 1fr 1fr;
     gap: 0.5rem;
@@ -1586,8 +1658,7 @@ onBeforeUnmount(() => {
 }
 
 @media (max-width: 520px) {
-    .mvu-api-profile-controls,
-    .mvu-pi-model-controls {
+    .mvu-api-profile-controls {
         grid-template-columns: 1fr;
     }
 }

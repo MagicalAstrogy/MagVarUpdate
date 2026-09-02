@@ -3,10 +3,13 @@
 > 来源：[design_note_pi_multiprovider_intergration.md](design_note_pi_multiprovider_intergration.md)
 > 用户文档：[doc/pi_multiprovider_integration.md](doc/pi_multiprovider_integration.md)
 > 状态：主体实现、prompt 回归 fixtures、捕获链路实机自动化与自动化构建完成，待真实 OAuth/Provider 浏览器发布验收
+>
 > 目标范围：覆盖当前 MVU 主要能力
+>
 > 预计工作量：单人 7–12 个开发日（含浏览器 OAuth 与必要测试）
-> 捕获方案更新：固定 custom 通道 + 唯一 model
-> marker + 请求级末位 `CHAT_COMPLETION_SETTINGS_READY` 监听，不修改 SillyTavern 或 Slash-Runner
+>
+> 捕获方案更新：固定 custom 通道 + 唯一 model marker + 请求级末位 `CHAT_COMPLETION_SETTINGS_READY`
+> 监听，不修改 SillyTavern 或 Slash-Runner
 
 ## 范围与优先级
 
@@ -46,8 +49,14 @@ pi 的来源、凭据、模型和请求参数都属于 `额外模型解析配置
 
 - [x] **DEC-03（P1，已确认）结构化输出不做降级**
     - 工具调用和“格式化输出”保持为两种独立模式，不将“格式化输出”转换为 constrained tool。
-    - 目标 Provider/API/model 原生支持所选结构化输出模式时才发送请求；不支持时直接在请求前报错。
-    - 不回退为无约束文本，也不在失败后改用其他结构化输出策略重试。
+    - 只要所选 wire
+      API 已实现对应请求形状，就认为工具调用/格式化输出可用并乐观发送；目录模型、动态模型和自定义 endpoint 的静态能力信息不作为请求前门禁。
+    - 普通“格式化输出”已覆盖 OpenAI Responses、OpenAI Chat Completions、OpenAI Codex
+      Responses、Anthropic Messages 和 Google；v4/JSON Object 已覆盖除 Anthropic
+      Messages 外的上述 API。Anthropic v4 请求形状尚未实现，仍在请求前明确拒绝。
+    - 目标 endpoint/model 实际不支持并返回错误时，在调用边界保留错误类别，并通过 `toastr.error`
+      给出经过脱敏、可操作的提示。
+    - 不回退为无约束文本，不转换成工具调用，也不在失败后改用其他结构化输出策略重试。
 
 - [x] **DEC-04（P0，已确认）确定 prompt 捕获边界**
     - 固定使用 Slash `custom` 请求路径，捕获 `CHAT_COMPLETION_SETTINGS_READY.messages`。
@@ -203,7 +212,8 @@ pi 的来源、凭据、模型和请求参数都属于 `额外模型解析配置
       endpoint 创建动态 Provider/Model，并按 D-02 的传输安全策略校验 URL、model
       id 和模型元数据；非法地址在 fetch 前 fail-closed。
     - endpoint 规范化逻辑由运行时与 `Source.vue`
-      共用；显式填写且规范化后等于 Provider 默认地址时仍视为默认 catalog 链路，其他自定义 endpoint 不继承 catalog-only 高级能力。
+      共用；显式填写且规范化后等于 Provider 默认地址时仍视为默认 catalog 链路。其他自定义 endpoint 不继承目录模型元数据，但对 wire
+      API 已实现的工具调用和格式化输出请求形状仍采用乐观发送策略。
     - 配置中的 `contextWindow`
       覆盖目录值；目录未命中时，用现有“最大回复token数”提供动态 Model 所需的
       `maxTokens`。缺少有效值时，在发请求前报错。
@@ -403,10 +413,11 @@ pi 的来源、凭据、模型和请求参数都属于 `额外模型解析配置
     - 去掉 OpenAI 外层，将 parameters 包装为 pi/TypeBox schema。
     - 边界处校验根 schema 为 object；无 parameters 时使用空 object schema。
 
-- [x] **F-02 实现 capability-aware tool choice router**
+- [x] **F-02 实现 wire-API-aware tool choice router**
     - provider-neutral 路径只处理 `auto | none`。
-    - OpenAI 映射 `required`/指定函数，Anthropic 映射 `any`/指定 tool，Google 按 API/模型能力映射
-      `any` 或提前拒绝。
+    - OpenAI 映射 `required`/指定函数，Anthropic 映射 `any`/指定 tool，Google 当前只映射
+      `any`；Google named tool choice 尚未实现并在请求前明确拒绝。
+    - 对已经实现的 tool choice 请求形状，不根据目录模型或 endpoint 静态能力提前拒绝。
     - 禁止用统一的无类型强转把同一值发送给所有 Provider。
 
 - [x] **F-03 归一化 pi tool call 结果**
@@ -414,19 +425,29 @@ pi 的来源、凭据、模型和请求参数都属于 `额外模型解析配置
     - `arguments` 用 `JSON.stringify` 转为 OpenAI/Slash 兼容字符串，保留 call
       id、name 和文本 content。
 
-- [x] **F-04 接入结构化输出能力门禁**（依据 DEC-03）
+- [x] **F-04 接入结构化输出乐观发送与错误呈现**（依据 DEC-03）
     - 工具模式为 `MVU_TOOL_DEFINITION` 设置
       `constrainedSampling: { type: 'json_schema', strict: 'prefer' }`。
-    - “格式化输出”只映射 Provider/API/model 原生支持的选项；能力不匹配时在调用 pi stream
-      API 前直接报错。
+    - “格式化输出”按所选 wire
+      API 已实现的原生 payload 形状映射；目录模型、动态模型或自定义 endpoint 不触发静态能力门禁，请求照常发送。
+    - Anthropic Messages 的普通格式化输出映射为 `output_config.format` JSON Schema，v4/JSON
+      Object 尚无 payload 映射并在调用 pi stream API 前明确拒绝。OpenAI Codex
+      Responses 的普通和 v4 格式化输出都映射为 `text.format`。
+    - 目标 endpoint/model 实际拒绝工具调用或格式化输出时，归一化错误类别，并通过 `toastr.error`
+      显示经过脱敏、可操作的错误信息。
     - 不把“格式化输出”转换成 constrained tool，不回退无约束文本，也不做失败后的策略重试。
     - 支持路径保证现有两种格式化输出解析器仍收到预期 JSON 结果。
 
 - [x] **F-05 补齐工具与结构化输出测试**
-    - 三类 Provider 覆盖 auto/none/required/named 的支持分支和拒绝分支。
-    - 结构化输出覆盖原生支持路径，以及 Provider/API/model 不支持时请求前直接报错且未调用 pi stream
-      API。
-    - 断言不支持路径不会转换为 tool call、不会发送无约束文本请求，也不会以其他策略重试。
+    - 三类 Provider 覆盖 auto/none/required/named 的 wire API 映射分支，包括 Google
+      named 未实现时的请求前拒绝。
+    - 普通格式化输出覆盖 OpenAI Responses、OpenAI Chat Completions、OpenAI Codex
+      Responses、Anthropic
+      Messages 和 Google 的请求形状、目录外模型和自定义 endpoint 的乐观发送，以及目标返回不支持错误后的安全
+      `toastr` 提示。
+    - v4 覆盖 OpenAI Responses、OpenAI Chat Completions、OpenAI Codex Responses 和 Google；Anthropic
+      v4 因 wire payload 未实现而请求前拒绝，且未调用 pi stream API。
+    - 断言上游拒绝后不会转换为 tool call、不会发送无约束文本请求，也不会以其他策略重试。
     - 覆盖 schema 非 object、无效 arguments、多 tool call、text + tool call、仅 tool
       call 和 length/abort。
     - 端到端结果可被当前 MVU 解析器消费并更新变量。
@@ -458,24 +479,29 @@ pi 的来源、凭据、模型和请求参数都属于 `额外模型解析配置
 - [x] **H-01 自动化验证**
     - MVU：相关 Jest 测试、完整测试、类型声明构建和 webpack 生产构建通过。
     - SillyTavern 无代码改动，Slash-Runner submodule 指针不变，没有跨仓库代码改动。
-    - 本次全量 Jest：57 suites、1049 passed、53 skipped；完整 `yarn lint`、`yarn build:dts` 与
+    - 本次全量 Jest：59 suites、1116 passed、53 skipped；完整 `yarn lint`、`yarn build:dts` 与
       `CI=true yarn build` 均成功且为 0 error。
 
 - [x] **H-02 bundle 验收**
     - 生产包只包含选定的 OpenAI/OpenAI Codex/Anthropic/Google adapter，不包含
       `providers/all`、无关 Provider 或 Node callback server 代码。
     - 记录迁移前后 bundle 体积，若增长异常则定位依赖来源。
-    - 最终 `artifact/bundle.js` 为 1,141,302 B / gzip-9 266,954 B，SHA-256 为
-      `4b204523454e46fe0b8fa4a831fb54d345723313e729ac1c2380222fb83f1494`；HEAD 基线为 307,765 B /
-      gzip-9 81,019 B，即最终约为 3.71× / 3.29×（增长约 270.8% /
-      229.5%）。增量来自单 chunk 中锁版打包的 Pi、OpenAI、Anthropic、Google、`p-retry`/`retry`
+    - 最终 `artifact/bundle.js` 为 1,170,517 B / gzip-9 274,004 B，SHA-256 为
+      `acd9e798daacd81a14c2ac7928df3542f95e6af514dd9b0c71b649f86a8c50a1`；迁移前基线（`61010da`）为 307,765
+      B / gzip-9 81,019 B，即最终约为 3.80× / 3.38×（增长约 280.3% /
+      238.2%）。增量来自单 chunk 中锁版打包的 Pi、OpenAI、Anthropic、Google、`p-retry`/`retry`
       及所选 adapter；产物与 source map 扫描确认这些依赖没有回退到未锁版 CDN，且不含
       `providers/all`、`node:http`、callback server 入口。
 
 - [ ] **H-03 浏览器手工 smoke test**
     - 选择模型来源“更多”，从二级菜单切换 OpenAI、Anthropic、Google，各完成一次文本请求和中止请求。
     - 支持的 Provider 各完成一次工具调用；支持图片的模型完成一次 data URL 图片请求。
-    - 对结构化输出分别验证一个原生支持路径和一个不支持路径；后者应直接报错且不发送 Provider 请求。
+    - 在已实现结构化输出请求形状的 wire
+      API 中分别验证一个成功路径和一个目标 endpoint/model 实际拒绝路径；后者应已发送原请求、显示明确且经过脱敏的
+      `toastr` 错误，且不发起任何降级或换策略重试。
+    - 分别验证 Anthropic Messages 的普通格式化输出和 OpenAI Codex
+      Responses 的普通/v4 格式化输出成功发送；另验证 Anthropic v4 因 wire
+      payload 未实现而在请求前明确拒绝。
     - 分别验证 `openai-responses`、`anthropic-messages`、`openai-completions` 的 API Key 请求。
     - 分别完成一次 Anthropic 和 OpenAI Codex OAuth：打开授权页、复制 `127.0.0.1` callback
       URL、粘贴完成登录、请求、刷新页面后的认证恢复和登出。
@@ -503,9 +529,9 @@ pi 的来源、凭据、模型和请求参数都属于 `额外模型解析配置
     - `yarn test:pi:st-features`
       在同一真实 ST/Firefox/生产 bundle 中，以浏览器内协议 mock 验证了 OpenAI Responses、OpenAI Chat
       Completions、Anthropic Messages 和 Google 的文本请求，OpenAI/Anthropic/Google 工具调用，OpenAI
-      data
-      URL 图片，Google 原生结构化输出、Anthropic 不支持路径在 Provider 前拒绝，以及三家 AbortSignal。终态计数为 13 次 Pi
-      capture、13 次 Provider 协议请求、2 次 Legacy 请求和 4 次状态请求；同时验证两条旧来源各只走一次原 ST
+      data URL 图片，以及 Google 与 Anthropic 的原生 JSON
+      Schema 格式化输出和三家 AbortSignal。终态计数为 14 次 Pi
+      capture、14 次 Provider 协议请求、2 次 Legacy 请求和 4 次状态请求；同时验证两条旧来源各只走一次原 ST
       chat-completion
       transport、fetch 恢复和进程清理。两条旧路径还使用同一非空确定性更新，精确比较最终正文、UpdateVariable、`stat_data`、`display_data`
       和 `delta_data`。完整 send-button 并发按实际产品顺序执行：先挂起 Pi，再通过 `#send_but`
@@ -558,10 +584,13 @@ pi 的来源、凭据、模型和请求参数都属于 `额外模型解析配置
 - [x] OpenAI、Anthropic、Google 的文本角色、流式完成、中止和错误行为均通过测试。
 - [x] pi 回复不写回聊天、不追加到 Context；现有 MVU 下游解析不需要改接口。
 - [x] generation ID 贯穿 prompt 与 Provider 两阶段；手动停止和并发 loser 清理都能终止实际 pi 请求。
-- [x] 工具调用能产出当前解析器可消费的
-      `GenerateToolCallResult`；结构化输出仅走原生支持路径，不支持时请求前直接报错，且不转换为工具或无约束文本。
+- [x] 工具调用能产出当前解析器可消费的 `GenerateToolCallResult`；已实现 wire
+      API 的工具调用和格式化输出对目录外模型/自定义 endpoint 乐观发送，目标实际拒绝时通过 `toastr`
+      显示安全、可操作的错误；未实现的 wire 请求形状仍在请求前拒绝，且所有失败路径都不转换为工具或无约束文本。
 - [x] data URL 图片正确转换；remote image/video 有明确且可测试的行为。
-- [x] token preflight、凭据错误、CORS 错误和不支持能力都在请求边界给出明确提示。
+- [x] token
+      preflight、凭据错误、CORS 错误、未实现 wire 请求形状和目标 endpoint/model 的能力拒绝都在调用边界通过
+      `toastr` 给出经过脱敏、可操作的提示。
 - [x] 完整测试、lint、类型构建和生产构建通过，bundle 未引入全部 Provider。
 
 ## 建议执行顺序

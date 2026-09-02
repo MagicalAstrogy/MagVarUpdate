@@ -17,6 +17,7 @@ import { PiContextAdapterError } from '@/function/update/pi/context_adapter';
 import { PiRequestAbortedError } from '@/function/update/pi/controller_registry';
 import {
     getLocalizedPiErrorMessage,
+    getPiRequestFailureToastMessage,
     localizePiError,
 } from '@/function/update/pi/error_localization';
 import { PiModelResolutionError } from '@/function/update/pi/model_resolver';
@@ -159,6 +160,70 @@ describe('Pi error localization boundary', () => {
 
         expect(getLocalizedPiErrorMessage(new Error('API key: unknown-secret'))).toBe(
             'The provider request under More failed. Check the provider settings, credentials, and network, then retry.'
+        );
+    });
+
+    test.each([
+        [
+            '工具调用',
+            'The target endpoint did not accept the tool-calling request.',
+        ],
+        [
+            '格式化输出',
+            'The target endpoint did not accept the formatted-output request.',
+        ],
+        [
+            '格式化输出(v4兼容)',
+            'The target endpoint did not accept the v4-compatible formatted-output request.',
+        ],
+    ])('adds a safe endpoint capability hint for provider failures in %s mode', (format, text) => {
+        i18n.global.locale.value = 'en';
+        const error = new PiRuntimeError(
+            'provider',
+            'upstream rejected payload and echoed Authorization: Bearer provider-secret',
+            true
+        );
+
+        expect(getPiRequestFailureToastMessage(error, format)).toContain(text);
+        expect(error.message).not.toContain('provider-secret');
+    });
+
+    test('keeps the specific localized error instead of replacing it with a capability hint', () => {
+        i18n.global.locale.value = 'en';
+        const error = new PiRuntimeError(
+            'unsupported_capability',
+            'Selected model does not support tool calling'
+        );
+
+        expect(getPiRequestFailureToastMessage(error, '工具调用')).toBe(
+            'The current provider, API, or model under More does not support the required tool-calling mode. Change the configuration and retry.'
+        );
+    });
+
+    test('keeps a previously localized structured-output capability error unchanged', () => {
+        i18n.global.locale.value = 'zh-CN';
+        const error = new PiRuntimeError(
+            'unsupported_capability',
+            'Structured output with JSON Schema is not supported by this endpoint'
+        );
+        const enumerable_keys_before = Object.keys(error);
+        const symbols_before = new Set(Object.getOwnPropertySymbols(error));
+
+        expect(localizePiError(error)).toBe(error);
+        const localized_message = i18n.global.t('runtime.pi.structuredOutputUnsupported');
+        expect(error.message).toBe(localized_message);
+
+        expect(getPiRequestFailureToastMessage(error, '格式化输出')).toBe(localized_message);
+        expect(localizePiError(error)).toBe(error);
+        expect(error.message).toBe(localized_message);
+        expect(Object.keys(error)).toEqual(enumerable_keys_before);
+
+        const localization_symbols = Object.getOwnPropertySymbols(error).filter(
+            symbol => !symbols_before.has(symbol)
+        );
+        expect(localization_symbols).toHaveLength(1);
+        expect(Object.getOwnPropertyDescriptor(error, localization_symbols[0])?.enumerable).toBe(
+            false
         );
     });
 });

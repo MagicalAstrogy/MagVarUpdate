@@ -1,7 +1,9 @@
 # pi 多 Provider 集成设计说明
 
 > 状态：设计提案
+>
 > 日期：2026-09-01
+>
 > 范围：MVU 的额外模型请求，复用 TavernHelper `generate` / `generateRaw` 生成提示词
 
 ## 结论
@@ -374,25 +376,35 @@ pi 的 provider-neutral `streamSimple` 只统一了 `auto | none`。当前 MVU �
 
 - OpenAI completions/responses：`required` 或指定函数。
 - Anthropic：`any` 或 `{ type: 'tool', name }`。
-- Google：`any`；指定函数是否可用取决于所选 API/模型能力。
+- Google：当前只映射 `any`；named tool choice 尚未实现，在请求前明确拒绝。
 
 这部分不是重新实现协议，只是一个小型的 capability/option 路由器；不应通过不受类型约束的统一 `as any`
 把同一个值塞给所有 Provider。
+
+这里的 capability 只描述 MVU/pi 是否已经实现对应 wire
+API 的请求形状，不用目录模型或自定义 endpoint 的能力元数据做请求前门禁。请求形状已实现时应乐观发送；若目标 endpoint/model 实际不支持，保留错误类别，并通过
+`toastr.error` 提供经过脱敏、可操作的提示。尚未实现的 wire 请求形状仍在请求前明确拒绝。
 
 ### `json_schema`
 
 pi 的统一 constrained sampling 是挂在 `Tool.constrainedSampling`
 上的，不等同于所有 Provider 都有统一的顶层 `response_format.json_schema`。
 
-对当前 MVU，推荐首选现有“工具调用”输出模式：
+当前 MVU 的“工具调用”和“格式化输出”是两种独立模式。工具调用模式按以下方式映射：
 
 1. 把 `MVU_TOOL_DEFINITION` 映射成 pi `Tool`。
 2. 设置 `constrainedSampling: { type: 'json_schema', strict: 'prefer' }`。
 3. 按 Provider 把 tool choice 映射为 required/any。
 4. pi 返回的 `ToolCall.arguments` 已经是对象，归一化回 MVU 现有结果时再 `JSON.stringify`。
 
-“直接输出 JSON 文本”的 `json_schema` 模式可以在第二阶段用 Provider-specific options / `onPayload`
-支持。首版若同时要求所有 Provider 的强制 JSON 文本完全一致，复杂度会明显上升。
+“直接输出 JSON 文本”的 `json_schema`/`json_object` 模式则使用各 wire API 已实现的 Provider-specific
+options / `onPayload`
+映射。只要该请求形状已实现，就不根据目录模型、自定义 endpoint 或静态能力表提前拒绝；目标 endpoint/model 若返回不支持错误，统一传播其错误类别到调用边界，并通过
+`toastr.error` 显示经过脱敏、可操作的提示。Anthropic Messages 的普通格式化输出映射为
+`output_config.format: { type: 'json_schema', schema }`，但不支持 v4/JSON Object；OpenAI Codex
+Responses 的普通格式化输出和 v4 模式都映射为 `text.format`。尚未实现的 Anthropic
+v4 请求形状仍在请求前明确拒绝。失败后不转换成 constrained
+tool、不回退无约束文本，也不更换结构化输出策略重试。
 
 ### 保持现有 MVU 下游不变
 
@@ -454,7 +466,8 @@ type ExistingResult = string | GenerateToolCallResult;
 
 - Tool schema 和 required/any/named tool choice 路由。
 - pi `AssistantMessage` → 现有 `GenerateToolCallResult`。
-- JSON schema 文本模式的 Provider-specific 支持或明确降级。
+- JSON schema 文本模式的 Provider-specific 请求映射，以及目标 endpoint/model 拒绝时的明确 `toastr`
+  错误。
 - 图片 data URL 转换。
 - payload 快照与至少三类 API adapter 测试。
 
@@ -477,6 +490,12 @@ type ExistingResult = string | GenerateToolCallResult;
 12. tool mode 能继续产出当前 MVU 解析器可消费的 `GenerateToolCallResult`。
 13. 图片模式对 data URL 正确拆 MIME/base64，对 video/remote URL 明确拒绝或告警。
 14. webpack 生产构建只包含选定 Provider；Node 24.15.0 满足 pi 包声明的 Node 要求。
+15. OpenAI Responses、OpenAI Chat Completions、OpenAI Codex Responses、Anthropic
+    Messages 和 Google 的普通格式化输出，以及除 Anthropic
+    Messages 外各 API 的 v4 格式化输出和各 wire
+    API 已实现的工具调用，不会因目录模型或自定义 endpoint 被请求前门禁；目标实际拒绝时会显示明确、安全的
+    `toastr` 错误，且不会降级、转换或换策略重试。Anthropic
+    v4 等未实现的 wire 请求形状仍应在请求前拒绝。
 
 ## 8. 最终建议
 
@@ -500,7 +519,7 @@ guard。这样只需两个很小的 Slash 改动，就能把 MVU 与 pi 之间�
 首版推荐决策：
 
 - late system：`attach-to-nearest-user`，同时输出 diagnostics。
-- 结构化输出：工具调用作为跨 Provider 主路径。
+- 结构化输出：工具调用与格式化输出保持独立，按已实现 wire API 乐观发送；上游拒绝时明确报错且不降级。
 - prompt 预算：首版沿用 ST + `max_chat_history`，pi 侧 preflight；有实际问题再加 request-scoped
   budget。
 - 当前 preset 模式：和 raw 模式使用同一个 per-ID 捕获器，不再单独保留旧 Provider 路径。

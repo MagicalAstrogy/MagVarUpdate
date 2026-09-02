@@ -177,8 +177,8 @@ export const panelMessages = defineMessages({
         en: 'Fetching…',
     },
     'panel.modelSelect.fetch': {
-        'zh-CN': '获取模型',
-        en: 'Fetch models',
+        'zh-CN': '获取模型列表',
+        en: 'Fetch model list',
     },
     'panel.modelSelect.empty': {
         'zh-CN': '模型列表为空或获取失败',

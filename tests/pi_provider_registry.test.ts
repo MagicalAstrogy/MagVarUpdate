@@ -206,6 +206,24 @@ const OPENAI_CONFIG = {
     contextWindow: 0,
 };
 
+function pickAdvancedCapabilities(
+    capabilities:
+        | Readonly<{
+              tools: boolean;
+              structuredOutput: boolean;
+              jsonObjectOutput: boolean;
+          }>
+        | undefined
+) {
+    return capabilities
+        ? {
+              tools: capabilities.tools,
+              structuredOutput: capabilities.structuredOutput,
+              jsonObjectOutput: capabilities.jsonObjectOutput,
+          }
+        : undefined;
+}
+
 function expectResolutionError(
     input: ResolvePiModelInput,
     expectedCode: PiModelResolutionErrorCode
@@ -258,38 +276,45 @@ describe('pi provider registry', () => {
         expect(getPiProviderRegistration).toBe(getPiProviderDefinition);
     });
 
-    test('declares JSON Schema and JSON-object output separately per native payload', () => {
-        expect(
-            getPiProviderDefinition('openai')!.apiCapabilities['openai-responses']?.structuredOutput
-        ).toBe(true);
-        expect(
-            getPiProviderDefinition('openai')!.apiCapabilities['openai-completions']
-                ?.structuredOutput
-        ).toBe(true);
-        expect(
-            getPiProviderDefinition('google')!.apiCapabilities['google-generative-ai']
-                ?.structuredOutput
-        ).toBe(true);
-        expect(
-            getPiProviderDefinition('anthropic')!.apiCapabilities['anthropic-messages']
-                ?.structuredOutput
-        ).toBe(false);
-        expect(
-            getPiProviderDefinition('openai-codex')!.apiCapabilities['openai-codex-responses']
-                ?.structuredOutput
-        ).toBe(false);
-        expect(
-            getPiProviderDefinition('openai')!.apiCapabilities['openai-responses']?.jsonObjectOutput
-        ).toBe(true);
-        expect(
-            getPiProviderDefinition('google')!.apiCapabilities['google-generative-ai']
-                ?.jsonObjectOutput
-        ).toBe(true);
-        expect(
-            getPiProviderDefinition('anthropic')!.apiCapabilities['anthropic-messages']
-                ?.jsonObjectOutput
-        ).toBe(false);
-    });
+    test.each([
+        {
+            label: 'OpenAI Responses',
+            provider: 'openai',
+            api: 'openai-responses',
+            expected: { tools: true, structuredOutput: true, jsonObjectOutput: true },
+        },
+        {
+            label: 'OpenAI Chat Completions',
+            provider: 'openai',
+            api: 'openai-completions',
+            expected: { tools: true, structuredOutput: true, jsonObjectOutput: true },
+        },
+        {
+            label: 'OpenAI Codex Responses',
+            provider: 'openai-codex',
+            api: 'openai-codex-responses',
+            expected: { tools: true, structuredOutput: true, jsonObjectOutput: true },
+        },
+        {
+            label: 'Anthropic Messages',
+            provider: 'anthropic',
+            api: 'anthropic-messages',
+            expected: { tools: true, structuredOutput: true, jsonObjectOutput: false },
+        },
+        {
+            label: 'Google Generative AI',
+            provider: 'google',
+            api: 'google-generative-ai',
+            expected: { tools: true, structuredOutput: true, jsonObjectOutput: true },
+        },
+    ] as const)(
+        'declares the exact advanced capability matrix for $label',
+        ({ provider, api, expected }) => {
+            expect(
+                pickAdvancedCapabilities(getPiProviderDefinition(provider)!.apiCapabilities[api])
+            ).toEqual(expected);
+        }
+    );
 
     test('derives model-aware capability gates from the shared registry', () => {
         const anthropic = getPiProviderDefinition('anthropic')!;
@@ -302,7 +327,7 @@ describe('pi provider registry', () => {
             })
         ).toMatchObject({
             tools: true,
-            structuredOutput: false,
+            structuredOutput: true,
             jsonObjectOutput: false,
             temperature: false,
             sampling: {
@@ -317,14 +342,14 @@ describe('pi provider registry', () => {
                 catalogHit: false,
             })
         ).toMatchObject({
-            tools: false,
-            structuredOutput: false,
+            tools: true,
+            structuredOutput: true,
             jsonObjectOutput: false,
             imageInput: false,
         });
     });
 
-    test('applies pinned OpenAI model gates for tools, structured output, sampling, and streaming', () => {
+    test('keeps OpenAI advanced capabilities optimistic while applying sampling and streaming gates', () => {
         const openai = getPiProviderDefinition('openai')!;
         const models = Object.fromEntries(
             getPiCatalogModels('openai').map(model => [model.id, model])
@@ -335,14 +360,14 @@ describe('pi provider registry', () => {
                 model: models['gpt-4'],
                 catalogHit: true,
             })
-        ).toMatchObject({ tools: false, structuredOutput: false, jsonObjectOutput: false });
+        ).toMatchObject({ tools: true, structuredOutput: true, jsonObjectOutput: true });
         for (const id of ['gpt-4-turbo', 'gpt-4o-2024-05-13']) {
             expect(
                 resolvePiCapabilities(openai, 'openai-responses', {
                     model: models[id],
                     catalogHit: true,
                 })
-            ).toMatchObject({ structuredOutput: false, jsonObjectOutput: true });
+            ).toMatchObject({ structuredOutput: true, jsonObjectOutput: true });
         }
         expect(
             resolvePiCapabilities(openai, 'openai-responses', {
@@ -392,7 +417,7 @@ describe('pi provider registry', () => {
                     model: models[id],
                     catalogHit: true,
                 })
-            ).toMatchObject({ structuredOutput: false, jsonObjectOutput: false });
+            ).toMatchObject({ structuredOutput: true, jsonObjectOutput: true });
         }
         for (const id of ['o1', 'o3', 'o3-mini', 'o4-mini']) {
             expect(
@@ -426,9 +451,9 @@ describe('pi provider registry', () => {
                     catalogHit: true,
                 })
             ).toMatchObject({
-                tools: false,
-                structuredOutput: false,
-                jsonObjectOutput: false,
+                tools: true,
+                structuredOutput: true,
+                jsonObjectOutput: true,
                 imageInput: false,
             });
         }
@@ -439,9 +464,9 @@ describe('pi provider registry', () => {
                 catalogHit: true,
             })
         ).toMatchObject({
-            tools: false,
-            structuredOutput: false,
-            jsonObjectOutput: false,
+            tools: true,
+            structuredOutput: true,
+            jsonObjectOutput: true,
             imageInput: false,
         });
     });
@@ -481,7 +506,7 @@ describe('pi provider registry', () => {
         ).toMatchObject({ temperature: false, sampling: { topP: false, topK: false } });
     });
 
-    test('gates Google tools and structured output with separate exact-ID allowlists', () => {
+    test('keeps Google tools and structured output at the wire API capability level', () => {
         const google = getPiProviderDefinition('google')!;
         const models = Object.fromEntries(
             getPiCatalogModels('google').map(model => [model.id, model])
@@ -512,14 +537,14 @@ describe('pi provider registry', () => {
                     model: models[id],
                     catalogHit: true,
                 })
-            ).toMatchObject({ tools: true, structuredOutput: false, jsonObjectOutput: false });
+            ).toMatchObject({ tools: true, structuredOutput: true, jsonObjectOutput: true });
         }
         expect(
             resolvePiCapabilities(google, 'google-generative-ai', {
                 model: unsupported,
                 catalogHit: true,
             })
-        ).toMatchObject({ tools: false, structuredOutput: false, jsonObjectOutput: false });
+        ).toMatchObject({ tools: true, structuredOutput: true, jsonObjectOutput: true });
     });
 
     test('disables sampling controls for the Codex subscription backend', () => {
@@ -534,6 +559,8 @@ describe('pi provider registry', () => {
                 catalogHit: true,
             })
         ).toMatchObject({
+            structuredOutput: true,
+            jsonObjectOutput: true,
             temperature: false,
             sampling: {
                 topP: false,
@@ -544,7 +571,23 @@ describe('pi provider registry', () => {
         });
     });
 
-    test('filters the shut-down Google preview from the selectable catalog and fails it closed', () => {
+    test('keeps Codex advanced capabilities optimistic for a manually entered model', () => {
+        const codex = getPiProviderDefinition('openai-codex')!;
+        const catalogModel = getPiCatalogModels('openai-codex').find(
+            candidate => candidate.id === 'codex-known'
+        )!;
+
+        expect(
+            pickAdvancedCapabilities(
+                resolvePiCapabilities(codex, 'openai-codex-responses', {
+                    model: { ...structuredClone(catalogModel), id: 'codex-manual' },
+                    catalogHit: false,
+                })
+            )
+        ).toEqual({ tools: true, structuredOutput: true, jsonObjectOutput: true });
+    });
+
+    test('filters the shut-down Google preview and treats a manual entry as API-level dynamic', () => {
         const google = getPiProviderDefinition('google')!;
         expect(getPiCatalogModels('google').map(model => model.id)).not.toContain(
             'gemini-3.1-flash-lite-preview'
@@ -564,9 +607,9 @@ describe('pi provider registry', () => {
         });
         expect(retired.catalogHit).toBe(false);
         expect(resolvePiCapabilities(google, 'google-generative-ai', retired)).toMatchObject({
-            tools: false,
-            structuredOutput: false,
-            jsonObjectOutput: false,
+            tools: true,
+            structuredOutput: true,
+            jsonObjectOutput: true,
             imageInput: false,
         });
     });

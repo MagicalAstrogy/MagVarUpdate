@@ -41,6 +41,66 @@ describe('Pi payload transform', () => {
         });
     });
 
+    test('maps OpenAI Responses json object mode exactly without mutating input', () => {
+        const input = {
+            model: 'gpt',
+            input: [],
+            stream: true,
+            text: { verbosity: 'low' },
+        };
+        const snapshot = structuredClone(input);
+
+        const result = transformPiPayload(input, {
+            api: 'openai-responses',
+            responseFormat: '格式化输出(v4兼容)',
+        });
+
+        expect(result).toEqual({
+            ...input,
+            text: {
+                verbosity: 'low',
+                format: { type: 'json_object' },
+            },
+        });
+        expect(result).not.toHaveProperty('response_format');
+        expect(result).not.toHaveProperty('output_config');
+        expect(result).not.toHaveProperty('config');
+        expect(input).toEqual(snapshot);
+    });
+
+    test('maps Codex Responses structured modes through the Responses text envelope', () => {
+        expect(
+            transformPiPayload(
+                { model: 'gpt', input: [], text: { verbosity: 'low' } },
+                {
+                    api: 'openai-codex-responses',
+                    responseFormat: '格式化输出',
+                    jsonSchema: schema,
+                }
+            )
+        ).toMatchObject({
+            text: {
+                verbosity: 'low',
+                format: {
+                    type: 'json_schema',
+                    name: 'mvu_update',
+                    description: 'MVU patch',
+                    schema: schema.value,
+                    strict: true,
+                },
+            },
+        });
+        expect(
+            transformPiPayload(
+                { model: 'gpt', input: [] },
+                {
+                    api: 'openai-codex-responses',
+                    responseFormat: '格式化输出(v4兼容)',
+                }
+            )
+        ).toMatchObject({ text: { format: { type: 'json_object' } } });
+    });
+
     test('maps Chat Completions json object mode', () => {
         expect(
             transformPiPayload(
@@ -51,6 +111,39 @@ describe('Pi payload transform', () => {
                 }
             )
         ).toMatchObject({ response_format: { type: 'json_object' } });
+    });
+
+    test('maps Chat Completions native json schema exactly without mutating input', () => {
+        const input = {
+            model: 'gpt',
+            messages: [],
+            stream: true,
+            parallel_tool_calls: false,
+        };
+        const snapshot = structuredClone(input);
+
+        const result = transformPiPayload(input, {
+            api: 'openai-completions',
+            responseFormat: '格式化输出',
+            jsonSchema: schema,
+        });
+
+        expect(result).toEqual({
+            ...input,
+            response_format: {
+                type: 'json_schema',
+                json_schema: {
+                    name: 'mvu_update',
+                    description: 'MVU patch',
+                    schema: schema.value,
+                    strict: true,
+                },
+            },
+        });
+        expect(result).not.toHaveProperty('text');
+        expect(result).not.toHaveProperty('output_config');
+        expect(result).not.toHaveProperty('config');
+        expect(input).toEqual(snapshot);
     });
 
     test('maps Google structured output inside config', () => {
@@ -70,6 +163,36 @@ describe('Pi payload transform', () => {
                 responseJsonSchema: schema.value,
             },
         });
+    });
+
+    test('maps Google json object mode exactly without mutating input', () => {
+        const input = {
+            model: 'gemini',
+            contents: [],
+            config: {
+                temperature: 0.4,
+                thinkingConfig: { thinkingBudget: 256 },
+            },
+        };
+        const snapshot = structuredClone(input);
+
+        const result = transformPiPayload(input, {
+            api: 'google-generative-ai',
+            responseFormat: '格式化输出(v4兼容)',
+        });
+
+        expect(result).toEqual({
+            ...input,
+            config: {
+                temperature: 0.4,
+                thinkingConfig: { thinkingBudget: 256 },
+                responseMimeType: 'application/json',
+            },
+        });
+        expect(result).not.toHaveProperty('response_format');
+        expect(result).not.toHaveProperty('text');
+        expect(result).not.toHaveProperty('output_config');
+        expect(input).toEqual(snapshot);
     });
 
     test('preserves live Google AbortSignal objects through payload transforms', () => {
@@ -168,17 +291,42 @@ describe('Pi payload transform', () => {
         ).toThrow("must use a direct 'config.<field>' path");
     });
 
-    test('rejects structured output for an unsupported API', () => {
+    test('maps Anthropic JSON Schema output without replacing output_config effort', () => {
+        const input = {
+            model: 'claude',
+            messages: [],
+            output_config: { effort: 'high' },
+        };
+
+        expect(
+            transformPiPayload(input, {
+                api: 'anthropic-messages',
+                responseFormat: '格式化输出',
+                jsonSchema: schema,
+            })
+        ).toEqual({
+            ...input,
+            output_config: {
+                effort: 'high',
+                format: {
+                    type: 'json_schema',
+                    schema: schema.value,
+                },
+            },
+        });
+        expect(input.output_config).toEqual({ effort: 'high' });
+    });
+
+    test('does not invent Anthropic JSON-object mode for the v4-compatible format', () => {
         expect(() =>
             transformPiPayload(
                 { model: 'claude', messages: [] },
                 {
                     api: 'anthropic-messages',
-                    responseFormat: '格式化输出',
-                    jsonSchema: schema,
+                    responseFormat: '格式化输出(v4兼容)',
                 }
             )
-        ).toThrow('does not support native structured output');
+        ).toThrow('does not support native JSON-object output');
     });
 
     test('applies custom fields but protects protocol fields', () => {

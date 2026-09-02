@@ -180,7 +180,7 @@ function applyNativeStructuredOutput(
         };
     }
 
-    if (api === 'openai-responses') {
+    if (api === 'openai-responses' || api === 'openai-codex-responses') {
         const existing_text = isPlainObject(payload.text) ? payload.text : {};
         return {
             ...payload,
@@ -195,6 +195,25 @@ function applyNativeStructuredOutput(
                           strict: schema!.strict ?? true,
                       }
                     : { type: 'json_object' },
+            },
+        };
+    }
+
+    if (api === 'anthropic-messages') {
+        if (!is_json_schema) {
+            throw new Error(`More source API '${api}' does not support native JSON-object output`);
+        }
+        const existing_output_config = isPlainObject(payload.output_config)
+            ? payload.output_config
+            : {};
+        return {
+            ...payload,
+            output_config: {
+                ...existing_output_config,
+                format: {
+                    type: 'json_schema',
+                    schema: schema!.value,
+                },
             },
         };
     }

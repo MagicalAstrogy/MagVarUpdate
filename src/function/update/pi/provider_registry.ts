@@ -23,6 +23,13 @@ import {
 export { PI_AUTH_TYPES, PI_PROVIDER_KEYS, PI_WIRE_APIS } from './provider_target';
 export type { PiAuthType, PiProviderKey, PiWireApi } from './provider_target';
 
+/**
+ * Codex protocol level implemented by the pinned pi-ai adapter/catalog. Keep this tied to an
+ * adapter upgrade rather than MVU's unrelated application version: the models endpoint uses it to
+ * hide entries whose request shape the active adapter cannot yet support.
+ */
+export const OPENAI_CODEX_ADAPTER_CLIENT_VERSION = '0.144.0';
+
 export type PiFieldMode = 'hidden' | 'readonly' | 'select' | 'editable';
 
 export interface PiProviderFieldVisibility {
@@ -173,8 +180,8 @@ const CODEX_CAPABILITIES: Readonly<PiApiCapabilities> = Object.freeze({
     streaming: true,
     tools: true,
     imageInput: true,
-    structuredOutput: false,
-    jsonObjectOutput: false,
+    structuredOutput: true,
+    jsonObjectOutput: true,
     temperature: false,
     temperatureRange: TEMPERATURE_ZERO_TO_TWO,
     sampling: NO_SAMPLING,
@@ -184,7 +191,7 @@ const ANTHROPIC_CAPABILITIES: Readonly<PiApiCapabilities> = Object.freeze({
     streaming: true,
     tools: true,
     imageInput: true,
-    structuredOutput: false,
+    structuredOutput: true,
     jsonObjectOutput: false,
     temperature: true,
     temperatureRange: TEMPERATURE_ZERO_TO_ONE,
@@ -363,41 +370,6 @@ const ANTHROPIC_NO_SAMPLING_MODEL_IDS: ReadonlySet<string> = new Set([
     'claude-sonnet-5',
 ]);
 
-/**
- * Only ordinary Gemini generation models whose tool support is explicitly understood belong
- * here. Agent, computer-use, image, live, robotics and Gemma catalog entries deliberately fail
- * closed even though they share the same wire API.
- */
-const GOOGLE_TOOL_MODEL_IDS: ReadonlySet<string> = new Set([
-    'gemini-2.5-flash',
-    'gemini-2.5-flash-lite',
-    'gemini-2.5-pro',
-    'gemini-3-flash-preview',
-    'gemini-3.1-flash-lite',
-    'gemini-3.1-pro-preview',
-    'gemini-3.1-pro-preview-customtools',
-    'gemini-3.5-flash',
-    'gemini-3.5-flash-lite',
-    'gemini-3.6-flash',
-    'gemini-3.7-flash',
-    'gemini-flash-latest',
-    'gemini-flash-lite-latest',
-]);
-
-/** Models with explicitly documented native JSON / JSON Schema response support. */
-const GOOGLE_STRUCTURED_OUTPUT_MODEL_IDS: ReadonlySet<string> = new Set([
-    'gemini-2.5-flash',
-    'gemini-2.5-flash-lite',
-    'gemini-2.5-pro',
-    'gemini-3-flash-preview',
-    'gemini-3.1-flash-lite',
-    'gemini-3.1-pro-preview',
-    'gemini-3.5-flash',
-    'gemini-3.5-flash-lite',
-    'gemini-3.6-flash',
-    'gemini-3.7-flash',
-]);
-
 /** Catalog models explicitly available through OpenAI Chat Completions as well as Responses. */
 const OPENAI_CHAT_COMPLETIONS_MODEL_IDS: ReadonlySet<string> = new Set([
     'gpt-4',
@@ -431,29 +403,6 @@ const OPENAI_CHAT_COMPLETIONS_MODEL_IDS: ReadonlySet<string> = new Set([
     'o4-mini',
 ]);
 
-const OPENAI_NO_TOOL_MODEL_IDS: ReadonlySet<string> = new Set(['gpt-4', 'gpt-realtime-2.1']);
-
-const OPENAI_NO_STRUCTURED_OUTPUT_MODEL_IDS: ReadonlySet<string> = new Set([
-    'gpt-4',
-    'gpt-4-turbo',
-    'gpt-4o-2024-05-13',
-    'gpt-5.2-pro',
-    'gpt-5.4-pro',
-    'gpt-realtime-2.1',
-    'o1-pro',
-    'o3-pro',
-]);
-
-/** JSON mode predates JSON Schema support and is available on some schema-denied models. */
-const OPENAI_NO_JSON_OBJECT_OUTPUT_MODEL_IDS: ReadonlySet<string> = new Set([
-    'gpt-4',
-    'gpt-5.2-pro',
-    'gpt-5.4-pro',
-    'gpt-realtime-2.1',
-    'o1-pro',
-    'o3-pro',
-]);
-
 const OPENAI_NON_STREAMING_MODEL_IDS: ReadonlySet<string> = new Set([
     'gpt-5.5-pro',
     'gpt-realtime-2.1',
@@ -485,9 +434,9 @@ export function isPiCatalogModelApiCompatible(
 
 /**
  * Re-resolve and verify catalog metadata instead of trusting the caller's `catalogHit` bit.
- * Advanced capabilities are tied to the original provider/API/default endpoint tuple. A model
- * cloned onto another wire API or a custom endpoint remains usable for text, but does not inherit
- * capabilities that have not been audited for that route.
+ * Verified metadata is used for model-sensitive media, streaming, and sampling controls. Tools
+ * and response formats intentionally remain wire-API capabilities: the real endpoint response is
+ * authoritative when a particular model or compatible endpoint does not implement one of them.
  */
 function verifiedCatalogModel(
     definition: PiProviderDefinition,
@@ -528,23 +477,6 @@ export function resolvePiCapabilities(
     }
 
     const catalogModel = verifiedCatalogModel(definition, api, options);
-    const advancedCapabilitiesVerified = catalogModel !== undefined;
-    const googleToolsAllowed =
-        definition.key !== 'google' ||
-        (catalogModel !== undefined && GOOGLE_TOOL_MODEL_IDS.has(catalogModel.id));
-    const googleStructuredOutputAllowed =
-        definition.key !== 'google' ||
-        (catalogModel !== undefined && GOOGLE_STRUCTURED_OUTPUT_MODEL_IDS.has(catalogModel.id));
-    const openAIToolsAllowed =
-        definition.key !== 'openai' ||
-        (catalogModel !== undefined && !OPENAI_NO_TOOL_MODEL_IDS.has(catalogModel.id));
-    const openAIStructuredOutputAllowed =
-        definition.key !== 'openai' ||
-        (catalogModel !== undefined && !OPENAI_NO_STRUCTURED_OUTPUT_MODEL_IDS.has(catalogModel.id));
-    const openAIJsonObjectOutputAllowed =
-        definition.key !== 'openai' ||
-        (catalogModel !== undefined &&
-            !OPENAI_NO_JSON_OBJECT_OUTPUT_MODEL_IDS.has(catalogModel.id));
     const samplingModel = catalogModel ?? options.model;
     const anthropicSamplingAllowed =
         definition.key !== 'anthropic' ||
@@ -571,24 +503,12 @@ export function resolvePiCapabilities(
 
     return Object.freeze({
         ...registered,
-        // Unknown, remapped, or custom-endpoint models have no auditable advanced capability
-        // metadata. Keep ordinary text requests available, but fail closed for those features.
+        // These are adapter-level promises. Any narrower endpoint/model support is reported by
+        // the provider request itself instead of being guessed from a pinned catalog.
         streaming: registered.streaming && streamingAllowed,
-        tools:
-            registered.tools &&
-            advancedCapabilitiesVerified &&
-            googleToolsAllowed &&
-            openAIToolsAllowed,
-        structuredOutput:
-            registered.structuredOutput &&
-            advancedCapabilitiesVerified &&
-            googleStructuredOutputAllowed &&
-            openAIStructuredOutputAllowed,
-        jsonObjectOutput:
-            registered.jsonObjectOutput &&
-            advancedCapabilitiesVerified &&
-            googleStructuredOutputAllowed &&
-            openAIJsonObjectOutputAllowed,
+        tools: registered.tools,
+        structuredOutput: registered.structuredOutput,
+        jsonObjectOutput: registered.jsonObjectOutput,
         imageInput: registered.imageInput && catalogModel?.input.includes('image') === true,
         temperature:
             registered.temperature && modelSupportsTemperature(samplingModel) && samplingAllowed,

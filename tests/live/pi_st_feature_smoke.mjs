@@ -991,8 +991,12 @@ export async function runPiStFeatureSmoke({
                         (serialized.includes('image/png') && serialized.includes('iVBORw0KGgo')),
                     hasNativeSchema: api === 'openai-responses'
                         ? body.text?.format?.type === 'json_schema'
-                        : /response_?mime_?type|responseMimeType/.test(serialized) &&
-                          serialized.includes('application/json'),
+                        : api === 'anthropic-messages'
+                          ? body.output_config?.format?.type === 'json_schema' &&
+                            body.output_config.format.schema !== null &&
+                            typeof body.output_config.format.schema === 'object'
+                          : /response_?mime_?type|responseMimeType/.test(serialized) &&
+                            serialized.includes('application/json'),
                 };
                 state.providerRequests.push(request);
                 if (
@@ -1006,7 +1010,7 @@ export async function runPiStFeatureSmoke({
 
                 const args = JSON.stringify({ analysis: 'mock', delta: '[    ]' });
                 const wantsTool = state.scenario.startsWith('tool-');
-                const wantsStructured = state.scenario === 'structured-google';
+                const wantsStructured = state.scenario.startsWith('structured-');
                 if (api === 'openai-responses') {
                     const item = wantsTool
                         ? { type: 'function_call', id: 'fc_1', call_id: 'call_1', name: toolName, arguments: args, status: 'completed' }
@@ -1035,7 +1039,7 @@ export async function runPiStFeatureSmoke({
                         : { type: 'text', text: '' };
                     const delta = wantsTool
                         ? { type: 'input_json_delta', partial_json: args }
-                        : { type: 'text_delta', text: outputText };
+                        : { type: 'text_delta', text: wantsStructured ? structuredText : outputText };
                     return sse(iframe.contentWindow, [
                         eventLine({ type: 'message_start', message: { id: 'msg_1', type: 'message', role: 'assistant', model: 'claude-sonnet-4-5', content: [], stop_reason: null, usage: { input_tokens: 1, output_tokens: 0 } } }),
                         eventLine({ type: 'content_block_start', index: 0, content_block: block }),
@@ -1159,17 +1163,10 @@ export async function runPiStFeatureSmoke({
         structured.providerRequests === 1 && structured.lastRequest?.hasNativeSchema === true;
 
     await configurePi(webDriver, 'anthropic', '格式化输出');
-    const beforeUnsupported = await webDriver.execute(
-        `return window.__mvuFeatureSmoke.providerRequests.length;`
-    );
-    const unsupported = await invokeRetry(webDriver, 'structured-anthropic', {
-        expectRejected: true,
-    });
-    const afterUnsupported = await webDriver.execute(
-        `return window.__mvuFeatureSmoke.providerRequests.length;`
-    );
-    checks.anthropicStructuredRejectedPreflight =
-        unsupported.providerRequests === 0 && beforeUnsupported === afterUnsupported;
+    const anthropicStructured = await invokeRetry(webDriver, 'structured-anthropic');
+    checks.anthropicNativeStructured =
+        anthropicStructured.providerRequests === 1 &&
+        anthropicStructured.lastRequest?.hasNativeSchema === true;
 
     for (const provider of ['openai', 'anthropic', 'google']) {
         checks[`${provider}Abort`] = await runAbortCase(webDriver, provider);

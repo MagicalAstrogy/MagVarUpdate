@@ -24,7 +24,9 @@
             </Checkbox>
 
             <Detail :title="t('panel.compatibility.license')">
-                <p class="mvu-license-note">{{ t('panel.compatibility.licenseIntro') }}</p>
+                <template #title-suffix>
+                    <HelpIcon :help="license_help" />
+                </template>
                 <div class="mvu-license-table-wrap">
                     <table class="mvu-license-table">
                         <thead>
@@ -56,7 +58,6 @@
                         </tbody>
                     </table>
                 </div>
-                <p class="mvu-license-note">{{ t('panel.compatibility.licenseDetails') }}</p>
             </Detail>
         </template>
     </Section>
@@ -80,6 +81,9 @@ const { locale, t } = useMvuI18n();
 const sandas_message_help = computed(() =>
     locale.value === 'zh-CN' ? sandas_message_help_zh_cn : sandas_message_help_en
 );
+const license_help = computed(
+    () => `${t('panel.compatibility.licenseIntro')}\n\n${t('panel.compatibility.licenseDetails')}`
+);
 
 function format_boolean(value: boolean): string {
     return t(value ? 'common.enabled' : 'common.disabled');
@@ -94,11 +98,6 @@ const sendas_not_user_override_label = computed(() =>
 </script>
 
 <style scoped>
-.mvu-license-note {
-    margin: 0;
-    opacity: 0.9;
-}
-
 .mvu-license-table-wrap {
     max-height: 18rem;
     overflow: auto;

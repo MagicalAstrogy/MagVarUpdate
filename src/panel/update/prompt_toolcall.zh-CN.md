@@ -4,12 +4,17 @@
 
 - **聊天消息**：兼容性最好，不要求提供商支持额外能力。稳定性取决于模型能否按提示词输出正确格式。
 - **工具调用**：要求提供商支持 tools/function
-  calling。通常能减少正文干扰，但不支持工具调用的模型或反代会报错或退化。
-- **格式化输出**：要求提供商支持 OpenAI 兼容的
-  `response_format.json_schema`。通常最适合 JsonPatch 变量更新，因为返回会被约束为结构化 JSON。
-- **格式化输出（v4 兼容）**：用于只支持 `response_format.type = json_object`
-  的渠道，如 dsv4f 等。这个模式仅在额外模型来源为**自定义**时可用。
+  calling。通常能减少正文干扰；如果目标端点或模型不接受工具调用，请求会明确报错且不会自动降级。
+- **格式化输出**：要求提供商支持 JSON Schema 格式化输出。**自定义**来源使用 OpenAI 兼容的
+  `response_format.json_schema`；**更多**来源会按照所选 API 的 wire
+  format 发送。通常最适合 JsonPatch 变量更新，因为返回会被约束为结构化 JSON。
+- **格式化输出（v4 兼容）**：用于支持 JSON Object、但不支持 JSON
+  Schema 格式化输出的渠道，如 dsv4f 等。此模式可用于**自定义**来源，以及**更多**中支持 JSON
+  Object 输出的 API。
 
-如果渠道明确支持
-`response_format.json_schema`，优先尝试**格式化输出**。如果不支持，改用**格式化输出（v4 兼容）**或**聊天消息**；如果渠道支持 tools/function
-calling，也可以尝试**工具调用**。
+选择**更多**时，MVU 会基于所选 API 的 wire
+format 乐观发送工具调用或格式化输出请求，不会预先探测目标端点和模型的实际能力。如果目标不接受，请求会通过 toastr 明确报错且不会降级；请改用目标支持的应答格式，或检查 API 类型、地址和模型名。
+
+如果渠道明确支持 JSON Schema 格式化输出，优先尝试**格式化输出**。如果只支持 JSON
+Object，改用**格式化输出（v4 兼容）**；如果渠道支持 tools/function
+calling，也可以尝试**工具调用**。其余情况使用**聊天消息**。

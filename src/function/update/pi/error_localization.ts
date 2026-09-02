@@ -1,8 +1,11 @@
 import { tr, type MessageKey, type TranslationParams } from '@/i18n';
 
+const PI_ERROR_LOCALIZED = Symbol('mvu.pi.error.localized');
+
 type PiErrorLike = Error & {
     code?: unknown;
     sourceIndex?: unknown;
+    [PI_ERROR_LOCALIZED]?: true;
 };
 
 type LocalizedPiError = {
@@ -299,7 +302,17 @@ function replaceErrorText(error: PiErrorLike, message: string): PiErrorLike {
         writable: true,
         value: `${error.name}: ${message}`,
     });
+    Object.defineProperty(error, PI_ERROR_LOCALIZED, {
+        configurable: false,
+        enumerable: false,
+        writable: false,
+        value: true,
+    });
     return error;
+}
+
+function isLocalizedPiError(error: PiErrorLike): boolean {
+    return error[PI_ERROR_LOCALIZED] === true;
 }
 
 /**
@@ -308,6 +321,9 @@ function replaceErrorText(error: PiErrorLike, message: string): PiErrorLike {
  */
 export function localizePiError(error: unknown): unknown {
     if (!isError(error)) {
+        return error;
+    }
+    if (isLocalizedPiError(error)) {
         return error;
     }
     const localized = classifyPiError(error);
@@ -319,7 +335,34 @@ export function localizePiError(error: unknown): unknown {
  */
 export function getLocalizedPiErrorMessage(error: unknown): string {
     const localized = localizePiError(error);
-    return isError(localized) && classifyPiError(localized)
+    return isError(localized) && isLocalizedPiError(localized)
         ? localized.message
         : tr('runtime.pi.requestFailed');
+}
+
+/**
+ * Build the UI message for a failed More-source request without exposing provider response text.
+ * A provider-level failure cannot prove why an endpoint rejected the request, so capability modes
+ * use an actionable "did not accept" hint instead of claiming unsupported capability as fact.
+ */
+export function getPiRequestFailureToastMessage(
+    error: unknown,
+    responseFormat: string
+): string {
+    const localized = localizePiError(error);
+    if (
+        isError(localized) &&
+        localized.name === 'PiRuntimeError' &&
+        codeOf(localized) === 'provider'
+    ) {
+        switch (responseFormat) {
+            case '工具调用':
+                return tr('runtime.pi.toolRequestRejected');
+            case '格式化输出':
+                return tr('runtime.pi.structuredOutputRequestRejected');
+            case '格式化输出(v4兼容)':
+                return tr('runtime.pi.jsonObjectRequestRejected');
+        }
+    }
+    return getLocalizedPiErrorMessage(localized);
 }

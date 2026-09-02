@@ -133,14 +133,25 @@ endpoint 阻止浏览器 CORS，请求会直接报错；MVU 不会静默改走�
 exchange。Anthropic token endpoint 以及 OpenAI Codex 请求端点的 CORS/origin
 allowlist 尤其需要在实际部署来源上验证；被拒绝时只能由上游放行该来源，不能由前端代码绕过。
 
-## 能力门禁
+## 能力与错误边界
 
-能力按 Provider、wire API、目录模型和 endpoint 共同判断：
+普通文本是基础路径；自定义或目录外模型仍需有效模型 ID 和
+`contextWindow`。工具调用与格式化输出按已经实现的 wire
+API 请求形状判断，不根据目录模型或自定义 endpoint 的静态能力信息提前拦截：
 
-- 普通文本是基础路径。自定义或目录外模型仍需有效模型 ID 和 `contextWindow`。
-- 工具调用、原生 JSON/JSON
-  Schema、图片输入只对已审核的目录模型与原始 API/默认 endpoint 开放。目录外模型、跨 API 复用目录 ID 或自定义 endpoint 不会继承这些高级能力。
-- “格式化输出”只使用目标 API/model 的原生结构化输出。能力不匹配时请求前报错，不转换成工具调用、不降级为无约束文本，也不换策略重试。
+| wire API                | 工具调用                        | 格式化输出（JSON Schema） | v4（JSON Object） |
+| ----------------------- | ------------------------------- | ------------------------- | ----------------- |
+| OpenAI Responses        | 支持                            | `text.format`             | `text.format`     |
+| OpenAI Chat Completions | 支持                            | `response_format`         | `response_format` |
+| OpenAI Codex Responses  | 支持                            | `text.format`             | `text.format`     |
+| Anthropic Messages      | 支持                            | `output_config.format`    | 不支持            |
+| Google Generative AI    | 支持 `any`，不支持 named choice | `responseJsonSchema`      | JSON MIME         |
+
+- 表中支持的请求形状会对目录外模型和自定义 endpoint 乐观发送。若目标 endpoint/model 实际拒绝，MVU 会保留错误类别并通过
+  `toastr` 显示经过脱敏、可操作的提示。
+- Anthropic v4、Google named tool choice 等尚未实现的 wire 请求形状会在请求前明确拒绝。
+- 工具调用和“格式化输出”保持为独立模式；任何失败都不会触发 constrained
+  tool 转换、无约束文本降级或换策略重试。
 - `temperature`、`top_p`、`top_k`、frequency penalty 和 presence
   penalty 只在当前 API/model 明确支持时发送；不支持的控件会禁用或被过滤。
 - data URL 图片会转换成 Pi image block，并校验 MIME、base64 与模型输入能力。解码后每张图片最大 5
@@ -148,7 +159,7 @@ allowlist 尤其需要在实际部署来源上验证；被拒绝时只能由上�
   MiB、最多 20 张。远程图片 URL 和 video 当前明确拒绝，不会静默丢弃。
 - 历史 tool call/tool result 会转换为 Pi 对应内容块；普通文本、消息名和后置 system 消息也会保留。
 
-Provider 目录和上游能力会变化，界面显示的实时能力提示及请求前校验应作为最终依据。
+Provider 目录和上游能力会变化；上表只表示 MVU 已实现请求形状，不保证任意目标 endpoint/model 都会接受。
 
 ## Prompt 捕获与停止
 
@@ -188,7 +199,8 @@ chat。仓库不修改 SillyTavern 或 Slash-Runner，也不增加额外的 Slas
   endpoint 对当前 SillyTavern 页面来源的 CORS/origin 放行；自动化测试只覆盖浏览器协议逻辑和 mock
   exchange。
 - 未导入 `providers/all`，生产包只选择 OpenAI、OpenAI Codex、Anthropic 和 Google 所需入口。
-- 自动化测试覆盖配置、profile、捕获、消息适配、OAuth mock、凭据并发、payload、能力门禁、token
+- 自动化测试覆盖配置、profile、捕获、消息适配、OAuth mock、凭据并发、payload、wire
+  API 请求形状、token
   preflight、中止和 MVU 路由。真实 ST/Firefox 已验证本地产物加载、“更多”与四类来源、Anthropic API
   Key/OAuth endpoint 显隐、context/maxToken 编辑、Pi
   profile 保存/切换/删除/整页刷新持久化和凭据排除。隔离的 OAuth UI smoke 还以本地 mock 精确 token
@@ -215,10 +227,11 @@ chat。仓库不修改 SillyTavern 或 Slash-Runner，也不增加额外的 Slas
   在同一隔离 ST/Firefox/生产 bundle 中拦截实际 SDK/adapter 发出的浏览器请求，提供协议级证据：OpenAI
   Responses、OpenAI Chat Completions、Anthropic
   Messages、Google 的文本；OpenAI、Anthropic、Google 的工具调用；OpenAI data
-  URL 图片；Google 原生结构化输出与 Anthropic 本地拒绝；三家 AbortSignal；Pi 与 ST 主 chat-completion
+  URL 图片；Google 与 Anthropic 原生 JSON
+  Schema 格式化输出；三家 AbortSignal；Pi 与 ST 主 chat-completion
   transport 并发时的 prompt/stop 隔离；以及“自定义”和“与插头相同”各一次旧链路回归。两条旧链路使用同一非空确定性更新，并精确比较最终正文、UpdateVariable、`stat_data`、`display_data`
   和
-  `delta_data`。最近一次终态为 13 次 capture、13 次 Provider 协议请求、2 次 Legacy 请求和 4 次状态请求，fetch、临时 profile 与进程均完成清理。该 runner 还通过真实
+  `delta_data`。最近一次终态为 14 次 capture、14 次 Provider 协议请求、2 次 Legacy 请求和 4 次状态请求，fetch、临时 profile 与进程均完成清理。该 runner 还通过真实
   `#send_but`/`#mes_stop`
   路径验证“Pi 先挂起 → 主聊天发起 → 分别停止”的完整并发顺序；prompt 不串线，两个 stop 不互相中止。主聊天 pending 后再点额外解析重试因最后楼层为 user 而按产品语义 no-op，并被明确记录。runner 使用浏览器内 mock
   Provider 响应，因此不验证真实 TLS/CORS、账号权限、配额、上游响应或服务端取消。
@@ -247,10 +260,10 @@ chat。仓库不修改 SillyTavern 或 Slash-Runner，也不增加额外的 Slas
   case 在请求发出后停止，观察到 signal 中止、native fetch `AbortError`、BiDi
   `network.fetchError=aborted`、零重试和零结果写入。真实凭据只在 native
   fetch 传输边界替换固定 placeholder，从未进入 Vue/Pinia/ST 设置；扫描确认没有持久化真实凭据，页面内存、临时目录和全部进程均已清理。
-- 本次全量 Jest 结果为 57 suites、1049 passed、53 skipped；全仓 lint、type declaration build 与
-  `CI=true yarn build` 均成功。最终生产 bundle 为 1,141,302 B（gzip-9 266,954 B），SHA-256 为
-  `4b204523454e46fe0b8fa4a831fb54d345723313e729ac1c2380222fb83f1494`，相对 HEAD 基线约为 3.71×（gzip
-  3.29×）；增量已定位到锁版打包的 Pi 与四类已选 Provider SDK。产物扫描未发现 `providers/all`、Node
+- 本次全量 Jest 结果为 59 suites、1116 passed、53 skipped；全仓 lint、type declaration build 与
+  `CI=true yarn build` 均成功。最终生产 bundle 为 1,170,517 B（gzip-9 274,004 B），SHA-256 为
+  `acd9e798daacd81a14c2ac7928df3542f95e6af514dd9b0c71b649f86a8c50a1`，相对迁移前基线（`61010da`）约为 3.80×（gzip
+  3.38×）；增量已定位到锁版打包的 Pi 与四类已选 Provider SDK。产物扫描未发现 `providers/all`、Node
   callback server，或 Pi/Provider SDK、`p-retry`、`retry` 的未锁版 CDN 导入。
 
 需要快速退出 Pi 路径时，可用下列任一方式；两种方式都不会删除已保存的 Pi 配置或 OAuth credential：

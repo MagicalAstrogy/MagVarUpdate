@@ -16,6 +16,15 @@ describe('Pi custom request config parser', () => {
         expect(() => parsePiCustomHeaders('X-Goog-Api-Key: secret')).toThrow(
             'cannot override authentication header'
         );
+        expect(() => parsePiCustomHeaders('" Authorization ": secret')).toThrow(
+            'cannot override authentication header'
+        );
+        expect(() => parsePiCustomHeaders('" Proxy-Authorization ": secret')).toThrow(
+            'cannot override authentication header'
+        );
+        expect(parsePiCustomHeaders('" X-Trace ": request-2')).toEqual({
+            'X-Trace': 'request-2',
+        });
     });
 
     test('parses include and exclude payload fields', () => {

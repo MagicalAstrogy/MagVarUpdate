@@ -336,9 +336,9 @@ describe('pi runtime preflight', () => {
         });
     });
 
-    test('rejects unsupported structured output before credentials or streaming', async () => {
+    test('allows Anthropic JSON Schema output but still rejects its missing JSON-object mode', async () => {
         const credentialStore = makeCredentialStore();
-        const promise = assertPiRuntimeConfiguration({
+        const preflight = await assertPiRuntimeConfiguration({
             settings: makeSettings({
                 应答格式: '格式化输出',
                 pi: {
@@ -357,16 +357,40 @@ describe('pi runtime preflight', () => {
             credentialStore,
         });
 
-        await expect(promise).rejects.toMatchObject({
+        expect(preflight.capabilities).toMatchObject({
+            structuredOutput: true,
+            jsonObjectOutput: false,
+        });
+        expect(preflight.jsonSchema).toEqual(JSON_SCHEMA);
+        expect(credentialStore.read).not.toHaveBeenCalled();
+
+        await expect(
+            assertPiRuntimeConfiguration({
+                settings: makeSettings({
+                    应答格式: '格式化输出(v4兼容)',
+                    pi: {
+                        provider: 'anthropic',
+                        api: 'anthropic-messages',
+                        authType: 'api_key',
+                        endpoint: '',
+                        model: 'claude-known',
+                        contextWindow: 0,
+                        customHeaders: '',
+                        customIncludeBody: '',
+                        customExcludeBody: '',
+                    },
+                }),
+                credentialStore,
+            })
+        ).rejects.toMatchObject({
             code: 'unsupported_capability',
             retryable: false,
         });
         expect(createModels).not.toHaveBeenCalled();
-        expect(credentialStore.read).not.toHaveBeenCalled();
     });
 
-    test('fails closed for native capabilities on uncatalogued model ids', async () => {
-        const promise = assertPiRuntimeConfiguration({
+    test('optimistically allows native API capabilities for uncatalogued model ids', async () => {
+        const preflight = await assertPiRuntimeConfiguration({
             settings: makeSettings({
                 应答格式: '格式化输出',
                 pi: {
@@ -385,9 +409,11 @@ describe('pi runtime preflight', () => {
             credentialStore: makeCredentialStore(),
         });
 
-        await expect(promise).rejects.toMatchObject({
-            code: 'unsupported_capability',
-            retryable: false,
+        expect(preflight.capabilities).toMatchObject({
+            tools: true,
+            structuredOutput: true,
+            jsonObjectOutput: true,
+            imageInput: false,
         });
         expect(createModels).not.toHaveBeenCalled();
     });
@@ -669,6 +695,101 @@ describe('pi runtime execution', () => {
         expect(options.toolChoice).toBeUndefined();
         expect(options.onPayload({ input: [] })).toMatchObject({
             text: {
+                format: {
+                    type: 'json_schema',
+                    name: 'mvu_result',
+                    schema: JSON_SCHEMA.value,
+                    strict: true,
+                },
+            },
+        });
+    });
+
+    test('merges Anthropic structured output into an existing output_config', async () => {
+        const final = assistant([{ type: 'text', text: '{"result":"ok"}' }]);
+        stream.mockReturnValue(fakeStream(final));
+        const preflight = await assertPiRuntimeConfiguration({
+            settings: makeSettings({
+                应答格式: '格式化输出',
+                pi: {
+                    provider: 'anthropic',
+                    api: 'anthropic-messages',
+                    authType: 'api_key',
+                    endpoint: '',
+                    model: 'claude-known',
+                    contextWindow: 0,
+                    customHeaders: '',
+                    customIncludeBody: '',
+                    customExcludeBody: '',
+                },
+            }),
+            jsonSchema: JSON_SCHEMA,
+            credentialStore: makeCredentialStore(),
+        });
+
+        await runPiRequest({
+            preflight,
+            messages: [{ role: 'user', content: 'return json' }],
+            generationId: 'runtime-structured-anthropic',
+        });
+
+        const options = stream.mock.calls[0][2];
+        expect(
+            options.onPayload({
+                model: 'claude-known',
+                messages: [],
+                output_config: { effort: 'high' },
+            })
+        ).toMatchObject({
+            output_config: {
+                effort: 'high',
+                format: {
+                    type: 'json_schema',
+                    schema: JSON_SCHEMA.value,
+                },
+            },
+        });
+    });
+
+    test('maps Codex structured output through the Responses text envelope', async () => {
+        const final = assistant([{ type: 'text', text: '{"result":"ok"}' }]);
+        stream.mockReturnValue(fakeStream(final));
+        const credentialStore = makeCredentialStore({
+            type: 'oauth',
+            access: 'header.payload.signature',
+            refresh: 'refresh-token',
+            expires: Date.now() + 60 * 60 * 1000,
+        });
+        const preflight = await assertPiRuntimeConfiguration({
+            settings: makeSettings({
+                应答格式: '格式化输出',
+                密钥: '',
+                pi: {
+                    provider: 'openai-codex',
+                    api: 'openai-codex-responses',
+                    authType: 'oauth',
+                    endpoint: '',
+                    model: 'codex-known',
+                    contextWindow: 0,
+                    customHeaders: '',
+                    customIncludeBody: '',
+                    customExcludeBody: '',
+                },
+            }),
+            jsonSchema: JSON_SCHEMA,
+            credentialStore,
+        });
+
+        await runPiRequest({
+            preflight,
+            messages: [{ role: 'user', content: 'return json' }],
+            generationId: 'runtime-structured-codex',
+        });
+
+        const options = stream.mock.calls[0][2];
+        expect(options.onPayload({ input: [], text: { verbosity: 'low' } })).toMatchObject({
+            text: {
+                verbosity: 'low',
                 format: {
                     type: 'json_schema',
                     name: 'mvu_result',

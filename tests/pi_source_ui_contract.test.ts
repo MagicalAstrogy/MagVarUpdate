@@ -4,6 +4,8 @@ const { readFileSync } = jest.requireActual('node:fs') as typeof import('node:fs
 const { resolve } = jest.requireActual('node:path') as typeof import('node:path');
 const filename = resolve(process.cwd(), 'src/panel/update/Source.vue');
 const source = readFileSync(filename, 'utf8');
+const modelSelectFilename = resolve(process.cwd(), 'src/panel/component/ModelSelect.vue');
+const modelSelectSource = readFileSync(modelSelectFilename, 'utf8');
 
 describe('Pi Source UI contract', () => {
     test('compiles the Source SFC template and script', () => {
@@ -19,6 +21,72 @@ describe('Pi Source UI contract', () => {
             compilerOptions: { bindingMetadata: script.bindings },
         });
         expect(template.errors).toEqual([]);
+    });
+
+    test('compiles the shared model selector SFC template and script', () => {
+        const parsed = parse(modelSelectSource, { filename: modelSelectFilename });
+        expect(parsed.errors).toEqual([]);
+        expect(parsed.descriptor.template).not.toBeNull();
+
+        const script = compileScript(parsed.descriptor, { id: 'model-select-contract' });
+        const template = compileTemplate({
+            id: 'model-select-contract',
+            filename: modelSelectFilename,
+            source: parsed.descriptor.template!.content,
+            compilerOptions: { bindingMetadata: script.bindings },
+        });
+        expect(template.errors).toEqual([]);
+    });
+
+    test('uses the shared fetchable model selector for both Custom and More sources', () => {
+        expect(source).toContain('v-model="store.settings.额外模型解析配置.模型名称"');
+        expect(source).toContain(':load-models="loadCustomModels"');
+        expect(source).toContain(':reset-key="custom_model_list_revision"');
+
+        expect(source).toContain('v-model="store.settings.额外模型解析配置.pi.model"');
+        expect(source).toContain(':catalog-models="pi_catalog_model_options"');
+        expect(source).toContain(':load-models="loadPiModels"');
+        expect(source).toContain(':reset-key="pi_model_list_revision"');
+        expect(source).toContain(':disabled="Boolean(pi_configuration_error) || oauthBusy"');
+
+        expect(source).toContain('fetchOpenAICompatibleModelList(');
+        expect(source).toContain('fetchPiModelList(');
+        expect(source).toContain('resolvePiModelListOAuthCredential(');
+    });
+
+    test('cancels stale model-list requests and preserves manual model entry', () => {
+        expect(modelSelectSource).toContain(
+            'const model = defineModel<string>({ required: true });'
+        );
+        expect(modelSelectSource).toContain('props.loadModels(controller.signal)');
+        expect(modelSelectSource).toContain('generation !== request_generation');
+        expect(modelSelectSource).toContain('request_controller?.abort();');
+        expect(modelSelectSource).toContain('watch(() => props.resetKey, resetFetchedModels);');
+        expect(modelSelectSource).toContain('onBeforeUnmount(cancelActiveRequest);');
+        expect(modelSelectSource).toContain('if (value) {');
+        expect(modelSelectSource).toContain('model.value = value;');
+    });
+
+    test('routes supplementary More-source explanations through HelpIcon suffixes', () => {
+        expect(source).toContain("import HelpIcon from '@/panel/component/HelpIcon.vue';");
+        expect(source).toContain('<HelpIcon :help="t(\'panel.source.pi.endpointHelp\')" />');
+        expect(source).toContain(
+            '<HelpIcon v-if="pi_capability_summary" :help="pi_capability_summary" />'
+        );
+        expect(source).toContain('<HelpIcon :help="t(\'panel.source.pi.oauth.callbackHelp\')" />');
+        expect(source).toContain(':help="t(\'panel.source.pi.customOverridesSwitchHelp\')"');
+        expect(source).toContain(
+            '<HelpIcon v-if="pi_context_window_help" :help="pi_context_window_help" />'
+        );
+        for (const key of ['customHeadersHelp', 'customIncludeBodyHelp', 'customExcludeBodyHelp']) {
+            expect(source).toContain(`<HelpIcon :help="t('panel.source.pi.${key}')" />`);
+        }
+
+        expect(source).not.toContain('<small class="mvu-note">');
+        expect(source).not.toContain('<div v-if="pi_capability_summary" class="mvu-note">');
+        expect(source).not.toContain(
+            '<div class="mvu-note">{{ t(\'panel.source.pi.oauth.callbackHelp\') }}</div>'
+        );
     });
 
     test('keeps all persisted request overrides inspectable and clearable', () => {

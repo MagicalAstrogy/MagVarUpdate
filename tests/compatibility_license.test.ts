@@ -94,6 +94,11 @@ describe('compatibility LICENSE notice', () => {
         expect(component).toContain('v-for="component in OPEN_SOURCE_LICENSES"');
         expect(component).toContain("t('panel.compatibility.license')");
         expect(component).toContain('{{ component.displayName ?? component.packageName }}');
+        expect(component).toContain('<template #title-suffix>');
+        expect(component).toContain('<HelpIcon :help="license_help" />');
+        expect(component).toContain("t('panel.compatibility.licenseIntro')");
+        expect(component).toContain("t('panel.compatibility.licenseDetails')");
+        expect(component).not.toContain('mvu-license-note');
         expect(OPEN_SOURCE_LICENSES).toContainEqual(
             expect.objectContaining({
                 packageName: '@earendil-works/pi-ai',

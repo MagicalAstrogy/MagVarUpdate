@@ -425,7 +425,7 @@ describe('Pi source form helpers', () => {
         expect(resolvePiEndpointSelection(anthropic, 'oauth', 'https://stale.example')).toBe('');
     });
 
-    test('inherits catalog capabilities only for empty or canonical default endpoints', () => {
+    test('uses API capabilities on custom endpoints without inheriting catalog media metadata', () => {
         const openai = getPiProviderDefinition('openai')!;
         const catalogModel = getPiCatalogModels('openai')[0];
 
@@ -449,15 +449,15 @@ describe('Pi source form helpers', () => {
             expect(
                 resolvePiSourceCapabilities(openai, 'openai-responses', endpoint, catalogModel)
             ).toMatchObject({
-                tools: false,
-                structuredOutput: false,
-                jsonObjectOutput: false,
+                tools: true,
+                structuredOutput: true,
+                jsonObjectOutput: true,
                 imageInput: false,
             });
         }
     });
 
-    test('uses per-field sampling capabilities and fails closed for unknown model features', () => {
+    test('uses API advanced capabilities and fails closed only for unknown model media', () => {
         const openai = getPiProviderDefinition('openai')!;
         const catalog_model = getPiCatalogModels('openai')[0];
         const responses = resolvePiCapabilities(openai, 'openai-responses', {
@@ -485,8 +485,9 @@ describe('Pi source form helpers', () => {
             presencePenalty: true,
         });
         expect(unknown).toMatchObject({
-            tools: false,
-            structuredOutput: false,
+            tools: true,
+            structuredOutput: true,
+            jsonObjectOutput: true,
             imageInput: false,
         });
     });

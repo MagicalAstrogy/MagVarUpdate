@@ -1,6 +1,7 @@
 import { isExtraModelSupported } from '@/function/is_extra_model_supported';
 import { isFunctionCallingSupported } from '@/function/is_function_calling_supported';
 import { invokeExtraModelWithStrategy } from '@/function/update/invoke_extra_model';
+import { getPiRequestFailureToastMessage } from '@/function/update/pi/error_localization';
 import { isPiMultiproviderEnabled } from '@/function/update/pi/feature_flag';
 import { handleVariablesInMessage } from '@/function/update_variables';
 import { tr } from '@/i18n';
@@ -52,7 +53,23 @@ export async function onMessageReceived(
         return;
     }
 
-    const result = await invokeExtraModelWithStrategy();
+    // The user can edit the panel while a request is in flight. Error routing must describe the
+    // request that actually failed, not whichever source/format happens to be selected later.
+    const request_source = store.settings.额外模型解析配置.模型来源;
+    const request_response_format = store.settings.额外模型解析配置.应答格式;
+    let result: string | null;
+    try {
+        result = await invokeExtraModelWithStrategy();
+    } catch (error) {
+        if (request_source !== '更多') {
+            throw error;
+        }
+        toastr.error(
+            getPiRequestFailureToastMessage(error, request_response_format),
+            tr('runtime.extraModel.updateFailedTitle')
+        );
+        throw error;
+    }
     if (result !== null) {
         const chat_message = getChatMessages(message_id);
 
@@ -67,7 +84,7 @@ export async function onMessageReceived(
                 refresh: 'none',
             }
         );
-    } else {
+    } else if (request_source !== '更多') {
         toastr.error(
             tr('runtime.extraModel.updateFailed'),
             tr('runtime.extraModel.updateFailedTitle')

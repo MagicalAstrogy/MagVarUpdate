@@ -26,15 +26,18 @@ export function parsePiCustomHeaders(value: string): ProviderHeaders | undefined
     }
     const headers: ProviderHeaders = {};
     for (const [name, header_value] of Object.entries(parsed)) {
-        if (!name.trim() || (typeof header_value !== 'string' && header_value !== null)) {
+        const normalized_name = name.trim();
+        if (!normalized_name || (typeof header_value !== 'string' && header_value !== null)) {
             throw new Error('More source customHeaders values must be strings or null');
         }
-        if (/^(authorization|proxy-authorization|x-api-key|x-goog-api-key)$/i.test(name)) {
+        if (
+            /^(authorization|proxy-authorization|x-api-key|x-goog-api-key)$/i.test(normalized_name)
+        ) {
             throw new Error(
-                `More source customHeaders cannot override authentication header '${name}'`
+                `More source customHeaders cannot override authentication header '${normalized_name}'`
             );
         }
-        headers[name] = header_value;
+        headers[normalized_name] = header_value;
     }
     return headers;
 }

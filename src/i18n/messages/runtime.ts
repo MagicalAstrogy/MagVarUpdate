@@ -654,6 +654,18 @@ export const runtimeMessages = defineMessages({
         'zh-CN': '“更多”中当前来源、API 或模型不支持所需的工具调用模式，请更换配置后重试。',
         en: 'The current provider, API, or model under More does not support the required tool-calling mode. Change the configuration and retry.',
     },
+    'runtime.pi.toolRequestRejected': {
+        'zh-CN': '目标端点未接受“工具调用”请求。请确认该端点和模型支持工具调用，并检查 API 类型、地址和模型名。',
+        en: 'The target endpoint did not accept the tool-calling request. Confirm that the endpoint and model support tool calling, and check the API type, URL, and model name.',
+    },
+    'runtime.pi.structuredOutputRequestRejected': {
+        'zh-CN': '目标端点未接受“格式化输出”请求。请确认该端点和模型支持 JSON Schema 格式化输出，并检查 API 类型、地址和模型名。',
+        en: 'The target endpoint did not accept the formatted-output request. Confirm that the endpoint and model support JSON Schema formatted output, and check the API type, URL, and model name.',
+    },
+    'runtime.pi.jsonObjectRequestRejected': {
+        'zh-CN': '目标端点未接受“格式化输出(v4兼容)”请求。请确认该端点和模型支持 JSON Object 输出，并检查 API 类型、地址和模型名。',
+        en: 'The target endpoint did not accept the v4-compatible formatted-output request. Confirm that the endpoint and model support JSON Object output, and check the API type, URL, and model name.',
+    },
     'runtime.pi.namedToolChoiceUnsupported': {
         'zh-CN': '“更多”中的当前 API 不支持指定工具调用，请更换 API 或调整工具选择方式。',
         en: 'The current API under More does not support named tool choice. Choose another API or adjust the tool-choice mode.',
