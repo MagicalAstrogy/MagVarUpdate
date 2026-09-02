@@ -26,6 +26,7 @@ coverage/
 # Ignore environmental variables and secrets
 .env
 .env.*
+test_token.md
 
 # Ignore Webpack cache
 .cache/

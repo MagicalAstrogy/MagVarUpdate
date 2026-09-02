@@ -95,6 +95,30 @@ describe('filterEntries', () => {
         expect((globalThis as any).toastr.warning).toHaveBeenCalled();
     });
 
+    test('allows Pi tool calling without Tavern Helper or ToolManager support', async () => {
+        const store = useDataStore();
+        store.settings.额外模型解析配置.应答格式 = '工具调用';
+        store.settings.额外模型解析配置.模型来源 = '更多';
+        store.versions.tavernhelper = '4.8.3';
+
+        (globalThis as any).SillyTavern.ToolManager.isToolCallingSupported.mockReturnValue(false);
+
+        const lores = {
+            globalLore: [makeEntry('WorldA', '[mvu_update]')],
+            characterLore: [makeEntry('WorldA', '[mvu_plot]')],
+            chatLore: [],
+            personaLore: [],
+        };
+
+        mockGetLorebookEntries.mockResolvedValue(cloneEntries(lores.characterLore));
+
+        await filterEntries(lores);
+
+        expect(lores.globalLore).toHaveLength(0);
+        expect(lores.characterLore).toHaveLength(1);
+        expect((globalThis as any).toastr.warning).not.toHaveBeenCalled();
+    });
+
     // 场景: 角色世界书未标记时，额外模型不启用且不处理其他世界书
     test('returns early when character lore has no tags', async () => {
         const store = useDataStore();

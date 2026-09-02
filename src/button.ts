@@ -3,6 +3,8 @@ import { isExtraModelSupported } from '@/function/is_extra_model_supported';
 import { isFunctionCallingSupported } from '@/function/is_function_calling_supported';
 import { cleanUpMetadata, reconcileAndApplySchema } from '@/function/schema';
 import { onMessageReceived } from '@/function/update/on_message_received';
+import { stopAllExtraModelRequests } from '@/function/update/pi/controller_registry';
+import { isPiMultiproviderEnabled } from '@/function/update/pi/feature_flag';
 import { handleVariablesInMessage, updateVariables } from '@/function/update_variables';
 import { tr, type MessageKey } from '@/i18n';
 import { useDataStore } from '@/store';
@@ -10,7 +12,6 @@ import { controlledStoppableEventOn, getLastValidMessageId, getLastValidVariable
 import { MvuData } from '@/variable_def';
 import { klona } from 'klona';
 import { watch } from 'vue';
-import { ScriptButton } from '../slash-runner/src/type/scripts';
 
 /**
  * 递归更新描述字段
@@ -445,7 +446,18 @@ export const buttons: Button[] = [
                 );
                 return;
             } else if (
+                store.settings.额外模型解析配置.模型来源 === '更多' &&
+                !isPiMultiproviderEnabled()
+            ) {
+                toastr.info(
+                    tr('runtime.pi.featureDisabled'),
+                    tr('runtime.button.extraModelRetryTitle'),
+                    { timeOut: 3000 }
+                );
+                return;
+            } else if (
                 store.settings.额外模型解析配置.应答格式 === '工具调用' &&
+                store.settings.额外模型解析配置.模型来源 !== '更多' &&
                 !isFunctionCallingSupported()
             ) {
                 toastr.info(
@@ -522,6 +534,20 @@ export const buttons: Button[] = [
             toastr.info(
                 tr('runtime.button.extraModelParsingCompleted'),
                 tr('runtime.button.extraModelRetryTitle')
+            );
+        },
+    },
+    {
+        name: '停止 Pi 额外模型解析',
+        label_key: 'panel.button.stopPiExtraModelParsing',
+        function: () => {
+            const stopped_count = stopAllExtraModelRequests();
+            toastr.info(
+                stopped_count > 0
+                    ? tr('runtime.button.piExtraModelStopped', { count: stopped_count })
+                    : tr('runtime.button.piExtraModelNotRunning'),
+                tr('runtime.button.piExtraModelStopTitle'),
+                { timeOut: 3000 }
             );
         },
     },

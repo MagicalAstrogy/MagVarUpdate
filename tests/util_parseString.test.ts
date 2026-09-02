@@ -1,5 +1,5 @@
 import { parseString } from '@util/common';
-import JSON5 from 'json5';
+import { parse as parseJSON5 } from 'json5';
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { isDeepStrictEqual } from 'node:util';
@@ -146,7 +146,7 @@ describe('parseString', () => {
         for (const relPath of validFixtureFiles) {
             const input = readFileSync(path.join(JSON5_TEST_ROOT, relPath), 'utf8');
             const parsedByParseString = parseWithError(() => parseString(input));
-            const parsedByJSON5 = parseWithError(() => JSON5.parse(input));
+            const parsedByJSON5 = parseWithError(() => parseJSON5(input));
 
             if (!parsedByParseString.ok || !parsedByJSON5.ok) {
                 mismatches.push(`${relPath} (threw)`);
@@ -187,7 +187,7 @@ describe('parseString', () => {
         for (const relPath of invalidFixtureFiles) {
             const input = readFileSync(path.join(JSON5_TEST_ROOT, relPath), 'utf8');
             const parsedByParseString = parseWithError(() => parseString(input));
-            const parsedByJSON5 = parseWithError(() => JSON5.parse(input));
+            const parsedByJSON5 = parseWithError(() => parseJSON5(input));
             const parseStringThrows = !parsedByParseString.ok;
             const json5Throws = !parsedByJSON5.ok;
 

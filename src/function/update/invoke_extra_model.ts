@@ -18,6 +18,20 @@ import {
     clearExtraModelRequestOverrides,
     setExtraModelRequestOverrides,
 } from '@/function/request/extra_model_request_override';
+import {
+    beginPiRequestAttempt,
+    isPiRequestAbortedError,
+    PiRequestAbortedError,
+    stopExtraModelRequestById,
+} from '@/function/update/pi/controller_registry';
+import { localizePiError } from '@/function/update/pi/error_localization';
+import { isPiMultiproviderEnabled } from '@/function/update/pi/feature_flag';
+import {
+    captureGeneratePrompt,
+    captureGenerateRawPrompt,
+    type PromptCaptureResult,
+} from '@/function/update/pi/prompt_capture';
+import type { PiRuntimePreflight } from '@/function/update/pi/runtime';
 import { tr } from '@/i18n';
 import { useDataStore } from '@/store';
 import { normalizeBaseURL } from '@/util';
@@ -41,6 +55,20 @@ const DISABLED_THINKING_CUSTOM_INCLUDE_BODY = Object.freeze({
     },
 });
 
+type PiRuntimeModule = typeof import('@/function/update/pi/runtime');
+
+let pi_runtime_module: Promise<PiRuntimeModule> | undefined;
+
+function loadPiRuntime(): Promise<PiRuntimeModule> {
+    pi_runtime_module ??= import(/* webpackMode: "eager" */ '@/function/update/pi/runtime');
+    return pi_runtime_module;
+}
+
+async function createPiProtocolError(): Promise<Error> {
+    const { PiRuntimeError } = await loadPiRuntime();
+    return new PiRuntimeError('protocol', tr('runtime.pi.protocolError'));
+}
+
 function generateRandomHeader(): string {
     return _.times(4, () => uuidv4().slice(0, 8)).join('\n');
 }
@@ -57,6 +85,32 @@ function supportsCustomApiBody(): boolean {
 function supportsRequestScopedTools(): boolean {
     const version = useDataStore().versions.tavernhelper;
     return version !== '' && compare(version, MIN_FUNCTION_CALLING_TAVERN_HELPER_VERSION, '>=');
+}
+
+async function preparePiRuntimePreflight(): Promise<PiRuntimePreflight | undefined> {
+    const config = useDataStore().settings.额外模型解析配置;
+    if (config.模型来源 !== '更多') {
+        return undefined;
+    }
+    if (!isPiMultiproviderEnabled()) {
+        throw new Error(tr('runtime.pi.featureDisabled'));
+    }
+
+    const { assertPiRuntimeConfiguration } = await loadPiRuntime();
+    return assertPiRuntimeConfiguration({
+        settings: config,
+        responseFormat: config.应答格式,
+        ...(config.应答格式 === '工具调用'
+            ? { tools: [MVU_TOOL_DEFINITION], toolChoice: 'required' as const }
+            : {}),
+        ...(config.应答格式 === '格式化输出' ? { jsonSchema: MVU_JSON_PATCH_RESPONSE_SCHEMA } : {}),
+    });
+}
+
+async function getNonRetryablePiError(error: unknown): Promise<unknown | undefined> {
+    const { isNonRetryablePiRuntimeError } = await loadPiRuntime();
+    const errors = error instanceof AggregateError ? error.errors : [error];
+    return errors.find(isNonRetryablePiRuntimeError);
 }
 
 function assertV4CompatibleFormattedOutputUsable() {
@@ -114,7 +168,11 @@ let temporary_json_object_response_format_state: {
 } | null = null;
 
 async function setTemporaryJsonObjectResponseFormat() {
-    if (!isV4CompatibleFormattedOutput() || supportsCustomApiBody()) {
+    if (
+        useDataStore().settings.额外模型解析配置.模型来源 !== '自定义' ||
+        !isV4CompatibleFormattedOutput() ||
+        supportsCustomApiBody()
+    ) {
         temporary_json_object_response_format_state = null;
         return;
     }
@@ -213,15 +271,17 @@ export async function invokeExtraModelWithStrategy(): Promise<string | null> {
     try {
         is_analysis_in_progress = true;
         const store = useDataStore();
+        const pi_preflight = await preparePiRuntimePreflight();
 
         debug_extra_request_counter = 0;
 
         const recordedInvoke = async (generation_id?: string) => {
             try {
-                return await invokeExtraModel(generation_id, batch_id);
+                return await invokeExtraModel(generation_id, batch_id, pi_preflight);
             } catch (e) {
-                console.error(e);
-                throw e;
+                const localized_error = localizePiError(e);
+                console.error(localized_error);
+                throw localized_error;
             }
         };
         const safeInvoke = async (): Promise<{
@@ -233,10 +293,19 @@ export async function invokeExtraModelWithStrategy(): Promise<string | null> {
             try {
                 await setExtraAnalysisStates();
                 did_set_extra_analysis_states = true;
-                return { result: await recordedInvoke(), is_manual_canceled: false };
+                const generation_id =
+                    store.settings.额外模型解析配置.模型来源 === '更多' ? uuidv4() : undefined;
+                return {
+                    result: await recordedInvoke(generation_id),
+                    is_manual_canceled: false,
+                };
             } catch (e) {
                 /** 已经记录, 忽略 */
-                if (e === 'Clicked stop button') is_manual_canceled = true;
+                if (e === 'Clicked stop button' || isPiRequestAbortedError(e)) {
+                    is_manual_canceled = true;
+                } else if (pi_preflight && (await getNonRetryablePiError(e)) !== undefined) {
+                    throw e;
+                }
             } finally {
                 if (did_set_extra_analysis_states) {
                     await unsetExtraAnalysisStates();
@@ -246,16 +315,24 @@ export async function invokeExtraModelWithStrategy(): Promise<string | null> {
         };
         const concurrentInvoke = async (times: number) => {
             const uuids = _.times(times, uuidv4);
+            let attempts: Promise<string>[] = [];
             let did_set_extra_analysis_states = false;
             try {
                 await setExtraAnalysisStates();
                 did_set_extra_analysis_states = true;
+                attempts = uuids.map(recordedInvoke);
                 //在函数调用的模式下，允许接受 **任意** 有效的函数结果，因此被允许被覆盖。
-                return await Promise.any(uuids.map(recordedInvoke));
+                return await Promise.any(attempts);
             } catch (e) {
-                /** 已经记录, 忽略 */
+                const non_retryable_error = pi_preflight
+                    ? await getNonRetryablePiError(e)
+                    : undefined;
+                if (non_retryable_error !== undefined) {
+                    throw non_retryable_error;
+                }
             } finally {
-                uuids.forEach(stopGenerationById);
+                uuids.forEach(generation_id => stopExtraModelRequestById(generation_id));
+                await Promise.allSettled(attempts);
                 if (did_set_extra_analysis_states) {
                     await unsetExtraAnalysisStates();
                 }
@@ -326,6 +403,8 @@ export async function invokeExtraModelWithStrategy(): Promise<string | null> {
             default:
                 return null;
         }
+    } catch (error) {
+        throw localizePiError(error);
     } finally {
         is_analysis_in_progress = false;
     }
@@ -339,7 +418,11 @@ export async function generateExtraModel(): Promise<string | null> {
     try {
         await setExtraAnalysisStates();
         did_set_extra_analysis_states = true;
-        return await invokeExtraModel();
+        const pi_preflight = await preparePiRuntimePreflight();
+        const generation_id = pi_preflight ? uuidv4() : undefined;
+        return await invokeExtraModel(generation_id, undefined, pi_preflight);
+    } catch (error) {
+        throw localizePiError(error);
     } finally {
         if (did_set_extra_analysis_states) {
             await unsetExtraAnalysisStates();
@@ -349,12 +432,23 @@ export async function generateExtraModel(): Promise<string | null> {
 
 // 在点击停止按钮时，会触发异常 `Clicked stop button`: string ,需要专门处理。
 //仅内部使用，因为一部分状态的初始化是在外面执行的。
-async function invokeExtraModel(generation_id?: string, batch_id?: string): Promise<string> {
+async function invokeExtraModel(
+    generation_id?: string,
+    batch_id?: string,
+    pi_preflight?: PiRuntimePreflight
+): Promise<string> {
+    const pi_attempt =
+        generation_id !== undefined && pi_preflight !== undefined
+            ? beginPiRequestAttempt(generation_id)
+            : undefined;
     try {
-        const result = await requestReply(generation_id, batch_id);
+        const result = await requestReply(generation_id, batch_id, pi_preflight);
 
         const tag = _([...result.matchAll(/<(update(?:variable)?|variableupdate)>/gi)]).last()?.[1];
         if (!tag) {
+            if (pi_preflight) {
+                throw await createPiProtocolError();
+            }
             throw new Error(
                 literalYamlify({
                     [tr('runtime.extraModel.updateTagMissing')]: result,
@@ -378,13 +472,21 @@ async function invokeExtraModel(generation_id?: string, batch_id?: string): Prom
             return `<UpdateVariable>${update_block}</UpdateVariable>`;
         }
 
+        if (pi_preflight) {
+            throw await createPiProtocolError();
+        }
         throw new Error(
             literalYamlify({
                 [tr('runtime.extraModel.updateCommandsInvalid')]: result,
             })
         );
+    } catch (error) {
+        if (pi_attempt?.signal.aborted && generation_id !== undefined) {
+            throw new PiRequestAbortedError(generation_id, pi_attempt.signal.reason ?? error);
+        }
+        throw error;
     } finally {
-        /* empty */
+        pi_attempt?.release();
     }
 }
 
@@ -418,24 +520,68 @@ function normalizeGenerateResult(result: string | GenerateToolCallResult): strin
     return extractFromGenerateToolCallResult(result) ?? result.content;
 }
 
+async function runCapturedPiPrompt(
+    capture: PromptCaptureResult,
+    preflight: PiRuntimePreflight
+): Promise<string | GenerateToolCallResult> {
+    const { runPiRequest } = await loadPiRuntime();
+    return runPiRequest({
+        preflight,
+        messages: capture.messages,
+        generationId: capture.generationId,
+    });
+}
+
+async function executeGenerate(
+    config: GenerateConfig,
+    pi_preflight?: PiRuntimePreflight
+): Promise<string | GenerateToolCallResult> {
+    if (!pi_preflight) {
+        return generate(config);
+    }
+    return runCapturedPiPrompt(await captureGeneratePrompt(config), pi_preflight);
+}
+
+async function executeGenerateRaw(
+    config: GenerateRawConfig,
+    pi_preflight?: PiRuntimePreflight
+): Promise<string | GenerateToolCallResult> {
+    if (!pi_preflight) {
+        return generateRaw(config);
+    }
+    return runCapturedPiPrompt(await captureGenerateRawPrompt(config), pi_preflight);
+}
+
 function normalizeGenerateResultByResponseFormat(
     result: string | GenerateToolCallResult,
-    response_format: string
+    response_format: string,
+    fail_closed = false
 ): string {
     if (response_format === '格式化输出' || response_format === V4_COMPATIBLE_FORMATTED_OUTPUT) {
         const formatted = extractFromFormattedOutput(result);
         if (formatted) {
             return formatted;
         }
+        if (fail_closed) {
+            throw new Error(tr('runtime.pi.protocolError'));
+        }
     }
     return normalizeGenerateResult(result);
 }
 
-async function requestReply(generation_id?: string, batch_id?: string): Promise<string> {
+async function requestReply(
+    generation_id?: string,
+    batch_id?: string,
+    pi_preflight?: PiRuntimePreflight
+): Promise<string> {
     const store = useDataStore();
+    const is_pi_request = pi_preflight !== undefined;
+    if (store.settings.额外模型解析配置.模型来源 === '更多' && !is_pi_request) {
+        throw new Error(tr('runtime.pi.invalidConfig'));
+    }
     const response_format = store.settings.额外模型解析配置.应答格式;
     const is_v4_compatible_formatted_output = response_format === V4_COMPATIBLE_FORMATTED_OUTPUT;
-    const supports_request_scoped_tools = supportsRequestScopedTools();
+    const supports_request_scoped_tools = !is_pi_request && supportsRequestScopedTools();
 
     assertV4CompatibleFormattedOutputUsable();
 
@@ -481,15 +627,19 @@ async function requestReply(generation_id?: string, batch_id?: string): Promise<
     let task = decoded_extra_model_task;
     if (response_format === '工具调用') {
         task += `\n use \`${MVU_TOOL_DEFINITION.function.name}\` tool to update variables.`;
-        store.runtimes.is_function_call_enabled = true;
-        if (!supports_request_scoped_tools) {
-            config.tools = [MVU_TOOL_DEFINITION];
+        if (!is_pi_request) {
+            store.runtimes.is_function_call_enabled = true;
+            if (!supports_request_scoped_tools) {
+                config.tools = [MVU_TOOL_DEFINITION];
+            }
+            config.tool_choice = 'required';
         }
-        config.tool_choice = 'required';
     } else if (response_format === '格式化输出') {
         task +=
             '\n You are in formatted-output mode. Do not output <UpdateVariable> tags, markdown, or prose. Return only a JSON object matching the provided json_schema: {"analysis":"...","json_patch":[...]}. Put MVU JsonPatch dialect operations in `json_patch`.';
-        config.json_schema = MVU_JSON_PATCH_RESPONSE_SCHEMA;
+        if (!is_pi_request) {
+            config.json_schema = MVU_JSON_PATCH_RESPONSE_SCHEMA;
+        }
     } else if (is_v4_compatible_formatted_output) {
         task +=
             '\n You are in formatted-output mode. Do not output <UpdateVariable> tags, markdown, or prose. Return only a JSON object: {"analysis":"...","json_patch":[...]}. Put MVU JsonPatch dialect operations in `json_patch`. Return exactly one JSON object that conforms to this schema:' +
@@ -508,33 +658,36 @@ async function requestReply(generation_id?: string, batch_id?: string): Promise<
 
     if (store.settings.额外模型解析配置.破限方案 === '使用当前预设') {
         clearExtraModelRequestOverrides();
-        const result = await generate({
-            ...config,
-            injects: [
-                {
-                    position: 'in_chat',
-                    depth: 0,
-                    should_scan: false,
-                    role: 'system',
-                    content: task,
-                },
-                {
-                    position: 'in_chat',
-                    depth: 2,
-                    should_scan: false,
-                    role: 'system',
-                    content: '<past_observe>',
-                },
-                {
-                    position: 'in_chat',
-                    depth: 1,
-                    should_scan: false,
-                    role: 'system',
-                    content: '</past_observe>',
-                },
-            ],
-        });
-        return normalizeGenerateResultByResponseFormat(result, response_format);
+        const result = await executeGenerate(
+            {
+                ...config,
+                injects: [
+                    {
+                        position: 'in_chat',
+                        depth: 0,
+                        should_scan: false,
+                        role: 'system',
+                        content: task,
+                    },
+                    {
+                        position: 'in_chat',
+                        depth: 2,
+                        should_scan: false,
+                        role: 'system',
+                        content: '<past_observe>',
+                    },
+                    {
+                        position: 'in_chat',
+                        depth: 1,
+                        should_scan: false,
+                        role: 'system',
+                        content: '</past_observe>',
+                    },
+                ],
+            },
+            pi_preflight
+        );
+        return normalizeGenerateResultByResponseFormat(result, response_format, is_pi_request);
     }
 
     if (store.settings.额外模型解析配置.破限方案 === '使用其他预设') {
@@ -551,44 +704,58 @@ async function requestReply(generation_id?: string, batch_id?: string): Promise<
         }
 
         return normalizeGenerateResultByResponseFormat(
-            await generateRaw({
-                ...config,
-                injects,
-                ordered_prompts,
-            }),
-            response_format
+            await executeGenerateRaw(
+                {
+                    ...config,
+                    injects,
+                    ordered_prompts,
+                },
+                pi_preflight
+            ),
+            response_format,
+            is_pi_request
         );
     }
 
     clearExtraModelRequestOverrides();
-    const model_name =
-        store.settings.额外模型解析配置.模型来源 === '与插头相同'
-            ? SillyTavern.getChatCompletionModel()
-            : store.settings.额外模型解析配置.模型名称;
+    const model_name = is_pi_request
+        ? store.settings.额外模型解析配置.pi.model
+        : store.settings.额外模型解析配置.模型来源 === '与插头相同'
+          ? SillyTavern.getChatCompletionModel()
+          : store.settings.额外模型解析配置.模型名称;
     const is_gemini = model_name.toLowerCase().includes('gemini');
     const rnd_header_prompts =
         store.settings.额外模型解析配置.随机头部 && is_gemini
             ? [{ role: 'system' as const, content: batch_id ?? generateRandomHeader() }]
             : [];
 
-    const result = await generateRaw({
-        ...config,
-        ordered_prompts: [
-            ...rnd_header_prompts,
-            { role: 'system', content: is_gemini ? decoded_gemini_head : decoded_claude_head },
-            { role: 'system', content: '<additional_information>' },
-            'persona_description',
-            'char_description',
-            'world_info_before',
-            'world_info_after',
-            { role: 'system', content: '</additional_information>' },
-            { role: 'system', content: '<past_observe>' },
-            'chat_history',
-            { role: 'system', content: '</past_observe>' },
-            { role: 'system', content: task },
-            'user_input',
-            { role: 'system', content: is_gemini ? decoded_gemini_tail : decoded_claude_tail },
-        ],
-    });
-    return normalizeGenerateResultByResponseFormat(result, response_format);
+    const result = await executeGenerateRaw(
+        {
+            ...config,
+            ordered_prompts: [
+                ...rnd_header_prompts,
+                {
+                    role: 'system',
+                    content: is_gemini ? decoded_gemini_head : decoded_claude_head,
+                },
+                { role: 'system', content: '<additional_information>' },
+                'persona_description',
+                'char_description',
+                'world_info_before',
+                'world_info_after',
+                { role: 'system', content: '</additional_information>' },
+                { role: 'system', content: '<past_observe>' },
+                'chat_history',
+                { role: 'system', content: '</past_observe>' },
+                { role: 'system', content: task },
+                'user_input',
+                {
+                    role: 'system',
+                    content: is_gemini ? decoded_gemini_tail : decoded_claude_tail,
+                },
+            ],
+        },
+        pi_preflight
+    );
+    return normalizeGenerateResultByResponseFormat(result, response_format, is_pi_request);
 }

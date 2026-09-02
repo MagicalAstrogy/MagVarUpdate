@@ -18,8 +18,81 @@ import {
     variable_events,
 } from '@/variable_def';
 import { parseString } from '@util/common';
+import JSON5 from 'json5';
 import { klona } from 'klona';
 import * as math from 'mathjs';
+
+function createReadOnlyMathNamespace(
+    source: Record<string, unknown>,
+    names: readonly string[]
+): Readonly<Record<string, unknown>> {
+    // mathjs deliberately rejects property access on null-prototype objects. A frozen ordinary
+    // object is still isolated from the host namespace and keeps `Math.floor`/`math.pow` syntax.
+    const namespace: Record<string, unknown> = {};
+    for (const name of names) {
+        const value = source[name];
+        namespace[name] = typeof value === 'function' ? value.bind(source) : value;
+    }
+    return Object.freeze(namespace);
+}
+
+// Never expose mutable host/library namespaces to model-controlled math expressions. mathjs
+// supports assignment nodes, so passing the real Math object here would let an expression such
+// as `Math.random = 0` corrupt global state. These facades preserve the documented prefixed
+// spelling while exposing only pure numeric helpers and immutable constants.
+const SAFE_JAVASCRIPT_MATH = createReadOnlyMathNamespace(
+    Math as unknown as Record<string, unknown>,
+    Object.getOwnPropertyNames(Math)
+);
+const SAFE_MATHJS_NAMESPACE = createReadOnlyMathNamespace(
+    math as unknown as Record<string, unknown>,
+    [
+        'abs',
+        'acos',
+        'acosh',
+        'asin',
+        'asinh',
+        'atan',
+        'atan2',
+        'atanh',
+        'ceil',
+        'cos',
+        'cosh',
+        'cube',
+        'e',
+        'exp',
+        'expm1',
+        'floor',
+        'gcd',
+        'hypot',
+        'lcm',
+        'log',
+        'log10',
+        'log1p',
+        'log2',
+        'max',
+        'mean',
+        'median',
+        'min',
+        'mod',
+        'nthRoot',
+        'pi',
+        'pow',
+        'prod',
+        'round',
+        'sign',
+        'sin',
+        'sinh',
+        'sqrt',
+        'square',
+        'std',
+        'sum',
+        'tan',
+        'tanh',
+        'tau',
+        'variance',
+    ]
+);
 
 export function trimQuotesAndBackslashes(str: string): string {
     if (!_.isString(str)) return str;
@@ -98,14 +171,14 @@ export function parseCommandValue(valStr: string): any {
         // 如果字符串能被 JSON.parse 解析，说明它是一个标准格式，直接返回解析结果
         return JSON.parse(trimmed);
     } catch (e) {
-        // Handle JavaScript array or object literals
+        // Accept relaxed data literals without evaluating model-controlled JavaScript.
         if (
             (trimmed.startsWith('{') && trimmed.endsWith('}')) ||
             (trimmed.startsWith('[') && trimmed.endsWith(']'))
         ) {
             try {
-                // Safely evaluate literals using a function constructor
-                const result = new Function(`return ${trimmed};`)();
+                // eslint-disable-next-line import-x/no-named-as-default-member
+                const result = JSON5.parse(trimmed);
                 if (_.isObject(result) || Array.isArray(result)) {
                     return result;
                 }
@@ -119,21 +192,24 @@ export function parseCommandValue(valStr: string): any {
     // 'hello_world', '10 + 2', 'sqrt(16)'
 
     try {
+        // mathjs exposes stateful APIs such as createUnit/import and nested evaluate. A fresh
+        // instance contains any mutation to this one expression and prevents model output from
+        // corrupting the shared mathjs namespace or later MVU updates.
+        const isolated_math = math.create(math.all);
         // 创建一个 scope 对象，将多种数学库/对象注入到 mathjs 的执行环境中，
         // 以便统一处理不同风格的数学表达式。
         const scope = {
             // 支持 JavaScript 标准的 Math 对象 (e.g., Math.sqrt(), Math.PI)
-            Math: Math,
+            Math: SAFE_JAVASCRIPT_MATH,
             // 支持 Python 风格的 math 库用法 (e.g., math.sqrt(), math.pi)，
             // 这在 LLM 生成的代码中很常见。
-            // 'math' 是我们导入的 mathjs 库本身。
-            math: math,
+            math: SAFE_MATHJS_NAMESPACE,
         };
         // 尝试使用 mathjs 进行数学求值
         // math.evaluate 对于无法识别为表达式的纯字符串会抛出错误
-        const result = math.evaluate(trimmed, scope);
+        const result = isolated_math.evaluate(trimmed, scope);
         // 如果结果是 mathjs 的复数或矩阵对象，则将其转换为字符串表示形式
-        if (math.isComplex(result) || math.isMatrix(result)) {
+        if (isolated_math.isComplex(result) || isolated_math.isMatrix(result)) {
             return result.toString();
         }
         // 避免将单个单词的字符串（mathjs可能将其识别为符号）作为 undefined 返回

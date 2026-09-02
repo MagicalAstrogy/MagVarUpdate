@@ -132,6 +132,34 @@ export function registerExtractSetCommandTests({
                 expect(parseCommandValue(cmd.args[1])).toBe('Hello ${name}');
                 expect(parseCommandValue(cmd.args[2])).toBe('Goodbye ${name}');
             });
+
+            test('只解析 JSON5 数据字面量，不执行模型输出中的 JavaScript', () => {
+                const marker = '__mvu_command_value_executed__';
+                Reflect.deleteProperty(globalThis, marker);
+                const malicious = `{value: (globalThis.${marker} = true)}`;
+
+                parseCommandValue(malicious);
+
+                expect(Reflect.get(globalThis, marker)).toBeUndefined();
+                Reflect.deleteProperty(globalThis, marker);
+            });
+
+            test('数学表达式不能覆写全局 Math 或 mathjs 命名空间', () => {
+                const originalRandom = Math.random;
+
+                expect(parseCommandValue('Math.random = 0')).toBe('Math.random = 0');
+                expect(Math.random).toBe(originalRandom);
+                expect(parseCommandValue('math.pow = 0')).toBe('math.pow = 0');
+                expect(parseCommandValue('Math.floor(3.9) + math.pow(2, 3)')).toBe(11);
+
+                const radians = 'number(unit(180, "deg"), "rad")';
+                expect(parseCommandValue(radians)).toBeCloseTo(Math.PI);
+                parseCommandValue('createUnit("deg", "2 rad", {override: true})');
+                expect(parseCommandValue(radians)).toBeCloseTo(Math.PI);
+
+                parseCommandValue('evaluate("Math.random = 0")');
+                expect(Math.random).toBe(originalRandom);
+            });
         });
 
         describe('注释处理', () => {

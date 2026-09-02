@@ -1,5 +1,4 @@
 // Jest's jsdom environment does not provide a browser module loader, so fetch the raw bundle in Node.
-// eslint-disable-next-line import-x/no-nodejs-modules
 import https from 'https';
 import { beforeAll, beforeEach } from '@jest/globals';
 import { klona } from 'klona';

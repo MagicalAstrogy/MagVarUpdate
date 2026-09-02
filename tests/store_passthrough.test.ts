@@ -10,6 +10,584 @@ describe('settings unknown field passthrough', () => {
         (globalThis as any).SillyTavern.extensionSettings = {};
     });
 
+    test('provides fail-closed pi defaults without changing the legacy model source', () => {
+        const store = useDataStore();
+
+        expect(store.settings.额外模型解析配置.模型来源).toBe('与插头相同');
+        expect(store.settings.额外模型解析配置.pi).toEqual({
+            provider: 'openai',
+            api: 'openai-responses',
+            authType: 'api_key',
+            endpoint: '',
+            model: '',
+            contextWindow: 0,
+            credentials: {},
+            apiKeys: {},
+            customHeaders: '',
+            customIncludeBody: '',
+            customExcludeBody: '',
+        });
+    });
+
+    test('loads pi settings permissively and strips credentials misplaced in profiles', () => {
+        (globalThis as any).SillyTavern.extensionSettings = {
+            mvu_settings: {
+                额外模型解析配置: {
+                    模型来源: '更多',
+                    密钥: 'must-clear-active-oauth-root-key',
+                    pi: {
+                        provider: 'future-provider',
+                        api: 'future-wire-api',
+                        authType: 'oauth',
+                        endpoint: 'https://api.example/v1',
+                        model: 'future-model',
+                        contextWindow: 200000.6,
+                        credentials: {
+                            'future-provider': {
+                                type: 'future_credential',
+                                opaque: { keep: true },
+                            },
+                        },
+                        apiKeys: {
+                            'future-provider\nhttps://api.example/v1': 'provider-secret',
+                        },
+                        customHeaders: 'X-Test: value',
+                        customIncludeBody: 'metadata:\n  source: mvu',
+                        customExcludeBody: '- store',
+                        future_pi_setting: { keep: true },
+                    },
+                    api方案列表: [
+                        {
+                            名称: 'Pi 方案',
+                            backend: 'pi',
+                            密钥: 'must-remove-oauth-profile-key',
+                            customApiKey: 'must-remove-custom-cache',
+                            pi: {
+                                provider: 'future-provider',
+                                api: 'future-wire-api',
+                                authType: 'oauth',
+                                endpoint: 'https://api.example/v1',
+                                model: 'future-model',
+                                contextWindow: 200000,
+                                credentials: { leaked: { type: 'oauth', access: 'must-remove' } },
+                                apiKeys: {
+                                    'future-provider\nhttps://api.example/v1': 'must-remove-key',
+                                },
+                                customHeaders: '',
+                                customIncludeBody: '',
+                                customExcludeBody: '',
+                                future_profile_pi: { keep: true },
+                            },
+                        },
+                    ],
+                    当前api方案: 'Pi 方案',
+                },
+            },
+        };
+
+        const store = useDataStore();
+        const config = store.settings.额外模型解析配置;
+
+        expect(config.模型来源).toBe('更多');
+        expect(config.密钥).toBe('');
+        expect(config.pi).toMatchObject({
+            provider: 'future-provider',
+            api: 'future-wire-api',
+            contextWindow: 200000.6,
+            credentials: {
+                'future-provider': {
+                    type: 'future_credential',
+                    opaque: { keep: true },
+                },
+            },
+            apiKeys: {
+                'future-provider\nhttps://api.example/v1': 'provider-secret',
+            },
+            future_pi_setting: { keep: true },
+        });
+        expect(config.api方案列表[0]).toMatchObject({
+            backend: 'pi',
+            密钥: '',
+            pi: { future_profile_pi: { keep: true } },
+        });
+        expect(config.api方案列表[0].pi).not.toHaveProperty('credentials');
+        expect(config.api方案列表[0].pi).not.toHaveProperty('apiKeys');
+        expect(config.api方案列表[0]).not.toHaveProperty('customApiKey');
+    });
+
+    test('keeps a profile but drops a partial Pi snapshot instead of filling wire defaults', () => {
+        (globalThis as any).SillyTavern.extensionSettings = {
+            mvu_settings: {
+                额外模型解析配置: {
+                    模型来源: '更多',
+                    api方案列表: [
+                        {
+                            名称: 'Partial Pi',
+                            backend: 'pi',
+                            api地址: '',
+                            密钥: 'must-not-bind-to-openai',
+                            模型名称: '',
+                            pi: { provider: 'future-provider', model: 'future-model' },
+                        },
+                    ],
+                    当前api方案: 'Partial Pi',
+                },
+            },
+        };
+
+        const store = useDataStore();
+        const config = store.settings.额外模型解析配置;
+
+        expect(config.api方案列表).toHaveLength(1);
+        expect(config.api方案列表[0]).toMatchObject({
+            名称: 'Partial Pi',
+            backend: 'pi',
+            密钥: '',
+        });
+        expect(config.api方案列表[0].pi).toBeUndefined();
+        expect(config.模型来源).toBe('更多');
+        expect(config.密钥).toBe('');
+        expect(config.pi).toMatchObject({ provider: '', api: '', model: '' });
+    });
+
+    test('normalizes profile names and numeric contextWindow strings during import', () => {
+        (globalThis as any).SillyTavern.extensionSettings = {
+            mvu_settings: {
+                额外模型解析配置: {
+                    模型来源: '更多',
+                    api地址: 'https://hidden-custom.example/v1',
+                    模型名称: 'hidden-custom-model',
+                    api方案列表: [
+                        {
+                            名称: ' Pi 方案 ',
+                            backend: 'pi',
+                            api地址: 'https://legacy-profile-custom.example/v1',
+                            密钥: '',
+                            模型名称: 'legacy-profile-custom-model',
+                            pi: {
+                                provider: 'anthropic',
+                                api: 'anthropic-messages',
+                                authType: 'oauth',
+                                endpoint: '',
+                                model: 'claude-sonnet-4-5',
+                                contextWindow: ' 200000 ',
+                                customHeaders: '',
+                                customIncludeBody: '',
+                                customExcludeBody: '',
+                            },
+                        },
+                    ],
+                    当前api方案: ' Pi 方案 ',
+                },
+            },
+        };
+
+        const config = useDataStore().settings.额外模型解析配置;
+
+        expect(config.当前api方案).toBe('Pi 方案');
+        expect(config.api方案列表[0]).toMatchObject({
+            名称: 'Pi 方案',
+            api地址: '',
+            模型名称: '',
+            pi: { contextWindow: 200_000 },
+        });
+        expect(typeof config.api方案列表[0].pi?.contextWindow).toBe('number');
+        expect(config.api地址).toBe('https://hidden-custom.example/v1');
+        expect(config.模型名称).toBe('hidden-custom-model');
+    });
+
+    test('canonicalizes Pi connection identifiers consistently in active settings and profiles', () => {
+        const pi = {
+            provider: ' openai ',
+            api: ' openai-responses ',
+            authType: ' api_key ',
+            endpoint: ' https://api.openai.com/v1/ ',
+            model: ' gpt-4.1 ',
+            contextWindow: 128_000,
+            customHeaders: '',
+            customIncludeBody: '',
+            customExcludeBody: '',
+        };
+        (globalThis as any).SillyTavern.extensionSettings = {
+            mvu_settings: {
+                额外模型解析配置: {
+                    模型来源: '更多',
+                    api地址: '',
+                    密钥: 'profile-secret',
+                    模型名称: '',
+                    pi,
+                    api方案列表: [
+                        {
+                            名称: 'Pi Canonical',
+                            backend: 'pi',
+                            api地址: '',
+                            密钥: 'profile-secret',
+                            模型名称: '',
+                            pi,
+                        },
+                    ],
+                    当前api方案: 'Pi Canonical',
+                },
+            },
+        };
+
+        const config = useDataStore().settings.额外模型解析配置;
+
+        expect(config.pi).toMatchObject({
+            provider: 'openai',
+            api: 'openai-responses',
+            authType: 'api_key',
+            endpoint: 'https://api.openai.com/v1/',
+            model: 'gpt-4.1',
+        });
+        expect(config.api方案列表[0].pi).toMatchObject({
+            provider: 'openai',
+            api: 'openai-responses',
+            authType: 'api_key',
+            endpoint: 'https://api.openai.com/v1/',
+            model: 'gpt-4.1',
+        });
+        expect(config.密钥).toBe('profile-secret');
+        expect(config.api方案列表[0].密钥).toBe('profile-secret');
+    });
+
+    test('clears an active root key for an invalid Pi target while preserving isolated caches', () => {
+        const pi = {
+            provider: 'openai',
+            api: 'openai-responses',
+            authType: 'api_key',
+            endpoint: 'not a URL',
+            model: 'gpt-4.1',
+            contextWindow: 128_000,
+            credentials: { anthropic: { type: 'oauth', access: 'keep-oauth' } },
+            apiKeys: { 'openai\nhttps://api.openai.com/v1': 'keep-scoped-key' },
+            customHeaders: '',
+            customIncludeBody: '',
+            customExcludeBody: '',
+        };
+        (globalThis as any).SillyTavern.extensionSettings = {
+            mvu_settings: {
+                future_top_level: 'keep',
+                额外模型解析配置: {
+                    模型来源: '更多',
+                    api地址: '',
+                    密钥: 'must-clear-unowned-root-key',
+                    customApiKey: 'keep-custom-key',
+                    模型名称: '',
+                    pi,
+                    api方案列表: [
+                        {
+                            名称: 'Invalid Target',
+                            backend: 'pi',
+                            api地址: '',
+                            密钥: 'must-clear-profile-key',
+                            模型名称: '',
+                            pi,
+                        },
+                    ],
+                    当前api方案: 'Invalid Target',
+                },
+            },
+        };
+
+        const store = useDataStore();
+        const config = store.settings.额外模型解析配置;
+
+        expect(config.密钥).toBe('');
+        expect(config.api方案列表[0].密钥).toBe('');
+        expect(config.customApiKey).toBe('keep-custom-key');
+        expect(config.pi.credentials).toEqual(pi.credentials);
+        expect(config.pi.apiKeys).toEqual(pi.apiKeys);
+        expect((store.settings as any).future_top_level).toBe('keep');
+    });
+
+    test('preserves an unsupported active auth identifier but fails its root key closed', () => {
+        (globalThis as any).SillyTavern.extensionSettings = {
+            mvu_settings: {
+                future_top_level: 'keep',
+                更新方式: '额外模型解析',
+                额外模型解析配置: {
+                    模型来源: '更多',
+                    api地址: '',
+                    密钥: 'must-clear-unowned-root-key',
+                    模型名称: '',
+                    pi: {
+                        provider: 'openai',
+                        api: 'openai-responses',
+                        authType: 'future-auth',
+                        endpoint: '',
+                        model: 'gpt-4.1',
+                        contextWindow: 128_000,
+                    },
+                },
+            },
+        };
+
+        const store = useDataStore();
+        const config = store.settings.额外模型解析配置;
+
+        expect(store.settings.更新方式).toBe('额外模型解析');
+        expect((store.settings as any).future_top_level).toBe('keep');
+        expect(config.pi.authType).toBe('future-auth');
+        expect(config.密钥).toBe('');
+    });
+
+    test('filters one malformed profile without resetting settings or retaining its credentials', () => {
+        (globalThis as any).SillyTavern.extensionSettings = {
+            mvu_settings: {
+                future_top_level: { keep: true },
+                更新方式: '额外模型解析',
+                额外模型解析配置: {
+                    破限方案: '使用其他预设',
+                    其他预设名称: 'must-survive',
+                    模型来源: '自定义',
+                    api方案列表: [
+                        {
+                            名称: 'Valid A',
+                            api地址: 'https://a.example/v1',
+                            密钥: 'key-a',
+                            模型名称: 'model-a',
+                        },
+                        {
+                            名称: 42,
+                            backend: 'pi',
+                            密钥: 'malformed-profile-key',
+                            customApiKey: 'malformed-custom-key',
+                            pi: {
+                                credentials: {
+                                    anthropic: { access: 'malformed-oauth-token' },
+                                },
+                                apiKeys: { leaked: 'malformed-cached-key' },
+                            },
+                        },
+                        {
+                            名称: 'Valid B',
+                            api地址: 'https://b.example/v1',
+                            密钥: 'key-b',
+                            模型名称: 'model-b',
+                        },
+                    ],
+                    当前api方案: 'Valid A',
+                },
+            },
+        };
+
+        const store = useDataStore();
+        const serialized = JSON.stringify(store.settings);
+
+        expect(store.settings.更新方式).toBe('额外模型解析');
+        expect(store.settings.额外模型解析配置.破限方案).toBe('使用其他预设');
+        expect(store.settings.额外模型解析配置.其他预设名称).toBe('must-survive');
+        expect(store.settings.额外模型解析配置.api方案列表.map(profile => profile.名称)).toEqual([
+            'Valid A',
+            'Valid B',
+        ]);
+        expect((store.settings as any).future_top_level).toEqual({ keep: true });
+        expect(serialized).not.toContain('malformed-profile-key');
+        expect(serialized).not.toContain('malformed-custom-key');
+        expect(serialized).not.toContain('malformed-oauth-token');
+        expect(serialized).not.toContain('malformed-cached-key');
+    });
+
+    test('drops an invalid profile contextWindow snapshot and its key without resetting settings', () => {
+        (globalThis as any).SillyTavern.extensionSettings = {
+            mvu_settings: {
+                future_top_level: 'keep',
+                更新方式: '额外模型解析',
+                额外模型解析配置: {
+                    模型来源: '更多',
+                    api方案列表: [
+                        {
+                            名称: 'Invalid Context',
+                            backend: 'pi',
+                            密钥: 'must-not-survive',
+                            pi: {
+                                provider: 'openai',
+                                api: 'openai-responses',
+                                authType: 'api_key',
+                                endpoint: '',
+                                model: 'gpt-4.1',
+                                contextWindow: 'not-a-number',
+                                customHeaders: '',
+                                customIncludeBody: '',
+                                customExcludeBody: '',
+                            },
+                        },
+                    ],
+                    当前api方案: 'Invalid Context',
+                },
+            },
+        };
+
+        const store = useDataStore();
+        const config = store.settings.额外模型解析配置;
+
+        expect(store.settings.更新方式).toBe('额外模型解析');
+        expect((store.settings as any).future_top_level).toBe('keep');
+        expect(config.api方案列表[0]).toMatchObject({
+            名称: 'Invalid Context',
+            backend: 'pi',
+            密钥: '',
+        });
+        expect(config.api方案列表[0].pi).toBeUndefined();
+        expect(config.pi).toMatchObject({ provider: '', api: '', contextWindow: 0 });
+        expect(config.密钥).toBe('');
+    });
+
+    test('filters whitespace-only profile names and keeps the first trimmed duplicate', () => {
+        (globalThis as any).SillyTavern.extensionSettings = {
+            mvu_settings: {
+                额外模型解析配置: {
+                    模型来源: '自定义',
+                    api地址: 'https://first.example/v1',
+                    密钥: 'first-key',
+                    模型名称: 'first-model',
+                    api方案列表: [
+                        {
+                            名称: '方案 A',
+                            api地址: 'https://first.example/v1',
+                            密钥: 'first-key',
+                            模型名称: 'first-model',
+                        },
+                        {
+                            名称: ' 方案 A ',
+                            api地址: 'https://duplicate.example/v1',
+                            密钥: 'duplicate-key',
+                            模型名称: 'duplicate-model',
+                        },
+                        {
+                            名称: '   ',
+                            api地址: 'https://blank.example/v1',
+                            密钥: 'blank-key',
+                            模型名称: 'blank-model',
+                        },
+                    ],
+                    当前api方案: ' 方案 A ',
+                },
+            },
+        };
+
+        const config = useDataStore().settings.额外模型解析配置;
+
+        expect(config.当前api方案).toBe('方案 A');
+        expect(config.api方案列表).toHaveLength(1);
+        expect(config.api方案列表[0]).toMatchObject({
+            名称: '方案 A',
+            api地址: 'https://first.example/v1',
+            密钥: 'first-key',
+        });
+    });
+
+    test('contains a malformed active-profile pointer without resetting valid settings', () => {
+        (globalThis as any).SillyTavern.extensionSettings = {
+            mvu_settings: {
+                future_top_level: 'keep',
+                更新方式: '额外模型解析',
+                额外模型解析配置: {
+                    模型来源: '自定义',
+                    api地址: 'https://api.example/v1',
+                    密钥: 'key-a',
+                    模型名称: 'model-a',
+                    api方案列表: [
+                        {
+                            名称: 'Valid A',
+                            api地址: 'https://api.example/v1',
+                            密钥: 'key-a',
+                            模型名称: 'model-a',
+                        },
+                    ],
+                    当前api方案: { malformed: true },
+                },
+            },
+        };
+
+        const store = useDataStore();
+        const config = store.settings.额外模型解析配置;
+
+        expect(store.settings.更新方式).toBe('额外模型解析');
+        expect((store.settings as any).future_top_level).toBe('keep');
+        expect(config.api方案列表).toHaveLength(1);
+        expect(config.当前api方案).toBe('');
+        expect(config.api地址).toBe('https://api.example/v1');
+    });
+
+    test('contains malformed API-key caches without resetting unrelated settings', () => {
+        (globalThis as any).SillyTavern.extensionSettings = {
+            mvu_settings: {
+                future_top_level: 'keep',
+                额外模型解析配置: {
+                    customApiKey: { malformed: true },
+                    pi: { apiKeys: ['not', 'a', 'record'] },
+                },
+            },
+        };
+
+        const store = useDataStore();
+
+        expect(store.settings.额外模型解析配置.customApiKey).toBe('');
+        expect(store.settings.额外模型解析配置.pi.apiKeys).toEqual({});
+        expect((store.settings as any).future_top_level).toBe('keep');
+    });
+
+    test('contains a malformed OAuth credential cache without resetting unrelated settings', () => {
+        _.set(SillyTavern.extensionSettings, 'mvu_settings', {
+            更新方式: '额外模型解析',
+            额外模型解析配置: {
+                模型来源: '更多',
+                破限方案: '使用其他预设',
+                其他预设名称: '保留的预设名',
+                pi: {
+                    credentials: 'malformed',
+                },
+            },
+        });
+
+        const store = useDataStore();
+
+        expect(store.settings.更新方式).toBe('额外模型解析');
+        expect(store.settings.额外模型解析配置.破限方案).toBe('使用其他预设');
+        expect(store.settings.额外模型解析配置.其他预设名称).toBe('保留的预设名');
+        expect(store.settings.额外模型解析配置.pi.credentials).toEqual({});
+    });
+
+    test('preserves an invalid context window for fail-closed request validation', () => {
+        (globalThis as any).SillyTavern.extensionSettings = {
+            mvu_settings: {
+                future_top_level: 'keep',
+                通知: { 变量更新出错: true },
+                额外模型解析配置: {
+                    模型来源: '更多',
+                    pi: { contextWindow: 'not-a-number' },
+                },
+            },
+        };
+
+        const store = useDataStore();
+
+        expect(store.settings.额外模型解析配置.pi.contextWindow).toBe('not-a-number');
+        expect(store.settings.通知.变量更新出错).toBe(true);
+        expect((store.settings as any).future_top_level).toBe('keep');
+    });
+
+    test('contains an invalid maximum-token value without resetting unrelated settings', () => {
+        (globalThis as any).SillyTavern.extensionSettings = {
+            mvu_settings: {
+                future_top_level: 'keep',
+                通知: { 变量更新出错: true },
+                额外模型解析配置: {
+                    模型来源: '更多',
+                    最大回复token数: 'not-a-number',
+                },
+            },
+        };
+
+        const store = useDataStore();
+
+        expect(store.settings.额外模型解析配置.最大回复token数).toBe(0);
+        expect(store.settings.通知.变量更新出错).toBe(true);
+        expect((store.settings as any).future_top_level).toBe('keep');
+    });
+
     test('preserves unknown fields at every current settings level when writing back', async () => {
         (globalThis as any).SillyTavern.extensionSettings = {
             mvu_settings: {

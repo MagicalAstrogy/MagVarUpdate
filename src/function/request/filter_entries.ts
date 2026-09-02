@@ -43,7 +43,11 @@ export async function filterEntries(lores: {
     if (store.effective_settings.更新方式 === '随AI输出') {
         return;
     }
-    if (store.settings.额外模型解析配置.应答格式 === '工具调用' && !isFunctionCallingSupported()) {
+    if (
+        store.settings.额外模型解析配置.应答格式 === '工具调用' &&
+        store.settings.额外模型解析配置.模型来源 !== '更多' &&
+        !isFunctionCallingSupported()
+    ) {
         toastr.warning(
             tr('runtime.filter.toolCallingUnsupported'),
             tr('runtime.filter.toolCallingUnsupportedTitle'),

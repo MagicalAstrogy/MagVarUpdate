@@ -102,6 +102,10 @@ export const panelMessages = defineMessages({
         'zh-CN': '重试额外模型解析',
         en: 'Retry extra-model parsing',
     },
+    'panel.button.stopPiExtraModelParsing': {
+        'zh-CN': '停止 Pi 额外模型解析',
+        en: 'Stop Pi extra-model parsing',
+    },
     'panel.button.clearOldFloorVariables': {
         'zh-CN': '清除旧楼层变量',
         en: 'Clear variables from old floors',
@@ -404,6 +408,10 @@ export const panelMessages = defineMessages({
         'zh-CN': '自定义',
         en: 'Custom',
     },
+    'panel.source.more': {
+        'zh-CN': '更多',
+        en: 'More',
+    },
     'panel.source.profile.section': {
         'zh-CN': 'API 方案',
         en: 'API profiles',
@@ -436,6 +444,14 @@ export const panelMessages = defineMessages({
         'zh-CN': '删除当前方案',
         en: 'Delete current profile',
     },
+    'panel.source.profile.backendCustom': {
+        'zh-CN': '自定义 API',
+        en: 'Custom API',
+    },
+    'panel.source.profile.backendPi': {
+        'zh-CN': 'Pi',
+        en: 'Pi',
+    },
     'panel.source.apiAddress': {
         'zh-CN': 'API 地址',
         en: 'API address',
@@ -451,6 +467,271 @@ export const panelMessages = defineMessages({
     'panel.source.modelName': {
         'zh-CN': '模型名称',
         en: 'Model name',
+    },
+    'panel.source.pi.provider': {
+        'zh-CN': '来源',
+        en: 'Provider',
+    },
+    'panel.source.pi.apiLabel': {
+        'zh-CN': 'API 接口',
+        en: 'API protocol',
+    },
+    'panel.source.pi.authType': {
+        'zh-CN': '认证方式',
+        en: 'Authentication',
+    },
+    'panel.source.pi.endpoint': {
+        'zh-CN': 'API 地址',
+        en: 'API address',
+    },
+    'panel.source.pi.endpointDefault': {
+        'zh-CN': '留空使用默认地址：{endpoint}',
+        en: 'Leave blank to use the default: {endpoint}',
+    },
+    'panel.source.pi.model': {
+        'zh-CN': '模型',
+        en: 'Model',
+    },
+    'panel.source.pi.catalogModel': {
+        'zh-CN': '模型目录',
+        en: 'Model catalog',
+    },
+    'panel.source.pi.customModel': {
+        'zh-CN': '（手动填写模型）',
+        en: '(Enter a model manually)',
+    },
+    'panel.source.pi.api.openaiResponses': {
+        'zh-CN': 'OpenAI Responses',
+        en: 'OpenAI Responses',
+    },
+    'panel.source.pi.api.openaiCompletions': {
+        'zh-CN': 'OpenAI Chat Completions',
+        en: 'OpenAI Chat Completions',
+    },
+    'panel.source.pi.api.openaiCodexResponses': {
+        'zh-CN': 'OpenAI Codex Responses',
+        en: 'OpenAI Codex Responses',
+    },
+    'panel.source.pi.api.anthropicMessages': {
+        'zh-CN': 'Anthropic Messages',
+        en: 'Anthropic Messages',
+    },
+    'panel.source.pi.api.googleGenerativeAi': {
+        'zh-CN': 'Google Generative AI',
+        en: 'Google Generative AI',
+    },
+    'panel.source.pi.auth.apiKey': {
+        'zh-CN': 'API Key',
+        en: 'API key',
+    },
+    'panel.source.pi.auth.oauth': {
+        'zh-CN': 'OAuth',
+        en: 'OAuth',
+    },
+    'panel.source.pi.capabilities': {
+        'zh-CN': '此来源能力：{capabilities}',
+        en: 'Provider capabilities: {capabilities}',
+    },
+    'panel.source.pi.capability.tools': {
+        'zh-CN': '工具调用',
+        en: 'tools',
+    },
+    'panel.source.pi.capability.images': {
+        'zh-CN': '图片输入',
+        en: 'image input',
+    },
+    'panel.source.pi.capability.structured': {
+        'zh-CN': '结构化输出',
+        en: 'structured output',
+    },
+    'panel.source.pi.contextWindow': {
+        'zh-CN': '上下文窗口',
+        en: 'Context window',
+    },
+    'panel.source.pi.contextWindowCatalog': {
+        'zh-CN': '当前使用模型目录值 {value}；填写后将保存为用户覆盖值，清空可恢复目录值。',
+        en: 'Using the catalog value {value}. Enter a value to save an override; clear it to use the catalog again.',
+    },
+    'panel.source.pi.contextWindowOverride': {
+        'zh-CN': '当前使用用户配置值；清空可恢复模型目录值。',
+        en: 'Using your configured override. Clear it to use the model catalog value.',
+    },
+    'panel.source.pi.contextWindowRequired': {
+        'zh-CN': '请输入正整数上下文窗口；模型目录未提供该值时必须手动填写。',
+        en: 'Enter a positive integer context window. It is required when the model catalog has no value.',
+    },
+    'panel.source.pi.error.unknownProvider': {
+        'zh-CN': '未知 Pi 来源“{provider}”；请重新选择来源。',
+        en: 'Unknown Pi provider "{provider}". Select a provider again.',
+    },
+    'panel.source.pi.unknownProviderOption': {
+        'zh-CN': '未知来源：{provider}',
+        en: 'Unknown provider: {provider}',
+    },
+    'panel.source.pi.error.unsupportedApi': {
+        'zh-CN': '来源“{provider}”不支持接口“{api}”。',
+        en: 'Provider "{provider}" does not support API "{api}".',
+    },
+    'panel.source.pi.error.unsupportedAuth': {
+        'zh-CN': '来源“{provider}”不支持认证方式“{auth}”。',
+        en: 'Provider "{provider}" does not support authentication type "{auth}".',
+    },
+    'panel.source.pi.error.unsupportedEndpoint': {
+        'zh-CN': '当前来源或 OAuth 认证不允许自定义 endpoint。',
+        en: 'The selected provider or OAuth authentication does not allow a custom endpoint.',
+    },
+    'panel.source.pi.featureDisabled': {
+        'zh-CN':
+            '此构建已关闭 Pi 多来源链路。已保存的 Pi 配置仍会保留；请选择“与插头相同”或“自定义”。',
+        en: 'The Pi multiprovider path is disabled in this build. Saved Pi settings are preserved; select Same as current connection or Custom.',
+    },
+    'panel.source.pi.maxTokensPositive': {
+        'zh-CN': '最大回复 token 必须是正整数。',
+        en: 'Maximum response tokens must be a positive integer.',
+    },
+    'panel.source.pi.maxTokensExceedContext': {
+        'zh-CN': '最大回复 token 不能大于上下文窗口。',
+        en: 'Maximum response tokens cannot exceed the context window.',
+    },
+    'panel.source.pi.customHeaders': {
+        'zh-CN': '自定义请求头',
+        en: 'Custom request headers',
+    },
+    'panel.source.pi.customHeadersHelp': {
+        'zh-CN': '使用 YAML 或 JSON 对象；留空即禁用。认证请求头禁止覆盖。',
+        en: 'Use a YAML or JSON object; leave empty to disable. Authentication headers cannot be overridden.',
+    },
+    'panel.source.pi.customOverridesSwitchHelp': {
+        'zh-CN':
+            '切换 Pi 来源、接口、认证方式或实际 endpoint 时，这三项请求覆盖会自动清空，避免发送到另一个目标。API 方案切换会恢复该方案自己的显式配置。',
+        en: 'Changing the Pi provider, API, authentication, or effective endpoint clears all three request overrides so they cannot be sent to another target. Switching API profiles restores that profile’s explicit values.',
+    },
+    'panel.source.pi.customIncludeBody': {
+        'zh-CN': '请求体附加字段',
+        en: 'Additional request body fields',
+    },
+    'panel.source.pi.customIncludeBodyHelp': {
+        'zh-CN':
+            '使用 YAML 或 JSON 对象；留空即禁用。同名可自定义字段会被这里的值覆盖，认证及核心传输字段仍受保护。Google 字段应放在 config 对象内。',
+        en: 'Use a YAML or JSON object; leave empty to disable. Values here override matching customizable fields, while authentication and core transport fields remain protected. Put Google fields inside the config object.',
+    },
+    'panel.source.pi.customExcludeBody': {
+        'zh-CN': '请求体排除字段',
+        en: 'Excluded request body fields',
+    },
+    'panel.source.pi.customExcludeBodyHelp': {
+        'zh-CN':
+            '使用 YAML 字符串数组，或用换行/逗号分隔字段；留空即禁用。Google 配置字段使用 config.<字段名> 路径。',
+        en: 'Use a YAML string array, or separate fields with newlines/commas; leave empty to disable. Use config.<field> paths for Google configuration fields.',
+    },
+    'panel.source.pi.clearCustomField': {
+        'zh-CN': '清空',
+        en: 'Clear',
+    },
+    'panel.source.pi.oauth.section': {
+        'zh-CN': 'OAuth 登录',
+        en: 'OAuth login',
+    },
+    'panel.source.pi.oauth.status': {
+        'zh-CN': '状态',
+        en: 'Status',
+    },
+    'panel.source.pi.oauth.checking': {
+        'zh-CN': '检查中…',
+        en: 'Checking…',
+    },
+    'panel.source.pi.oauth.loggedIn': {
+        'zh-CN': '已登录',
+        en: 'Signed in',
+    },
+    'panel.source.pi.oauth.loggedOut': {
+        'zh-CN': '未登录',
+        en: 'Not signed in',
+    },
+    'panel.source.pi.oauth.expiresAt': {
+        'zh-CN': '凭据有效期：{time}',
+        en: 'Credential expiry: {time}',
+    },
+    'panel.source.pi.oauth.login': {
+        'zh-CN': '登录',
+        en: 'Sign in',
+    },
+    'panel.source.pi.oauth.relogin': {
+        'zh-CN': '重新登录',
+        en: 'Sign in again',
+    },
+    'panel.source.pi.oauth.reloginConfirm': {
+        'zh-CN': '确定要重新登录 {provider} 吗？完成新授权后，保存的 OAuth 凭据将被替换。',
+        en: 'Sign in to {provider} again? The saved OAuth credential will be replaced after the new authorization succeeds.',
+    },
+    'panel.source.pi.oauth.cancel': {
+        'zh-CN': '取消登录',
+        en: 'Cancel sign-in',
+    },
+    'panel.source.pi.oauth.logout': {
+        'zh-CN': '登出',
+        en: 'Sign out',
+    },
+    'panel.source.pi.oauth.authorizationUrl': {
+        'zh-CN': '授权链接',
+        en: 'Authorization URL',
+    },
+    'panel.source.pi.oauth.openAuthorization': {
+        'zh-CN': '打开授权页',
+        en: 'Open authorization page',
+    },
+    'panel.source.pi.oauth.copyAuthorization': {
+        'zh-CN': '复制授权链接',
+        en: 'Copy authorization URL',
+    },
+    'panel.source.pi.oauth.copySucceeded': {
+        'zh-CN': '已复制授权链接',
+        en: 'Authorization URL copied',
+    },
+    'panel.source.pi.oauth.copyFailed': {
+        'zh-CN': '无法复制授权链接，请手动选择并复制。',
+        en: 'Could not copy the authorization URL. Select and copy it manually.',
+    },
+    'panel.source.pi.oauth.callbackUrl': {
+        'zh-CN': '回调链接',
+        en: 'Callback URL',
+    },
+    'panel.source.pi.oauth.callbackHelp': {
+        'zh-CN':
+            '授权后本机回调页面无法打开属于预期。请从浏览器地址栏复制完整的 127.0.0.1 或 localhost 回调链接，并粘贴到这里。',
+        en: 'It is expected that the local callback page may not open. Copy the complete 127.0.0.1 or localhost callback URL from the browser address bar and paste it here.',
+    },
+    'panel.source.pi.oauth.complete': {
+        'zh-CN': '完成登录',
+        en: 'Complete sign-in',
+    },
+    'panel.source.pi.oauth.preparing': {
+        'zh-CN': '正在准备安全授权链接…',
+        en: 'Preparing a secure authorization URL…',
+    },
+    'panel.source.pi.oauth.waitingCallback': {
+        'zh-CN': '请在授权页完成登录，然后粘贴完整回调链接。',
+        en: 'Finish signing in on the authorization page, then paste the complete callback URL.',
+    },
+    'panel.source.pi.oauth.exchanging': {
+        'zh-CN': '正在验证回调并交换凭据…',
+        en: 'Validating the callback and exchanging credentials…',
+    },
+    'panel.source.pi.oauth.loginSucceeded': {
+        'zh-CN': 'OAuth 登录成功。',
+        en: 'OAuth sign-in succeeded.',
+    },
+    'panel.source.pi.oauth.logoutSucceeded': {
+        'zh-CN': '已登出。',
+        en: 'Signed out.',
+    },
+    'panel.source.pi.oauth.logoutConfirm': {
+        'zh-CN': '确定登出 {provider} 吗？保存的 OAuth 凭据将被删除。',
+        en: 'Sign out of {provider}? The saved OAuth credential will be deleted.',
+    },
+    'panel.source.pi.oauth.failureTitle': {
+        'zh-CN': '[MVU]OAuth 操作失败',
+        en: '[MVU] OAuth operation failed',
     },
     'panel.source.advanced': {
         'zh-CN': '高级参数',

@@ -79,12 +79,19 @@ export default [
             '@typescript-eslint/no-unused-vars': 'off',
         },
     },
+    {
+        files: ['tests/**/*.{js,mjs,ts}'],
+        rules: {
+            'import-x/no-nodejs-modules': 'off',
+        },
+    },
     eslintConfigPrettier,
     globalIgnores([
         'artifact/**',
         'example_src/**',
         'node_modules/**',
         'slash-runner/**',
+        'tests/json5-tests/**',
         'eslint.config.mjs',
         'postcss.config.js',
         'webpack.config.ts',

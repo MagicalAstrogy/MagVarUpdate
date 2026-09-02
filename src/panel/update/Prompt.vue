@@ -327,7 +327,7 @@ watch(
             store.settings.额外模型解析配置.模型来源,
         ] as const,
     ([value, model_source]) => {
-        if (value === '工具调用') {
+        if (value === '工具调用' && model_source !== '更多') {
             const version_message = getFunctionCallingApiVersionUnsupportedMessage();
             if (version_message) {
                 toastr.error(version_message, t('panel.prompt.toolCallUnavailableTitle'), {

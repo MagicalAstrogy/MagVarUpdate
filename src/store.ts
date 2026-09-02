@@ -1,4 +1,7 @@
-import { migrateExtraModelApiProfiles } from '@/function/update/extra_model_api_profiles';
+import {
+    migrateExtraModelApiProfiles,
+    normalizeExtraModelPiProfileContextWindow,
+} from '@/function/update/extra_model_api_profiles';
 import {
     CharacterSettingsOverride,
     CharacterSettingsOverridePath,
@@ -13,14 +16,93 @@ import { defineStore } from 'pinia';
 import { computed, ref, toRaw, watch } from 'vue';
 import * as z from 'zod';
 
+/**
+ * Keep invalid imported/UI values distinguishable from the valid `0 = use catalog` sentinel.
+ * The Pi request preflight is responsible for rejecting anything except zero or a positive
+ * integer, so malformed settings never silently fall back to catalog metadata.
+ */
+const ExtraModelPiContextWindow = z
+    .union([z.number(), z.string()])
+    .catch('__invalid_context_window__')
+    .default(0)
+    .transform((value): number | string => {
+        if (typeof value === 'number') {
+            return value;
+        }
+        const trimmed = value.trim();
+        if (trimmed === '') {
+            return 0;
+        }
+        const parsed = Number(trimmed);
+        return Number.isInteger(parsed) && parsed >= 0 ? parsed : value;
+    });
+
+const ExtraModelPiProfileContextWindow = z
+    .union([z.number(), z.string()])
+    .transform(value => normalizeExtraModelPiProfileContextWindow(value))
+    .pipe(z.number());
+
+const ExtraModelPiProfileSnapshot = z
+    .object({
+        provider: z.string().trim(),
+        api: z.string().trim(),
+        authType: z
+            .string()
+            .trim()
+            .pipe(z.enum(['api_key', 'oauth'])),
+        endpoint: z.string().trim(),
+        model: z.string().trim(),
+        contextWindow: ExtraModelPiProfileContextWindow,
+        customHeaders: z.string(),
+        customIncludeBody: z.string(),
+        customExcludeBody: z.string(),
+    })
+    .loose()
+    .transform(({ credentials: _credentials, apiKeys: _apiKeys, ...connection }) => connection);
+
+// A partial imported Pi snapshot must not inherit provider/API defaults and become sendable. Keep
+// the containing profile, but drop its malformed connection so profile application fails closed.
+const ExtraModelPiProfile = z.union([ExtraModelPiProfileSnapshot, z.undefined()]).catch(undefined);
+
+const ExtraModelPiSettings = z
+    .object({
+        provider: z.string().trim().default('openai'),
+        api: z.string().trim().default('openai-responses'),
+        // Keep future/imported identifiers inspectable. Provider validation and profile saving both
+        // reject unsupported values, while migration clears any unowned shared root key.
+        authType: z.string().trim().default('api_key'),
+        endpoint: z.string().trim().default(''),
+        model: z.string().trim().default(''),
+        contextWindow: ExtraModelPiContextWindow,
+        credentials: z.record(z.string(), z.unknown()).catch({}).default({}),
+        apiKeys: z.record(z.string(), z.string()).catch({}).default({}),
+        customHeaders: z.string().default(''),
+        customIncludeBody: z.string().default(''),
+        customExcludeBody: z.string().default(''),
+    })
+    .loose()
+    .prefault({});
+
 const ExtraModelApiProfile = z
     .object({
-        名称: z.string().min(1),
+        名称: z.string().trim().min(1),
+        backend: z.enum(['custom', 'pi']).default('custom'),
         api地址: z.string().default(''),
         密钥: z.string().default(''),
         模型名称: z.string().default(''),
+        pi: ExtraModelPiProfile.optional(),
     })
-    .loose();
+    .loose()
+    .transform(({ customApiKey: _customApiKey, ...profile }) => profile);
+
+const ExtraModelApiProfileList = z
+    .array(ExtraModelApiProfile.nullable().catch(null))
+    .catch([])
+    .transform(profiles =>
+        profiles.filter(
+            (profile): profile is z.infer<typeof ExtraModelApiProfile> => profile !== null
+        )
+    );
 
 export const EXTRA_MODEL_RESPONSE_FORMATS = [
     '聊天消息',
@@ -156,10 +238,12 @@ const NewSettings = z
                 世界书条目白名单正则: z.string().default(''),
                 世界书条目黑名单正则: z.string().default(''),
 
-                模型来源: z.enum(['与插头相同', '自定义']).default('与插头相同'),
+                模型来源: z.enum(['与插头相同', '自定义', '更多']).default('与插头相同'),
                 api地址: z.string().default('http://localhost:1234/v1'),
                 密钥: z.string().default(''),
+                customApiKey: z.string().catch('').default(''),
                 模型名称: z.string().default('gemini-2.5-flash-nothinking'),
+                pi: ExtraModelPiSettings,
                 温度: z.coerce
                     .number()
                     .default(1)
@@ -186,10 +270,13 @@ const NewSettings = z
                     .transform(value => _.clamp(Math.round(value), 2, 100)),
                 最大回复token数: z.coerce
                     .number()
+                    // Unlike contextWindow, zero has no valid sentinel meaning for Pi, so it can
+                    // safely retain malformed imports as a request-blocking local value.
+                    .catch(0)
                     .default(4096)
                     .transform(value => Math.max(0, value)),
-                api方案列表: z.array(ExtraModelApiProfile).default([]),
-                当前api方案: z.string().default(''),
+                api方案列表: ExtraModelApiProfileList.default([]),
+                当前api方案: z.string().catch('').default(''),
             })
             .loose()
             .transform(({ 使用函数调用, 应答格式, ...data }) =>

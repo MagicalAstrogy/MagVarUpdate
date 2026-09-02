@@ -81,6 +81,16 @@ describe('MVU localization', () => {
         );
     });
 
+    test('keeps the Pi API field label separate from its nested option translations', () => {
+        locale_ref.value = 'zh-CN';
+        expect(tr('panel.source.pi.apiLabel')).toBe('API 接口');
+        expect(tr('panel.source.pi.api.anthropicMessages')).toBe('Anthropic Messages');
+
+        locale_ref.value = 'en';
+        expect(tr('panel.source.pi.apiLabel')).toBe('API protocol');
+        expect(tr('panel.source.pi.api.openaiResponses')).toBe('OpenAI Responses');
+    });
+
     test('every resource key has non-empty translations with matching placeholders', () => {
         const seen_keys = new Set<string>();
         let message_count = 0;

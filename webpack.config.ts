@@ -17,6 +17,28 @@ import unpluginVueComponents from 'unplugin-vue-components/webpack';
 import { VueLoaderPlugin } from 'vue-loader';
 import webpack from 'webpack';
 
+const BUNDLED_PI_AI_MODULES = new Set([
+    '@earendil-works/pi-ai',
+    // These SDKs receive the user's Pi API key/OAuth token at request time. Keep their exact
+    // yarn.lock versions in the local bundle instead of turning them into unversioned CDN code.
+    'openai',
+    '@anthropic-ai/sdk',
+    '@google/genai',
+    'partial-json',
+    'p-retry',
+    'retry',
+    'klona',
+    '@earendil-works/pi-ai/providers/openai.models',
+    '@earendil-works/pi-ai/providers/anthropic.models',
+    '@earendil-works/pi-ai/providers/google.models',
+    '@earendil-works/pi-ai/providers/openai-codex.models',
+    '@earendil-works/pi-ai/api/openai-responses.lazy',
+    '@earendil-works/pi-ai/api/openai-completions.lazy',
+    '@earendil-works/pi-ai/api/anthropic-messages.lazy',
+    '@earendil-works/pi-ai/api/google-generative-ai.lazy',
+    '@earendil-works/pi-ai/api/openai-codex-responses.lazy',
+]);
+
 let io: Server;
 function watch_tavern_helper(compiler: webpack.Compiler) {
     if (compiler.options.watch) {
@@ -300,6 +322,9 @@ function config(_env: any, argv: any): webpack.Configuration {
             new webpack.DefinePlugin({
                 __BUILD_DATE__: JSON.stringify(buildDate),
                 __COMMIT_ID__: JSON.stringify(commitId),
+                __PI_MULTIPROVIDER_ENABLED__: JSON.stringify(
+                    process.env.MVU_PI_MULTIPROVIDER_ENABLED !== 'false'
+                ),
                 __VUE_OPTIONS_API__: false,
                 __VUE_PROD_DEVTOOLS__: process.env.CI !== 'true',
                 __VUE_PROD_HYDRATION_MISMATCH_DETAILS__: false,
@@ -351,6 +376,12 @@ function config(_env: any, argv: any): webpack.Configuration {
         },
         externals: ({ context, request }, callback) => {
             if (!context || !request) {
+                return callback();
+            }
+
+            // pi-ai is intentionally bundled from a small, audited set of entry points. Other
+            // dependencies keep the existing CDN externalization behavior below.
+            if (BUNDLED_PI_AI_MODULES.has(request)) {
                 return callback();
             }
 

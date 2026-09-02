@@ -2,10 +2,8 @@ import { updateVariables, extractCommands } from '@/function/update_variables';
 import { generateSchema } from '@/function/schema';
 import { isArraySchema, isObjectSchema, SchemaNode } from '@/variable_def';
 import { describe, expect, it } from '@jest/globals';
-// eslint-disable-next-line import-x/no-nodejs-modules
 import fs from 'fs';
 import _ from 'lodash';
-// eslint-disable-next-line import-x/no-nodejs-modules
 import path from 'path';
 
 type PatchCase = {

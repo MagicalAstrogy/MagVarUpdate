@@ -1,6 +1,7 @@
 import { isExtraModelSupported } from '@/function/is_extra_model_supported';
 import { isFunctionCallingSupported } from '@/function/is_function_calling_supported';
 import { invokeExtraModelWithStrategy } from '@/function/update/invoke_extra_model';
+import { isPiMultiproviderEnabled } from '@/function/update/pi/feature_flag';
 import { handleVariablesInMessage } from '@/function/update_variables';
 import { tr } from '@/i18n';
 import { useDataStore } from '@/store';
@@ -31,7 +32,9 @@ export async function onMessageReceived(
 
     if (
         store.effective_settings.更新方式 === '随AI输出' ||
+        (store.settings.额外模型解析配置.模型来源 === '更多' && !isPiMultiproviderEnabled()) ||
         (store.settings.额外模型解析配置.应答格式 === '工具调用' &&
+            store.settings.额外模型解析配置.模型来源 !== '更多' &&
             !isFunctionCallingSupported()) ||
         !(await isExtraModelSupported())
     ) {

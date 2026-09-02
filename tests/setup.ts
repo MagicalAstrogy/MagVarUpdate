@@ -108,6 +108,7 @@ const __eventHandlers = new Map<string, Array<(...args: unknown[]) => unknown>>(
     GENERATION_STARTED: 'GENERATION_STARTED',
     WORLDINFO_UPDATED: 'WORLDINFO_UPDATED',
     CHAT_CHANGED: 'CHAT_CHANGED',
+    CHAT_COMPLETION_SETTINGS_READY: 'chat_completion_settings_ready',
 };
 
 // Ensure each test runs with a fresh Pinia instance
@@ -122,7 +123,7 @@ beforeEach(() => {
     }
     (globalThis as any).SillyTavern.chatCompletionSettings = { function_calling: true };
     (globalThis as any).builtin.saveSettings = jest.fn().mockResolvedValue(undefined);
-    (globalThis as any).stopGenerationById = jest.fn();
+    (globalThis as any).stopGenerationById = jest.fn().mockReturnValue(true);
 });
 
 // Mock functions that are not available in test environment
@@ -142,6 +143,26 @@ beforeEach(() => {
         handler(TEST_SCRIPT_ID);
     }
 });
+(globalThis as any).eventMakeLast = jest.fn(
+    (event: string, handler: (...args: unknown[]) => unknown) => {
+        if (!__eventHandlers.has(event)) {
+            __eventHandlers.set(event, []);
+        }
+
+        const handlers = __eventHandlers.get(event)!;
+        const existing_index = handlers.indexOf(handler);
+        if (existing_index !== -1) {
+            handlers.splice(existing_index, 1);
+        }
+        handlers.push(handler);
+
+        return {
+            stop: jest.fn(() => {
+                (globalThis as any).eventRemoveListener(event, handler);
+            }),
+        };
+    }
+);
 (globalThis as any).eventRemoveListener = jest.fn(
     (event: string, handler: (...args: unknown[]) => unknown) => {
         const handlers = __eventHandlers.get(event);

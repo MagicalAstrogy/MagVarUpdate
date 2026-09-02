@@ -259,8 +259,7 @@ describe('extractFromToolCall', () => {
                 },
             },
         };
-        let input = [];
-        input[0] = content;
+        const input = [content];
         const toolCalls = input[0].choices[0].message.tool_calls;
 
         const outer = [];
@@ -279,6 +278,7 @@ describe('extractFromToolCall', () => {
                     }),
                 };
             });
+            // eslint-disable-next-line @typescript-eslint/no-require-imports -- isolateModules needs a synchronous import
             const { extractFromToolCall, MVU_FUNCTION_NAME } = require('@/function/function_call');
             const args = JSON.stringify({
                 delta: '[{"op":"add","path":"/x","value":1}]',
