@@ -35,6 +35,8 @@ describe('Pi Source UI contract', () => {
         expect(source).not.toContain('v-model="store.settings.额外模型解析配置.pi.endpoint"');
         expect(source).toContain('@update:model-value="selectModelSource"');
         expect(source).toContain('@input="selectPiEndpoint"');
+        expect(source).toContain('@change="normalizePiEndpointInput"');
+        expect(source).toContain('normalizePiApiBaseEndpoint(');
         expect(source).toContain('applyPiConnectionTransition(() =>');
         expect(source).toContain("pi.authType === 'api_key'");
     });

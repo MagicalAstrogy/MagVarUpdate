@@ -538,7 +538,7 @@ export const buttons: Button[] = [
         },
     },
     {
-        name: '停止 Pi 额外模型解析',
+        name: '停止“更多”额外模型解析',
         label_key: 'panel.button.stopPiExtraModelParsing',
         function: () => {
             const stopped_count = stopAllExtraModelRequests();

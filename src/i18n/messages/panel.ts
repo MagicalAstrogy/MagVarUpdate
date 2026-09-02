@@ -78,6 +78,27 @@ export const panelMessages = defineMessages({
         'zh-CN': 'sendas 不视为 user 消息',
         en: 'Do not treat sendas as a user message',
     },
+    'panel.compatibility.license': {
+        'zh-CN': 'LICENSE',
+        en: 'LICENSE',
+    },
+    'panel.compatibility.licenseIntro': {
+        'zh-CN': 'MVU 采用 MIT 许可证。以下是运行时使用或随扩展打包的第三方开源组件：',
+        en: 'MVU is licensed under MIT. The following third-party components are used at runtime or bundled with the extension:',
+    },
+    'panel.compatibility.licenseComponent': {
+        'zh-CN': '组件',
+        en: 'Component',
+    },
+    'panel.compatibility.licenseIdentifier': {
+        'zh-CN': '许可证',
+        en: 'License',
+    },
+    'panel.compatibility.licenseDetails': {
+        'zh-CN':
+            '许可证标识来自当前依赖元数据；点击组件名称可查看项目，完整条款以各项目 LICENSE 为准。',
+        en: 'License identifiers come from current dependency metadata. Select a component name to view its project; the project LICENSE contains the complete terms.',
+    },
     'panel.button.section': {
         'zh-CN': '修复按钮',
         en: 'Repair actions',
@@ -103,8 +124,8 @@ export const panelMessages = defineMessages({
         en: 'Retry extra-model parsing',
     },
     'panel.button.stopPiExtraModelParsing': {
-        'zh-CN': '停止 Pi 额外模型解析',
-        en: 'Stop Pi extra-model parsing',
+        'zh-CN': '停止“更多”额外模型解析',
+        en: 'Stop extra-model parsing from More',
     },
     'panel.button.clearOldFloorVariables': {
         'zh-CN': '清除旧楼层变量',
@@ -449,8 +470,8 @@ export const panelMessages = defineMessages({
         en: 'Custom API',
     },
     'panel.source.profile.backendPi': {
-        'zh-CN': 'Pi',
-        en: 'Pi',
+        'zh-CN': '更多',
+        en: 'More',
     },
     'panel.source.apiAddress': {
         'zh-CN': 'API 地址',
@@ -481,12 +502,17 @@ export const panelMessages = defineMessages({
         en: 'Authentication',
     },
     'panel.source.pi.endpoint': {
-        'zh-CN': 'API 地址',
-        en: 'API address',
+        'zh-CN': 'API 基础地址',
+        en: 'API base URL',
     },
     'panel.source.pi.endpointDefault': {
         'zh-CN': '留空使用默认地址：{endpoint}',
         en: 'Leave blank to use the default: {endpoint}',
+    },
+    'panel.source.pi.endpointHelp': {
+        'zh-CN':
+            '建议填写 API 基础地址；若粘贴了以 /responses、/chat/completions 或 /v1/messages 结尾的接口地址，将按当前 API 自动调整。',
+        en: 'Enter the API base URL. If you paste an operation URL ending in /responses, /chat/completions, or /v1/messages, it is adjusted automatically for the selected API.',
     },
     'panel.source.pi.model': {
         'zh-CN': '模型',
@@ -561,8 +587,8 @@ export const panelMessages = defineMessages({
         en: 'Enter a positive integer context window. It is required when the model catalog has no value.',
     },
     'panel.source.pi.error.unknownProvider': {
-        'zh-CN': '未知 Pi 来源“{provider}”；请重新选择来源。',
-        en: 'Unknown Pi provider "{provider}". Select a provider again.',
+        'zh-CN': '“更多”中的未知来源“{provider}”；请重新选择来源。',
+        en: 'Unknown provider "{provider}" under More. Select a provider again.',
     },
     'panel.source.pi.unknownProviderOption': {
         'zh-CN': '未知来源：{provider}',
@@ -582,8 +608,8 @@ export const panelMessages = defineMessages({
     },
     'panel.source.pi.featureDisabled': {
         'zh-CN':
-            '此构建已关闭 Pi 多来源链路。已保存的 Pi 配置仍会保留；请选择“与插头相同”或“自定义”。',
-        en: 'The Pi multiprovider path is disabled in this build. Saved Pi settings are preserved; select Same as current connection or Custom.',
+            '此构建已关闭“更多”模型来源。已保存的“更多”配置仍会保留；请选择“与插头相同”或“自定义”。',
+        en: 'The More model source is disabled in this build. Saved More-source settings are preserved; select Same as current connection or Custom.',
     },
     'panel.source.pi.maxTokensPositive': {
         'zh-CN': '最大回复 token 必须是正整数。',
@@ -603,8 +629,8 @@ export const panelMessages = defineMessages({
     },
     'panel.source.pi.customOverridesSwitchHelp': {
         'zh-CN':
-            '切换 Pi 来源、接口、认证方式或实际 endpoint 时，这三项请求覆盖会自动清空，避免发送到另一个目标。API 方案切换会恢复该方案自己的显式配置。',
-        en: 'Changing the Pi provider, API, authentication, or effective endpoint clears all three request overrides so they cannot be sent to another target. Switching API profiles restores that profile’s explicit values.',
+            '切换“更多”中的来源、接口、认证方式或实际 endpoint 时，这三项请求覆盖会自动清空，避免发送到另一个目标。API 方案切换会恢复该方案自己的显式配置。',
+        en: 'Changing the provider, API, authentication, or effective endpoint under More clears all three request overrides so they cannot be sent to another target. Switching API profiles restores that profile’s explicit values.',
     },
     'panel.source.pi.customIncludeBody': {
         'zh-CN': '请求体附加字段',

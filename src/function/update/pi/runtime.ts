@@ -162,7 +162,7 @@ function requireSettings(value: unknown): ExtraModelSettingsRecord {
     if (!isPlainObject(value)) {
         throw new PiRuntimeError(
             'invalid_configuration',
-            'Pi extra-model settings must be an object'
+            'More source extra-model settings must be an object'
         );
     }
     return value;
@@ -179,7 +179,7 @@ function resolveResponseFormat(
     ) {
         throw new PiRuntimeError(
             'invalid_configuration',
-            'Pi response format is missing or unsupported'
+            'More source response format is missing or unsupported'
         );
     }
     return value as PiRuntimeResponseFormat;
@@ -191,7 +191,7 @@ function optionalStringField(source: Record<string, unknown>, name: string): str
         return '';
     }
     if (typeof value !== 'string') {
-        throw new PiRuntimeError('invalid_configuration', `Pi ${name} must be a string`);
+        throw new PiRuntimeError('invalid_configuration', `More source ${name} must be a string`);
     }
     return value;
 }
@@ -217,7 +217,7 @@ function optionalNumberField(
         const kind = integer ? 'integer' : 'number';
         throw new PiRuntimeError(
             'invalid_configuration',
-            `Pi ${name} must be a ${kind} between ${minimum} and ${maximum}`
+            `More source ${name} must be a ${kind} between ${minimum} and ${maximum}`
         );
     }
     return value;
@@ -278,7 +278,7 @@ function capabilityFor(resolution: ResolvedPiModel): Readonly<PiApiCapabilities>
     if (!capability) {
         throw new PiRuntimeError(
             'invalid_configuration',
-            `Pi API '${resolution.model.api}' has no registered runtime capability metadata`
+            `More source API '${resolution.model.api}' has no registered runtime capability metadata`
         );
     }
     return capability;
@@ -292,7 +292,7 @@ function assertResponseCapability(
     if (responseFormat === '工具调用' && !capabilities.tools) {
         throw new PiRuntimeError(
             'unsupported_capability',
-            `Pi API '${api}' does not support tool calls`
+            `More source API '${api}' does not support tool calls`
         );
     }
     const structuredOutputUnsupported =
@@ -302,7 +302,7 @@ function assertResponseCapability(
     if (structuredOutputUnsupported || jsonObjectOutputUnsupported) {
         throw new PiRuntimeError(
             'unsupported_capability',
-            `Pi API '${api}' does not support native structured output`
+            `More source API '${api}' does not support native structured output`
         );
     }
 }
@@ -317,7 +317,7 @@ function prepareTools(
     if (!definitions?.length) {
         throw new PiRuntimeError(
             'invalid_configuration',
-            'Pi tool-call mode requires at least one tool definition'
+            'More source tool-call mode requires at least one tool definition'
         );
     }
     return Object.freeze(
@@ -336,7 +336,7 @@ function prepareJsonSchema(
     if (responseFormat === '格式化输出' && schema === undefined) {
         throw new PiRuntimeError(
             'invalid_configuration',
-            'Pi structured output requires a JSON schema'
+            'More source structured output requires a JSON schema'
         );
     }
     return responseFormat === '格式化输出' ? cloneJsonSchema(schema) : undefined;
@@ -368,7 +368,7 @@ function validatePayloadConfiguration(preflight: {
     } catch (error) {
         throw new PiRuntimeError(
             'invalid_configuration',
-            error instanceof Error ? error.message : 'Pi payload configuration is invalid'
+            error instanceof Error ? error.message : 'More source payload configuration is invalid'
         );
     }
 }
@@ -387,7 +387,7 @@ async function assertOAuthCredential(
     if (!credential || credential.type !== 'oauth') {
         throw new PiRuntimeError(
             'missing_oauth_credential',
-            `Pi provider '${resolution.definition.providerId}' is not logged in`
+            `More source provider '${resolution.definition.providerId}' is not logged in`
         );
     }
 }
@@ -407,7 +407,7 @@ export async function assertPiRuntimeConfiguration(
     if (!capabilities.streaming) {
         throw new PiRuntimeError(
             'unsupported_capability',
-            `Pi model '${resolution.model.id}' does not support streaming requests`
+            `More source model '${resolution.model.id}' does not support streaming requests`
         );
     }
     assertResponseCapability(responseFormat, capabilities, resolution.model.api);
@@ -416,7 +416,7 @@ export async function assertPiRuntimeConfiguration(
     if (!isPlainObject(piSettings)) {
         throw new PiRuntimeError(
             'invalid_configuration',
-            'Pi connection settings must be an object'
+            'More source connection settings must be an object'
         );
     }
     let headers: ProviderHeaders | undefined;
@@ -433,7 +433,9 @@ export async function assertPiRuntimeConfiguration(
     } catch (error) {
         throw new PiRuntimeError(
             'invalid_configuration',
-            error instanceof Error ? error.message : 'Pi custom request configuration is invalid'
+            error instanceof Error
+                ? error.message
+                : 'More source custom request configuration is invalid'
         );
     }
     const { temperature, sampling } = resolveSampling(settings, capabilities);
@@ -451,7 +453,7 @@ export async function assertPiRuntimeConfiguration(
         }
         throw new PiRuntimeError(
             'invalid_configuration',
-            error instanceof Error ? error.message : 'Pi tool configuration is invalid'
+            error instanceof Error ? error.message : 'More source tool configuration is invalid'
         );
     }
     const jsonSchema = prepareJsonSchema(responseFormat, input.jsonSchema);
@@ -543,7 +545,7 @@ function assertImageCapability(
     if (!preflight.capabilities.imageInput || !preflight.resolution.model.input.includes('image')) {
         throw new PiRuntimeError(
             'unsupported_image_input',
-            `Pi model '${preflight.resolution.model.id}' does not support image input`
+            `More source model '${preflight.resolution.model.id}' does not support image input`
         );
     }
 }
@@ -603,51 +605,54 @@ function normalizeRuntimeFailure(error: unknown): Error {
     ) {
         return new PiRuntimeError(
             'network',
-            'The browser could not complete the Pi provider request. Check the endpoint, network access, and CORS policy.',
+            'The browser could not complete the More source request. Check the endpoint, network access, and CORS policy.',
             true
         );
     }
     if (error instanceof PiResultAdapterError) {
         switch (error.code) {
             case 'provider-error':
-                return new PiRuntimeError('provider', 'Pi provider request failed.', true);
+                return new PiRuntimeError('provider', 'More source request failed.', true);
             case 'deferred':
                 return new PiRuntimeError(
                     'protocol',
-                    'Pi provider returned a deferred response, which is not supported.'
+                    'More source provider returned a deferred response, which is not supported.'
                 );
             case 'empty-response':
                 return new PiRuntimeError(
                     'protocol',
-                    'Pi provider returned no usable response content.'
+                    'More source provider returned no usable response content.'
                 );
             case 'invalid-tool-call':
-                return new PiRuntimeError('protocol', 'Pi provider returned an invalid tool call.');
+                return new PiRuntimeError(
+                    'protocol',
+                    'More source provider returned an invalid tool call.'
+                );
             case 'length':
                 return new PiRuntimeError(
                     'protocol',
-                    'Pi provider response was truncated because it reached the output limit.'
+                    'More source provider response was truncated because it reached the output limit.'
                 );
             case 'aborted':
                 return error;
             case 'network':
                 return new PiRuntimeError(
                     'network',
-                    'The browser could not complete the Pi provider request. Check the endpoint, network access, and CORS policy.',
+                    'The browser could not complete the More source request. Check the endpoint, network access, and CORS policy.',
                     true
                 );
         }
     }
     // SDK/fetch implementations may attach response bodies, headers, or request configuration to
     // arbitrary errors. Do not surface the unknown error or retain it as a cause.
-    return new PiRuntimeError('provider', 'Pi provider request failed.', true);
+    return new PiRuntimeError('provider', 'More source request failed.', true);
 }
 
 function assertGenerationId(generationId: string): void {
     if (!generationId.trim()) {
         throw new PiRuntimeError(
             'invalid_configuration',
-            'Pi request generationId must not be empty'
+            'More source request generationId must not be empty'
         );
     }
 }
@@ -687,7 +692,7 @@ export async function runPiRequest(
     } catch (error) {
         throw new PiRuntimeError(
             'request_already_active',
-            error instanceof Error ? error.message : 'Pi request is already active'
+            error instanceof Error ? error.message : 'More source request is already active'
         );
     }
     try {
@@ -717,7 +722,7 @@ export async function runPiRequest(
         } catch (error) {
             throw new PiRuntimeError(
                 'token_budget',
-                error instanceof Error ? error.message : 'Pi token preflight failed'
+                error instanceof Error ? error.message : 'More source token preflight failed'
             );
         }
 

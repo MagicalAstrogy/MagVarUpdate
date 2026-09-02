@@ -11,8 +11,8 @@ export class PiRequestAbortedError extends Error {
             reason instanceof Error ? reason.message : typeof reason === 'string' ? reason : '';
         super(
             detail
-                ? `Pi request '${generationId}' was aborted: ${detail}`
-                : `Pi request '${generationId}' was aborted`
+                ? `More source request '${generationId}' was aborted: ${detail}`
+                : `More source request '${generationId}' was aborted`
         );
         this.name = 'PiRequestAbortedError';
         this.generationId = generationId;
@@ -43,10 +43,10 @@ export type PiRequestAttemptRegistration = {
  */
 export function beginPiRequestAttempt(generation_id: string): PiRequestAttemptRegistration {
     if (!generation_id.trim()) {
-        throw new Error('Pi request generation_id must not be empty');
+        throw new Error('More source request generation_id must not be empty');
     }
     if (pi_request_attempts.has(generation_id) || pi_request_controllers.has(generation_id)) {
-        throw new Error(`Pi request generation_id '${generation_id}' is already active`);
+        throw new Error(`More source request generation_id '${generation_id}' is already active`);
     }
 
     const controller = new AbortController();
@@ -70,10 +70,10 @@ export function registerPiRequestController(
     caller_signal?: AbortSignal
 ): PiRequestControllerRegistration {
     if (!generation_id.trim()) {
-        throw new Error('Pi request generation_id must not be empty');
+        throw new Error('More source request generation_id must not be empty');
     }
     if (pi_request_controllers.has(generation_id)) {
-        throw new Error(`Pi request generation_id '${generation_id}' is already active`);
+        throw new Error(`More source request generation_id '${generation_id}' is already active`);
     }
 
     const controller = new AbortController();
@@ -203,5 +203,5 @@ export function getActivePiRequestIds(): readonly string[] {
  * its own registration from its `finally` block via `release()`.
  */
 export function clearPiRequestControllers(): void {
-    stopAllExtraModelRequests(new Error('Pi request registry disposed'));
+    stopAllExtraModelRequests(new Error('More source request registry disposed'));
 }

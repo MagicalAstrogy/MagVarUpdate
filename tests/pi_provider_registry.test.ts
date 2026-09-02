@@ -694,6 +694,13 @@ describe('pi model resolver', () => {
 
         expect(isPiDefaultProviderEndpoint(definition, '')).toBe(true);
         expect(isPiDefaultProviderEndpoint(definition, endpoint)).toBe(true);
+        expect(
+            isPiDefaultProviderEndpoint(
+                definition,
+                'https://api.openai.com/v1/responses/',
+                'openai-responses'
+            )
+        ).toBe(true);
         expect(isPiDefaultProviderEndpoint(definition, 'https://proxy.example/v1')).toBe(false);
         expect(isPiDefaultProviderEndpoint(definition, 'http://proxy.example/v1')).toBe(false);
 
@@ -753,6 +760,103 @@ describe('pi model resolver', () => {
         expect(resolved.model.compat).toBeUndefined();
         expect(resolved.catalogHit).toBe(false);
         expect(resolved.effectiveContextWindow).toBe(20_000);
+    });
+
+    test.each([
+        [
+            'OpenAI Responses',
+            'openai-responses',
+            'https://openrouter.ai/api/v1/ReSpOnSeS///',
+            'https://openrouter.ai/api/v1',
+        ],
+        [
+            'OpenAI Chat Completions',
+            'openai-completions',
+            'https://openrouter.ai/api/v1/chat/completions/',
+            'https://openrouter.ai/api/v1',
+        ],
+        [
+            'legacy OpenAI Completions',
+            'openai-completions',
+            'https://compatible.example/v1/completions',
+            'https://compatible.example/v1',
+        ],
+        [
+            'Anthropic Messages',
+            'anthropic-messages',
+            'https://compatible.example/v1/messages///',
+            'https://compatible.example',
+        ],
+        [
+            'nested Anthropic Messages',
+            'anthropic-messages',
+            'https://compatible.example/api/v1/messages',
+            'https://compatible.example/api',
+        ],
+        [
+            'bare Anthropic Messages',
+            'anthropic-messages',
+            'https://compatible.example/api/messages',
+            'https://compatible.example/api',
+        ],
+    ] as const)(
+        'normalizes a custom %s operation URL to its API base',
+        (_label, api, endpoint, expectedBaseUrl) => {
+            const provider = api === 'anthropic-messages' ? 'anthropic' : 'openai';
+            const resolved = resolvePiModel({
+                piConfig: {
+                    provider,
+                    api,
+                    authType: 'api_key',
+                    endpoint,
+                    model: 'custom-model',
+                    contextWindow: 20_000,
+                },
+                maxTokens: 4000,
+                apiKey: 'test-api-key',
+            });
+
+            expect(resolved.model.baseUrl).toBe(expectedBaseUrl);
+        }
+    );
+
+    test('strips only one trailing operation route', () => {
+        const resolved = resolvePiModel({
+            piConfig: {
+                provider: 'openai',
+                api: 'openai-responses',
+                authType: 'api_key',
+                endpoint: 'https://compatible.example/v1/responses/responses',
+                model: 'custom-model',
+                contextWindow: 20_000,
+            },
+            maxTokens: 4000,
+            apiKey: 'test-api-key',
+        });
+
+        expect(resolved.model.baseUrl).toBe('https://compatible.example/v1/responses');
+    });
+
+    test.each([
+        ['openai-responses', 'openai', 'https://openrouter.ai/api/v1'],
+        ['openai-responses', 'openai', 'https://compatible.example/responses-proxy'],
+        ['openai-completions', 'openai', 'https://compatible.example/v1'],
+        ['anthropic-messages', 'anthropic', 'https://compatible.example/api'],
+    ] as const)('accepts a custom %s API base URL', (api, provider, endpoint) => {
+        const resolved = resolvePiModel({
+            piConfig: {
+                provider,
+                api,
+                authType: 'api_key',
+                endpoint,
+                model: 'custom-model',
+                contextWindow: 20_000,
+            },
+            maxTokens: 4000,
+            apiKey: 'test-api-key',
+        });
+
+        expect(resolved.model.baseUrl).toBe(endpoint);
     });
 
     test('requires manual metadata for a catalog-named model on a custom endpoint', () => {

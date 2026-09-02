@@ -151,16 +151,16 @@ export const runtimeMessages = defineMessages({
         en: 'Parsing completed',
     },
     'runtime.button.piExtraModelStopTitle': {
-        'zh-CN': '[MVU]停止 Pi 额外模型解析',
-        en: '[MVU] Stop Pi extra-model parsing',
+        'zh-CN': '[MVU]停止“更多”额外模型解析',
+        en: '[MVU] Stop extra-model parsing from More',
     },
     'runtime.button.piExtraModelStopped': {
-        'zh-CN': '已停止 {count} 个 Pi 额外模型请求',
-        en: 'Stopped {count} Pi extra-model request(s)',
+        'zh-CN': '已停止 {count} 个“更多”额外模型请求',
+        en: 'Stopped {count} extra-model request(s) from More',
     },
     'runtime.button.piExtraModelNotRunning': {
-        'zh-CN': '当前没有正在运行的 Pi 额外模型请求',
-        en: 'No Pi extra-model request is currently running',
+        'zh-CN': '当前没有正在运行的“更多”额外模型请求',
+        en: 'No extra-model request from More is currently running',
     },
     'runtime.button.cleanupPrompt': {
         'zh-CN':
@@ -554,32 +554,32 @@ export const runtimeMessages = defineMessages({
     },
 
     'runtime.pi.invalidConfig': {
-        'zh-CN': 'Pi 配置无效，请检查“模型来源 → 更多”中的来源、API 和认证设置。',
-        en: 'The Pi configuration is invalid. Check the provider, API, and authentication settings under Model Source → More.',
+        'zh-CN': '“更多”配置无效，请检查其中的来源、API 和认证设置。',
+        en: 'The More-source configuration is invalid. Check its provider, API, and authentication settings.',
     },
     'runtime.pi.unknownProvider': {
-        'zh-CN': '所选 Pi 来源不可用，请重新选择来源。',
-        en: 'The selected Pi provider is unavailable. Select a provider again.',
+        'zh-CN': '“更多”中所选来源不可用，请重新选择来源。',
+        en: 'The selected provider under More is unavailable. Select a provider again.',
     },
     'runtime.pi.unsupportedApi': {
-        'zh-CN': '所选 Pi 来源不支持当前 API，请改用该来源支持的 API。',
-        en: 'The selected Pi provider does not support the current API. Choose an API supported by this provider.',
+        'zh-CN': '“更多”中所选来源不支持当前 API，请改用该来源支持的 API。',
+        en: 'The selected provider under More does not support the current API. Choose an API supported by this provider.',
     },
     'runtime.pi.unsupportedAuth': {
-        'zh-CN': '所选 Pi 来源不支持当前认证方式，请改用该来源支持的认证方式。',
-        en: 'The selected Pi provider does not support the current authentication method. Choose a supported method.',
+        'zh-CN': '“更多”中所选来源不支持当前认证方式，请改用该来源支持的认证方式。',
+        en: 'The selected provider under More does not support the current authentication method. Choose a supported method.',
     },
     'runtime.pi.missingApiKey': {
-        'zh-CN': '请输入所选 Pi 来源的 API Key。',
-        en: 'Enter an API key for the selected Pi provider.',
+        'zh-CN': '请输入“更多”中所选来源的 API Key。',
+        en: 'Enter an API key for the selected provider under More.',
     },
     'runtime.pi.missingOAuthCredential': {
-        'zh-CN': '所选 Pi 来源尚未完成 OAuth 登录，请先登录或重新登录。',
-        en: 'The selected Pi provider is not signed in with OAuth. Sign in or sign in again before retrying.',
+        'zh-CN': '“更多”中所选来源尚未完成 OAuth 登录，请先登录或重新登录。',
+        en: 'The selected provider under More is not signed in with OAuth. Sign in or sign in again before retrying.',
     },
     'runtime.pi.oauthCredentialExpired': {
-        'zh-CN': 'Pi OAuth 凭据已过期且无法刷新，请重新登录。',
-        en: 'The Pi OAuth credential has expired and could not be refreshed. Sign in again.',
+        'zh-CN': '“更多”的 OAuth 凭据已过期且无法刷新，请重新登录。',
+        en: 'The OAuth credential for More has expired and could not be refreshed. Sign in again.',
     },
     'runtime.pi.invalidEndpoint': {
         'zh-CN':
@@ -587,8 +587,8 @@ export const runtimeMessages = defineMessages({
         en: 'The custom endpoint must use HTTPS. HTTP is limited to localhost, 127.0.0.1, or [::1]. Credentials, query parameters, and fragments are not allowed.',
     },
     'runtime.pi.customEndpointNotAllowed': {
-        'zh-CN': '所选 Pi 来源使用固定 endpoint，不允许自定义。',
-        en: 'The selected Pi provider uses a fixed endpoint and does not allow a custom one.',
+        'zh-CN': '“更多”中所选来源使用固定 endpoint，不允许自定义。',
+        en: 'The selected provider under More uses a fixed endpoint and does not allow a custom one.',
     },
     'runtime.pi.oauthEndpointNotAllowed': {
         'zh-CN': 'OAuth 来源必须使用注册的固定 endpoint，请清除自定义 endpoint。',
@@ -599,16 +599,16 @@ export const runtimeMessages = defineMessages({
         en: 'This OAuth provider can only use its locked compatible API. Reselect the provider or authentication method.',
     },
     'runtime.pi.missingModel': {
-        'zh-CN': '请填写 Pi 模型名称。',
-        en: 'Enter a Pi model name.',
+        'zh-CN': '请填写“更多”来源的模型名称。',
+        en: 'Enter a model name for the More source.',
     },
     'runtime.pi.invalidContextWindow': {
         'zh-CN': 'contextWindow 必须是正整数。',
         en: 'contextWindow must be a positive integer.',
     },
     'runtime.pi.missingContextWindow': {
-        'zh-CN': '当前模型不在 Pi 内置目录中，请手动填写有效的 contextWindow。',
-        en: 'The current model is not in the built-in Pi catalog. Enter a valid contextWindow manually.',
+        'zh-CN': '当前模型不在“更多”的内置目录中，请手动填写有效的 contextWindow。',
+        en: 'The current model is not in the built-in catalog under More. Enter a valid contextWindow manually.',
     },
     'runtime.pi.invalidMaxTokens': {
         'zh-CN': '“最大回复 token 数”必须是正整数。',
@@ -619,80 +619,81 @@ export const runtimeMessages = defineMessages({
         en: 'Maximum response tokens must not exceed contextWindow.',
     },
     'runtime.pi.customHeadersInvalid': {
-        'zh-CN': 'Pi 自定义请求头必须是 YAML/JSON 对象，且值只能是字符串或 null。',
-        en: 'Pi custom headers must be a YAML/JSON object whose values are strings or null.',
+        'zh-CN': '“更多”的自定义请求头必须是 YAML/JSON 对象，且值只能是字符串或 null。',
+        en: 'Custom headers under More must be a YAML/JSON object whose values are strings or null.',
     },
     'runtime.pi.customConfigParseFailed': {
-        'zh-CN': 'Pi 自定义请求配置不是有效的 YAML 或 JSON，请检查格式。',
-        en: 'The Pi custom request settings are not valid YAML or JSON. Check their formatting.',
+        'zh-CN': '“更多”的自定义请求配置不是有效的 YAML 或 JSON，请检查格式。',
+        en: 'The custom request settings under More are not valid YAML or JSON. Check their formatting.',
     },
     'runtime.pi.customIncludeBodyInvalid': {
-        'zh-CN': 'Pi 自定义请求体必须是 YAML/JSON 对象。',
-        en: 'The Pi custom request body must be a YAML/JSON object.',
+        'zh-CN': '“更多”的自定义请求体必须是 YAML/JSON 对象。',
+        en: 'The custom request body under More must be a YAML/JSON object.',
     },
     'runtime.pi.customExcludeBodyInvalid': {
-        'zh-CN': 'Pi 排除请求字段必须是 YAML/JSON 字段名数组。',
-        en: 'Pi excluded request fields must be a YAML/JSON array of field names.',
+        'zh-CN': '“更多”的排除请求字段必须是 YAML/JSON 字段名数组。',
+        en: 'Excluded request fields under More must be a YAML/JSON array of field names.',
     },
     'runtime.pi.customPayloadProtectedField': {
-        'zh-CN': 'Pi 自定义请求配置不能覆盖、排除或设置认证及关键协议字段。',
-        en: 'Pi custom request settings cannot override, exclude, or set authentication or other protected protocol fields.',
+        'zh-CN': '“更多”的自定义请求配置不能覆盖、排除或设置认证及关键协议字段。',
+        en: 'Custom request settings under More cannot override, exclude, or set authentication or other protected protocol fields.',
     },
     'runtime.pi.payloadInvalid': {
-        'zh-CN': 'Pi Provider 请求体必须是对象，请检查 API 配置。',
-        en: 'The Pi provider payload must be an object. Check the API configuration.',
+        'zh-CN': '“更多”来源的请求体必须是对象，请检查 API 配置。',
+        en: 'The provider payload under More must be an object. Check the API configuration.',
     },
     'runtime.pi.structuredOutputSchemaMissing': {
-        'zh-CN': 'Pi 格式化输出需要有效的 JSON Schema。',
-        en: 'Pi formatted output requires a valid JSON Schema.',
+        'zh-CN': '“更多”的格式化输出需要有效的 JSON Schema。',
+        en: 'Formatted output under More requires a valid JSON Schema.',
     },
     'runtime.pi.structuredOutputUnsupported': {
-        'zh-CN': '当前 Pi 来源、API 或模型不支持原生格式化输出，请更换配置后重试。',
-        en: 'The current Pi provider, API, or model does not support native formatted output. Change the configuration and retry.',
+        'zh-CN': '“更多”中当前来源、API 或模型不支持原生格式化输出，请更换配置后重试。',
+        en: 'The current provider, API, or model under More does not support native formatted output. Change the configuration and retry.',
     },
     'runtime.pi.toolCallingUnsupported': {
-        'zh-CN': '当前 Pi 来源、API 或模型不支持所需的工具调用模式，请更换配置后重试。',
-        en: 'The current Pi provider, API, or model does not support the required tool-calling mode. Change the configuration and retry.',
+        'zh-CN': '“更多”中当前来源、API 或模型不支持所需的工具调用模式，请更换配置后重试。',
+        en: 'The current provider, API, or model under More does not support the required tool-calling mode. Change the configuration and retry.',
     },
     'runtime.pi.namedToolChoiceUnsupported': {
-        'zh-CN': '当前 Pi API 不支持指定工具调用，请更换 API 或调整工具选择方式。',
-        en: 'The current Pi API does not support named tool choice. Choose another API or adjust the tool-choice mode.',
+        'zh-CN': '“更多”中的当前 API 不支持指定工具调用，请更换 API 或调整工具选择方式。',
+        en: 'The current API under More does not support named tool choice. Choose another API or adjust the tool-choice mode.',
     },
     'runtime.pi.invalidToolDefinition': {
-        'zh-CN': 'Pi 工具定义无效：function name 不能为空，且 parameters 根节点必须是 object。',
-        en: 'The Pi tool definition is invalid: function name cannot be empty, and the parameters root must be an object.',
+        'zh-CN':
+            '“更多”来源的工具定义无效：function name 不能为空，且 parameters 根节点必须是 object。',
+        en: 'The tool definition under More is invalid: function name cannot be empty, and the parameters root must be an object.',
     },
     'runtime.pi.invalidToolCall': {
-        'zh-CN': 'Pi 返回了无效的工具调用，请重试或更换模型。',
-        en: 'Pi returned an invalid tool call. Retry or choose another model.',
+        'zh-CN': '“更多”来源返回了无效的工具调用，请重试或更换模型。',
+        en: 'The More source returned an invalid tool call. Retry or choose another model.',
     },
     'runtime.pi.toolUseMissingCall': {
-        'zh-CN': 'Pi 以工具调用结束，但没有返回工具调用内容，请重试或更换模型。',
-        en: 'Pi stopped for tool use without returning a tool call. Retry or choose another model.',
+        'zh-CN': '“更多”来源以工具调用结束，但没有返回工具调用内容，请重试或更换模型。',
+        en: 'The More source stopped for tool use without returning a tool call. Retry or choose another model.',
     },
     'runtime.pi.imageInputUnsupported': {
-        'zh-CN': '当前 Pi 模型不支持图片输入，请移除图片或更换模型。',
-        en: 'The current Pi model does not support image input. Remove the image or choose another model.',
+        'zh-CN': '“更多”中的当前模型不支持图片输入，请移除图片或更换模型。',
+        en: 'The current model under More does not support image input. Remove the image or choose another model.',
     },
     'runtime.pi.contextInvalidImage': {
-        'zh-CN': 'Pi 图片输入必须是可解码的 image/* base64 data URL。',
-        en: 'Pi image input must be a decodable image/* base64 data URL.',
+        'zh-CN': '“更多”的图片输入必须是可解码的 image/* base64 data URL。',
+        en: 'Image input under More must be a decodable image/* base64 data URL.',
     },
     'runtime.pi.remoteImageUnsupported': {
-        'zh-CN': 'Pi 首版不支持远程图片 URL，请改用 base64 data URL。',
-        en: 'This Pi version does not support remote image URLs. Use a base64 data URL instead.',
+        'zh-CN': '“更多”当前不支持远程图片 URL，请改用 base64 data URL。',
+        en: 'The More source does not currently support remote image URLs. Use a base64 data URL instead.',
     },
     'runtime.pi.videoUnsupported': {
-        'zh-CN': 'Pi 链路当前不支持视频内容，请移除视频后重试。',
-        en: 'The Pi connection does not currently support video content. Remove the video and retry.',
+        'zh-CN': '“更多”链路当前不支持视频内容，请移除视频后重试。',
+        en: 'The More path does not currently support video content. Remove the video and retry.',
     },
     'runtime.pi.contextEmptyContent': {
-        'zh-CN': '第 {index} 条消息内容为空，请移除该消息或关闭 Pi 严格模式。',
-        en: 'Message {index} is empty. Remove it or disable Pi strict mode.',
+        'zh-CN': '第 {index} 条消息内容为空，请移除该消息或关闭“更多”严格模式。',
+        en: 'Message {index} is empty. Remove it or disable strict mode under More.',
     },
     'runtime.pi.contextLateSystem': {
-        'zh-CN': 'Pi 严格模式不允许对话开始后的 system 消息，请检查预设或注入顺序。',
-        en: 'Pi strict mode does not allow system messages after the conversation begins. Check the preset or injection order.',
+        'zh-CN': '“更多”严格模式不允许对话开始后的 system 消息，请检查预设或注入顺序。',
+        en: 'Strict mode under More does not allow system messages after the conversation begins. Check the preset or injection order.',
     },
     'runtime.pi.contextMissingToolCall': {
         'zh-CN': '第 {index} 条历史工具结果无法找到对应的工具调用，请检查聊天历史。',
@@ -703,16 +704,16 @@ export const runtimeMessages = defineMessages({
         en: 'System message {index} has no nearby user message to attach to. Check the preset or injection order.',
     },
     'runtime.pi.contextUnsupportedContent': {
-        'zh-CN': '第 {index} 条消息包含 Pi 当前不支持的内容，请移除该内容后重试。',
-        en: 'Message {index} contains content that Pi does not currently support. Remove it and retry.',
+        'zh-CN': '第 {index} 条消息包含“更多”当前不支持的内容，请移除该内容后重试。',
+        en: 'Message {index} contains content that More does not currently support. Remove it and retry.',
     },
     'runtime.pi.promptCaptureFailed': {
         'zh-CN': '未能捕获 SillyTavern 构建后的最终提示词，请重试并查看日志。',
         en: 'Could not capture the final prompt built by SillyTavern. Retry and check the logs.',
     },
     'runtime.pi.requestAlreadyActive': {
-        'zh-CN': '同一 Pi 请求已在运行，请等待它结束或先停止该请求。',
-        en: 'The same Pi request is already running. Wait for it to finish or stop it first.',
+        'zh-CN': '同一“更多”请求已在运行，请等待它结束或先停止该请求。',
+        en: 'The same More-source request is already running. Wait for it to finish or stop it first.',
     },
     'runtime.pi.tokenBudgetExceeded': {
         'zh-CN':
@@ -720,44 +721,45 @@ export const runtimeMessages = defineMessages({
         en: 'The request is estimated to use {estimatedInput} input tokens. Together with {maxTokens} response tokens and {reserve} reserved tokens, it exceeds the {contextWindow}-token context window. Shorten chat history, reduce maximum response tokens, or correct contextWindow.',
     },
     'runtime.pi.requestAborted': {
-        'zh-CN': 'Pi 请求已取消。',
-        en: 'The Pi request was cancelled.',
+        'zh-CN': '“更多”请求已取消。',
+        en: 'The More-source request was cancelled.',
     },
     'runtime.pi.browserNetworkError': {
-        'zh-CN': '浏览器无法连接 Pi 来源。请检查网络、地址配置，并确认来源允许浏览器 CORS 请求。',
-        en: 'The browser could not reach the Pi provider. Check the network and address settings, and confirm that the provider allows browser CORS requests.',
+        'zh-CN':
+            '浏览器无法连接“更多”中所选来源。请检查网络、地址配置，并确认来源允许浏览器 CORS 请求。',
+        en: 'The browser could not reach the selected provider under More. Check the network and address settings, and confirm that the provider allows browser CORS requests.',
     },
     'runtime.pi.requestFailed': {
-        'zh-CN': 'Pi Provider 请求失败。请检查来源配置、凭据和网络后重试。',
-        en: 'The Pi provider request failed. Check the provider settings, credentials, and network, then retry.',
+        'zh-CN': '“更多”来源请求失败。请检查来源配置、凭据和网络后重试。',
+        en: 'The provider request under More failed. Check the provider settings, credentials, and network, then retry.',
     },
     'runtime.pi.featureDisabled': {
-        'zh-CN': '此构建已关闭 Pi 多来源链路；请选择“与插头相同”或“自定义”。',
-        en: 'The Pi multiprovider path is disabled in this build. Select Same as current connection or Custom.',
+        'zh-CN': '此构建已关闭“更多”模型来源；请选择“与插头相同”或“自定义”。',
+        en: 'The More model source is disabled in this build. Select Same as current connection or Custom.',
     },
     'runtime.pi.protocolError': {
-        'zh-CN': 'Pi Provider 返回了无效的协议数据，请重试或更换来源/API。',
-        en: 'The Pi provider returned invalid protocol data. Retry or choose another provider/API.',
+        'zh-CN': '“更多”来源返回了无效的协议数据，请重试或更换来源/API。',
+        en: 'The provider under More returned invalid protocol data. Retry or choose another provider/API.',
     },
     'runtime.pi.lengthTruncated': {
-        'zh-CN': 'Pi 回复因达到长度上限而被截断，请增加最大回复 token 数或缩短请求内容。',
-        en: 'The Pi response was truncated at the length limit. Increase maximum response tokens or shorten the request content.',
+        'zh-CN': '“更多”回复因达到长度上限而被截断，请增加最大回复 token 数或缩短请求内容。',
+        en: 'The response from More was truncated at the length limit. Increase maximum response tokens or shorten the request content.',
     },
     'runtime.pi.emptyResponse': {
-        'zh-CN': 'Pi 返回了空回复，请重试或更换模型。',
-        en: 'Pi returned an empty response. Retry or choose another model.',
+        'zh-CN': '“更多”来源返回了空回复，请重试或更换模型。',
+        en: 'The More source returned an empty response. Retry or choose another model.',
     },
     'runtime.pi.thinkingOnlyResponse': {
-        'zh-CN': 'Pi 回复仅包含 thinking，没有可用的业务内容，请重试或更换模型。',
-        en: 'The Pi response contained only thinking and no usable content. Retry or choose another model.',
+        'zh-CN': '“更多”回复仅包含 thinking，没有可用的业务内容，请重试或更换模型。',
+        en: 'The response from More contained only thinking and no usable content. Retry or choose another model.',
     },
     'runtime.pi.deferredResponse': {
-        'zh-CN': 'Pi 回复尚未完成，当前不支持 deferred 结果。',
-        en: 'The Pi response is not complete; deferred results are not currently supported.',
+        'zh-CN': '“更多”回复尚未完成，当前不支持 deferred 结果。',
+        en: 'The response from More is not complete; deferred results are not currently supported.',
     },
     'runtime.pi.oauth.cancelled': {
-        'zh-CN': 'Pi OAuth 登录已取消，原凭据未更改。',
-        en: 'Pi OAuth sign-in was cancelled. The existing credential was not changed.',
+        'zh-CN': '“更多”的 OAuth 登录已取消，原凭据未更改。',
+        en: 'OAuth sign-in under More was cancelled. The existing credential was not changed.',
     },
     'runtime.pi.oauth.browserUnavailable': {
         'zh-CN':
@@ -765,8 +767,8 @@ export const runtimeMessages = defineMessages({
         en: 'Fetch or Web Crypto required for OAuth is unavailable. Retry in a supported secure browser context.',
     },
     'runtime.pi.oauth.unsupportedProvider': {
-        'zh-CN': '所选 Pi 来源不支持浏览器 OAuth 登录，请改用 API Key 或其他来源。',
-        en: 'The selected Pi provider does not support browser OAuth sign-in. Use an API key or another provider.',
+        'zh-CN': '“更多”中所选来源不支持浏览器 OAuth 登录，请改用 API Key 或其他来源。',
+        en: 'The selected provider under More does not support browser OAuth sign-in. Use an API key or another provider.',
     },
     'runtime.pi.oauth.invalidCallback': {
         'zh-CN':
@@ -807,8 +809,8 @@ export const runtimeMessages = defineMessages({
         en: 'The OAuth sign-in attempt has ended or its callback URL was already used. Start a new sign-in.',
     },
     'runtime.pi.oauth.credentialStore': {
-        'zh-CN': '无法读取或保存 Pi OAuth 凭据，请检查浏览器存储后重试。',
-        en: 'The Pi OAuth credential could not be read or saved. Check browser storage and retry.',
+        'zh-CN': '无法读取或保存“更多”的 OAuth 凭据，请检查浏览器存储后重试。',
+        en: 'The OAuth credential for More could not be read or saved. Check browser storage and retry.',
     },
 
     'runtime.variableUpdate.unknownCommand': {
@@ -929,8 +931,8 @@ export const runtimeMessages = defineMessages({
         en: 'API profile “{name}” already exists',
     },
     'runtime.apiProfile.piConfigRequired': {
-        'zh-CN': 'Pi API 方案缺少完整的 Pi 连接配置，无法保存。',
-        en: 'A Pi API profile requires a complete Pi connection snapshot before it can be saved.',
+        'zh-CN': '“更多”API 方案缺少完整的连接配置，无法保存。',
+        en: 'A More-source API profile requires a complete connection snapshot before it can be saved.',
     },
     'runtime.apiProfile.enterNewName': {
         'zh-CN': '请先输入新方案名称',

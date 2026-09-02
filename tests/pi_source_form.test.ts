@@ -176,12 +176,36 @@ describe('Pi source form helpers', () => {
         );
         expect(proxy).toBe('openai\nhttps://proxy.example/v1');
         expect(proxy).not.toBe(official);
+        expect(
+            resolvePiApiKeyScope(
+                openai,
+                'openai-responses',
+                'api_key',
+                'https://proxy.example/v1/responses/'
+            )
+        ).toBe(proxy);
+        expect(
+            resolvePiApiKeyScope(
+                openai,
+                'openai-completions',
+                'api_key',
+                'https://proxy.example/v1/chat/completions'
+            )
+        ).toBe(proxy);
 
         expect(resolvePiApiKeyScope(openai, 'openai-responses', 'api_key', 'not a URL')).toBe('');
         expect(resolvePiApiKeyScope(openai, 'unknown-api', 'api_key', '')).toBe('');
         expect(resolvePiApiKeyScope(openai, 'openai-responses', 'oauth', '')).toBe('');
         expect(
             resolvePiApiKeyScope(anthropic, 'anthropic-messages', 'api_key', 'https://x.test')
+        ).toBe('anthropic\nhttps://x.test');
+        expect(
+            resolvePiApiKeyScope(
+                anthropic,
+                'anthropic-messages',
+                'api_key',
+                'https://x.test/v1/messages'
+            )
         ).toBe('anthropic\nhttps://x.test');
         expect(
             resolvePiApiKeyScope(google, 'google-generative-ai', 'api_key', 'https://x.test')
@@ -257,6 +281,15 @@ describe('Pi source form helpers', () => {
                 'openai-responses',
                 'api_key',
                 ' https://api.openai.com/v1/// '
+            )
+        ).toBe(official);
+        expect(
+            resolvePiRequestTargetIdentity(
+                openai,
+                'openai',
+                'openai-responses',
+                'api_key',
+                'https://api.openai.com/v1/responses'
             )
         ).toBe(official);
         expect(
@@ -398,6 +431,9 @@ describe('Pi source form helpers', () => {
 
         expect(isPiEndpointCatalogCompatible(openai, '')).toBe(true);
         expect(isPiEndpointCatalogCompatible(openai, ' https://api.openai.com/v1/// ')).toBe(true);
+        expect(isPiEndpointCatalogCompatible(openai, 'https://api.openai.com/v1/responses')).toBe(
+            true
+        );
         expect(isPiEndpointCatalogCompatible(openai, 'https://proxy.example/v1')).toBe(false);
         expect(isPiEndpointCatalogCompatible(openai, 'http://proxy.example/v1')).toBe(false);
         expect(isPiEndpointCatalogCompatible(openai, 'not a URL')).toBe(false);

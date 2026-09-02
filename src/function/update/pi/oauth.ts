@@ -106,7 +106,7 @@ function oauthError(code: PiOAuthErrorCode, message: string): PiOAuthError {
 }
 
 function cancellationError(): PiOAuthError {
-    return oauthError('cancelled', 'Pi OAuth login was cancelled.');
+    return oauthError('cancelled', 'More source OAuth login was cancelled.');
 }
 
 function throwIfAborted(signal?: AbortSignal): void {
@@ -124,7 +124,7 @@ function getFetch(options?: Pick<PiOAuthDependencies, 'fetch'>): FetchLike {
     if (typeof fetchImpl !== 'function') {
         throw oauthError(
             'browser_unavailable',
-            'Pi OAuth requires the browser Fetch API for token requests.'
+            'More source OAuth requires the browser Fetch API for token requests.'
         );
     }
     return fetchImpl.bind(globalThis) as FetchLike;
@@ -139,7 +139,7 @@ function getCrypto(options?: Pick<PiOAuthDependencies, 'crypto'>): CryptoLike {
     ) {
         throw oauthError(
             'browser_unavailable',
-            'Pi OAuth requires Web Crypto with SHA-256 support.'
+            'More source OAuth requires Web Crypto with SHA-256 support.'
         );
     }
     return cryptoImpl;
@@ -157,13 +157,13 @@ function getOAuthMetadata(providerId: string): OAuthMetadata {
     if (!metadata || metadata.providerId !== providerId) {
         throw oauthError(
             'unsupported_provider',
-            `Pi provider "${providerId}" does not support browser OAuth.`
+            `More source provider "${providerId}" does not support browser OAuth.`
         );
     }
     if (providerId !== ANTHROPIC_PROVIDER_ID && providerId !== OPENAI_CODEX_PROVIDER_ID) {
         throw oauthError(
             'unsupported_provider',
-            `Pi provider "${providerId}" does not support browser OAuth.`
+            `More source provider "${providerId}" does not support browser OAuth.`
         );
     }
     return metadata;
@@ -260,12 +260,12 @@ function linkAbortSignal(signal: AbortSignal | undefined, controller: AbortContr
 
 function errorForClosedAttempt(reason: ClosedAttemptReason): PiOAuthError {
     if (reason === 'expired') {
-        return oauthError('attempt_expired', 'This Pi OAuth login attempt has expired.');
+        return oauthError('attempt_expired', 'This More source OAuth login attempt has expired.');
     }
     if (reason === 'cancelled') {
         return cancellationError();
     }
-    return oauthError('attempt_used', 'This Pi OAuth callback has already been used.');
+    return oauthError('attempt_used', 'This More source OAuth callback has already been used.');
 }
 
 function getPendingAttempt(attemptId: string, now: number): PendingAttempt {
@@ -275,14 +275,17 @@ function getPendingAttempt(attemptId: string, now: number): PendingAttempt {
         if (closed) {
             throw errorForClosedAttempt(closed.reason);
         }
-        throw oauthError('attempt_used', 'No active Pi OAuth login attempt matches this callback.');
+        throw oauthError(
+            'attempt_used',
+            'No active More source OAuth login attempt matches this callback.'
+        );
     }
     if (now >= attempt.expiresAt) {
         expireAttempt(attempt);
-        throw oauthError('attempt_expired', 'This Pi OAuth login attempt has expired.');
+        throw oauthError('attempt_expired', 'This More source OAuth login attempt has expired.');
     }
     if (attempt.phase !== 'pending') {
-        throw oauthError('attempt_used', 'This Pi OAuth callback has already been used.');
+        throw oauthError('attempt_used', 'This More source OAuth callback has already been used.');
     }
     if (attempt.controller.signal.aborted) {
         closeAttempt(attempt, 'cancelled', false);
@@ -328,23 +331,23 @@ function parseAndValidateCallback(callbackUrl: string, attempt: PendingAttempt):
     ) {
         throw oauthError(
             'invalid_callback',
-            'The Pi OAuth callback does not match the registered loopback address.'
+            'The More source OAuth callback does not match the registered loopback address.'
         );
     }
 
     const state = callback.searchParams.get('state') ?? '';
     if (!state || state !== attempt.state) {
-        throw oauthError('state_mismatch', 'The Pi OAuth callback state does not match.');
+        throw oauthError('state_mismatch', 'The More source OAuth callback state does not match.');
     }
     if (callback.searchParams.has('error')) {
         throw oauthError(
             'authorization_failed',
-            'The OAuth provider did not authorize this Pi login.'
+            'The OAuth provider did not authorize the More source login.'
         );
     }
     const code = callback.searchParams.get('code') ?? '';
     if (!code) {
-        throw oauthError('invalid_callback', 'The Pi OAuth callback is missing its code.');
+        throw oauthError('invalid_callback', 'The More source OAuth callback is missing its code.');
     }
     return { code, state };
 }
@@ -360,10 +363,13 @@ function normalizeFetchFailure(error: unknown, signal: AbortSignal): never {
     if (error instanceof TypeError) {
         throw oauthError(
             'browser_network',
-            'The browser could not reach the Pi OAuth token endpoint. Check network access and whether the provider allows browser CORS requests.'
+            'The browser could not reach the More source OAuth token endpoint. Check network access and whether the provider allows browser CORS requests.'
         );
     }
-    throw oauthError('browser_network', 'The Pi OAuth token request failed in the browser.');
+    throw oauthError(
+        'browser_network',
+        'The More source OAuth token request failed in the browser.'
+    );
 }
 
 type TokenGrant =
@@ -401,7 +407,7 @@ async function readTokenResponse(
     if (!response.ok) {
         throw oauthError(
             'token_http',
-            `The Pi OAuth token endpoint rejected the request (HTTP ${response.status}).`
+            `The More source OAuth token endpoint rejected the request (HTTP ${response.status}).`
         );
     }
 
@@ -411,13 +417,13 @@ async function readTokenResponse(
     } catch {
         throw oauthError(
             'token_response',
-            'The Pi OAuth token endpoint returned an invalid response.'
+            'The More source OAuth token endpoint returned an invalid response.'
         );
     }
     if (!body || typeof body !== 'object') {
         throw oauthError(
             'token_response',
-            'The Pi OAuth token endpoint returned an invalid response.'
+            'The More source OAuth token endpoint returned an invalid response.'
         );
     }
     const token = body as Record<string, unknown>;
@@ -435,7 +441,7 @@ async function readTokenResponse(
     ) {
         throw oauthError(
             'token_response',
-            'The Pi OAuth token endpoint response is missing required fields.'
+            'The More source OAuth token endpoint response is missing required fields.'
         );
     }
     return { access, refresh, expiresInSeconds: expiresIn };
@@ -550,7 +556,7 @@ async function persistCredential(
         }
         throw oauthError(
             'credential_store',
-            'Pi OAuth login succeeded, but the credential could not be saved.'
+            'More source OAuth login succeeded, but the credential could not be saved.'
         );
     }
 }
@@ -563,7 +569,7 @@ export async function beginPiOAuth(
     const metadata = getOAuthMetadata(providerId);
     const ttl = options.attemptTtlMs ?? DEFAULT_ATTEMPT_TTL_MS;
     if (!Number.isFinite(ttl) || ttl <= 0) {
-        throw new RangeError('Pi OAuth attemptTtlMs must be a positive number.');
+        throw new RangeError('More source OAuth attemptTtlMs must be a positive number.');
     }
     const cryptoImpl = getCrypto(options);
     const { verifier, challenge } = await createPkce(cryptoImpl);
@@ -680,7 +686,10 @@ export async function logoutPiOAuth(
         if (options.signal?.aborted) {
             throw cancellationError();
         }
-        throw oauthError('credential_store', 'The Pi OAuth credential could not be removed.');
+        throw oauthError(
+            'credential_store',
+            'The More source OAuth credential could not be removed.'
+        );
     }
 }
 
@@ -697,7 +706,10 @@ export async function getPiOAuthCredentialStatus(
         if (options.signal?.aborted) {
             throw cancellationError();
         }
-        throw oauthError('credential_store', 'The Pi OAuth credential status could not be read.');
+        throw oauthError(
+            'credential_store',
+            'The More source OAuth credential status could not be read.'
+        );
     }
     if (!credential || credential.type !== 'oauth') {
         return { loggedIn: false };
@@ -743,7 +755,10 @@ function createBrowserOAuthAuth(
                 if (interaction.signal.aborted) {
                     throw cancellationError();
                 }
-                throw oauthError('invalid_callback', 'Pi OAuth callback input was cancelled.');
+                throw oauthError(
+                    'invalid_callback',
+                    'More source OAuth callback input was cancelled.'
+                );
             }
             try {
                 return await completePiOAuth(attempt.id, callbackUrl, {

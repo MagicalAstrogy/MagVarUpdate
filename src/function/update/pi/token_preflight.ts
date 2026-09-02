@@ -82,15 +82,15 @@ function assertPiImageInputBudget(context: Context): void {
     const countImage = (image: ImageContent): void => {
         const image_bytes = getEstimatedImageBytes(image);
         if (image_bytes > PI_IMAGE_INPUT_LIMITS.maxDecodedBytesPerImage) {
-            throw new Error('Pi image exceeds the per-image input limit');
+            throw new Error('More source image exceeds the per-image input limit');
         }
         image_count += 1;
         decoded_bytes += image_bytes;
         if (image_count > PI_IMAGE_INPUT_LIMITS.maxImagesPerContext) {
-            throw new Error('Pi image count exceeds the per-context input limit');
+            throw new Error('More source image count exceeds the per-context input limit');
         }
         if (decoded_bytes > PI_IMAGE_INPUT_LIMITS.maxDecodedBytesPerContext) {
-            throw new Error('Pi image total exceeds the per-context input limit');
+            throw new Error('More source image total exceeds the per-context input limit');
         }
     };
 
@@ -162,13 +162,13 @@ export function assertPiTokenBudget(
     reserve_ratio = 0.07
 ): PiTokenPreflightResult {
     if (!Number.isInteger(context_window) || context_window <= 0) {
-        throw new Error('Pi contextWindow must be a positive integer');
+        throw new Error('More source contextWindow must be a positive integer');
     }
     if (!Number.isInteger(max_tokens) || max_tokens <= 0) {
-        throw new Error('Pi maxTokens must be a positive integer');
+        throw new Error('More source maxTokens must be a positive integer');
     }
     if (max_tokens > context_window) {
-        throw new Error('Pi maxTokens must not exceed contextWindow');
+        throw new Error('More source maxTokens must not exceed contextWindow');
     }
     assertPiImageInputBudget(context);
 
@@ -178,7 +178,7 @@ export function assertPiTokenBudget(
     const estimated_input_tokens = estimatePiContextTokens(context);
     if (max_input_tokens <= 0 || estimated_input_tokens > max_input_tokens) {
         throw new Error(
-            `Pi prompt is too long: estimated ${estimated_input_tokens} input tokens, ` +
+            `More source prompt is too long: estimated ${estimated_input_tokens} input tokens, ` +
                 `limit ${Math.max(0, max_input_tokens)} after reserving ${max_tokens} reply tokens ` +
                 `and ${reserved_tokens} safety tokens`
         );

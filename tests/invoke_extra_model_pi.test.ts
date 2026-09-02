@@ -279,7 +279,7 @@ describe('invoke extra model through Pi', () => {
             expect(mockRunPiRequest).toHaveBeenCalledTimes(2);
             expect(console_error).toHaveBeenCalledWith(provider_error);
             expect(provider_error.message).toBe(
-                'The Pi provider request failed. Check the provider settings, credentials, and network, then retry.'
+                'The provider request under More failed. Check the provider settings, credentials, and network, then retry.'
             );
             expect(`${provider_error.message}\n${provider_error.stack}`).not.toContain(
                 'integration-secret'

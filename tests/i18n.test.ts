@@ -145,6 +145,27 @@ describe('MVU localization', () => {
         expect(message_count).toBeGreaterThan(0);
     });
 
+    test('uses More instead of the internal Pi name in user-facing translations', () => {
+        const standalone_pi = /(^|[^\p{L}\p{N}_])Pi(?=$|[^\p{L}\p{N}_])/u;
+
+        for (const [module_name, messages] of Object.entries(message_modules)) {
+            for (const [key, translations] of Object.entries(messages)) {
+                for (const locale of APP_LOCALES) {
+                    expect({
+                        module: module_name,
+                        key,
+                        locale,
+                        message: translations[locale],
+                    }).toEqual(
+                        expect.objectContaining({
+                            message: expect.not.stringMatching(standalone_pi),
+                        })
+                    );
+                }
+            }
+        }
+    });
+
     test('changing UI locale does not translate persisted override enum values', () => {
         const override = {
             更新方式: '额外模型解析' as const,

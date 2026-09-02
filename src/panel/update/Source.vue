@@ -133,7 +133,9 @@
                         class="text_pole"
                         :placeholder="pi_endpoint_placeholder"
                         @input="selectPiEndpoint"
+                        @change="normalizePiEndpointInput"
                     />
+                    <small class="mvu-note">{{ t('panel.source.pi.endpointHelp') }}</small>
                 </Field>
 
                 <Field v-if="show_pi_api_key" :label="t('panel.source.apiKey')">
@@ -488,6 +490,7 @@ import {
 import { getLocalizedPiErrorMessage } from '@/function/update/pi/error_localization';
 import { isPiMultiproviderEnabled } from '@/function/update/pi/feature_flag';
 import { normalizePiEndpoint } from '@/function/update/pi/model_resolver';
+import { normalizePiApiBaseEndpoint } from '@/function/update/pi/provider_target';
 import type { Api, Model } from '@/function/update/pi/pi_gateway';
 import {
     getPiCatalogModels,
@@ -895,6 +898,34 @@ function selectPiEndpoint(event: Event): void {
     applyPiConnectionTransition(() => {
         store.settings.额外模型解析配置.pi.endpoint = input.value;
     });
+}
+
+function normalizePiEndpointInput(event: Event): void {
+    const input = event.target as HTMLInputElement | null;
+    const definition = selected_pi_provider.value;
+    const pi = store.settings.额外模型解析配置.pi;
+    if (
+        !input ||
+        pi.endpoint.trim() === '' ||
+        !definition?.allowedApis.includes(pi.api as PiWireApi)
+    ) {
+        return;
+    }
+
+    let normalized_endpoint: string;
+    try {
+        normalized_endpoint = normalizePiApiBaseEndpoint(pi.api as PiWireApi, pi.endpoint);
+    } catch {
+        return;
+    }
+    if (normalized_endpoint === pi.endpoint) {
+        return;
+    }
+
+    applyPiConnectionTransition(() => {
+        pi.endpoint = normalized_endpoint;
+    });
+    input.value = normalized_endpoint;
 }
 
 const pi_configuration_error = computed(() => {

@@ -8,7 +8,7 @@ function parseYaml(value: string, label: string): unknown {
     try {
         return YAML.parse(value);
     } catch {
-        throw new Error(`Pi ${label} is not valid YAML or JSON`);
+        throw new Error(`More source ${label} is not valid YAML or JSON`);
     }
 }
 
@@ -22,15 +22,17 @@ export function parsePiCustomHeaders(value: string): ProviderHeaders | undefined
         return undefined;
     }
     if (!isPlainObject(parsed)) {
-        throw new Error('Pi customHeaders must be an object');
+        throw new Error('More source customHeaders must be an object');
     }
     const headers: ProviderHeaders = {};
     for (const [name, header_value] of Object.entries(parsed)) {
         if (!name.trim() || (typeof header_value !== 'string' && header_value !== null)) {
-            throw new Error('Pi customHeaders values must be strings or null');
+            throw new Error('More source customHeaders values must be strings or null');
         }
         if (/^(authorization|proxy-authorization|x-api-key|x-goog-api-key)$/i.test(name)) {
-            throw new Error(`Pi customHeaders cannot override authentication header '${name}'`);
+            throw new Error(
+                `More source customHeaders cannot override authentication header '${name}'`
+            );
         }
         headers[name] = header_value;
     }
@@ -43,7 +45,7 @@ export function parsePiCustomIncludeBody(value: string): Record<string, unknown>
         return undefined;
     }
     if (!isPlainObject(parsed)) {
-        throw new Error('Pi customIncludeBody must be an object');
+        throw new Error('More source customIncludeBody must be an object');
     }
     return parsed;
 }
@@ -64,7 +66,7 @@ export function parsePiCustomExcludeBody(value: string): string[] | undefined {
         !Array.isArray(fields) ||
         fields.some(field => typeof field !== 'string' || !field.trim())
     ) {
-        throw new Error('Pi customExcludeBody must be an array of field names');
+        throw new Error('More source customExcludeBody must be an array of field names');
     }
     return [...new Set(fields.map(field => field.trim()))];
 }

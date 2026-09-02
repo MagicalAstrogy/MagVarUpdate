@@ -334,7 +334,7 @@ function parseBase64Image(
 ): ImageContent {
     if (url.slice(0, 5).toLowerCase() !== 'data:') {
         throw new PiContextAdapterError(
-            `第 ${sourceIndex} 条消息包含远程图片 URL；Pi 首版只接受 data URL 图片`,
+            `第 ${sourceIndex} 条消息包含远程图片 URL；更多来源当前只接受 data URL 图片`,
             'unsupported-content',
             sourceIndex
         );
@@ -410,14 +410,14 @@ function parseBase64Image(
     }
     if (imageBudget.imageCount + 1 > PI_IMAGE_INPUT_LIMITS.maxImagesPerContext) {
         throw new PiContextAdapterError(
-            `Pi 单次请求最多接受 ${PI_IMAGE_INPUT_LIMITS.maxImagesPerContext} 张图片`,
+            `更多来源单次请求最多接受 ${PI_IMAGE_INPUT_LIMITS.maxImagesPerContext} 张图片`,
             'invalid-image',
             sourceIndex
         );
     }
     if (imageBudget.decodedBytes + decodedBytes > PI_IMAGE_INPUT_LIMITS.maxDecodedBytesPerContext) {
         throw new PiContextAdapterError(
-            `Pi 单次请求的图片总量超过 ${PI_IMAGE_INPUT_LIMITS.maxDecodedBytesPerContext / MEBIBYTE} MiB 上限`,
+            `更多来源单次请求的图片总量超过 ${PI_IMAGE_INPUT_LIMITS.maxDecodedBytesPerContext / MEBIBYTE} MiB 上限`,
             'invalid-image',
             sourceIndex
         );
@@ -489,7 +489,7 @@ function convertContentBlock(
     }
     if (block.type === 'video_url') {
         throw new PiContextAdapterError(
-            `第 ${sourceIndex} 条消息包含 Pi 不支持的视频内容`,
+            `第 ${sourceIndex} 条消息包含更多来源不支持的视频内容`,
             'unsupported-content',
             sourceIndex
         );
@@ -497,7 +497,7 @@ function convertContentBlock(
     if (block.type === 'image_url') {
         if (!allowImages) {
             throw new PiContextAdapterError(
-                `第 ${sourceIndex} 条 assistant 消息包含无法导入 Pi 历史的图片`,
+                `第 ${sourceIndex} 条 assistant 消息包含无法导入更多来源历史的图片`,
                 'unsupported-content',
                 sourceIndex
             );

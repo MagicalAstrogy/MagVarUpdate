@@ -97,28 +97,53 @@ export function normalizePiTargetEndpoint(endpoint: string): string {
     try {
         parsed = new URL(endpoint.trim());
     } catch {
-        throw new PiEndpointValidationError('pi endpoint must be a valid URL');
+        throw new PiEndpointValidationError('More source endpoint must be a valid URL');
     }
 
     if (!['http:', 'https:'].includes(parsed.protocol)) {
-        throw new PiEndpointValidationError('pi endpoint must use http or https');
+        throw new PiEndpointValidationError('More source endpoint must use http or https');
     }
     if (
         parsed.protocol === 'http:' &&
         !HTTP_LOOPBACK_HOSTNAMES.has(parsed.hostname.toLowerCase())
     ) {
         throw new PiEndpointValidationError(
-            'pi HTTP endpoint must use localhost, 127.0.0.1, or [::1]'
+            'More source HTTP endpoint must use localhost, 127.0.0.1, or [::1]'
         );
     }
     if (parsed.username || parsed.password || parsed.search || parsed.hash) {
         throw new PiEndpointValidationError(
-            'pi endpoint must not contain credentials, a query, or a fragment'
+            'More source endpoint must not contain credentials, a query, or a fragment'
         );
     }
 
     const normalized_path = parsed.pathname.replace(/\/+$/, '');
     return `${parsed.origin}${normalized_path}`;
+}
+
+const PI_API_OPERATION_PATH_SUFFIXES: Partial<Record<PiWireApi, readonly string[]>> = {
+    'openai-responses': ['/responses'],
+    'openai-completions': ['/chat/completions', '/completions'],
+    'anthropic-messages': ['/v1/messages', '/messages'],
+};
+
+/**
+ * Normalize a safe endpoint to the API base expected by provider SDKs, removing at most one
+ * operation-route suffix that the selected SDK appends itself.
+ */
+export function normalizePiApiBaseEndpoint(api: PiWireApi, endpoint: string): string {
+    const normalized_endpoint = normalizePiTargetEndpoint(endpoint);
+    const parsed = new URL(normalized_endpoint);
+    const normalized_path_lower = parsed.pathname.toLowerCase();
+    const operation_path = PI_API_OPERATION_PATH_SUFFIXES[api]?.find(suffix =>
+        normalized_path_lower.endsWith(suffix)
+    );
+    if (!operation_path) {
+        return normalized_endpoint;
+    }
+
+    const base_path = parsed.pathname.slice(0, -operation_path.length).replace(/\/+$/, '');
+    return normalizePiTargetEndpoint(`${parsed.origin}${base_path}`);
 }
 
 /** Resolve a credential-cache slot only for a complete, valid API-key wire target. */
@@ -139,7 +164,8 @@ export function resolvePiApiKeyScope(
     }
 
     try {
-        const effective_endpoint = normalizePiTargetEndpoint(
+        const effective_endpoint = normalizePiApiBaseEndpoint(
+            api as PiWireApi,
             endpoint.trim() === '' ? definition.defaultBaseUrl : endpoint
         );
         return `${definition.key}\n${effective_endpoint}`;

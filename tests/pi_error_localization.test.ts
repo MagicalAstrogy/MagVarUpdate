@@ -32,8 +32,11 @@ describe('Pi error localization boundary', () => {
     });
 
     test.each([
-        ['zh-CN' as const, '所选 Pi 来源不可用，请重新选择来源。'],
-        ['en' as const, 'The selected Pi provider is unavailable. Select a provider again.'],
+        ['zh-CN' as const, '“更多”中所选来源不可用，请重新选择来源。'],
+        [
+            'en' as const,
+            'The selected provider under More is unavailable. Select a provider again.',
+        ],
     ])(
         'localizes model-resolution errors in %s without changing identity or code',
         (locale, text) => {
@@ -53,8 +56,8 @@ describe('Pi error localization boundary', () => {
     );
 
     test.each([
-        ['zh-CN' as const, 'Pi Provider 请求失败。'],
-        ['en' as const, 'The Pi provider request failed.'],
+        ['zh-CN' as const, '“更多”来源请求失败。'],
+        ['en' as const, 'The provider request under More failed.'],
     ])('sanitizes provider errors in %s while retaining retry metadata', (locale, text) => {
         i18n.global.locale.value = locale;
         const error = new PiRuntimeError(
@@ -72,8 +75,8 @@ describe('Pi error localization boundary', () => {
     });
 
     test.each([
-        ['zh-CN' as const, 'Pi 图片输入必须是'],
-        ['en' as const, 'Pi image input must be'],
+        ['zh-CN' as const, '“更多”的图片输入必须是'],
+        ['en' as const, 'Image input under More must be'],
     ])('localizes context errors in %s and keeps their source metadata', (locale, text) => {
         i18n.global.locale.value = locale;
         const error = new PiContextAdapterError(
@@ -90,8 +93,8 @@ describe('Pi error localization boundary', () => {
     });
 
     test.each([
-        ['zh-CN' as const, 'Pi 回复仅包含 thinking'],
-        ['en' as const, 'The Pi response contained only thinking'],
+        ['zh-CN' as const, '“更多”回复仅包含 thinking'],
+        ['en' as const, 'The response from More contained only thinking'],
     ])(
         'localizes result-adapter errors in %s without exposing the original text',
         (locale, text) => {
@@ -131,7 +134,7 @@ describe('Pi error localization boundary', () => {
         expect(localizePiError(error)).toBe(error);
         expect(error).toBeInstanceOf(PiRequestAbortedError);
         expect(error.generationId).toBe('generation-1');
-        expect(error.message).toBe('The Pi request was cancelled.');
+        expect(error.message).toBe('The More-source request was cancelled.');
         expect(error.stack).not.toContain('secret abort reason');
     });
 
@@ -155,7 +158,7 @@ describe('Pi error localization boundary', () => {
         i18n.global.locale.value = 'en';
 
         expect(getLocalizedPiErrorMessage(new Error('API key: unknown-secret'))).toBe(
-            'The Pi provider request failed. Check the provider settings, credentials, and network, then retry.'
+            'The provider request under More failed. Check the provider settings, credentials, and network, then retry.'
         );
     });
 });

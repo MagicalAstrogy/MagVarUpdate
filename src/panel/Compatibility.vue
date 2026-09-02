@@ -22,15 +22,53 @@
                     :value="sendas_not_user_override_label"
                 />
             </Checkbox>
+
+            <Detail :title="t('panel.compatibility.license')">
+                <p class="mvu-license-note">{{ t('panel.compatibility.licenseIntro') }}</p>
+                <div class="mvu-license-table-wrap">
+                    <table class="mvu-license-table">
+                        <thead>
+                            <tr>
+                                <th scope="col">
+                                    {{ t('panel.compatibility.licenseComponent') }}
+                                </th>
+                                <th scope="col">
+                                    {{ t('panel.compatibility.licenseIdentifier') }}
+                                </th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr
+                                v-for="component in OPEN_SOURCE_LICENSES"
+                                :key="component.packageName"
+                            >
+                                <td>
+                                    <a
+                                        :href="component.projectUrl"
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                    >
+                                        {{ component.displayName ?? component.packageName }}
+                                    </a>
+                                </td>
+                                <td>{{ component.license }}</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+                <p class="mvu-license-note">{{ t('panel.compatibility.licenseDetails') }}</p>
+            </Detail>
         </template>
     </Section>
 </template>
 
 <script setup lang="ts">
 import Checkbox from '@/panel/component/Checkbox.vue';
+import Detail from '@/panel/component/Detail.vue';
 import { useMvuI18n } from '@/i18n';
 import HelpIcon from '@/panel/component/HelpIcon.vue';
 import OverrideBadge from '@/panel/component/OverrideBadge.vue';
+import { OPEN_SOURCE_LICENSES } from '@/panel/open_source_licenses';
 import Section from '@/panel/component/Section.vue';
 import sandas_message_help_en from '@/panel/compatibility_sandas_message.en.md';
 import sandas_message_help_zh_cn from '@/panel/compatibility_sandas_message.zh-CN.md';
@@ -54,3 +92,45 @@ const sendas_not_user_override_label = computed(() =>
     format_boolean(store.effective_settings.兼容性.sendas不视为user消息)
 );
 </script>
+
+<style scoped>
+.mvu-license-note {
+    margin: 0;
+    opacity: 0.9;
+}
+
+.mvu-license-table-wrap {
+    max-height: 18rem;
+    overflow: auto;
+    border: 1px solid var(--SmartThemeBorderColor, rgba(45, 45, 45, 1));
+    border-radius: 6px;
+}
+
+.mvu-license-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.9em;
+}
+
+.mvu-license-table th,
+.mvu-license-table td {
+    padding: 0.35rem 0.5rem;
+    text-align: start;
+    vertical-align: top;
+    border-bottom: 1px solid var(--SmartThemeBorderColor, rgba(45, 45, 45, 0.45));
+}
+
+.mvu-license-table th:last-child,
+.mvu-license-table td:last-child {
+    width: 7.5rem;
+    white-space: nowrap;
+}
+
+.mvu-license-table tbody tr:last-child td {
+    border-bottom: 0;
+}
+
+.mvu-license-table a {
+    overflow-wrap: anywhere;
+}
+</style>

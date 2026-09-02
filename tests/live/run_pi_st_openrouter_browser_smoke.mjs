@@ -1738,7 +1738,7 @@ async function startPiAbortCase(configuration) {
     if (window.__mvuPiLiveAbortState) throw new Error('abort-state-already-active');
 
     const retryEventId = iframe.contentWindow.getButtonEvent('重试额外模型解析');
-    const stopEventId = iframe.contentWindow.getButtonEvent('停止 Pi 额外模型解析');
+    const stopEventId = iframe.contentWindow.getButtonEvent('停止“更多”额外模型解析');
     const retryHandlers = context.eventSource?.events?.[retryEventId];
     const stopHandlers = context.eventSource?.events?.[stopEventId];
     if (!Array.isArray(retryHandlers) || retryHandlers.length === 0) {

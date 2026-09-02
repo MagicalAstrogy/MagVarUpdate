@@ -8,7 +8,11 @@ import {
     type PiProviderKey,
     type PiWireApi,
 } from './provider_registry';
-import { normalizePiTargetEndpoint, PiEndpointValidationError } from './provider_target';
+import {
+    normalizePiApiBaseEndpoint,
+    normalizePiTargetEndpoint,
+    PiEndpointValidationError,
+} from './provider_target';
 
 export { resolvePiApiKeyScope } from './provider_target';
 
@@ -111,14 +115,18 @@ export function normalizePiEndpoint(endpoint: string): string {
 /** Empty and explicitly configured canonical default endpoints are equivalent. */
 export function isPiDefaultProviderEndpoint(
     definition: PiProviderDefinition,
-    endpoint: string
+    endpoint: string,
+    api: PiWireApi = definition.defaultApi
 ): boolean {
     const requested = endpoint.trim();
     if (requested === '') {
         return true;
     }
     try {
-        return normalizePiEndpoint(requested) === normalizePiEndpoint(definition.defaultBaseUrl);
+        return (
+            normalizePiApiBaseEndpoint(api, requested) ===
+            normalizePiApiBaseEndpoint(api, definition.defaultBaseUrl)
+        );
     } catch {
         return false;
     }
@@ -157,16 +165,27 @@ function findCatalogModel(
 /** Validate the source/API/auth/model metadata combination without mutating settings or catalogs. */
 export function validatePiConfiguration(input: ResolvePiModelInput): ValidatedPiConfiguration {
     if (!isRecord(input.piConfig)) {
-        throw new PiModelResolutionError('invalid_config', 'pi configuration must be an object');
+        throw new PiModelResolutionError(
+            'invalid_config',
+            'More source configuration must be an object'
+        );
     }
 
-    const provider = requiredString(input.piConfig, 'provider', 'unknown_provider', 'pi provider');
+    const provider = requiredString(
+        input.piConfig,
+        'provider',
+        'unknown_provider',
+        'More source provider'
+    );
     const definition = getPiProviderDefinition(provider);
     if (!definition) {
-        throw new PiModelResolutionError('unknown_provider', `Unknown pi provider: ${provider}`);
+        throw new PiModelResolutionError(
+            'unknown_provider',
+            `Unknown More source provider: ${provider}`
+        );
     }
 
-    const api = requiredString(input.piConfig, 'api', 'unsupported_api', 'pi API');
+    const api = requiredString(input.piConfig, 'api', 'unsupported_api', 'More source API');
     if (!definition.allowedApis.some(candidate => candidate === api)) {
         throw new PiModelResolutionError(
             'unsupported_api',
@@ -174,7 +193,12 @@ export function validatePiConfiguration(input: ResolvePiModelInput): ValidatedPi
         );
     }
 
-    const authType = requiredString(input.piConfig, 'authType', 'unsupported_auth', 'pi auth type');
+    const authType = requiredString(
+        input.piConfig,
+        'authType',
+        'unsupported_auth',
+        'More source auth type'
+    );
     if (!definition.allowedAuthTypes.some(candidate => candidate === authType)) {
         throw new PiModelResolutionError(
             'unsupported_auth',
@@ -184,7 +208,10 @@ export function validatePiConfiguration(input: ResolvePiModelInput): ValidatedPi
 
     const rawEndpoint = input.piConfig.endpoint;
     if (rawEndpoint !== undefined && typeof rawEndpoint !== 'string') {
-        throw new PiModelResolutionError('invalid_endpoint', 'pi endpoint must be a string');
+        throw new PiModelResolutionError(
+            'invalid_endpoint',
+            'More source endpoint must be a string'
+        );
     }
     const requestedEndpoint = (rawEndpoint ?? '').trim();
 
@@ -214,14 +241,22 @@ export function validatePiConfiguration(input: ResolvePiModelInput): ValidatedPi
         );
     }
 
-    const endpoint = requestedEndpoint
-        ? normalizePiEndpoint(requestedEndpoint)
-        : definition.defaultBaseUrl;
+    let endpoint: string;
+    try {
+        endpoint = requestedEndpoint
+            ? normalizePiApiBaseEndpoint(api as PiWireApi, requestedEndpoint)
+            : definition.defaultBaseUrl;
+    } catch (error) {
+        if (error instanceof PiEndpointValidationError) {
+            throw new PiModelResolutionError('invalid_endpoint', error.message);
+        }
+        throw error;
+    }
     const usesDefaultEndpoint = endpoint === normalizePiEndpoint(definition.defaultBaseUrl);
-    const modelId = requiredString(input.piConfig, 'model', 'missing_model', 'pi model');
+    const modelId = requiredString(input.piConfig, 'model', 'missing_model', 'More source model');
     const manualContextWindow = validateNonNegativeInteger(
         input.piConfig.contextWindow,
-        'pi contextWindow'
+        'More source contextWindow'
     );
     const configuredMaxTokens = validatePositiveInteger(input.maxTokens, 'maximum reply tokens');
     const catalogModelById = findCatalogModel(definition, modelId);

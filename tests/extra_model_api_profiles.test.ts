@@ -646,7 +646,7 @@ describe('extra model api profiles', () => {
                 },
                 'Broken Pi'
             )
-        ).toThrow('Pi API 方案缺少完整的 Pi 连接配置');
+        ).toThrow('“更多”API 方案缺少完整的连接配置，无法保存。');
     });
 
     test('refuses to save structurally present Pi settings with empty required fields', () => {
@@ -664,7 +664,7 @@ describe('extra model api profiles', () => {
                 },
                 'Unconfigured Pi'
             )
-        ).toThrow('Pi API 方案缺少完整的 Pi 连接配置');
+        ).toThrow('“更多”API 方案缺少完整的连接配置，无法保存。');
     });
 
     test('does not synthesize a Pi profile from unrelated legacy root fields', () => {

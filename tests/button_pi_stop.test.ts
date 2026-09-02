@@ -6,7 +6,7 @@ jest.mock('@/function/update/pi/controller_registry', () => ({
 }));
 
 const mockStopAllExtraModelRequests = jest.mocked(stopAllExtraModelRequests);
-const stopPiExtraModel = buttons.find(button => button.name === '停止 Pi 额外模型解析')!.function;
+const stopPiExtraModel = buttons.find(button => button.name === '停止“更多”额外模型解析')!.function;
 
 describe('stop Pi extra-model button', () => {
     beforeEach(() => {
@@ -21,8 +21,8 @@ describe('stop Pi extra-model button', () => {
 
         expect(mockStopAllExtraModelRequests).toHaveBeenCalledTimes(1);
         expect((globalThis as any).toastr.info).toHaveBeenCalledWith(
-            '已停止 2 个 Pi 额外模型请求',
-            '[MVU]停止 Pi 额外模型解析',
+            '已停止 2 个“更多”额外模型请求',
+            '[MVU]停止“更多”额外模型解析',
             { timeOut: 3000 }
         );
     });
@@ -34,8 +34,8 @@ describe('stop Pi extra-model button', () => {
 
         expect(mockStopAllExtraModelRequests).toHaveBeenCalledTimes(1);
         expect((globalThis as any).toastr.info).toHaveBeenCalledWith(
-            '当前没有正在运行的 Pi 额外模型请求',
-            '[MVU]停止 Pi 额外模型解析',
+            '当前没有正在运行的“更多”额外模型请求',
+            '[MVU]停止“更多”额外模型解析',
             { timeOut: 3000 }
         );
     });

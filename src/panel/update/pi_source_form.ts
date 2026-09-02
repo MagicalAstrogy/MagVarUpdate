@@ -1,9 +1,9 @@
 import type { Api, Model } from '@/function/update/pi/pi_gateway';
+import { isPiDefaultProviderEndpoint } from '@/function/update/pi/model_resolver';
 import {
-    isPiDefaultProviderEndpoint,
-    normalizePiEndpoint,
-} from '@/function/update/pi/model_resolver';
-import { resolvePiApiKeyScope } from '@/function/update/pi/provider_target';
+    normalizePiApiBaseEndpoint,
+    resolvePiApiKeyScope,
+} from '@/function/update/pi/provider_target';
 import {
     resolvePiCapabilities,
     type PiApiCapabilities,
@@ -106,7 +106,7 @@ export function resolvePiRequestTargetIdentity(
         endpoint.trim() === '' && definition ? definition.defaultBaseUrl : endpoint.trim();
     let endpoint_identity: string;
     try {
-        endpoint_identity = normalizePiEndpoint(requested_endpoint);
+        endpoint_identity = normalizePiApiBaseEndpoint(api as PiWireApi, requested_endpoint);
     } catch {
         endpoint_identity = `invalid:${requested_endpoint}`;
     }
@@ -209,9 +209,10 @@ export function resolvePiEndpointSelection(
 /** Whether Source may safely inherit catalog-only capabilities for the configured endpoint. */
 export function isPiEndpointCatalogCompatible(
     definition: PiProviderDefinition,
-    endpoint: string
+    endpoint: string,
+    api: PiWireApi = definition.defaultApi
 ): boolean {
-    return isPiDefaultProviderEndpoint(definition, endpoint);
+    return isPiDefaultProviderEndpoint(definition, endpoint, api);
 }
 
 export function resolvePiSourceCapabilities(
@@ -220,7 +221,7 @@ export function resolvePiSourceCapabilities(
     endpoint: string,
     catalog_model?: Model<Api>
 ): Readonly<PiApiCapabilities> | undefined {
-    const effective_catalog_model = isPiEndpointCatalogCompatible(definition, endpoint)
+    const effective_catalog_model = isPiEndpointCatalogCompatible(definition, endpoint, api)
         ? catalog_model
         : undefined;
     return resolvePiCapabilities(definition, api, {

@@ -79,13 +79,13 @@ function applyCustomFields(
     const result = { ...payload };
     for (const name of exclude) {
         if (PROTECTED_FIELDS.has(name)) {
-            throw new Error(`Pi custom body cannot exclude protected field '${name}'`);
+            throw new Error(`More source custom body cannot exclude protected field '${name}'`);
         }
         delete result[name];
     }
     for (const [name, value] of Object.entries(include)) {
         if (PROTECTED_FIELDS.has(name)) {
-            throw new Error(`Pi custom body cannot override protected field '${name}'`);
+            throw new Error(`More source custom body cannot override protected field '${name}'`);
         }
         result[name] = structuredClone(value);
     }
@@ -96,7 +96,7 @@ function googleConfigField(path: string): string {
     const match = /^config\.([^.]+)$/.exec(path);
     if (!match) {
         throw new Error(
-            `Pi customExcludeBody for Google must use a direct 'config.<field>' path, received '${path}'`
+            `More source customExcludeBody for Google must use a direct 'config.<field>' path, received '${path}'`
         );
     }
     return match[1];
@@ -104,7 +104,9 @@ function googleConfigField(path: string): string {
 
 function assertGoogleConfigFieldAllowed(field: string, operation: 'override' | 'exclude'): void {
     if (GOOGLE_PROTECTED_CONFIG_FIELDS.has(field)) {
-        throw new Error(`Pi custom body cannot ${operation} protected field 'config.${field}'`);
+        throw new Error(
+            `More source custom body cannot ${operation} protected field 'config.${field}'`
+        );
     }
 }
 
@@ -118,7 +120,7 @@ function applyGoogleCustomFields(
 
     for (const path of exclude) {
         if (path === 'config' || PROTECTED_FIELDS.has(path)) {
-            throw new Error(`Pi custom body cannot exclude protected field '${path}'`);
+            throw new Error(`More source custom body cannot exclude protected field '${path}'`);
         }
         const field = googleConfigField(path);
         assertGoogleConfigFieldAllowed(field, 'exclude');
@@ -128,14 +130,18 @@ function applyGoogleCustomFields(
     for (const [name, value] of Object.entries(include)) {
         if (name !== 'config') {
             if (PROTECTED_FIELDS.has(name)) {
-                throw new Error(`Pi custom body cannot override protected field '${name}'`);
+                throw new Error(
+                    `More source custom body cannot override protected field '${name}'`
+                );
             }
             throw new Error(
-                `Pi customIncludeBody for Google must place '${name}' inside the 'config' object`
+                `More source customIncludeBody for Google must place '${name}' inside the 'config' object`
             );
         }
         if (!isPlainObject(value)) {
-            throw new Error("Pi customIncludeBody for Google requires 'config' to be an object");
+            throw new Error(
+                "More source customIncludeBody for Google requires 'config' to be an object"
+            );
         }
         for (const [field, field_value] of Object.entries(value)) {
             assertGoogleConfigFieldAllowed(field, 'override');
@@ -153,7 +159,7 @@ function applyNativeStructuredOutput(
     schema: PiJsonSchema | undefined
 ): Record<string, unknown> {
     if (response_format === '格式化输出' && !schema) {
-        throw new Error('Pi structured output requires a JSON schema');
+        throw new Error('More source structured output requires a JSON schema');
     }
 
     const is_json_schema = response_format === '格式化输出';
@@ -213,7 +219,7 @@ function applyNativeStructuredOutput(
         };
     }
 
-    throw new Error(`Pi API '${api}' does not support native structured output`);
+    throw new Error(`More source API '${api}' does not support native structured output`);
 }
 
 function applyApiSampling(
@@ -264,7 +270,7 @@ function applyApiSampling(
 
 export function transformPiPayload(payload: unknown, options: PiPayloadTransformOptions): unknown {
     if (!isPlainObject(payload)) {
-        throw new Error('Pi provider payload must be an object');
+        throw new Error('More source provider payload must be an object');
     }
     let result = applyApiSampling(payload, options.api, options.sampling);
     result =

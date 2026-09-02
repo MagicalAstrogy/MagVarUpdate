@@ -15,7 +15,7 @@ export function resolvePiToolChoice(api: Api, choice: MvuToolChoice | undefined)
 
     const named = typeof normalized === 'object' ? normalized.function.name.trim() : undefined;
     if (named !== undefined && !named) {
-        throw new Error('Pi named tool choice requires a tool name');
+        throw new Error('More source named tool choice requires a tool name');
     }
 
     if (api === 'openai-completions') {
@@ -30,7 +30,9 @@ export function resolvePiToolChoice(api: Api, choice: MvuToolChoice | undefined)
     }
     if (api === 'openai-codex-responses') {
         if (named) {
-            throw new Error("Pi API 'openai-codex-responses' does not support a named tool choice");
+            throw new Error(
+                "More source API 'openai-codex-responses' does not support a named tool choice"
+            );
         }
         return 'required';
     }
@@ -39,9 +41,11 @@ export function resolvePiToolChoice(api: Api, choice: MvuToolChoice | undefined)
     }
     if (api === 'google-generative-ai') {
         if (named) {
-            throw new Error("Pi API 'google-generative-ai' does not support a named tool choice");
+            throw new Error(
+                "More source API 'google-generative-ai' does not support a named tool choice"
+            );
         }
         return 'any';
     }
-    throw new Error(`Pi API '${api}' does not support required tool choice`);
+    throw new Error(`More source API '${api}' does not support required tool choice`);
 }

@@ -145,7 +145,7 @@ export function createPiCredentialStore(): CredentialStore {
                     const oauth = readOAuthCredential(next);
                     if (oauth === undefined) {
                         throw new TypeError(
-                            'MVU pi CredentialStore only persists valid OAuth credentials'
+                            'More source credential store only persists valid OAuth credentials'
                         );
                     }
 

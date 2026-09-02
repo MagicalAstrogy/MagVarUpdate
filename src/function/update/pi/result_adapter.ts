@@ -75,7 +75,7 @@ export const toPiTool = toPiToolDefinition;
 
 function normalizeToolCall(call: ToolCall): GenerateToolCallResult['tool_calls'][number] {
     if (!call.id?.trim() || !call.name?.trim() || !isPlainObject(call.arguments)) {
-        throw new PiResultAdapterError('Pi 返回了无效的工具调用', 'invalid-tool-call');
+        throw new PiResultAdapterError('更多来源返回了无效的工具调用', 'invalid-tool-call');
     }
 
     let argumentsValue: string;
@@ -83,7 +83,7 @@ function normalizeToolCall(call: ToolCall): GenerateToolCallResult['tool_calls']
         argumentsValue = JSON.stringify(call.arguments);
     } catch (cause) {
         throw new PiResultAdapterError(
-            `Pi 工具参数无法序列化：${cause instanceof Error ? cause.message : String(cause)}`,
+            `更多来源工具参数无法序列化：${cause instanceof Error ? cause.message : String(cause)}`,
             'invalid-tool-call'
         );
     }
@@ -105,9 +105,9 @@ function assertSuccessfulStopReason(message: AssistantMessage): void {
         case 'toolUse':
             return;
         case 'length':
-            throw new PiResultAdapterError('Pi 回复因达到长度上限而被截断', 'length');
+            throw new PiResultAdapterError('更多来源回复因达到长度上限而被截断', 'length');
         case 'aborted':
-            throw new PiResultAdapterError('Pi 请求已取消', 'aborted');
+            throw new PiResultAdapterError('更多来源请求已取消', 'aborted');
         case 'error': {
             // Provider errorMessage values are untrusted response data. They have been observed to
             // contain echoed Authorization headers/API keys, so retain only a coarse classification.
@@ -118,19 +118,22 @@ function assertSuccessfulStopReason(message: AssistantMessage): void {
                 );
             throw new PiResultAdapterError(
                 isNetworkError
-                    ? 'The browser could not complete the Pi provider request.'
-                    : 'Pi provider request failed.',
+                    ? 'The browser could not complete the More source request.'
+                    : 'More source request failed.',
                 isNetworkError ? 'network' : 'provider-error'
             );
         }
         case 'pending':
         case 'deferred':
-            throw new PiResultAdapterError('Pi 回复尚未完成，当前不支持 deferred 结果', 'deferred');
+            throw new PiResultAdapterError(
+                '更多来源回复尚未完成，当前不支持 deferred 结果',
+                'deferred'
+            );
         default: {
             const exhaustive: never = message.stopReason;
             void exhaustive;
             throw new PiResultAdapterError(
-                'Pi provider returned an unknown stop reason.',
+                'More source provider returned an unknown stop reason.',
                 'provider-error'
             );
         }
@@ -150,7 +153,7 @@ export function fromPiAssistantMessage(message: AssistantMessage): string | Gene
 
     if (message.stopReason === 'toolUse' && toolCalls.length === 0) {
         throw new PiResultAdapterError(
-            'Pi 以 toolUse 结束，但没有返回工具调用',
+            '更多来源以 toolUse 结束，但没有返回工具调用',
             'invalid-tool-call'
         );
     }
@@ -163,7 +166,7 @@ export function fromPiAssistantMessage(message: AssistantMessage): string | Gene
     if (text.length === 0) {
         const hasThinking = message.content.some(content => content.type === 'thinking');
         throw new PiResultAdapterError(
-            hasThinking ? 'Pi 回复仅包含 thinking，没有业务内容' : 'Pi 返回了空回复',
+            hasThinking ? '更多来源回复仅包含 thinking，没有业务内容' : '更多来源返回了空回复',
             'empty-response'
         );
     }

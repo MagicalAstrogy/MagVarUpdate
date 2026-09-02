@@ -292,7 +292,7 @@ async function installBrowserHarness(webDriver, scriptName, endpoint) {
             );
             if (!iframe?.contentWindow) return { ok: false, stage: 'iframe' };
             const retryEvent = iframe.contentWindow.getButtonEvent('重试额外模型解析');
-            const stopEvent = iframe.contentWindow.getButtonEvent('停止 Pi 额外模型解析');
+            const stopEvent = iframe.contentWindow.getButtonEvent('停止“更多”额外模型解析');
             const retryHandlers = context.eventSource?.events?.[retryEvent];
             const stopHandlers = context.eventSource?.events?.[stopEvent];
             if (!retryHandlers?.length || !stopHandlers?.length) return { ok: false, stage: 'handlers' };
