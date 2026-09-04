@@ -128,6 +128,9 @@ function runtimeInvalidPrompt(error: PiErrorLike): LocalizedPiError {
 
 function runtimeInvalidConfiguration(error: PiErrorLike): LocalizedPiError {
     const message = error.message;
+    if (contains(message, /Anthropic sampling/i)) {
+        return { key: 'runtime.pi.anthropicSamplingConflict' };
+    }
     if (contains(message, /customheaders/i)) {
         return { key: 'runtime.pi.customHeadersInvalid' };
     }

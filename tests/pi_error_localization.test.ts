@@ -33,6 +33,19 @@ describe('Pi error localization boundary', () => {
         i18n.global.locale.value = original_locale;
     });
 
+    test.each(['zh-CN', 'en'] as const)('explains conflicting Anthropic samplers in %s', locale => {
+        i18n.global.locale.value = locale;
+        const error = new PiRuntimeError(
+            'invalid_configuration',
+            'More source Anthropic sampling requires temperature or top_p; reset one to 1.'
+        );
+
+        expect(getLocalizedPiErrorMessage(error)).toBe(
+            i18n.global.t('runtime.pi.anthropicSamplingConflict')
+        );
+        expect(error.retryable).toBe(false);
+    });
+
     test.each([
         ['zh-CN' as const, '“更多”中所选来源不可用，请重新选择来源。'],
         [

@@ -134,6 +134,76 @@ describe('invoke extra model through Pi', () => {
         delete (globalThis as any).SillyTavern.getChatCompletionModel;
     });
 
+    test('keeps retries bound to the original Pi configuration after panel edits', async () => {
+        const store = configurePiSource();
+        store.versions.tavernhelper = '4.9.3';
+        const settings = store.settings.额外模型解析配置;
+        settings.请求次数 = 2;
+        settings.max_chat_history = 12;
+        mockRunPiRequest.mockImplementationOnce(async () => {
+            // Editing the next request must not change this batch's capture/response contract.
+            settings.模型来源 = '自定义';
+            settings.应答格式 = '格式化输出';
+            settings.破限方案 = '使用当前预设';
+            settings.max_chat_history = 30;
+            settings.pi.model = 'gemini-other';
+            throw new Error('transient provider failure');
+        });
+        jest.spyOn(console, 'error').mockImplementation(() => {});
+
+        await expect(invokeExtraModelWithStrategy()).resolves.toBe(VALID_UPDATE);
+
+        expect(mockAssertPiRuntimeConfiguration).toHaveBeenCalledTimes(1);
+        expect(mockAssertPiRuntimeConfiguration.mock.calls[0][0].settings).toMatchObject({
+            模型来源: '更多',
+            应答格式: '聊天消息',
+            max_chat_history: 12,
+            pi: { model: 'gpt-5-mini' },
+        });
+        expect(mockCaptureGeneratePrompt).not.toHaveBeenCalled();
+        expect(mockCaptureGenerateRawPrompt).toHaveBeenCalledTimes(2);
+        expect(mockBeginPiRequestAttempt).toHaveBeenCalledTimes(2);
+        for (const [config] of mockCaptureGenerateRawPrompt.mock.calls) {
+            expect(config.max_chat_history).toBe(12);
+            expect(config.generation_id).toEqual(expect.any(String));
+            expect(JSON.stringify(config)).not.toContain('formatted-output mode');
+        }
+        expect(mockRunPiRequest).toHaveBeenCalledTimes(2);
+        expect((globalThis as any).generate).not.toHaveBeenCalled();
+        expect((globalThis as any).generateRaw).not.toHaveBeenCalled();
+    });
+
+    test('holds the batch lock while concurrent requests are still pending', async () => {
+        const store = configurePiSource();
+        store.settings.额外模型解析配置.请求方式 = '同时请求多次';
+        store.settings.额外模型解析配置.请求次数 = 2;
+        let finish!: (result: string) => void;
+        let started!: () => void;
+        const ready = new Promise<void>(resolve => {
+            started = resolve;
+        });
+        const response = new Promise<string>(resolve => {
+            finish = resolve;
+        });
+        mockRunPiRequest.mockImplementation(() => {
+            started();
+            return response;
+        });
+        jest.spyOn(console, 'error').mockImplementation(() => {});
+        const first = invokeExtraModelWithStrategy();
+        await ready;
+
+        try {
+            await expect(invokeExtraModelWithStrategy()).resolves.toBeNull();
+            expect(mockAssertPiRuntimeConfiguration).toHaveBeenCalledTimes(1);
+            expect(store.runtimes.is_during_extra_analysis).toBe(true);
+        } finally {
+            finish(VALID_UPDATE);
+            await first;
+        }
+        expect(store.runtimes.is_during_extra_analysis).toBe(false);
+    });
+
     test.each([
         ['使用当前预设', 'generate'],
         ['使用其他预设', 'generateRaw'],
@@ -346,9 +416,7 @@ describe('invoke extra model through Pi', () => {
             retryable: true,
         });
         const abort_error = new Error('Pi request aborted');
-        mockRunPiRequest
-            .mockRejectedValueOnce(provider_error)
-            .mockRejectedValueOnce(abort_error);
+        mockRunPiRequest.mockRejectedValueOnce(provider_error).mockRejectedValueOnce(abort_error);
         mockIsPiRequestAbortedError.mockImplementation(error => error === abort_error);
         const console_error = jest.spyOn(console, 'error').mockImplementation(() => {});
 

@@ -10,6 +10,7 @@ import { PiRequestAbortedError, registerPiRequestController } from './controller
 import { getPiCredentialStore } from './credential_store';
 import { assertGoogleProxyAdapterCompatible } from './google_proxy_adapter';
 import {
+    isPiDefaultProviderEndpoint,
     PiModelResolutionError,
     resolvePiModelFromExtraModelSettings,
     type ResolvedPiModel,
@@ -235,12 +236,13 @@ function optionalNumberField(
 
 function resolveSampling(
     settings: ExtraModelSettingsRecord,
-    capabilities: Readonly<PiApiCapabilities>
+    capabilities: Readonly<PiApiCapabilities>,
+    resolution: ResolvedPiModel
 ): {
     temperature?: number;
     sampling: PiRuntimeSampling;
 } {
-    const temperature = capabilities.temperature
+    let temperature = capabilities.temperature
         ? optionalNumberField(
               settings,
               '温度',
@@ -248,7 +250,7 @@ function resolveSampling(
               capabilities.temperatureRange[1]
           )
         : undefined;
-    const topP = capabilities.sampling.topP
+    let topP = capabilities.sampling.topP
         ? optionalNumberField(settings, 'top_p', 0, 1)
         : undefined;
     const topK = capabilities.sampling.topK
@@ -260,6 +262,25 @@ function resolveSampling(
     const presencePenalty = capabilities.sampling.presencePenalty
         ? optionalNumberField(settings, '存在惩罚', -2, 2)
         : undefined;
+    if (
+        resolution.definition.key === 'anthropic' &&
+        isPiDefaultProviderEndpoint(resolution.definition, resolution.model.baseUrl) &&
+        temperature !== undefined &&
+        topP !== undefined
+    ) {
+        // Native Claude models require at most one of these samplers. MVU persists both
+        // controls with 1 as their default, so omit the untouched one from the wire request.
+        if (topP === 1) {
+            topP = undefined;
+        } else if (temperature === 1) {
+            temperature = undefined;
+        } else {
+            throw new PiRuntimeError(
+                'invalid_configuration',
+                'More source Anthropic sampling requires temperature or top_p; reset one to 1.'
+            );
+        }
+    }
     return {
         temperature,
         sampling: Object.freeze({
@@ -454,7 +475,7 @@ export async function assertPiRuntimeConfiguration(
                 : 'More source custom request configuration is invalid'
         );
     }
-    const { temperature, sampling } = resolveSampling(settings, capabilities);
+    const { temperature, sampling } = resolveSampling(settings, capabilities, resolution);
     let tools: readonly Tool[] | undefined;
     let toolChoice: unknown;
     try {

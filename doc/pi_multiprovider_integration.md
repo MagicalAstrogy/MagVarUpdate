@@ -255,6 +255,9 @@ API 请求形状判断，不根据目录模型或自定义 endpoint 的静态能
   tool 转换、无约束文本降级或换策略重试。
 - `temperature`、`top_p`、`top_k`、frequency penalty 和 presence
   penalty 只在当前 API/model 明确支持时发送；不支持的控件会禁用或被过滤。
+- Anthropic 默认端点的温度与 `top_p` 只调整其中一个，另一个保持默认值
+  `1`，请求会省略未调整的参数。两者都改为非默认值时会在请求前报错，避免违反
+  [Claude 的采样参数约束](https://github.com/anthropics/skills/blob/main/skills/claude-api/shared/model-migration.md#sampling-parameters---temperature--top_p--top_k)。
 - data URL 图片会转换成 Pi image block，并校验 MIME、base64 与模型输入能力。解码后每张图片最大 5
   MiB；单个 context 中所有图片合计最大 16
   MiB、最多 20 张。远程图片 URL 和 video 当前明确拒绝，不会静默丢弃。

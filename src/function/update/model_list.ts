@@ -620,7 +620,17 @@ export async function fetchPiModelList(
                     throw new ModelListFetchError('The selected model-list route is unavailable.');
             }
         }
-        return filterDiscoveredModelIds(target.definition, target.api, model_ids);
+        const uses_registered_endpoint =
+            target.baseUrl ===
+            normalizePiApiBaseEndpoint(
+                target.api,
+                getPiProviderApiBaseUrl(target.definition, target.api)
+            );
+        // A custom endpoint can reuse a catalog ID for a different wire API. Match runtime
+        // resolution: only apply the built-in catalog's API restrictions at its own endpoint.
+        return uses_registered_endpoint
+            ? filterDiscoveredModelIds(target.definition, target.api, model_ids)
+            : model_ids;
     } catch (error) {
         if (
             input.signal?.aborted ||

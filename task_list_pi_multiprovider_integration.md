@@ -3,7 +3,7 @@
 > 来源：[design_note_pi_multiprovider_intergration.md](design_note_pi_multiprovider_intergration.md)
 > 用户文档：[doc/pi_multiprovider_integration.md](doc/pi_multiprovider_integration.md)
 > 状态：主体实现、34 来源目录和按 Provider/API 审计的 SillyTavern
-> Proxy 路由已接入；Proxy 增量仍需最终全仓自动化/构建复跑，真实 OAuth/Provider 浏览器发布验收仍归 H-03
+> Proxy 路由已接入；2026-09-05 分支 review 修复及全仓自动化/构建复跑已完成，真实 OAuth/Provider 浏览器发布验收仍归 H-03
 >
 > 目标范围：覆盖当前 MVU 主要能力
 >
@@ -562,15 +562,15 @@ pi 的来源、凭据、模型和请求参数都属于 `额外模型解析配置
 ## 里程碑 H：总体验收与发布（P0/P1，0.5–1 天）
 
 - [x] **H-01 自动化验证**
-    - 最终合并状态通过 `yarn test --runInBand`：62 suites、1162 passed、53
-      skipped；Proxy 定向回归另通过 220 项。
+    - 2026-09-05 review 修复后通过 `yarn test --runInBand`：62 suites、1174 passed、53
+      skipped；本轮新增 12 项回归，修复前已复现对应问题。
     - `yarn lint`、`yarn build:dts` 与 `CI=true yarn build`
       均通过；webpack 只有既有的动态依赖、浏览器数据陈旧和包体积提示。
     - SillyTavern 无代码改动，Slash-Runner submodule 指针不变，没有跨仓库代码改动。
 
 - [x] **H-02 bundle 验收**
-    - 最终生产包为 1,649,123 B / gzip-9 313,620 B，SHA-256 为
-      `1a4117629e47fb52dfcff58f82626a3312b8f06d13ae271016cf479e1be940fe`；source map 为 4,558,626
+    - 最终生产包为 1,649,311 B / gzip-9 313,596 B，SHA-256 为
+      `8219ff7d93b22d2ec36472f1e183f049675f1a19e2a014481b9214ac847bc9f9`；source map 为 4,561,697
       B。
     - 构建后 dependency boundary 与 LICENSE 契约 7 项通过：source
       map 恰有 34 个显式注册来源的独立 catalog、六个 wire adapter 和项目内 Google Proxy
@@ -578,6 +578,10 @@ pi 的来源、凭据、模型和请求参数都属于 `额外模型解析配置
       server 或未锁版 SDK CDN。
 
 - [ ] **H-03 浏览器手工 smoke test**
+    - 2026-09-05 使用 Firefox 154.0.1 与本地 HTTP 服务复现：默认 `srcdoc` 脚本环境的
+      `location.origin` 为 `"null"`，旧 Proxy 探测未发出请求便返回不可用；修复后原样加载生产
+      `sillytavern_proxy.ts` 编译模块，在继承页面 base 的 `srcdoc` 和带 `<base>` 的 Blob
+      iframe 中均成功转发。服务端分别收到一次预期路径、合成认证头及 JSON 请求体；该检查不使用真实凭据、不访问真实 Provider，不替代下列完整 ST/Provider/OAuth 发布验收。
     - 选择模型来源“更多”，确认二级菜单完整列出 34 个来源；逐项切换时 API、认证和固定 endpoint 行为符合注册表，并验证 Fireworks、OpenCode
       Zen/Go 的 per-API URL。
     - 核对 DEC-07 的 15 个精确 Provider/API 组合在 Provider/API 下拉中带
@@ -706,3 +710,20 @@ pi 的来源、凭据、模型和请求参数都属于 `额外模型解析配置
 - C 与 D 在 B 的接口确定后可以并行开发。
 - F 与 G 在文本 MVP 完成后可以并行开发。
 - A–E 完成后先做一次文本 MVP 验收，再继续 P1，便于隔离 prompt 捕获问题与 Provider 特例问题。
+
+## 2026-09-05 分支 review 修复记录
+
+评审范围为 `mag/responses_support` 与 `beta` 的 merge base `61010da` 起的全部变更；先以 `5b8d996`
+提交原工作区变更。设计解释以本任务清单 DEC-01～DEC-07 的已确认决策为准，包括不修改 Slash-Runner 的捕获方案及后续确认的 ST
+Proxy 路由。
+
+| 问题                                 | 影响与修复                                                                                                                                                 | 验证                                                                       |
+| ------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------- |
+| P1：默认 iframe 无法使用 Proxy       | `location.origin` 在 `srcdoc` 中为 `"null"`，导致 Proxy 始终被判为不可用；改用相对 fetch 实际使用的 `document.baseURI` 解析 origin。                       | 隔离模块回归；Firefox 的 `srcdoc`/Blob 两路真实 HTTP 转发。                |
+| P1：Anthropic 默认采样参数冲突       | 同时发送温度及 `top_p` 会被部分 Claude 模型拒绝；默认端点省略值为 `1` 的未调整参数，两者都调整时给出不可重试的中英文配置错误。自定义端点保留自身协议语义。 | 默认参数、单独调整温度/`top_p`、冲突拒绝、自定义端点与本地化回归。         |
+| P2：请求过程中修改面板会改变后续尝试 | Provider preflight 固定后，prompt 路由、应答格式、历史长度和 generation ID 仍读取活动设置；Pi 批次现在保存独立配置快照并在重试间复用。                     | 首次失败时切换来源、格式、模型及破限方案，第二次仍按原配置捕获并成功解析。 |
+| P2：并发批次提前释放锁               | 返回 `concurrentInvoke()` 而未 await，导致外层 `finally` 在请求尚未结束时解锁；等待并发请求和 loser 清理完成后才释放。                                     | 请求挂起时再次调用不会启动第二次 preflight；完成后清理 analysis 状态。     |
+| P2：自定义端点模型被内置目录误过滤   | `/models` 返回的 ID 与内置目录同名时，不应继承另一端点的 API 限制；只有规范化后的默认端点应用目录 API 过滤，与 runtime 解析规则一致。                      | 默认端点及完整 operation URL 仍过滤，自定义端点保留同名模型。              |
+
+采样约束参考
+[Anthropic 官方迁移说明](https://github.com/anthropics/skills/blob/main/skills/claude-api/shared/model-migration.md#sampling-parameters---temperature--top_p--top_k)。完整测试、lint、类型构建、生产构建及新 bundle 的 7 项依赖/许可证检查均通过。真实 Provider/OAuth 验收仍按 H-03 保留未完成状态。

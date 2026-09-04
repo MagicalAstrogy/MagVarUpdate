@@ -15,7 +15,14 @@ jest.mock('@/function/update/pi/pi_gateway', () => {
     return {
         createModels: jest.fn(),
         createProvider: jest.fn(),
-        OPENAI_MODELS: {},
+        OPENAI_MODELS: {
+            'responses-only': catalogModel(
+                'openai',
+                'openai-responses',
+                'responses-only',
+                'https://api.openai.com/v1'
+            ),
+        },
         OPENAI_CODEX_MODELS: {},
         ANTHROPIC_MODELS: {},
         GOOGLE_MODELS: {},
@@ -133,6 +140,34 @@ describe('extra-model model-list discovery', () => {
     beforeEach(() => {
         jest.clearAllMocks();
     });
+
+    test.each([
+        ['', ['new-model']],
+        ['https://api.openai.com/v1/chat/completions/', ['new-model']],
+        ['https://custom.example/v1', ['new-model', 'responses-only']],
+    ])(
+        'filters catalog API conflicts only at the registered endpoint: %s',
+        async (endpoint, expected) => {
+            const fetchMock: FetchMock = jest
+                .fn()
+                .mockResolvedValue(
+                    jsonResponse({ data: [{ id: 'responses-only' }, { id: 'new-model' }] })
+                );
+
+            await expect(
+                fetchPiModelList(
+                    {
+                        provider: 'openai',
+                        api: 'openai-completions',
+                        authType: 'api_key',
+                        endpoint,
+                        apiKey: 'test-key',
+                    },
+                    { fetch: fetchMock }
+                )
+            ).resolves.toEqual(expected);
+        }
+    );
 
     test('uses the Custom/ST discovery contract and normalizes returned ids', async () => {
         const signal = new AbortController().signal;

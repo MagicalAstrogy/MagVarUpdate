@@ -38,6 +38,40 @@ describe('SillyTavern CORS proxy transport', () => {
         resetSillyTavernProxyStatusForTests();
     });
 
+    it('resolves the proxy from the inherited document base in a srcdoc iframe', async () => {
+        const { readFileSync } = jest.requireActual('node:fs') as typeof import('node:fs');
+        const { runInNewContext } = jest.requireActual('node:vm') as typeof import('node:vm');
+        const ts = jest.requireActual('typescript') as typeof import('typescript');
+        const source = readFileSync('src/function/update/pi/sillytavern_proxy.ts', 'utf8');
+        const compiled = ts.transpileModule(source, {
+            compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
+        }).outputText;
+        const exported: Partial<typeof import('@/function/update/pi/sillytavern_proxy')> = {};
+        // Slash's default script host is srcdoc: location.origin is "null", while relative
+        // fetch resolves against the inherited document.baseURI of the SillyTavern page.
+        runInNewContext(compiled, {
+            exports: exported,
+            URL,
+            AbortController,
+            setTimeout,
+            clearTimeout,
+            location: { origin: 'null', href: 'about:srcdoc' },
+            document: { baseURI: `${ST_ORIGIN}/` },
+        });
+        const fetchMock: FetchMock = jest.fn().mockResolvedValue(textResponse(PROBE_BODY, 200));
+
+        await expect(exported.probeSillyTavernProxy!({ fetch: fetchMock })).resolves.toBe(
+            'enabled'
+        );
+        expect(fetchMock).toHaveBeenCalledTimes(1);
+        expect(exported.getSillyTavernProxyStatus!({ fetch: fetchMock })).toBe('enabled');
+        // An invalid explicit override must still fail closed.
+        await expect(
+            exported.probeSillyTavernProxy!({ fetch: fetchMock, origin: 'null' })
+        ).resolves.toBe('unavailable');
+        expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
+
     it('uses a local data sentinel and caches an enabled result', async () => {
         const fetchMock: FetchMock = jest.fn().mockResolvedValue(textResponse(PROBE_BODY, 200));
         const options = { fetch: fetchMock, origin: ST_ORIGIN };

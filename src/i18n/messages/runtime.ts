@@ -618,6 +618,10 @@ export const runtimeMessages = defineMessages({
         'zh-CN': '“最大回复 token 数”不能大于 contextWindow。',
         en: 'Maximum response tokens must not exceed contextWindow.',
     },
+    'runtime.pi.anthropicSamplingConflict': {
+        'zh-CN': 'Anthropic 的温度和 top_p 只能调整其中一个，请将另一个恢复为默认值 1。',
+        en: 'Adjust either temperature or top_p for Anthropic. Reset the other to its default value of 1.',
+    },
     'runtime.pi.customHeadersInvalid': {
         'zh-CN': '“更多”的自定义请求头必须是 YAML/JSON 对象，且值只能是字符串或 null。',
         en: 'Custom headers under More must be a YAML/JSON object whose values are strings or null.',

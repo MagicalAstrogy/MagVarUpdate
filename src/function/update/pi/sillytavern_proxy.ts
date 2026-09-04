@@ -66,7 +66,10 @@ function resolveFetch(fetch_override?: FetchFunction): FetchFunction | undefined
 }
 
 function resolveOrigin(origin_override?: string): string | undefined {
-    const value = origin_override ?? globalThis.location?.origin;
+    // Slash normally hosts scripts in srcdoc, where location.origin is "null" despite
+    // inheriting the parent's origin. Use the same document base as relative browser fetch;
+    // Slash's Blob mode also supplies a <base> pointing to SillyTavern.
+    const value = origin_override ?? globalThis.document?.baseURI ?? globalThis.location?.origin;
     if (!value) {
         return undefined;
     }

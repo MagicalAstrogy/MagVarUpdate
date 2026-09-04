@@ -31,12 +31,13 @@ import {
     captureGenerateRawPrompt,
     type PromptCaptureResult,
 } from '@/function/update/pi/prompt_capture';
-import type { PiRuntimePreflight } from '@/function/update/pi/runtime';
+import type { PiExtraModelSettings, PiRuntimePreflight } from '@/function/update/pi/runtime';
 import { tr } from '@/i18n';
 import { useDataStore } from '@/store';
 import { normalizeBaseURL } from '@/util';
 import { literalYamlify, uuidv4 } from '@util/common';
 import { compare } from 'compare-versions';
+import { klona } from 'klona';
 import YAML from 'yaml';
 
 //测试用，为了使首次请求必失败
@@ -87,8 +88,16 @@ function supportsRequestScopedTools(): boolean {
     return version !== '' && compare(version, MIN_FUNCTION_CALLING_TAVERN_HELPER_VERSION, '>=');
 }
 
-async function preparePiRuntimePreflight(): Promise<PiRuntimePreflight | undefined> {
+function getRequestSettings(): PiExtraModelSettings {
     const config = useDataStore().settings.额外模型解析配置;
+    // A Pi batch owns its prompt and response contract as well as its provider credentials.
+    // Panel edits apply to the next batch, including when this one needs another capture attempt.
+    return config.模型来源 === '更多' ? klona(config) : config;
+}
+
+async function preparePiRuntimePreflight(
+    config: PiExtraModelSettings
+): Promise<PiRuntimePreflight | undefined> {
     if (config.模型来源 !== '更多') {
         return undefined;
     }
@@ -228,7 +237,7 @@ async function restoreTemporaryJsonObjectResponseFormat() {
     await saveSillyTavernSettings();
 }
 
-async function setExtraAnalysisStates() {
+async function setExtraAnalysisStates(is_pi_request = false) {
     const store = useDataStore();
 
     if (store.runtimes.is_during_extra_analysis === true) {
@@ -241,7 +250,9 @@ async function setExtraAnalysisStates() {
 
     store.runtimes.is_during_extra_analysis = true;
     try {
-        await setTemporaryJsonObjectResponseFormat();
+        if (!is_pi_request) {
+            await setTemporaryJsonObjectResponseFormat();
+        }
     } catch (error) {
         store.runtimes.is_during_extra_analysis = false;
         throw error;
@@ -271,7 +282,8 @@ export async function invokeExtraModelWithStrategy(): Promise<string | null> {
     try {
         is_analysis_in_progress = true;
         const store = useDataStore();
-        const pi_preflight = await preparePiRuntimePreflight();
+        const request_settings = getRequestSettings();
+        const pi_preflight = await preparePiRuntimePreflight(request_settings);
         let last_pi_error: unknown;
         let did_abort_pi_request = false;
 
@@ -279,7 +291,12 @@ export async function invokeExtraModelWithStrategy(): Promise<string | null> {
 
         const recordedInvoke = async (generation_id?: string) => {
             try {
-                return await invokeExtraModel(generation_id, batch_id, pi_preflight);
+                return await invokeExtraModel(
+                    generation_id,
+                    batch_id,
+                    pi_preflight,
+                    request_settings
+                );
             } catch (e) {
                 const localized_error = localizePiError(e);
                 console.error(localized_error);
@@ -306,10 +323,9 @@ export async function invokeExtraModelWithStrategy(): Promise<string | null> {
             let is_manual_canceled = false;
             let did_set_extra_analysis_states = false;
             try {
-                await setExtraAnalysisStates();
+                await setExtraAnalysisStates(pi_preflight !== undefined);
                 did_set_extra_analysis_states = true;
-                const generation_id =
-                    store.settings.额外模型解析配置.模型来源 === '更多' ? uuidv4() : undefined;
+                const generation_id = pi_preflight ? uuidv4() : undefined;
                 return {
                     result: await recordedInvoke(generation_id),
                     is_manual_canceled: false,
@@ -333,7 +349,7 @@ export async function invokeExtraModelWithStrategy(): Promise<string | null> {
             let attempts: Promise<string>[] = [];
             let did_set_extra_analysis_states = false;
             try {
-                await setExtraAnalysisStates();
+                await setExtraAnalysisStates(pi_preflight !== undefined);
                 did_set_extra_analysis_states = true;
                 attempts = uuids.map(recordedInvoke);
                 //在函数调用的模式下，允许接受 **任意** 有效的函数结果，因此被允许被覆盖。
@@ -361,16 +377,16 @@ export async function invokeExtraModelWithStrategy(): Promise<string | null> {
             return null;
         };
 
-        switch (store.settings.额外模型解析配置.请求方式) {
+        switch (request_settings.请求方式) {
             case '依次请求，失败后重试':
-                for (let i = 0; i < store.settings.额外模型解析配置.请求次数; i++) {
+                for (let i = 0; i < request_settings.请求次数; i++) {
                     if (store.settings.通知.额外模型解析中) {
                         toastr.info(
                             i === 0
                                 ? tr('runtime.extraModel.requesting')
                                 : tr('runtime.extraModel.retrying', {
                                       attempt: i,
-                                      total: store.settings.额外模型解析配置.请求次数 - 1,
+                                      total: request_settings.请求次数 - 1,
                                   }),
                             tr('runtime.extraModel.updateInProgressTitle')
                         );
@@ -389,12 +405,12 @@ export async function invokeExtraModelWithStrategy(): Promise<string | null> {
                 if (store.settings.通知.额外模型解析中) {
                     toastr.info(
                         tr('runtime.extraModel.concurrentRequests', {
-                            count: store.settings.额外模型解析配置.请求次数,
+                            count: request_settings.请求次数,
                         }),
                         tr('runtime.extraModel.updateInProgressTitle')
                     );
                 }
-                return concurrentInvoke(store.settings.额外模型解析配置.请求次数);
+                return await concurrentInvoke(request_settings.请求次数);
             case '先请求一次, 失败后再同时请求多次':
                 if (store.settings.通知.额外模型解析中) {
                     toastr.info(
@@ -415,12 +431,12 @@ export async function invokeExtraModelWithStrategy(): Promise<string | null> {
                 if (store.settings.通知.额外模型解析中) {
                     toastr.info(
                         tr('runtime.extraModel.firstRequestFailed', {
-                            count: store.settings.额外模型解析配置.请求次数 - 1,
+                            count: request_settings.请求次数 - 1,
                         }),
                         tr('runtime.extraModel.updateInProgressTitle')
                     );
                 }
-                return concurrentInvoke(store.settings.额外模型解析配置.请求次数 - 1);
+                return await concurrentInvoke(request_settings.请求次数 - 1);
             default:
                 return throwLastPiErrorOrReturnNull();
         }
@@ -436,12 +452,13 @@ export async function invokeExtraModelWithStrategy(): Promise<string | null> {
  */
 export async function generateExtraModel(): Promise<string | null> {
     let did_set_extra_analysis_states = false;
+    const request_settings = getRequestSettings();
     try {
-        await setExtraAnalysisStates();
+        await setExtraAnalysisStates(request_settings.模型来源 === '更多');
         did_set_extra_analysis_states = true;
-        const pi_preflight = await preparePiRuntimePreflight();
+        const pi_preflight = await preparePiRuntimePreflight(request_settings);
         const generation_id = pi_preflight ? uuidv4() : undefined;
-        return await invokeExtraModel(generation_id, undefined, pi_preflight);
+        return await invokeExtraModel(generation_id, undefined, pi_preflight, request_settings);
     } catch (error) {
         throw localizePiError(error);
     } finally {
@@ -456,14 +473,15 @@ export async function generateExtraModel(): Promise<string | null> {
 async function invokeExtraModel(
     generation_id?: string,
     batch_id?: string,
-    pi_preflight?: PiRuntimePreflight
+    pi_preflight?: PiRuntimePreflight,
+    request_settings = useDataStore().settings.额外模型解析配置
 ): Promise<string> {
     const pi_attempt =
         generation_id !== undefined && pi_preflight !== undefined
             ? beginPiRequestAttempt(generation_id)
             : undefined;
     try {
-        const result = await requestReply(generation_id, batch_id, pi_preflight);
+        const result = await requestReply(generation_id, batch_id, pi_preflight, request_settings);
 
         const tag = _([...result.matchAll(/<(update(?:variable)?|variableupdate)>/gi)]).last()?.[1];
         if (!tag) {
@@ -593,29 +611,32 @@ function normalizeGenerateResultByResponseFormat(
 async function requestReply(
     generation_id?: string,
     batch_id?: string,
-    pi_preflight?: PiRuntimePreflight
+    pi_preflight?: PiRuntimePreflight,
+    request_settings = useDataStore().settings.额外模型解析配置
 ): Promise<string> {
     const store = useDataStore();
     const is_pi_request = pi_preflight !== undefined;
-    if (store.settings.额外模型解析配置.模型来源 === '更多' && !is_pi_request) {
+    if (request_settings.模型来源 === '更多' && !is_pi_request) {
         throw new Error(tr('runtime.pi.invalidConfig'));
     }
-    const response_format = store.settings.额外模型解析配置.应答格式;
+    const response_format = request_settings.应答格式;
     const is_v4_compatible_formatted_output = response_format === V4_COMPATIBLE_FORMATTED_OUTPUT;
     const supports_request_scoped_tools = !is_pi_request && supportsRequestScopedTools();
 
-    assertV4CompatibleFormattedOutputUsable();
+    if (!is_pi_request) {
+        assertV4CompatibleFormattedOutputUsable();
+    }
 
     const config: GenerateRawConfig = {
         user_input: '遵循<must>指令',
-        max_chat_history: store.settings.额外模型解析配置.max_chat_history,
-        should_stream: store.settings.额外模型解析配置.兼容假流式,
+        max_chat_history: request_settings.max_chat_history,
+        should_stream: request_settings.兼容假流式,
         generation_id,
     };
     if (supports_request_scoped_tools) {
         config.tools = response_format === '工具调用' ? [MVU_TOOL_DEFINITION] : [];
     }
-    if (store.settings.额外模型解析配置.模型来源 === '自定义') {
+    if (!is_pi_request && request_settings.模型来源 === '自定义') {
         const unset_if_equal = (value: number, expected: number) =>
             compare(store.versions.tavernhelper, '4.3.9', '>=') && value === expected
                 ? 'unset'
@@ -677,7 +698,7 @@ async function requestReply(
         throw 'simulated exception';
     }
 
-    if (store.settings.额外模型解析配置.破限方案 === '使用当前预设') {
+    if (request_settings.破限方案 === '使用当前预设') {
         clearExtraModelRequestOverrides();
         const result = await executeGenerate(
             {
@@ -711,14 +732,14 @@ async function requestReply(
         return normalizeGenerateResultByResponseFormat(result, response_format, is_pi_request);
     }
 
-    if (store.settings.额外模型解析配置.破限方案 === '使用其他预设') {
-        const preset = getExtraModelPreset(store.settings.额外模型解析配置.其他预设名称);
+    if (request_settings.破限方案 === '使用其他预设') {
+        const preset = getExtraModelPreset(request_settings.其他预设名称);
         const { ordered_prompts, injects, request_overrides } = buildOtherPresetGenerateConfig(
             preset,
             task
         );
 
-        if (store.settings.额外模型解析配置.模型来源 === '与插头相同') {
+        if (!is_pi_request && request_settings.模型来源 === '与插头相同') {
             setExtraModelRequestOverrides(request_overrides);
         } else {
             clearExtraModelRequestOverrides();
@@ -740,13 +761,13 @@ async function requestReply(
 
     clearExtraModelRequestOverrides();
     const model_name = is_pi_request
-        ? store.settings.额外模型解析配置.pi.model
-        : store.settings.额外模型解析配置.模型来源 === '与插头相同'
+        ? request_settings.pi.model
+        : request_settings.模型来源 === '与插头相同'
           ? SillyTavern.getChatCompletionModel()
           : store.settings.额外模型解析配置.模型名称;
     const is_gemini = model_name.toLowerCase().includes('gemini');
     const rnd_header_prompts =
-        store.settings.额外模型解析配置.随机头部 && is_gemini
+        request_settings.随机头部 && is_gemini
             ? [{ role: 'system' as const, content: batch_id ?? generateRandomHeader() }]
             : [];
 

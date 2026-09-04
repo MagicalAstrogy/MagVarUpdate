@@ -482,6 +482,59 @@ describe('pi runtime preflight', () => {
         expect(createModels).not.toHaveBeenCalled();
     });
 
+    test.each([
+        [1, 1, 1, undefined],
+        [0.7, 1, 0.7, undefined],
+        [1, 0.8, undefined, 0.8],
+    ])(
+        'sends one native Anthropic sampler for temperature=%s and top_p=%s',
+        async (temperature, topP, expectedTemperature, expectedTopP) => {
+            const preflight = await assertPiRuntimeConfiguration({
+                settings: makeSettings({
+                    温度: temperature,
+                    top_p: topP,
+                    pi: {
+                        provider: 'anthropic',
+                        api: 'anthropic-messages',
+                        model: 'claude-legacy',
+                    },
+                }),
+                credentialStore: makeCredentialStore(),
+            });
+
+            expect(preflight.temperature).toBe(expectedTemperature);
+            expect(preflight.sampling.topP).toBe(expectedTopP);
+        }
+    );
+
+    test('rejects conflicting native Anthropic samplers without restricting custom endpoints', async () => {
+        const settings = makeSettings({
+            pi: {
+                provider: 'anthropic',
+                api: 'anthropic-messages',
+                model: 'claude-legacy',
+                contextWindow: 200_000,
+            },
+        });
+        const credentialStore = makeCredentialStore();
+        await expect(
+            assertPiRuntimeConfiguration({ settings, credentialStore })
+        ).rejects.toMatchObject({
+            code: 'invalid_configuration',
+            retryable: false,
+            message: expect.stringContaining('Anthropic sampling'),
+        });
+        const custom = await assertPiRuntimeConfiguration({
+            settings: {
+                ...settings,
+                pi: { ...(settings.pi as object), endpoint: 'https://custom.example' },
+            },
+            credentialStore,
+        });
+        expect(custom.temperature).toBe(0.7);
+        expect(custom.sampling.topP).toBe(0.8);
+    });
+
     test('filters sampling fields and temperature using API/model metadata', async () => {
         const preflight = await assertPiRuntimeConfiguration({
             settings: makeSettings({
