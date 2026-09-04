@@ -51,6 +51,7 @@ const ExtraModelPiProfileSnapshot = z
             .trim()
             .pipe(z.enum(['api_key', 'oauth'])),
         endpoint: z.string().trim(),
+        useProxy: z.boolean().catch(false).default(false),
         model: z.string().trim(),
         contextWindow: ExtraModelPiProfileContextWindow,
         customHeaders: z.string(),
@@ -72,6 +73,7 @@ const ExtraModelPiSettings = z
         // reject unsupported values, while migration clears any unowned shared root key.
         authType: z.string().trim().default('api_key'),
         endpoint: z.string().trim().default(''),
+        useProxy: z.boolean().catch(false).default(false),
         model: z.string().trim().default(''),
         contextWindow: ExtraModelPiContextWindow,
         credentials: z.record(z.string(), z.unknown()).catch({}).default({}),

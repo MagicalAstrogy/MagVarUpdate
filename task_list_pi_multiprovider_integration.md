@@ -2,7 +2,8 @@
 
 > 来源：[design_note_pi_multiprovider_intergration.md](design_note_pi_multiprovider_intergration.md)
 > 用户文档：[doc/pi_multiprovider_integration.md](doc/pi_multiprovider_integration.md)
-> 状态：主体实现、prompt 回归 fixtures、捕获链路实机自动化与自动化构建完成，待真实 OAuth/Provider 浏览器发布验收
+> 状态：主体实现、34 来源目录和按 Provider/API 审计的 SillyTavern
+> Proxy 路由已接入；Proxy 增量仍需最终全仓自动化/构建复跑，真实 OAuth/Provider 浏览器发布验收仍归 H-03
 >
 > 目标范围：覆盖当前 MVU 主要能力
 >
@@ -14,12 +15,12 @@
 ## 范围与优先级
 
 - **P0 / 文本 MVP**：定向捕获、文本消息适配、pi
-  API/凭据配置、浏览器 OAuth、OpenAI/Anthropic/Google 请求、流式、中止和结果归一化。
+  API/凭据配置、浏览器 OAuth、34 个已注册来源、六种 wire API、流式、中止和结果归一化。
 - **P1 / 当前能力对齐**：工具调用、`required` tool choice、结构化输出、图片和请求参数兼容。
 - **P2 / 后续增强**：历史工具消息、远程图片、request-scoped prompt budget 和更多 Provider 特例。
 
 首版明确不做：回复写回 SillyTavern、回复追加到 pi `Context`、跨轮 pi
-Context 持久化、服务端密钥代理、reasoning signature 回放、视频输入、服务端 OAuth
+Context 持久化、服务端密钥托管、reasoning signature 回放、视频输入、服务端 OAuth
 callback/relay、修改 SillyTavern/Slash-Runner，以及导入 `providers/all`。
 
 模型来源路由保持为：
@@ -27,6 +28,9 @@ callback/relay、修改 SillyTavern/Slash-Runner，以及导入 `providers/all`�
 - `与插头相同`：继续使用当前 TavernHelper/SillyTavern Provider 链路。
 - `自定义`：继续使用当前 TavernHelper 自定义 API 链路。
 - `更多`：进入新增的 pi 链路，并通过二级“来源”菜单选择已注册的 pi Provider。
+
+“更多”当前列出 34 个带确定请求地址的来源：32 个使用锁定版 Pi 的 `Provider.baseUrl`，OpenCode
+Zen/Go 则使用其 model catalog 给出的分 API 地址；仍不导入 `providers/all`。
 
 pi 的来源、凭据、模型和请求参数都属于 `额外模型解析配置`，不建立独立的全局 pi 设置区。
 
@@ -52,8 +56,9 @@ pi 的来源、凭据、模型和请求参数都属于 `额外模型解析配置
     - 只要所选 wire
       API 已实现对应请求形状，就认为工具调用/格式化输出可用并乐观发送；目录模型、动态模型和自定义 endpoint 的静态能力信息不作为请求前门禁。
     - 普通“格式化输出”已覆盖 OpenAI Responses、OpenAI Chat Completions、OpenAI Codex
-      Responses、Anthropic Messages 和 Google；v4/JSON Object 已覆盖除 Anthropic
-      Messages 外的上述 API。Anthropic v4 请求形状尚未实现，仍在请求前明确拒绝。
+      Responses、Anthropic Messages、Google 和 Mistral Conversations；v4/JSON
+      Object 已覆盖除 Anthropic Messages 外的上述 API。Anthropic
+      v4 请求形状尚未实现，仍在请求前明确拒绝。
     - 目标 endpoint/model 实际不支持并返回错误时，在调用边界保留错误类别，并通过 `toastr.error`
       给出经过脱敏、可操作的提示。
     - 不回退为无约束文本，不转换成工具调用，也不在失败后改用其他结构化输出策略重试。
@@ -67,8 +72,9 @@ pi 的来源、凭据、模型和请求参数都属于 `额外模型解析配置
     - 不修改 SillyTavern 或 Slash-Runner，也不依赖 async context 自动取消。
 
 - [x] **DEC-05（P0，已确认）在 `Source.vue` 配置 pi API 与认证方式**
-    - 模型来源“更多”下支持 pi wire API：`openai-responses`、`anthropic-messages`、
-      `openai-completions`；固定 API 的内置 Provider 只展示其兼容值。
+    - 模型来源“更多”下支持六种 pi wire API：`openai-responses`、`openai-completions`、
+      `openai-codex-responses`、`anthropic-messages`、`google-generative-ai` 和
+      `mistral-conversations`；固定 API 的内置 Provider 只展示其兼容值。
     - 认证方式支持现有 API Key 和 OAuth。OAuth 不是任意 API 的通用凭据，只对来源注册表中声明
       `auth.oauth` 的 Provider 开放，并锁定该 Provider 的兼容 API。
     - Anthropic OAuth 使用 `anthropic-messages`；OpenAI 订阅 OAuth 使用 OpenAI Codex Provider 的
@@ -76,6 +82,49 @@ pi 的来源、凭据、模型和请求参数都属于 `额外模型解析配置
     - 浏览器不启动本地 callback server。交互上按产品约定将 callback 视为 `127.0.0.1`
       loopback；授权完成后由用户从浏览器地址栏复制完整 callback URL，粘贴回 `Source.vue` 完成 code
       exchange。authorization request 与 code exchange 始终使用注册表声明的同一个精确 redirect URI。
+
+- [x] **DEC-06（P0，已确认）列出 Pi 已知地址的来源并提供模型发现**
+    - 二级“来源”菜单注册 34 个具体来源：32 个具有 Pi `Provider.baseUrl`
+      预设，另加目录已提供 concrete per-API URL 的 OpenCode Zen 和 OpenCode Go。
+    - Fireworks、OpenCode Zen/Go 根据所选 wire API 自动使用各自 base
+      URL；其余固定来源使用注册表中的 provider base，只有既有 OpenAI/Anthropic API
+      Key 来源保留自定义 endpoint。
+    - 所有来源共享“获取模型列表”入口，并按 Provider 的实际目录协议选择 OpenAI-compatible、Anthropic、Google、Mistral 或 Codex
+      subscription 发现；Fireworks、GitHub Copilot、OpenCode Zen/Go 与 Vercel AI
+      Gateway 的 OpenAI 结构目录复用 ST status，不根据生成 wire API 错猜响应格式。
+    - 共享目录中的已知模型按当前 API 过滤，未知新模型保留供手工配置；失败通过 `toastr`
+      明确显示，仍允许手工填写模型 ID。
+    - 来源不会按一次性的浏览器 CORS 探测结果过滤；经审计的组合使用 DEC-07 的固定 Proxy 策略，未登记的 CORS/权限变化按原错误边界呈现。
+    - OAuth 仍只开放 Anthropic 与 OpenAI Codex；不因 Pi 上游存在其他 OAuth
+      helper 而扩大浏览器认证范围。
+    - 排除需要运行时账号、区域或资源标识才能生成 URL 的动态模板：Amazon Bedrock、Azure OpenAI
+      Responses、Cloudflare AI Gateway、Cloudflare Workers AI、Google Vertex 和 Radius。
+    - 继续逐项导入 model catalog 与六个 wire adapter，不导入 `providers/all` 或 provider
+      factory 聚合入口。
+
+- [x] **DEC-07（P0，已确认）按审计结果选择 SillyTavern CORS Proxy**
+    - Proxy 策略按“Provider + wire
+      API”精确登记，不把一个 Provider 的受限 API 推广到它的其他 API。当前 15 个组合为：Ant Ling /
+      `openai-completions`；Fireworks / `anthropic-messages`；GitHub Copilot / `anthropic-messages`
+      与 `openai-responses`；Kimi For Coding / `anthropic-messages`；MiniMax（中国） /
+      `anthropic-messages`；NVIDIA / `openai-completions`；OpenAI Codex /
+      `openai-codex-responses`；OpenCode Zen / `anthropic-messages`、
+      `google-generative-ai`、`openai-completions`、`openai-responses`；OpenCode Go /
+      `anthropic-messages`、`openai-completions`、`openai-responses`。
+    - 二级来源和 API 下拉框对有效 Proxy 路由附加字面量 `(Proxy)`；多 API 来源按当前 API 更新标记。
+    - 自定义 endpoint 不继承静态矩阵，规范化后不同于默认地址时显示“使用 Proxy”勾选框并以
+      `pi.useProxy` 为准；显式默认 operation/base URL 仍遵循内置策略。该字段进入 Pi
+      connection/profile 快照并随方案恢复。
+    - Proxy 路由要求 SillyTavern 使用 `enableCorsProxy: true` 或 `--corsProxy`
+      启用。配置区探测失败时以既有警告样式显示精确文案“没有开启Proxy”；生成和模型列表在真正请求前再次检查，未启用时通过
+      `toastr`
+      fail-fast，禁止静默直连。请求前检查强制刷新缓存、支持随调用取消并有 5 秒上限；实际转发阶段才发现路由关闭时也保持
+      `proxy_unavailable` 的非重试分类。
+    - Proxy 只用于模型生成和目录请求，不代理 OAuth
+      authorize/token/refresh。只为可信、不跨站重定向的 HTTPS（或允许的 loopback
+      HTTP）JSON 模型 endpoint 使用；SillyTavern HTTP Basic Auth 与上游 `Authorization`
+      可能冲突，作为已知限制记录。
+    - 浏览器 AbortSignal 会中止浏览器到 SillyTavern 的请求，但在 ST 收到上游响应头前，通用 Proxy 不保证把断连传播到上游；不得把本地停止等同于 Provider 已停止生成或计费。
 
 ## 里程碑 A：固定 custom 捕获通道（P0，0.5–1 天，纯 MVU）
 
@@ -191,7 +240,8 @@ pi 的来源、凭据、模型和请求参数都属于 `额外模型解析配置
 - [x] **D-01 引入并固定 pi 依赖**
     - 固定 `@earendil-works/pi-ai` 的目标版本，确认 Node
       24.15.0 和现有 TypeScript/webpack 配置兼容。
-    - 只注册 OpenAI、OpenAI Codex、Anthropic、Google 所需 adapter，不导入 `providers/all`。
+    - 显式注册 34 个来源各自的 model catalog 和六个所需 wire adapter，不导入 `providers/all`
+      或 provider factory 聚合入口。
     - 浏览器 bundle 不得包含或执行 `node:http` callback server；OAuth 手工回调桥接使用 browser-safe
       Web Crypto/fetch 实现。
 
@@ -203,11 +253,19 @@ pi 的来源、凭据、模型和请求参数都属于 `额外模型解析配置
     - 自定义 endpoint 只允许任意有效 HTTPS，或 host 精确为 `localhost`、`127.0.0.1`、`[::1]` 的 HTTP
       loopback；拒绝远端/内网 HTTP、其他协议、凭据、query、fragment 和非法 URL。
     - 二级菜单与运行时共用同一注册表，避免 UI 展示未打包或未实现的来源。
-    - 首批按设计接入 OpenAI、OpenAI Codex、Anthropic、Google；后续来源通过注册表增量加入，不导入
-      `providers/all`。
+    - 当前注册 34 个具体来源：32 个沿用 Pi `Provider.baseUrl`，OpenCode Zen/Go 使用目录中的分 API
+      URL；后续来源仍通过注册表增量加入，不导入 `providers/all`。
+    - Fireworks 与 OpenCode 的 generation effective base URL 随 wire API 解析，UI、key
+      scope 和请求运行时共用同一 per-wire resolver；模型发现单独使用注册过的 OpenAI-shaped discovery
+      URL。
+    - 每个来源显式声明 `corsProxyRequiredApis`，并由 UI、生成运行时和模型列表共用同一个
+      `shouldUsePiCorsProxy` 解析规则；静态矩阵精确包含 DEC-07 的 15 个组合。
 
 - [x] **D-03 实现模型与 Provider 解析器**（依据 DEC-02）
     - 内置模型优先走 model catalog，并用目录中的 `contextWindow` 预填配置。
+    - “获取模型列表”按当前 Provider/API/auth 发现上游可见模型：OpenAI-compatible 目录复用 ST status
+      route，Anthropic/Google/Mistral 使用其模型端点，Codex 使用 OAuth subscription
+      catalog；Provider 的目录协议与生成协议不同时使用显式发现策略，并过滤已知的跨 API ID。
     - 未命中的自定义 OpenAI/Anthropic-compatible
       endpoint 创建动态 Provider/Model，并按 D-02 的传输安全策略校验 URL、model
       id 和模型元数据；非法地址在 fetch 前 fail-closed。
@@ -220,7 +278,9 @@ pi 的来源、凭据、模型和请求参数都属于 `额外模型解析配置
     - 只从当前 `额外模型解析配置` 的“更多来源”及其设置构建 pi 请求，不读取独立全局配置。
     - 校验所选来源、wire
       API、认证方式和 model 的组合；不允许 OAuth 与任意自定义 endpoint/API 自由组合。
-    - 请求前检查浏览器可直连条件；CORS 失败归一为可识别的网络/配置错误。
+    - 请求前检查 URL 的协议、host、凭据和 query/fragment 等传输安全条件；需要 Proxy 的 target 先检查 SillyTavern
+      Proxy，可用时按受限 base
+      URL 转发，不可用时归一为非重试配置错误。其他网络/CORS 失败归一为可识别的网络/配置错误。
 
 - [x] **D-04 实现配置内的 pi `CredentialStore`**
     - 在 `额外模型解析配置` 内按 Provider ID 保存类型化 credential；实现 pi 所需的
@@ -253,8 +313,8 @@ pi 的来源、凭据、模型和请求参数都属于 `额外模型解析配置
       `CredentialStore.delete(providerId)` 完成。
     - AbortSignal 贯穿授权等待与 token
       exchange；切换来源、关闭面板或取消登录时清理 pending 状态，不修改旧 credential。
-    - 先验证 OAuth authorize/token endpoint 的浏览器 CORS；若 code
-      exchange 被 CORS 阻止，明确报错，不静默改走未授权代理或服务端 relay。
+    - OAuth authorize/token/refresh 保持浏览器直连，不使用模型请求的 SillyTavern Proxy；若 code
+      exchange 被 CORS 阻止，明确报错，不静默改走服务端 relay。
 
 - [x] **D-06 实现请求参数映射**
     - 将现有“最大回复token数”映射为 pi 请求的 `maxTokens`，并映射
@@ -288,15 +348,29 @@ pi 的来源、凭据、模型和请求参数都属于 `额外模型解析配置
     - 对空回复、仅 thinking、`length` stop reason 给出明确结果或错误。
 
 - [x] **D-11 补齐运行时与认证测试**
-    - `openai-responses`、`anthropic-messages`、`openai-completions`、OpenAI Codex 和 Google
-      payload 快照覆盖角色、system、采样参数和 headers。
-    - 断言来源注册表、二级菜单选项和实际 adapter loader 一致。
+    - 六种 wire API 的 payload 快照覆盖角色、system、采样参数和 headers。
+    - 断言 34 来源注册表、二级菜单、model catalog 和实际 adapter
+      loader 一致，并覆盖 Fireworks/OpenCode 的 per-API base URL。
+    - 覆盖模型列表的各协议分支、认证、分页、去重、取消、Proxy 选择与失败归一化；网络请求使用 mock，不把未登记的 CORS 结果误当成永久 Provider 能力。
     - 覆盖目录命中、动态模型、缺密钥、未知模型、CORS/网络错误、流式完成和中止。
     - 覆盖 CredentialStore 的 provider 隔离、序列化 refresh、登录替换确认、取消不覆盖和登出删除。
     - OAuth 覆盖 PKCE/state、授权 URL、合法 callback、错误 callback、host/path/state 不匹配、重放、过期、token
       exchange/refresh 失败和中止清理；网络请求全部 mock，不使用真实账号。
     - 覆盖重复 ID、按 ID 取消、并发 winner 保留/loser 取消、手动停止和所有终态的 controller 清理。
     - 测试日志与 diagnostics 不泄漏 API key、authorization code 或 OAuth token。
+
+- [x] **D-12 实现受限的 SillyTavern Proxy transport**（依据 DEC-07）
+    - 用由 SillyTavern 本地解析的 data URL 作为无外连 sentinel，区分 `enabled`、`disabled` 和
+      `unavailable`，并按 fetch/origin 缓存且合并并发探测；生成和模型列表请求强制刷新探测，等待支持取消且有 5 秒超时，瞬时
+      `unavailable` 可重新探测。
+    - Proxy fetch 只允许当前 Provider base origin/path 及其子路径，保留 method、headers、JSON
+      body、query 和 AbortSignal；拒绝越界 URL、非 JSON/不可重放 body 和不支持的方法。
+    - 生成请求与直接模型目录请求共用该 transport；原本经 ST model
+      status 发现 OpenAI 结构目录的分支不做二次 Proxy 包装，但仍执行 Proxy 可用性 preflight。
+    - OpenAI Codex 在 Proxy 路径强制使用 SSE。OpenCode Zen 的 `google-generative-ai`
+      使用项目内请求级 Proxy-aware Google adapter；Google 直连路径继续委托上游 Pi adapter。
+    - Proxy 不可用错误标记为非重试，并由现有 Pi 请求边界通过本地化 `toastr`
+      显示；不向 Provider 先发一次直连请求，也不降级到其他 wire API。
 
 ## 里程碑 E：通过“更多”接入 MVU 请求流程（P0）
 
@@ -326,14 +400,14 @@ pi 的来源、凭据、模型和请求参数都属于 `额外模型解析配置
 - [x] **E-05 更新 `额外模型解析配置` schema 与迁移**
     - 将 `模型来源` 扩展为 `与插头相同 | 自定义 | 更多`。
     - 在同一配置对象中新增“更多来源”、pi
-      `api`、认证方式、各 Provider 所需的 credential、model、endpoint 和 `contextWindow`
+      `api`、认证方式、各 Provider 所需的 credential、model、endpoint、`useProxy` 和 `contextWindow`
       字段；复用现有“密钥”和“最大回复token数”，并以 `customApiKey`/`pi.apiKeys` 提供隔离的 Custom/Pi
       Provider + normalized endpoint API Key 槽位。
     - OAuth credential 按 Provider ID 保存；PKCE verifier、state、callback URL 和 authorization
       code 仅属于当前登录 attempt，不持久化。
     - 为已有设置提供默认值，旧用户继续保持原模型来源和请求行为。
     - `backend: 'pi'` API 方案保存完整连接快照：Provider、API、认证方式、endpoint、model、
-      `contextWindow`、custom headers/include/exclude
+      `useProxy`、`contextWindow`、custom headers/include/exclude
       body；迁移、另存和删除继续深拷贝并保留未知字段。
     - `pi.apiKeys` 与 `pi.credentials` 都不进入 `ExtraModelApiProfile`，不会把整份凭据 cache
       map 序列化进方案；切换方案时保留当前设置中的隔离 map。完整 profile 顶层的“密钥”（target
@@ -355,10 +429,10 @@ pi 的来源、凭据、模型和请求参数都属于 `额外模型解析配置
 
 - [x] **E-06 在 `Source.vue` 实现 pi 来源、API 与凭据 UI**
     - 模型来源增加“更多”选项；仅选中“更多”时显示 pi 来源二级菜单。
-    - 二级菜单从 D-02 来源注册表生成，并随来源切换展示对应配置字段和能力提示。
-    - 增加 API 接口选择：OpenAI Responses（`openai-responses`）、Anthropic
-      Messages（`anthropic-messages`）、OpenAI Chat
-      Completions（`openai-completions`）；固定 API 来源显示只读值，OAuth 来源自动锁定兼容 API。
+    - 二级菜单从 D-02 来源注册表生成，列出全部 34 个来源，并随来源切换展示对应配置字段和能力提示。
+    - API 接口覆盖 OpenAI Responses、OpenAI Chat Completions、OpenAI Codex Responses、Anthropic
+      Messages、Google Generative AI 和 Mistral
+      Conversations；固定 API 来源显示只读值，多 API 来源显示选择框，OAuth 来源自动锁定兼容 API。
     - 增加认证方式选择；API Key 显示并复用现有“密钥”输入框，但切换来源/Provider/endpoint 时从隔离的
       `customApiKey` 或由 provider + normalized endpoint 生成的 `pi.apiKeys`
       scope 读写；OAuth 仅在所选来源支持时出现，并隐藏 API
@@ -367,6 +441,13 @@ pi 的来源、凭据、模型和请求参数都属于 `额外模型解析配置
       数字输入框，并同时展示现有“最大回复token数”输入框，不创建重复字段。
     - model catalog 命中时预填
       `contextWindow`，且允许用户覆盖；目录未命中的模型不得在该字段缺失时提交请求。
+    - 模型字段提供“获取模型列表”，按当前来源/API/凭据请求可见目录；失败通过安全 `toastr`
+      显示，不清空手工模型值。
+    - Provider/API 下拉项根据有效路由附加
+      `(Proxy)`；自定义 endpoint 规范化后不同于默认地址时显示“使用Proxy”勾选框。所有补充说明使用
+      `HelpIcon`，不直接铺陈为常驻说明文本。
+    - 选择需要 Proxy 的路由时探测当前 ST 配置；未开启时在配置区复用现有警告样式显示“没有开启Proxy”，请求边界仍独立执行 fail-fast 检查并弹出
+      `toastr`。
     - 对两个输入执行正整数及“最大回复token数”不大于 `contextWindow` 的校验。
     - 切回“与插头相同”或“自定义”时隐藏 pi 字段但保留已保存值，避免误清配置。
     - 补齐中英文标签、帮助文本，以及来源/API/认证组合、显隐、预填、覆盖、持久化和非法值表单测试。
@@ -394,7 +475,7 @@ pi 的来源、凭据、模型和请求参数都属于 `额外模型解析配置
       结束后所有 loser 请求都已 abort。
     - 覆盖目录 `contextWindow` 预填、用户配置覆盖、未知 model 使用手工 `contextWindow`
       与现有“最大回复token数”，以及缺失/非法值被请求前校验拦截。
-    - 覆盖三种可配置 wire API 的路由、API Key/OAuth auth
+    - 覆盖六种 wire API 的路由、API Key/OAuth auth
       resolution、OAuth 自动 refresh，以及非法 Provider/API/auth 组合在请求前报错。
     - “与插头相同”和“自定义”的既有测试继续通过，并断言不会加载或调用 pi runtime。
     - `invoke_extra_model_pi_boundary.integration.test.ts` 不 mock
@@ -416,7 +497,8 @@ pi 的来源、凭据、模型和请求参数都属于 `额外模型解析配置
 - [x] **F-02 实现 wire-API-aware tool choice router**
     - provider-neutral 路径只处理 `auto | none`。
     - OpenAI 映射 `required`/指定函数，Anthropic 映射 `any`/指定 tool，Google 当前只映射
-      `any`；Google named tool choice 尚未实现并在请求前明确拒绝。
+      `any`，Mistral 映射 `required`/`any`/指定函数；Google named tool
+      choice 尚未实现并在请求前明确拒绝。
     - 对已经实现的 tool choice 请求形状，不根据目录模型或 endpoint 静态能力提前拒绝。
     - 禁止用统一的无类型强转把同一值发送给所有 Provider。
 
@@ -433,20 +515,23 @@ pi 的来源、凭据、模型和请求参数都属于 `额外模型解析配置
     - Anthropic Messages 的普通格式化输出映射为 `output_config.format` JSON Schema，v4/JSON
       Object 尚无 payload 映射并在调用 pi stream API 前明确拒绝。OpenAI Codex
       Responses 的普通和 v4 格式化输出都映射为 `text.format`。
+    - Mistral Conversations 的普通格式化输出与 v4 分别映射为原生 JSON Schema 和 JSON Object
+      `responseFormat`。
     - 目标 endpoint/model 实际拒绝工具调用或格式化输出时，归一化错误类别，并通过 `toastr.error`
       显示经过脱敏、可操作的错误信息。
     - 不把“格式化输出”转换成 constrained tool，不回退无约束文本，也不做失败后的策略重试。
     - 支持路径保证现有两种格式化输出解析器仍收到预期 JSON 结果。
 
 - [x] **F-05 补齐工具与结构化输出测试**
-    - 三类 Provider 覆盖 auto/none/required/named 的 wire API 映射分支，包括 Google
+    - 六种 wire API 覆盖 auto/none/required/named 的映射分支，包括 Google
       named 未实现时的请求前拒绝。
     - 普通格式化输出覆盖 OpenAI Responses、OpenAI Chat Completions、OpenAI Codex
-      Responses、Anthropic
-      Messages 和 Google 的请求形状、目录外模型和自定义 endpoint 的乐观发送，以及目标返回不支持错误后的安全
+      Responses、Anthropic Messages、Google 和 Mistral
+      Conversations 的请求形状、目录外模型和自定义 endpoint 的乐观发送，以及目标返回不支持错误后的安全
       `toastr` 提示。
-    - v4 覆盖 OpenAI Responses、OpenAI Chat Completions、OpenAI Codex Responses 和 Google；Anthropic
-      v4 因 wire payload 未实现而请求前拒绝，且未调用 pi stream API。
+    - v4 覆盖 OpenAI Responses、OpenAI Chat Completions、OpenAI Codex
+      Responses、Google 和 Mistral；Anthropic v4 因 wire payload 未实现而请求前拒绝，且未调用 pi
+      stream API。
     - 断言上游拒绝后不会转换为 tool call、不会发送无约束文本请求，也不会以其他策略重试。
     - 覆盖 schema 非 object、无效 arguments、多 tool call、text + tool call、仅 tool
       call 和 length/abort。
@@ -477,40 +562,53 @@ pi 的来源、凭据、模型和请求参数都属于 `额外模型解析配置
 ## 里程碑 H：总体验收与发布（P0/P1，0.5–1 天）
 
 - [x] **H-01 自动化验证**
-    - MVU：相关 Jest 测试、完整测试、类型声明构建和 webpack 生产构建通过。
+    - 最终合并状态通过 `yarn test --runInBand`：62 suites、1162 passed、53
+      skipped；Proxy 定向回归另通过 220 项。
+    - `yarn lint`、`yarn build:dts` 与 `CI=true yarn build`
+      均通过；webpack 只有既有的动态依赖、浏览器数据陈旧和包体积提示。
     - SillyTavern 无代码改动，Slash-Runner submodule 指针不变，没有跨仓库代码改动。
-    - 本次全量 Jest：59 suites、1116 passed、53 skipped；完整 `yarn lint`、`yarn build:dts` 与
-      `CI=true yarn build` 均成功且为 0 error。
 
 - [x] **H-02 bundle 验收**
-    - 生产包只包含选定的 OpenAI/OpenAI Codex/Anthropic/Google adapter，不包含
-      `providers/all`、无关 Provider 或 Node callback server 代码。
-    - 记录迁移前后 bundle 体积，若增长异常则定位依赖来源。
-    - 最终 `artifact/bundle.js` 为 1,170,517 B / gzip-9 274,004 B，SHA-256 为
-      `acd9e798daacd81a14c2ac7928df3542f95e6af514dd9b0c71b649f86a8c50a1`；迁移前基线（`61010da`）为 307,765
-      B / gzip-9 81,019 B，即最终约为 3.80× / 3.38×（增长约 280.3% /
-      238.2%）。增量来自单 chunk 中锁版打包的 Pi、OpenAI、Anthropic、Google、`p-retry`/`retry`
-      及所选 adapter；产物与 source map 扫描确认这些依赖没有回退到未锁版 CDN，且不含
-      `providers/all`、`node:http`、callback server 入口。
+    - 最终生产包为 1,649,123 B / gzip-9 313,620 B，SHA-256 为
+      `1a4117629e47fb52dfcff58f82626a3312b8f06d13ae271016cf479e1be940fe`；source map 为 4,558,626
+      B。
+    - 构建后 dependency boundary 与 LICENSE 契约 7 项通过：source
+      map 恰有 34 个显式注册来源的独立 catalog、六个 wire adapter 和项目内 Google Proxy
+      adapter，未导入 `providers/all`、动态模板/未注册 Provider factory、`node:http`、callback
+      server 或未锁版 SDK CDN。
 
 - [ ] **H-03 浏览器手工 smoke test**
-    - 选择模型来源“更多”，从二级菜单切换 OpenAI、Anthropic、Google，各完成一次文本请求和中止请求。
-    - 支持的 Provider 各完成一次工具调用；支持图片的模型完成一次 data URL 图片请求。
+    - 选择模型来源“更多”，确认二级菜单完整列出 34 个来源；逐项切换时 API、认证和固定 endpoint 行为符合注册表，并验证 Fireworks、OpenCode
+      Zen/Go 的 per-API URL。
+    - 核对 DEC-07 的 15 个精确 Provider/API 组合在 Provider/API 下拉中带
+      `(Proxy)`，同一 Provider 的非代理 API 不带后缀；自定义 endpoint 可独立开关“使用 Proxy”并随 Pi
+      profile 恢复。
+    - 分别在 ST
+      Proxy 关闭与开启时验证 UI：关闭时配置区显示“没有开启Proxy”，生成和模型列表都在 Provider 请求前以
+      `toastr` fail-fast；开启后相同请求经 `/proxy/<encoded-target>` 发送且不会额外直连。
+    - 六种 wire
+      API 各选一个代表来源完成文本请求和中止请求；支持的路径完成工具调用，并用支持图片的模型完成一次 data
+      URL 图片请求。
+    - 六种 wire API 各覆盖一次“获取模型列表”的成功或可解释失败；Proxy/CORS/权限失败必须显示脱敏
+      `toastr`，不得删掉手工填写的模型或静默切换 Provider。
+    - 验证 Proxy 下 OpenAI Codex 使用 SSE；验证 OpenCode Zen Google 经过项目内 Proxy-aware
+      adapter，包含文本、工具/结构化输出和中止至少各一个代表 case。
     - 在已实现结构化输出请求形状的 wire
       API 中分别验证一个成功路径和一个目标 endpoint/model 实际拒绝路径；后者应已发送原请求、显示明确且经过脱敏的
       `toastr` 错误，且不发起任何降级或换策略重试。
     - 分别验证 Anthropic Messages 的普通格式化输出和 OpenAI Codex
       Responses 的普通/v4 格式化输出成功发送；另验证 Anthropic v4 因 wire
       payload 未实现而在请求前明确拒绝。
-    - 分别验证 `openai-responses`、`anthropic-messages`、`openai-completions` 的 API Key 请求。
+    - 分别验证 API Key 下的 `openai-responses`、`anthropic-messages`、`openai-completions`、
+      `google-generative-ai` 和 `mistral-conversations`；Codex adapter 由下一项 OAuth 流程覆盖。
     - 分别完成一次 Anthropic 和 OpenAI Codex OAuth：打开授权页、复制 `127.0.0.1` callback
       URL、粘贴完成登录、请求、刷新页面后的认证恢复和登出。
     - 同时触发主聊天与 MVU 额外请求，确认 prompt 不串线、停止互不影响。
     - 检查捕获阶段不会携带真实 pi endpoint/key；正常路径快速以预期错误结束，监听失效时只访问
       `.invalid`。
     - 回归“与插头相同”和“自定义”，确认仍走原 TavernHelper 链路且结果不变。
-    - 已完成子集：ST 1.18.0 + TavernHelper 4.9.3 + Firefox
-      154.0.1 加载本地生产产物；验证“更多”、四类 Provider、API 标签、Anthropic API Key/OAuth
+    - 已完成的扩展前子集：ST 1.18.0 + TavernHelper 4.9.3 + Firefox
+      154.0.1 加载本地生产产物；验证“更多”、原四类 Provider、API 标签、Anthropic API Key/OAuth
       endpoint 显隐、context/maxToken 编辑、Pi profile `backend: 'pi'`
       保存/切换/删除/整页刷新持久化及凭据排除，0 error
       toast。真实账号 OAuth 与真实 Provider 浏览器验收仍待完成；协议级功能、并发和旧链路自动回归见下文。
@@ -547,15 +645,15 @@ pi 的来源、凭据、模型和请求参数都属于 `额外模型解析配置
       fetch 边界替换固定 UI
       placeholder，没有进入 Vue/Pinia/ST 设置；临时目录扫描确认真实凭据未持久化，页面内存、进程和目录均已清理。
     - `yarn test:pi:st-server-cancel` 通过真实 Firefox
-      → 本机流式 HTTP 服务验证客户端停止确实传播到可观测服务端：Pi 响应在 finish 前关闭且主聊天仍存活，随后主聊天 stop 才关闭自己的流。它证明取消传播与隔离，但不代表真实 Provider 已停止生成或计费。
-    - 尚待发布验收：native OpenAI/Anthropic/Google 的真实 API
-      Key 功能矩阵（含 tools/image/structured）、真实 Anthropic 与 OpenAI Codex
+      → 本机流式 HTTP 服务验证客户端停止确实传播到可观测服务端：Pi 响应在 finish 前关闭且主聊天仍存活，随后主聊天 stop 才关闭自己的流。它证明取消传播与隔离，但不代表真实 Provider 已停止生成或计费。该历史测试也不覆盖 ST 通用 Proxy 在收到上游响应头之前的取消传播限制。
+    - 尚待发布验收：34 来源菜单和六种 wire API 的代表性真实浏览器矩阵（含 Proxy 开关、model
+      list、tools/image/structured 与预期 Proxy/CORS/权限失败）、真实 Anthropic 与 OpenAI Codex
       OAuth 登录/刷新/请求/登出，以及真实 Provider 侧可观察的服务端取消。因此 H-03 保持未勾选。
 
 - [x] **H-04 发布与回滚准备**
     - 更新用户文档、Provider/API/auth 组合、OAuth loopback
-      URL 复制步骤、浏览器凭据保存风险、登出方法、CORS 限制和能力矩阵；不增加额外 Slash-Runner 检查或安装步骤。
-    - 保留一个可快速关闭 pi 路径的发布开关，直到三类 Provider smoke test 稳定。
+      URL 复制步骤、浏览器凭据保存风险、登出方法、Proxy 启用方式/CORS 限制和能力矩阵；不增加额外 Slash-Runner 检查或安装步骤。
+    - 保留一个可快速关闭 pi 路径的发布开关，直到 34 来源/六协议的代表性 smoke test 稳定。
     - 记录不在范围内的能力及后续任务，避免被误认为缺陷。
 
 ## 完成定义
@@ -571,8 +669,14 @@ pi 的来源、凭据、模型和请求参数都属于 `额外模型解析配置
 - [x] 只有模型来源“更多”进入 pi；“与插头相同”和“自定义”的既有链路保持兼容。
 - [x] “更多”的二级来源菜单与实际注册/打包的 pi Provider 一致，相关设置全部由 `额外模型解析配置`
       持久化。
-- [x] `Source.vue` 可配置三种 pi wire API 和 API
+- [x] 二级菜单包含 32 个 Pi `Provider.baseUrl` 预设和 OpenCode Zen/Go 两个 concrete per-API
+      catalog 地址，且不包含需要运行时参数拼接 URL 的动态模板来源。
+- [x] `Source.vue` 可配置六种 pi wire API 和 API
       Key/OAuth；注册表阻止无效组合，OAuth 来源自动锁定兼容 API。
+- [x] 注册表精确标记 15 个 Proxy Provider/API 组合；下拉 `(Proxy)`、自定义 endpoint
+      `useProxy`、ST 未启用警告和请求前非重试 `toastr` fail-fast 共用同一有效路由解析规则。
+- [x] Proxy 目标被限制在当前 Provider base origin/path 且仅转发 JSON 请求；Codex
+      Proxy 固定 SSE，OpenCode Zen Google 使用项目内 Proxy-aware adapter，OAuth 请求保持直连。
 - [x] 浏览器 OAuth 不启动本地 server；用户粘贴的 loopback callback URL 经过精确 redirect
       URI、host/path/state 校验后完成一次性交换，取消、重放和错误 URL 不会改写 credential。
 - [x] OAuth
@@ -581,7 +685,8 @@ pi 的来源、凭据、模型和请求参数都属于 `额外模型解析配置
       `maxTokens`；不存在重复配置，且目录预填、用户覆盖和非法值拦截均符合 DEC-02。
 - [x] 捕获 prompt 与迁移前在宏、正则、世界书、角色卡、历史、注入和裁剪方面一致。
 - [x] late system 不丢失，strict 模式可发现提示词结构变化。
-- [x] OpenAI、Anthropic、Google 的文本角色、流式完成、中止和错误行为均通过测试。
+- [x] 六种 wire
+      adapter 的文本角色、流式完成、中止和错误行为由自动化契约覆盖；34 来源的真实浏览器矩阵仍归 H-03。
 - [x] pi 回复不写回聊天、不追加到 Context；现有 MVU 下游解析不需要改接口。
 - [x] generation ID 贯穿 prompt 与 Provider 两阶段；手动停止和并发 loser 清理都能终止实际 pi 请求。
 - [x] 工具调用能产出当前解析器可消费的 `GenerateToolCallResult`；已实现 wire
@@ -589,9 +694,10 @@ pi 的来源、凭据、模型和请求参数都属于 `额外模型解析配置
       显示安全、可操作的错误；未实现的 wire 请求形状仍在请求前拒绝，且所有失败路径都不转换为工具或无约束文本。
 - [x] data URL 图片正确转换；remote image/video 有明确且可测试的行为。
 - [x] token
-      preflight、凭据错误、CORS 错误、未实现 wire 请求形状和目标 endpoint/model 的能力拒绝都在调用边界通过
+      preflight、凭据错误、Proxy/CORS 错误、未实现 wire 请求形状和目标 endpoint/model 的能力拒绝都在调用边界通过
       `toastr` 给出经过脱敏、可操作的提示。
-- [x] 完整测试、lint、类型构建和生产构建通过，bundle 未引入全部 Provider。
+- [x] Proxy 增量合并后的完整测试、lint、类型构建和生产构建通过，bundle 扫描确认未导入
+      `providers/all` 或动态模板 Provider factory；当前产物信息已记录于 H-02。
 
 ## 建议执行顺序
 

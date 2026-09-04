@@ -226,6 +226,8 @@ function runtimeError(error: PiErrorLike): LocalizedPiError {
             return tokenBudgetError(error);
         case 'network':
             return { key: 'runtime.pi.browserNetworkError' };
+        case 'proxy_unavailable':
+            return { key: 'runtime.pi.proxyUnavailable' };
         case 'provider':
             return { key: 'runtime.pi.requestFailed' };
         case 'protocol':
@@ -282,6 +284,8 @@ function classifyPiError(error: PiErrorLike): LocalizedPiError | undefined {
                     OAUTH_KEYS[codeOf(error) as keyof typeof OAUTH_KEYS] ??
                     'runtime.pi.oauth.authorizationFailed',
             };
+        case 'PiProxyUnavailableError':
+            return { key: 'runtime.pi.proxyUnavailable' };
         default:
             return undefined;
     }
@@ -345,10 +349,7 @@ export function getLocalizedPiErrorMessage(error: unknown): string {
  * A provider-level failure cannot prove why an endpoint rejected the request, so capability modes
  * use an actionable "did not accept" hint instead of claiming unsupported capability as fact.
  */
-export function getPiRequestFailureToastMessage(
-    error: unknown,
-    responseFormat: string
-): string {
+export function getPiRequestFailureToastMessage(error: unknown, responseFormat: string): string {
     const localized = localizePiError(error);
     if (
         isError(localized) &&

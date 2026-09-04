@@ -12,12 +12,23 @@ import {
     createPiApiImplementations,
     getPiCatalogModels,
     getPiProviderDefinition,
+    isPiCatalogModelApiCompatible,
     OPENAI_CODEX_ADAPTER_CLIENT_VERSION,
+    shouldUsePiCorsProxy,
     type PiAuthType,
     type PiProviderDefinition,
+    type PiProviderKey,
     type PiWireApi,
 } from '@/function/update/pi/provider_registry';
-import { normalizePiApiBaseEndpoint } from '@/function/update/pi/provider_target';
+import {
+    getPiProviderApiBaseUrl,
+    normalizePiApiBaseEndpoint,
+} from '@/function/update/pi/provider_target';
+import {
+    assertSillyTavernProxyAvailable,
+    createSillyTavernProxyFetch,
+    PiProxyUnavailableError,
+} from '@/function/update/pi/sillytavern_proxy';
 import { normalizeBaseURL } from '@/util';
 
 type FetchLike = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
@@ -40,6 +51,7 @@ export interface FetchPiModelListInput {
     endpoint: string;
     apiKey?: string;
     customHeaders?: string;
+    useProxy?: boolean;
     oauthCredential?: PiModelListOAuthCredential;
     signal?: AbortSignal;
 }
@@ -57,6 +69,35 @@ const BROWSER_AUTH_CONTEXT: AuthContext = Object.freeze({
 });
 const MAX_MODEL_LIST_PAGES = 100;
 
+type OpenAIModelDiscoveryDefinition = Readonly<{
+    baseUrl: string;
+    headers?: Readonly<Record<string, string>>;
+}>;
+
+/**
+ * Providers whose generation protocol is not also their model-list protocol. These endpoints all
+ * expose the OpenAI `{ data: [{ id }] }` shape and therefore use the same SillyTavern discovery
+ * bridge as the Custom source, regardless of the selected generation API.
+ */
+const OPENAI_MODEL_DISCOVERY: Readonly<
+    Partial<Record<PiProviderKey, OpenAIModelDiscoveryDefinition>>
+> = Object.freeze({
+    fireworks: Object.freeze({ baseUrl: 'https://api.fireworks.ai/inference/v1' }),
+    'github-copilot': Object.freeze({
+        baseUrl: 'https://api.individual.githubcopilot.com',
+        headers: Object.freeze({
+            'User-Agent': 'GitHubCopilotChat/0.35.0',
+            'Editor-Version': 'vscode/1.107.0',
+            'Editor-Plugin-Version': 'copilot-chat/0.35.0',
+            'Copilot-Integration-Id': 'vscode-chat',
+            'X-GitHub-Api-Version': '2026-06-01',
+        }),
+    }),
+    opencode: Object.freeze({ baseUrl: 'https://opencode.ai/zen/v1' }),
+    'opencode-go': Object.freeze({ baseUrl: 'https://opencode.ai/zen/go/v1' }),
+    'vercel-ai-gateway': Object.freeze({ baseUrl: 'https://ai-gateway.vercel.sh/v1' }),
+});
+
 type NullableHeaders = Record<string, string | null>;
 
 function getFetch(dependencies: ModelListFetchDependencies): FetchLike {
@@ -71,6 +112,28 @@ function normalizeModelIds(values: readonly unknown[]): string[] {
     return [...new Set(values.flatMap(value => (typeof value === 'string' ? [value.trim()] : [])))]
         .filter(Boolean)
         .sort();
+}
+
+/**
+ * Shared `/models` routes may return IDs belonging to several generation protocols. Drop only a
+ * known catalog ID that is incompatible with the active protocol; retain unknown IDs so newly
+ * published models remain manually usable with an explicit context window.
+ */
+function filterDiscoveredModelIds(
+    definition: PiProviderDefinition,
+    api: PiWireApi,
+    model_ids: readonly string[]
+): string[] {
+    const catalog_by_id = new Map(
+        getPiCatalogModels(definition.key).map(model => [model.id, model] as const)
+    );
+    return model_ids.filter(model_id => {
+        const catalog_model = catalog_by_id.get(model_id);
+        return (
+            catalog_model === undefined ||
+            isPiCatalogModelApiCompatible(definition, catalog_model, api)
+        );
+    });
 }
 
 function requireRecord(value: unknown): Record<string, unknown> {
@@ -211,6 +274,7 @@ function validatePiModelListTarget(input: FetchPiModelListInput): {
     api: PiWireApi;
     authType: PiAuthType;
     baseUrl: string;
+    useCorsProxy: boolean;
 } {
     const definition = getPiProviderDefinition(input.provider);
     if (!definition) {
@@ -238,8 +302,9 @@ function validatePiModelListTarget(input: FetchPiModelListInput): {
         authType: input.authType as PiAuthType,
         baseUrl: normalizePiApiBaseEndpoint(
             api,
-            input.endpoint.trim() || definition.defaultBaseUrl
+            input.endpoint.trim() || getPiProviderApiBaseUrl(definition, api)
         ),
+        useCorsProxy: shouldUsePiCorsProxy(definition, api, input.endpoint, input.useProxy),
     };
 }
 
@@ -371,17 +436,41 @@ async function fetchGoogleModelList(
     throw new ModelListFetchError('The Google model list exceeded the pagination limit.');
 }
 
+/** Fetch the Mistral catalog directly; its conversations base omits `/v1`. */
+async function fetchMistralModelList(
+    input: FetchPiModelListInput,
+    base_url: string,
+    dependencies: ModelListFetchDependencies,
+    custom_headers: NullableHeaders | undefined
+): Promise<string[]> {
+    const api_key = input.apiKey?.trim();
+    const response = await getFetch(dependencies)(new URL(appendPath(base_url, 'v1/models')), {
+        method: 'GET',
+        headers: mergeModelListHeaders(
+            { Accept: 'application/json' },
+            custom_headers,
+            api_key ? { Authorization: `Bearer ${api_key}` } : undefined
+        ),
+        cache: 'no-store',
+        credentials: 'omit',
+        redirect: 'error',
+        referrerPolicy: 'no-referrer',
+        signal: input.signal,
+    });
+    const json = await readJsonResponse(response);
+    return normalizeModelIds(
+        requireArray(json.data).map(model => readStringField(model, 'id', 'name'))
+    );
+}
+
 async function fetchCodexModelList(
     input: FetchPiModelListInput,
     base_url: string,
     dependencies: ModelListFetchDependencies,
     custom_headers: NullableHeaders | undefined
 ): Promise<string[]> {
-    const access_token = input.oauthCredential?.accessToken.trim();
-    const account_id = input.oauthCredential?.accountId?.trim();
-    if (!access_token || !account_id) {
-        throw new ModelListFetchError('Sign in to OpenAI Codex before fetching the model list.');
-    }
+    const { accessToken: access_token, accountId: account_id } =
+        requireCodexModelListCredential(input);
 
     const url = new URL(appendPath(base_url, 'codex/models'));
     url.searchParams.set('client_version', OPENAI_CODEX_ADAPTER_CLIENT_VERSION);
@@ -416,6 +505,18 @@ async function fetchCodexModelList(
     );
 }
 
+function requireCodexModelListCredential(input: FetchPiModelListInput): {
+    accessToken: string;
+    accountId: string;
+} {
+    const access_token = input.oauthCredential?.accessToken.trim();
+    const account_id = input.oauthCredential?.accountId?.trim();
+    if (!access_token || !account_id) {
+        throw new ModelListFetchError('Sign in to OpenAI Codex before fetching the model list.');
+    }
+    return { accessToken: access_token, accountId: account_id };
+}
+
 function isOpenRouter(base_url: string): boolean {
     return new URL(base_url).hostname.toLowerCase() === 'openrouter.ai';
 }
@@ -428,49 +529,104 @@ export async function fetchPiModelList(
     try {
         const target = validatePiModelListTarget(input);
         const custom_headers = parseModelListCustomHeaders(input.customHeaders);
-        switch (target.definition.key) {
-            case 'openai':
-                return await fetchSillyTavernOpenAIModelList(
-                    target.baseUrl,
-                    input.apiKey ?? '',
-                    input.signal,
-                    dependencies,
-                    custom_headers
-                );
-            case 'anthropic':
-                if (isOpenRouter(target.baseUrl)) {
-                    const openrouter_base_url = `${new URL(target.baseUrl).origin}/api/v1`;
-                    return await fetchSillyTavernOpenAIModelList(
-                        openrouter_base_url,
+        if (target.definition.key === 'openai-codex') {
+            requireCodexModelListCredential(input);
+        }
+        if (target.useCorsProxy) {
+            await assertSillyTavernProxyAvailable({
+                fetch: dependencies.fetch,
+                signal: input.signal,
+                force: true,
+            });
+        }
+        const provider_dependencies: ModelListFetchDependencies = target.useCorsProxy
+            ? {
+                  ...dependencies,
+                  fetch: createSillyTavernProxyFetch({
+                      baseUrl: target.baseUrl,
+                      ...(dependencies.fetch === undefined ? {} : { fetch: dependencies.fetch }),
+                  }),
+              }
+            : dependencies;
+        let model_ids: string[];
+        if (target.definition.key === 'openai-codex') {
+            model_ids = await fetchCodexModelList(
+                input,
+                target.baseUrl,
+                provider_dependencies,
+                custom_headers
+            );
+        } else if (OPENAI_MODEL_DISCOVERY[target.definition.key]) {
+            const discovery = OPENAI_MODEL_DISCOVERY[target.definition.key]!;
+            model_ids = await fetchSillyTavernOpenAIModelList(
+                discovery.baseUrl,
+                input.apiKey ?? '',
+                input.signal,
+                dependencies,
+                discovery.headers
+                    ? mergeModelListHeaders(discovery.headers, custom_headers)
+                    : custom_headers
+            );
+        } else if (target.definition.key === 'anthropic' && isOpenRouter(target.baseUrl)) {
+            // Keep the existing convenience for an Anthropic source pointed at OpenRouter: its
+            // catalog is exposed through OpenRouter's OpenAI-compatible `/models` route.
+            const openrouter_base_url = `${new URL(target.baseUrl).origin}/api/v1`;
+            model_ids = await fetchSillyTavernOpenAIModelList(
+                openrouter_base_url,
+                input.apiKey ?? '',
+                input.signal,
+                dependencies,
+                custom_headers
+            );
+        } else {
+            switch (target.api) {
+                case 'openai-responses':
+                case 'openai-completions':
+                    model_ids = await fetchSillyTavernOpenAIModelList(
+                        target.baseUrl,
                         input.apiKey ?? '',
                         input.signal,
                         dependencies,
                         custom_headers
                     );
-                }
-                return await fetchAnthropicModelList(
-                    input,
-                    target.baseUrl,
-                    dependencies,
-                    custom_headers
-                );
-            case 'google':
-                return await fetchGoogleModelList(
-                    input,
-                    target.baseUrl,
-                    dependencies,
-                    custom_headers
-                );
-            case 'openai-codex':
-                return await fetchCodexModelList(
-                    input,
-                    target.baseUrl,
-                    dependencies,
-                    custom_headers
-                );
+                    break;
+                case 'anthropic-messages':
+                    model_ids = await fetchAnthropicModelList(
+                        input,
+                        target.baseUrl,
+                        provider_dependencies,
+                        custom_headers
+                    );
+                    break;
+                case 'google-generative-ai':
+                    model_ids = await fetchGoogleModelList(
+                        input,
+                        target.baseUrl,
+                        provider_dependencies,
+                        custom_headers
+                    );
+                    break;
+                case 'mistral-conversations':
+                    model_ids = await fetchMistralModelList(
+                        input,
+                        target.baseUrl,
+                        provider_dependencies,
+                        custom_headers
+                    );
+                    break;
+                default:
+                    // Provider validation currently makes this reachable only if another provider
+                    // is registered for the Codex wire API without its OAuth discovery contract.
+                    throw new ModelListFetchError('The selected model-list route is unavailable.');
+            }
         }
+        return filterDiscoveredModelIds(target.definition, target.api, model_ids);
     } catch (error) {
-        if (input.signal?.aborted || error instanceof ModelListFetchError) {
+        if (
+            input.signal?.aborted ||
+            error instanceof ModelListFetchError ||
+            error instanceof PiProxyUnavailableError
+        ) {
             throw error;
         }
         throw new ModelListFetchError('The model-list request could not be completed.');

@@ -37,6 +37,7 @@ jest.mock('@/function/update/pi/pi_gateway', () => {
         );
 
     return {
+        ANT_LING_MODELS: {},
         OPENAI_MODELS: {
             'gpt-known': model(
                 'gpt-known',
@@ -171,11 +172,41 @@ jest.mock('@/function/update/pi/pi_gateway', () => {
             'gemini-flash-latest': googleModel('gemini-flash-latest'),
             'gemini-flash-lite-latest': googleModel('gemini-flash-lite-latest'),
         },
+        BASETEN_MODELS: {},
+        CEREBRAS_MODELS: {},
+        DEEPSEEK_MODELS: {},
+        FIREWORKS_MODELS: {},
+        GITHUB_COPILOT_MODELS: {},
+        GROQ_MODELS: {},
+        HUGGINGFACE_MODELS: {},
+        KIMI_CODING_MODELS: {},
+        MINIMAX_MODELS: {},
+        MINIMAX_CN_MODELS: {},
+        MISTRAL_MODELS: {},
+        MOONSHOTAI_MODELS: {},
+        MOONSHOTAI_CN_MODELS: {},
+        NVIDIA_MODELS: {},
+        OPENCODE_MODELS: {},
+        OPENCODE_GO_MODELS: {},
+        OPENROUTER_MODELS: {},
+        QWEN_TOKEN_PLAN_MODELS: {},
+        QWEN_TOKEN_PLAN_CN_MODELS: {},
+        QWEN_TOKEN_PLAN_INDIVIDUAL_MODELS: {},
+        TOGETHER_MODELS: {},
+        VERCEL_AI_GATEWAY_MODELS: {},
+        XAI_MODELS: {},
+        XIAOMI_MODELS: {},
+        XIAOMI_TOKEN_PLAN_AMS_MODELS: {},
+        XIAOMI_TOKEN_PLAN_CN_MODELS: {},
+        XIAOMI_TOKEN_PLAN_SGP_MODELS: {},
+        ZAI_MODELS: {},
+        ZAI_CODING_CN_MODELS: {},
         openAIResponsesApi: jest.fn(streams),
         openAICompletionsApi: jest.fn(streams),
         openAICodexResponsesApi: jest.fn(streams),
         anthropicMessagesApi: jest.fn(streams),
         googleGenerativeAIApi: jest.fn(streams),
+        mistralConversationsApi: jest.fn(streams),
     };
 });
 
@@ -184,9 +215,12 @@ import {
     getPiCatalogModels,
     getPiProviderDefinition,
     getPiProviderRegistration,
+    isPiCorsProxyRequired,
     listPiProviderDefinitions,
     resolvePiCapabilities,
+    shouldUsePiCorsProxy,
 } from '@/function/update/pi/provider_registry';
+import { getPiProviderApiBaseUrl } from '@/function/update/pi/provider_target';
 import {
     isPiDefaultProviderEndpoint,
     normalizePiEndpoint,
@@ -205,6 +239,299 @@ const OPENAI_CONFIG = {
     model: 'gpt-known',
     contextWindow: 0,
 };
+
+const API_KEY_FIELDS = {
+    api: 'readonly',
+    authType: 'readonly',
+    endpoint: 'hidden',
+    apiKey: 'when-api-key',
+    oauth: 'hidden',
+    model: 'editable',
+    contextWindow: 'editable',
+} as const;
+
+const MULTI_API_KEY_FIELDS = { ...API_KEY_FIELDS, api: 'select' } as const;
+const EDITABLE_OPENAI_FIELDS = {
+    ...MULTI_API_KEY_FIELDS,
+    endpoint: 'editable',
+} as const;
+const MIXED_AUTH_FIELDS = {
+    ...API_KEY_FIELDS,
+    authType: 'select',
+    endpoint: 'editable',
+    oauth: 'when-oauth',
+} as const;
+const OAUTH_FIELDS = {
+    ...API_KEY_FIELDS,
+    apiKey: 'hidden',
+    oauth: 'when-oauth',
+} as const;
+
+const EXPECTED_PI_PROVIDER_DEFINITIONS = [
+    {
+        key: 'ant-ling',
+        defaultApi: 'openai-completions',
+        allowedApis: ['openai-completions'],
+        defaultBaseUrl: 'https://api.ant-ling.com/v1',
+        fields: API_KEY_FIELDS,
+    },
+    {
+        key: 'anthropic',
+        defaultApi: 'anthropic-messages',
+        allowedApis: ['anthropic-messages'],
+        allowedAuthTypes: ['api_key', 'oauth'],
+        defaultBaseUrl: 'https://api.anthropic.com',
+        allowCustomEndpoint: true,
+        fields: MIXED_AUTH_FIELDS,
+    },
+    {
+        key: 'baseten',
+        defaultApi: 'openai-completions',
+        allowedApis: ['openai-completions'],
+        defaultBaseUrl: 'https://inference.baseten.co/v1',
+        fields: API_KEY_FIELDS,
+    },
+    {
+        key: 'cerebras',
+        defaultApi: 'openai-completions',
+        allowedApis: ['openai-completions'],
+        defaultBaseUrl: 'https://api.cerebras.ai/v1',
+        fields: API_KEY_FIELDS,
+    },
+    {
+        key: 'deepseek',
+        defaultApi: 'openai-completions',
+        allowedApis: ['openai-completions'],
+        defaultBaseUrl: 'https://api.deepseek.com',
+        fields: API_KEY_FIELDS,
+    },
+    {
+        key: 'fireworks',
+        defaultApi: 'anthropic-messages',
+        allowedApis: ['anthropic-messages', 'openai-completions'],
+        defaultBaseUrl: 'https://api.fireworks.ai/inference',
+        apiBaseUrls: {
+            'anthropic-messages': 'https://api.fireworks.ai/inference',
+            'openai-completions': 'https://api.fireworks.ai/inference/v1',
+        },
+        fields: MULTI_API_KEY_FIELDS,
+    },
+    {
+        key: 'github-copilot',
+        defaultApi: 'anthropic-messages',
+        allowedApis: ['anthropic-messages', 'openai-completions', 'openai-responses'],
+        defaultBaseUrl: 'https://api.individual.githubcopilot.com',
+        fields: MULTI_API_KEY_FIELDS,
+    },
+    {
+        key: 'google',
+        defaultApi: 'google-generative-ai',
+        allowedApis: ['google-generative-ai'],
+        defaultBaseUrl: 'https://generativelanguage.googleapis.com/v1beta',
+        fields: API_KEY_FIELDS,
+    },
+    {
+        key: 'groq',
+        defaultApi: 'openai-completions',
+        allowedApis: ['openai-completions'],
+        defaultBaseUrl: 'https://api.groq.com/openai/v1',
+        fields: API_KEY_FIELDS,
+    },
+    {
+        key: 'huggingface',
+        defaultApi: 'openai-completions',
+        allowedApis: ['openai-completions'],
+        defaultBaseUrl: 'https://router.huggingface.co/v1',
+        fields: API_KEY_FIELDS,
+    },
+    {
+        key: 'kimi-coding',
+        defaultApi: 'anthropic-messages',
+        allowedApis: ['anthropic-messages'],
+        defaultBaseUrl: 'https://api.kimi.com/coding',
+        fields: API_KEY_FIELDS,
+    },
+    {
+        key: 'minimax',
+        defaultApi: 'anthropic-messages',
+        allowedApis: ['anthropic-messages'],
+        defaultBaseUrl: 'https://api.minimax.io/anthropic',
+        fields: API_KEY_FIELDS,
+    },
+    {
+        key: 'minimax-cn',
+        defaultApi: 'anthropic-messages',
+        allowedApis: ['anthropic-messages'],
+        defaultBaseUrl: 'https://api.minimaxi.com/anthropic',
+        fields: API_KEY_FIELDS,
+    },
+    {
+        key: 'mistral',
+        defaultApi: 'mistral-conversations',
+        allowedApis: ['mistral-conversations'],
+        defaultBaseUrl: 'https://api.mistral.ai',
+        fields: API_KEY_FIELDS,
+    },
+    {
+        key: 'moonshotai',
+        defaultApi: 'openai-completions',
+        allowedApis: ['openai-completions'],
+        defaultBaseUrl: 'https://api.moonshot.ai/v1',
+        fields: API_KEY_FIELDS,
+    },
+    {
+        key: 'moonshotai-cn',
+        defaultApi: 'openai-completions',
+        allowedApis: ['openai-completions'],
+        defaultBaseUrl: 'https://api.moonshot.cn/v1',
+        fields: API_KEY_FIELDS,
+    },
+    {
+        key: 'nvidia',
+        defaultApi: 'openai-completions',
+        allowedApis: ['openai-completions'],
+        defaultBaseUrl: 'https://integrate.api.nvidia.com/v1',
+        fields: API_KEY_FIELDS,
+    },
+    {
+        key: 'openai',
+        defaultApi: 'openai-responses',
+        allowedApis: ['openai-responses', 'openai-completions'],
+        defaultBaseUrl: 'https://api.openai.com/v1',
+        allowCustomEndpoint: true,
+        fields: EDITABLE_OPENAI_FIELDS,
+    },
+    {
+        key: 'openai-codex',
+        defaultApi: 'openai-codex-responses',
+        allowedApis: ['openai-codex-responses'],
+        defaultAuthType: 'oauth',
+        allowedAuthTypes: ['oauth'],
+        defaultBaseUrl: 'https://chatgpt.com/backend-api',
+        fields: OAUTH_FIELDS,
+    },
+    {
+        key: 'opencode',
+        defaultApi: 'anthropic-messages',
+        allowedApis: [
+            'anthropic-messages',
+            'google-generative-ai',
+            'openai-completions',
+            'openai-responses',
+        ],
+        defaultBaseUrl: 'https://opencode.ai/zen',
+        apiBaseUrls: {
+            'anthropic-messages': 'https://opencode.ai/zen',
+            'google-generative-ai': 'https://opencode.ai/zen/v1',
+            'openai-completions': 'https://opencode.ai/zen/v1',
+            'openai-responses': 'https://opencode.ai/zen/v1',
+        },
+        fields: MULTI_API_KEY_FIELDS,
+    },
+    {
+        key: 'opencode-go',
+        defaultApi: 'anthropic-messages',
+        allowedApis: ['anthropic-messages', 'openai-completions', 'openai-responses'],
+        defaultBaseUrl: 'https://opencode.ai/zen/go',
+        apiBaseUrls: {
+            'anthropic-messages': 'https://opencode.ai/zen/go',
+            'openai-completions': 'https://opencode.ai/zen/go/v1',
+            'openai-responses': 'https://opencode.ai/zen/go/v1',
+        },
+        fields: MULTI_API_KEY_FIELDS,
+    },
+    {
+        key: 'openrouter',
+        defaultApi: 'openai-completions',
+        allowedApis: ['openai-completions'],
+        defaultBaseUrl: 'https://openrouter.ai/api/v1',
+        fields: API_KEY_FIELDS,
+    },
+    {
+        key: 'qwen-token-plan',
+        defaultApi: 'openai-completions',
+        allowedApis: ['openai-completions'],
+        defaultBaseUrl: 'https://token-plan.ap-southeast-1.maas.aliyuncs.com/compatible-mode/v1',
+        fields: API_KEY_FIELDS,
+    },
+    {
+        key: 'qwen-token-plan-cn',
+        defaultApi: 'openai-completions',
+        allowedApis: ['openai-completions'],
+        defaultBaseUrl: 'https://token-plan.cn-beijing.maas.aliyuncs.com/compatible-mode/v1',
+        fields: API_KEY_FIELDS,
+    },
+    {
+        key: 'qwen-token-plan-individual',
+        defaultApi: 'openai-completions',
+        allowedApis: ['openai-completions'],
+        defaultBaseUrl: 'https://token-plan.ap-southeast-1.maas.aliyuncs.com/compatible-mode/v1',
+        fields: API_KEY_FIELDS,
+    },
+    {
+        key: 'together',
+        defaultApi: 'openai-completions',
+        allowedApis: ['openai-completions'],
+        defaultBaseUrl: 'https://api.together.ai/v1',
+        fields: API_KEY_FIELDS,
+    },
+    {
+        key: 'vercel-ai-gateway',
+        defaultApi: 'anthropic-messages',
+        allowedApis: ['anthropic-messages'],
+        defaultBaseUrl: 'https://ai-gateway.vercel.sh',
+        fields: API_KEY_FIELDS,
+    },
+    {
+        key: 'xai',
+        defaultApi: 'openai-responses',
+        allowedApis: ['openai-responses'],
+        defaultBaseUrl: 'https://api.x.ai/v1',
+        fields: API_KEY_FIELDS,
+    },
+    {
+        key: 'xiaomi',
+        defaultApi: 'openai-completions',
+        allowedApis: ['openai-completions'],
+        defaultBaseUrl: 'https://api.xiaomimimo.com/v1',
+        fields: API_KEY_FIELDS,
+    },
+    {
+        key: 'xiaomi-token-plan-ams',
+        defaultApi: 'openai-completions',
+        allowedApis: ['openai-completions'],
+        defaultBaseUrl: 'https://token-plan-ams.xiaomimimo.com/v1',
+        fields: API_KEY_FIELDS,
+    },
+    {
+        key: 'xiaomi-token-plan-cn',
+        defaultApi: 'openai-completions',
+        allowedApis: ['openai-completions'],
+        defaultBaseUrl: 'https://token-plan-cn.xiaomimimo.com/v1',
+        fields: API_KEY_FIELDS,
+    },
+    {
+        key: 'xiaomi-token-plan-sgp',
+        defaultApi: 'openai-completions',
+        allowedApis: ['openai-completions'],
+        defaultBaseUrl: 'https://token-plan-sgp.xiaomimimo.com/v1',
+        fields: API_KEY_FIELDS,
+    },
+    {
+        key: 'zai',
+        defaultApi: 'openai-completions',
+        allowedApis: ['openai-completions'],
+        defaultBaseUrl: 'https://api.z.ai/api/coding/paas/v4',
+        fields: API_KEY_FIELDS,
+    },
+    {
+        key: 'zai-coding-cn',
+        defaultApi: 'openai-completions',
+        allowedApis: ['openai-completions'],
+        defaultBaseUrl: 'https://open.bigmodel.cn/api/coding/paas/v4',
+        fields: API_KEY_FIELDS,
+    },
+] as const;
 
 function pickAdvancedCapabilities(
     capabilities:
@@ -238,42 +565,124 @@ function expectResolutionError(
 }
 
 describe('pi provider registry', () => {
-    test('exposes exactly the browser-supported sources and their UI/runtime constraints', () => {
+    test('exposes the exact Pi preset sources and their UI/runtime constraints', () => {
         const definitions = listPiProviderDefinitions();
-        expect(definitions.map(definition => definition.key)).toEqual([
-            'openai',
-            'openai-codex',
-            'anthropic',
-            'google',
-        ]);
+        expect(definitions.map(definition => definition.key)).toEqual(
+            EXPECTED_PI_PROVIDER_DEFINITIONS.map(definition => definition.key)
+        );
 
-        expect(getPiProviderDefinition('openai')).toMatchObject({
-            providerId: 'openai',
-            displayName: { 'zh-CN': 'OpenAI', en: 'OpenAI' },
-            defaultApi: 'openai-responses',
-            allowedApis: ['openai-responses', 'openai-completions'],
-            allowedAuthTypes: ['api_key'],
-            defaultBaseUrl: 'https://api.openai.com/v1',
-            allowCustomEndpoint: true,
-            fields: { api: 'select', authType: 'readonly', endpoint: 'editable' },
-        });
-        expect(getPiProviderDefinition('anthropic')).toMatchObject({
-            allowedApis: ['anthropic-messages'],
-            allowedAuthTypes: ['api_key', 'oauth'],
-            allowCustomEndpoint: true,
-            fields: { api: 'readonly', authType: 'select', endpoint: 'editable' },
-        });
-        expect(getPiProviderDefinition('openai-codex')).toMatchObject({
-            allowedApis: ['openai-codex-responses'],
-            allowedAuthTypes: ['oauth'],
-            fields: { apiKey: 'hidden', oauth: 'when-oauth' },
-        });
-        expect(getPiProviderDefinition('google')).toMatchObject({
-            allowedApis: ['google-generative-ai'],
-            allowedAuthTypes: ['api_key'],
-        });
+        for (const expected of EXPECTED_PI_PROVIDER_DEFINITIONS) {
+            const definition = getPiProviderDefinition(expected.key)!;
+            const defaultAuthType =
+                'defaultAuthType' in expected ? expected.defaultAuthType : 'api_key';
+            const allowedAuthTypes =
+                'allowedAuthTypes' in expected ? expected.allowedAuthTypes : ['api_key'];
+            const allowCustomEndpoint =
+                'allowCustomEndpoint' in expected ? expected.allowCustomEndpoint : false;
+            const apiBaseUrls = 'apiBaseUrls' in expected ? expected.apiBaseUrls : undefined;
+
+            expect(definition).toMatchObject({
+                key: expected.key,
+                providerId: expected.key,
+                defaultApi: expected.defaultApi,
+                allowedApis: expected.allowedApis,
+                defaultAuthType,
+                allowedAuthTypes,
+                defaultBaseUrl: expected.defaultBaseUrl,
+                allowCustomEndpoint,
+            });
+            expect(definition.apiBaseUrls).toEqual(apiBaseUrls);
+            expect(definition.fields).toEqual(expected.fields);
+
+            for (const api of expected.allowedApis) {
+                const expectedApiBaseUrls = apiBaseUrls as
+                    | Readonly<Partial<Record<string, string>>>
+                    | undefined;
+                expect(getPiProviderApiBaseUrl(definition, api)).toBe(
+                    expectedApiBaseUrls?.[api] ?? expected.defaultBaseUrl
+                );
+            }
+        }
+
         expect(getPiProviderDefinition('not-registered')).toBeUndefined();
         expect(getPiProviderRegistration).toBe(getPiProviderDefinition);
+    });
+
+    test('declares the exact built-in routes that require the SillyTavern CORS proxy', () => {
+        const proxyRoutes = listPiProviderDefinitions().flatMap(definition => {
+            expect(Object.isFrozen(definition.corsProxyRequiredApis)).toBe(true);
+            return definition.allowedApis
+                .filter(api => isPiCorsProxyRequired(definition, api))
+                .map(api => `${definition.key}/${api}`);
+        });
+
+        expect(proxyRoutes).toEqual([
+            'ant-ling/openai-completions',
+            'fireworks/anthropic-messages',
+            'github-copilot/anthropic-messages',
+            'github-copilot/openai-responses',
+            'kimi-coding/anthropic-messages',
+            'minimax-cn/anthropic-messages',
+            'nvidia/openai-completions',
+            'openai-codex/openai-codex-responses',
+            'opencode/anthropic-messages',
+            'opencode/google-generative-ai',
+            'opencode/openai-completions',
+            'opencode/openai-responses',
+            'opencode-go/anthropic-messages',
+            'opencode-go/openai-completions',
+            'opencode-go/openai-responses',
+        ]);
+
+        const fireworks = getPiProviderDefinition('fireworks')!;
+        expect(isPiCorsProxyRequired(fireworks, 'anthropic-messages')).toBe(true);
+        expect(isPiCorsProxyRequired(fireworks, 'openai-completions')).toBe(false);
+
+        const copilot = getPiProviderDefinition('github-copilot')!;
+        expect(isPiCorsProxyRequired(copilot, 'anthropic-messages')).toBe(true);
+        expect(isPiCorsProxyRequired(copilot, 'openai-responses')).toBe(true);
+        expect(isPiCorsProxyRequired(copilot, 'openai-completions')).toBe(false);
+
+        const directProvider = getPiProviderDefinition('anthropic')!;
+        expect(directProvider.corsProxyRequiredApis).toEqual([]);
+        expect(isPiCorsProxyRequired(directProvider, 'anthropic-messages')).toBe(false);
+        expect(isPiCorsProxyRequired(undefined, 'openai-completions')).toBe(false);
+        expect(isPiCorsProxyRequired(fireworks, 'not-an-api')).toBe(false);
+
+        expect(shouldUsePiCorsProxy(fireworks, 'anthropic-messages', '', false)).toBe(true);
+        expect(shouldUsePiCorsProxy(fireworks, 'openai-completions', '', true)).toBe(false);
+        expect(
+            shouldUsePiCorsProxy(
+                fireworks,
+                'anthropic-messages',
+                'https://api.fireworks.ai/inference/v1/messages',
+                false
+            )
+        ).toBe(true);
+        expect(
+            shouldUsePiCorsProxy(
+                directProvider,
+                'anthropic-messages',
+                'https://api.anthropic.com/v1/messages',
+                true
+            )
+        ).toBe(false);
+        expect(
+            shouldUsePiCorsProxy(
+                fireworks,
+                'anthropic-messages',
+                'https://compatible.example/v1',
+                false
+            )
+        ).toBe(false);
+        expect(
+            shouldUsePiCorsProxy(
+                directProvider,
+                'anthropic-messages',
+                'https://compatible.example/v1',
+                true
+            )
+        ).toBe(true);
     });
 
     test.each([
@@ -305,6 +714,12 @@ describe('pi provider registry', () => {
             label: 'Google Generative AI',
             provider: 'google',
             api: 'google-generative-ai',
+            expected: { tools: true, structuredOutput: true, jsonObjectOutput: true },
+        },
+        {
+            label: 'Mistral Conversations',
+            provider: 'mistral',
+            api: 'mistral-conversations',
             expected: { tools: true, structuredOutput: true, jsonObjectOutput: true },
         },
     ] as const)(
@@ -703,6 +1118,9 @@ describe('pi provider registry', () => {
             'anthropic-messages',
         ]);
         expect(Object.keys(createPiApiImplementations('google'))).toEqual(['google-generative-ai']);
+        expect(Object.keys(createPiApiImplementations('mistral'))).toEqual([
+            'mistral-conversations',
+        ]);
         expect(createPiApiImplementations('unknown')).toEqual({});
     });
 });

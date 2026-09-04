@@ -52,6 +52,7 @@ describe('Pi Source UI contract', () => {
         expect(source).toContain('fetchOpenAICompatibleModelList(');
         expect(source).toContain('fetchPiModelList(');
         expect(source).toContain('resolvePiModelListOAuthCredential(');
+        expect(source).toContain('resolvePiSourceContextWindow(');
     });
 
     test('cancels stale model-list requests and preserves manual model entry', () => {
@@ -81,6 +82,10 @@ describe('Pi Source UI contract', () => {
         for (const key of ['customHeadersHelp', 'customIncludeBodyHelp', 'customExcludeBodyHelp']) {
             expect(source).toContain(`<HelpIcon :help="t('panel.source.pi.${key}')" />`);
         }
+        expect(source).toContain('<HelpIcon :help="t(\'panel.source.pi.proxy.help\')" />');
+        expect(source).toContain(
+            '<HelpIcon :help="t(\'panel.source.pi.proxy.notEnabledHelp\')" />'
+        );
 
         expect(source).not.toContain('<small class="mvu-note">');
         expect(source).not.toContain('<div v-if="pi_capability_summary" class="mvu-note">');
@@ -109,9 +114,33 @@ describe('Pi Source UI contract', () => {
         expect(source).toContain("pi.authType === 'api_key'");
     });
 
+    test('labels and controls routes that use the SillyTavern CORS proxy', () => {
+        expect(source).toContain("import Checkbox from '@/panel/component/Checkbox.vue';");
+        expect(source).toContain('v-if="show_pi_custom_endpoint_proxy"');
+        expect(source).toContain('v-model="store.settings.额外模型解析配置.pi.useProxy"');
+        expect(source).toContain('return use_proxy ? `${label} (Proxy)` : label;');
+        expect(source).toContain('shouldUsePiCorsProxy(');
+        expect(source).toContain('definition.defaultApi');
+        expect(source).toContain('useProxy: pi.useProxy');
+        expect(source).toContain('store.settings.额外模型解析配置.pi.useProxy,');
+    });
+
+    test('probes and warns when a selected proxy route is unavailable', () => {
+        expect(source).toContain('probeSillyTavernProxy()');
+        expect(source).toContain('getSillyTavernProxyStatus()');
+        expect(source).toContain('v-if="show_pi_proxy_warning" class="mvu-warning"');
+        expect(source).toContain("t('panel.source.pi.proxy.notEnabled')");
+        expect(source).toContain("pi_proxy_status.value === 'disabled'");
+        expect(source).toContain("pi_proxy_status.value === 'unavailable'");
+        expect(source).toContain(
+            "(error as Error & { code?: unknown }).code === 'proxy_unavailable'"
+        );
+    });
+
     test('uses a Pi API field label key that cannot collide with nested API option keys', () => {
         expect(source).toContain("t('panel.source.pi.apiLabel')");
         expect(source).not.toContain("t('panel.source.pi.api')");
+        expect(source).toContain("t('panel.source.pi.api.mistralConversations')");
     });
 
     test('captures and revalidates OAuth UI context around confirmation awaits', () => {

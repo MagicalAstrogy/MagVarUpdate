@@ -655,15 +655,18 @@ export const runtimeMessages = defineMessages({
         en: 'The current provider, API, or model under More does not support the required tool-calling mode. Change the configuration and retry.',
     },
     'runtime.pi.toolRequestRejected': {
-        'zh-CN': '目标端点未接受“工具调用”请求。请确认该端点和模型支持工具调用，并检查 API 类型、地址和模型名。',
+        'zh-CN':
+            '目标端点未接受“工具调用”请求。请确认该端点和模型支持工具调用，并检查 API 类型、地址和模型名。',
         en: 'The target endpoint did not accept the tool-calling request. Confirm that the endpoint and model support tool calling, and check the API type, URL, and model name.',
     },
     'runtime.pi.structuredOutputRequestRejected': {
-        'zh-CN': '目标端点未接受“格式化输出”请求。请确认该端点和模型支持 JSON Schema 格式化输出，并检查 API 类型、地址和模型名。',
+        'zh-CN':
+            '目标端点未接受“格式化输出”请求。请确认该端点和模型支持 JSON Schema 格式化输出，并检查 API 类型、地址和模型名。',
         en: 'The target endpoint did not accept the formatted-output request. Confirm that the endpoint and model support JSON Schema formatted output, and check the API type, URL, and model name.',
     },
     'runtime.pi.jsonObjectRequestRejected': {
-        'zh-CN': '目标端点未接受“格式化输出(v4兼容)”请求。请确认该端点和模型支持 JSON Object 输出，并检查 API 类型、地址和模型名。',
+        'zh-CN':
+            '目标端点未接受“格式化输出(v4兼容)”请求。请确认该端点和模型支持 JSON Object 输出，并检查 API 类型、地址和模型名。',
         en: 'The target endpoint did not accept the v4-compatible formatted-output request. Confirm that the endpoint and model support JSON Object output, and check the API type, URL, and model name.',
     },
     'runtime.pi.namedToolChoiceUnsupported': {
@@ -740,6 +743,11 @@ export const runtimeMessages = defineMessages({
         'zh-CN':
             '浏览器无法连接“更多”中所选来源。请检查网络、地址配置，并确认来源允许浏览器 CORS 请求。',
         en: 'The browser could not reach the selected provider under More. Check the network and address settings, and confirm that the provider allows browser CORS requests.',
+    },
+    'runtime.pi.proxyUnavailable': {
+        'zh-CN':
+            '没有开启Proxy。请在 SillyTavern 的 config.yaml 中开启 enableCorsProxy，或使用 --corsProxy 启动参数，然后重启 SillyTavern。',
+        en: 'Proxy is not enabled. Enable enableCorsProxy in SillyTavern config.yaml, or start SillyTavern with --corsProxy, then restart SillyTavern.',
     },
     'runtime.pi.requestFailed': {
         'zh-CN': '“更多”来源请求失败。请检查来源配置、凭据和网络后重试。',

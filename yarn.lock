@@ -6915,6 +6915,7 @@ __metadata:
   resolution: "mag-variable-update@workspace:."
   dependencies:
     "@earendil-works/pi-ai": 0.84.4
+    "@google/genai": 1.52.0
     "@eslint/js": ^9.29.0
     "@intlify/devtools-types": 11.1.12
     "@tailwindcss/postcss": ^4.1.13

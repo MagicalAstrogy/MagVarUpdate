@@ -61,6 +61,7 @@ import {
     isPiSourceFieldReadonly,
     parsePiContextWindowInput,
     resolvePiContextWindow,
+    resolvePiSourceContextWindow,
     resolvePiApiKeyScope,
     resolvePiEndpointSelection,
     resolvePiRequestTargetIdentity,
@@ -427,6 +428,7 @@ describe('Pi source form helpers', () => {
 
     test('uses API capabilities on custom endpoints without inheriting catalog media metadata', () => {
         const openai = getPiProviderDefinition('openai')!;
+        const anthropic = getPiProviderDefinition('anthropic')!;
         const catalogModel = getPiCatalogModels('openai')[0];
 
         expect(isPiEndpointCatalogCompatible(openai, '')).toBe(true);
@@ -455,6 +457,18 @@ describe('Pi source form helpers', () => {
                 imageInput: false,
             });
         }
+        expect(
+            resolvePiSourceCapabilities(
+                anthropic,
+                'anthropic-messages',
+                'https://proxy.example/anthropic',
+                getPiCatalogModels('anthropic')[0]
+            )
+        ).toMatchObject({
+            temperature: true,
+            sampling: { topP: true, topK: true },
+            imageInput: false,
+        });
     });
 
     test('uses API advanced capabilities and fails closed only for unknown model media', () => {
@@ -498,6 +512,33 @@ describe('Pi source form helpers', () => {
         expect(resolvePiContextWindow(0, undefined)).toBe(0);
         expect(resolvePiContextWindow(1.5, 128_000)).toBe(0);
         expect(resolvePiContextWindow('invalid', 128_000)).toBe(0);
+    });
+
+    test('does not inherit catalog context metadata for a custom endpoint', () => {
+        const definition = getPiProviderDefinition('openai')!;
+        const catalogModel = getPiCatalogModels('openai')[0];
+
+        expect(
+            resolvePiSourceContextWindow(definition, 'openai-responses', '', 0, catalogModel)
+        ).toBe(catalogModel.contextWindow);
+        expect(
+            resolvePiSourceContextWindow(
+                definition,
+                'openai-responses',
+                'https://proxy.example/v1',
+                0,
+                catalogModel
+            )
+        ).toBe(0);
+        expect(
+            resolvePiSourceContextWindow(
+                definition,
+                'openai-responses',
+                'https://proxy.example/v1',
+                32_000,
+                catalogModel
+            )
+        ).toBe(32_000);
     });
 
     test('clearing the context-window input removes the override', () => {

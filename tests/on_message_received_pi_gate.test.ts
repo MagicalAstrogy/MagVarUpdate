@@ -139,6 +139,12 @@ describe('onMessageReceived Pi source gate', () => {
 
     test.each([
         [
+            '聊天消息',
+            'proxy_unavailable',
+            'SillyTavern proxy route returned a secret diagnostic',
+            'runtime.pi.proxyUnavailable',
+        ],
+        [
             '工具调用',
             'network',
             'TypeError: Failed to fetch Authorization: Bearer network-secret',

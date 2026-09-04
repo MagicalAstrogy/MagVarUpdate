@@ -144,6 +144,13 @@
                     />
                 </Field>
 
+                <div v-if="show_pi_custom_endpoint_proxy" class="mvu-pi-proxy-option">
+                    <Checkbox v-model="store.settings.额外模型解析配置.pi.useProxy">
+                        <span>{{ t('panel.source.pi.proxy.use') }}</span>
+                        <HelpIcon :help="t('panel.source.pi.proxy.help')" />
+                    </Checkbox>
+                </div>
+
                 <Field v-if="show_pi_api_key" :label="t('panel.source.apiKey')">
                     <input
                         v-model="store.settings.额外模型解析配置.密钥"
@@ -170,6 +177,14 @@
 
             <div v-if="pi_configuration_error" class="mvu-field-error">
                 {{ pi_configuration_error }}
+            </div>
+
+            <div v-if="show_pi_proxy_warning" class="mvu-warning">
+                <span class="mvu-warning__icon">⚠️</span>
+                <span class="mvu-warning__text">
+                    {{ t('panel.source.pi.proxy.notEnabled') }}
+                    <HelpIcon :help="t('panel.source.pi.proxy.notEnabledHelp')" />
+                </span>
             </div>
 
             <Detail v-if="show_pi_oauth" :title="t('panel.source.pi.oauth.section')">
@@ -488,19 +503,32 @@ import {
 } from '@/function/update/pi/oauth';
 import { getLocalizedPiErrorMessage } from '@/function/update/pi/error_localization';
 import { isPiMultiproviderEnabled } from '@/function/update/pi/feature_flag';
-import { normalizePiEndpoint } from '@/function/update/pi/model_resolver';
-import { normalizePiApiBaseEndpoint } from '@/function/update/pi/provider_target';
+import {
+    isPiDefaultProviderEndpoint,
+    normalizePiEndpoint,
+} from '@/function/update/pi/model_resolver';
+import {
+    getPiProviderApiBaseUrl,
+    normalizePiApiBaseEndpoint,
+} from '@/function/update/pi/provider_target';
+import {
+    getSillyTavernProxyStatus,
+    probeSillyTavernProxy,
+    type SillyTavernProxyStatus,
+} from '@/function/update/pi/sillytavern_proxy';
 import type { Api, Model } from '@/function/update/pi/pi_gateway';
 import {
     getPiCatalogModels,
     getPiProviderDefinition,
     isPiCatalogModelApiCompatible,
     listPiProviderDefinitions,
+    shouldUsePiCorsProxy,
     type PiAuthType,
     type PiProviderDefinition,
     type PiWireApi,
 } from '@/function/update/pi/provider_registry';
 import { useMvuI18n } from '@/i18n';
+import Checkbox from '@/panel/component/Checkbox.vue';
 import Detail from '@/panel/component/Detail.vue';
 import Field from '@/panel/component/Field.vue';
 import HelpIcon from '@/panel/component/HelpIcon.vue';
@@ -518,6 +546,7 @@ import {
     resolvePiEndpointSelection,
     resolvePiRequestTargetIdentity,
     resolvePiSourceCapabilities,
+    resolvePiSourceContextWindow,
     resolvePiSourceSelection,
     transitionPiApiKey,
     transitionPiRequestOverrides,
@@ -688,7 +717,7 @@ const pi_provider_definitions = listPiProviderDefinitions();
 const pi_provider_options = computed(() => {
     const options = pi_provider_definitions.map(definition => ({
         value: definition.key,
-        label: definition.displayName[locale.value === 'zh-CN' ? 'zh-CN' : 'en'],
+        label: getPiProviderOptionLabel(definition),
     }));
     const persisted_provider = store.settings.额外模型解析配置.pi.provider;
     return getPiProviderDefinition(persisted_provider)
@@ -737,6 +766,20 @@ const show_pi_endpoint = computed(
         selected_pi_provider.value?.fields.endpoint === 'editable' &&
         store.settings.额外模型解析配置.pi.authType === 'api_key'
 );
+const show_pi_custom_endpoint_proxy = computed(() => {
+    const provider = selected_pi_provider.value;
+    const pi = store.settings.额外模型解析配置.pi;
+    return (
+        show_pi_endpoint.value &&
+        pi.endpoint.trim() !== '' &&
+        !!provider &&
+        !isPiDefaultProviderEndpoint(provider, pi.endpoint, pi.api as PiWireApi)
+    );
+});
+const pi_uses_cors_proxy = computed(() => {
+    const pi = store.settings.额外模型解析配置.pi;
+    return shouldUsePiCorsProxy(selected_pi_provider.value, pi.api, pi.endpoint, pi.useProxy);
+});
 const show_pi_api_key = computed(
     () =>
         store.settings.额外模型解析配置.pi.authType === 'api_key' &&
@@ -749,10 +792,12 @@ const show_pi_oauth = computed(
         selected_pi_provider.value.oauth !== undefined
 );
 const pi_endpoint_placeholder = computed(() => {
-    const endpoint = selected_pi_provider.value?.defaultBaseUrl ?? '';
+    const provider = selected_pi_provider.value;
+    const api = store.settings.额外模型解析配置.pi.api as PiWireApi;
+    const endpoint = provider ? getPiProviderApiBaseUrl(provider, api) : '';
     return endpoint
         ? t('panel.source.pi.endpointDefault', { endpoint })
-        : t('panel.source.apiKeyPlaceholder');
+        : t('panel.source.pi.endpointPlaceholder');
 });
 const pi_catalog_models = computed<readonly Model<Api>[]>(() => {
     const provider = selected_pi_provider.value;
@@ -770,12 +815,19 @@ const selected_catalog_model = computed(() =>
 const pi_catalog_model_options = computed(() =>
     pi_catalog_models.value.map(model => ({ id: model.id, label: getPiModelLabel(model) }))
 );
-const effective_context_window = computed(() =>
-    resolvePiContextWindow(
-        store.settings.额外模型解析配置.pi.contextWindow,
-        selected_catalog_model.value?.contextWindow
-    )
-);
+const effective_context_window = computed(() => {
+    const provider = selected_pi_provider.value;
+    const pi = store.settings.额外模型解析配置.pi;
+    return provider
+        ? resolvePiSourceContextWindow(
+              provider,
+              pi.api as PiWireApi,
+              pi.endpoint,
+              pi.contextWindow,
+              selected_catalog_model.value
+          )
+        : resolvePiContextWindow(pi.contextWindow);
+});
 const pi_context_window_input_value = computed(() => {
     const configured = store.settings.额外模型解析配置.pi.contextWindow;
     return configured === 0 ? effective_context_window.value || '' : configured;
@@ -967,21 +1019,91 @@ const pi_configuration_error = computed(() => {
     return '';
 });
 
+const pi_proxy_status = ref<SillyTavernProxyStatus>('unchecked');
+const show_pi_proxy_warning = computed(
+    () =>
+        is_pi_source.value &&
+        pi_configuration_error.value === '' &&
+        pi_uses_cors_proxy.value &&
+        (pi_proxy_status.value === 'disabled' || pi_proxy_status.value === 'unavailable')
+);
+let piProxyProbeGeneration = 0;
+let piProxyUiMounted = true;
+
+watch(
+    () => [is_pi_source.value, pi_uses_cors_proxy.value, pi_configuration_error.value] as const,
+    async ([active, use_proxy, configuration_error]) => {
+        const generation = ++piProxyProbeGeneration;
+        if (!active || !use_proxy || configuration_error !== '') {
+            pi_proxy_status.value = 'unchecked';
+            return;
+        }
+
+        pi_proxy_status.value = getSillyTavernProxyStatus();
+        if (pi_proxy_status.value === 'enabled' || pi_proxy_status.value === 'disabled') {
+            return;
+        }
+
+        pi_proxy_status.value = 'checking';
+        const status = await probeSillyTavernProxy();
+        if (piProxyUiMounted && generation === piProxyProbeGeneration) {
+            pi_proxy_status.value = status;
+        }
+    },
+    { immediate: true }
+);
+
+function withPiProxySuffix(label: string, use_proxy: boolean): string {
+    return use_proxy ? `${label} (Proxy)` : label;
+}
+
+function getPiProviderOptionLabel(definition: PiProviderDefinition): string {
+    const pi = store.settings.额外模型解析配置.pi;
+    const is_selected = definition.key === pi.provider;
+    const api =
+        is_selected && definition.allowedApis.includes(pi.api as PiWireApi)
+            ? (pi.api as PiWireApi)
+            : definition.defaultApi;
+    const uses_proxy = shouldUsePiCorsProxy(
+        definition,
+        api,
+        is_selected ? pi.endpoint : '',
+        is_selected ? pi.useProxy : false
+    );
+    const label = definition.displayName[locale.value === 'zh-CN' ? 'zh-CN' : 'en'];
+    return withPiProxySuffix(label, uses_proxy);
+}
+
 function getPiApiLabel(api: string): string {
+    let label: string;
     switch (api) {
         case 'openai-responses':
-            return t('panel.source.pi.api.openaiResponses');
+            label = t('panel.source.pi.api.openaiResponses');
+            break;
         case 'openai-completions':
-            return t('panel.source.pi.api.openaiCompletions');
+            label = t('panel.source.pi.api.openaiCompletions');
+            break;
         case 'openai-codex-responses':
-            return t('panel.source.pi.api.openaiCodexResponses');
+            label = t('panel.source.pi.api.openaiCodexResponses');
+            break;
         case 'anthropic-messages':
-            return t('panel.source.pi.api.anthropicMessages');
+            label = t('panel.source.pi.api.anthropicMessages');
+            break;
         case 'google-generative-ai':
-            return t('panel.source.pi.api.googleGenerativeAi');
+            label = t('panel.source.pi.api.googleGenerativeAi');
+            break;
+        case 'mistral-conversations':
+            label = t('panel.source.pi.api.mistralConversations');
+            break;
         default:
-            return api;
+            label = api;
+            break;
     }
+    const pi = store.settings.额外模型解析配置.pi;
+    return withPiProxySuffix(
+        label,
+        shouldUsePiCorsProxy(selected_pi_provider.value, api, pi.endpoint, pi.useProxy)
+    );
 }
 
 function getPiAuthLabel(auth_type: string): string {
@@ -1014,6 +1136,7 @@ async function loadPiModels(signal: AbortSignal): Promise<readonly string[]> {
         api: pi.api,
         authType: pi.authType,
         endpoint: pi.endpoint,
+        useProxy: pi.useProxy,
         apiKey: config.密钥,
         customHeaders: pi.customHeaders,
     };
@@ -1030,10 +1153,21 @@ async function loadPiModels(signal: AbortSignal): Promise<readonly string[]> {
             expiresAt: oauthCredential.expiresAt,
         };
     }
-    return fetchPiModelList(
-        { ...snapshot, oauthCredential, signal },
-        { sillyTavernRequestHeaders: () => SillyTavern.getRequestHeaders() }
-    );
+    try {
+        return await fetchPiModelList(
+            { ...snapshot, oauthCredential, signal },
+            { sillyTavernRequestHeaders: () => SillyTavern.getRequestHeaders() }
+        );
+    } catch (error) {
+        if (
+            error instanceof Error &&
+            (error.name === 'PiProxyUnavailableError' ||
+                (error as Error & { code?: unknown }).code === 'proxy_unavailable')
+        ) {
+            throw new Error(getLocalizedPiErrorMessage(error));
+        }
+        throw error;
+    }
 }
 
 function updatePiContextWindow(event: Event): void {
@@ -1301,6 +1435,7 @@ watch(
             store.settings.额外模型解析配置.pi.api,
             store.settings.额外模型解析配置.pi.authType,
             store.settings.额外模型解析配置.pi.endpoint,
+            store.settings.额外模型解析配置.pi.useProxy,
             store.settings.额外模型解析配置.pi.customHeaders,
             store.settings.额外模型解析配置.密钥,
             oauthBusy.value,
@@ -1600,6 +1735,8 @@ function format_oauth_error(error: unknown): string {
 }
 
 onBeforeUnmount(() => {
+    piProxyUiMounted = false;
+    piProxyProbeGeneration += 1;
     oauthComponentMounted = false;
     cancelOAuthLogin(false);
     oauthStatusGeneration += 1;
@@ -1629,6 +1766,31 @@ onBeforeUnmount(() => {
 .mvu-note {
     opacity: 0.85;
     color: var(--SmartThemeEmColor, inherit);
+}
+
+.mvu-pi-proxy-option {
+    padding: 0 0.6rem;
+}
+
+.mvu-warning {
+    margin-top: 0.5rem;
+    padding: 0.55rem 0.7rem;
+    border: 1px solid color-mix(in srgb, var(--SmartThemeEmColor, #d39e00) 35%, transparent);
+    border-radius: 10px;
+    background-color: color-mix(in srgb, var(--SmartThemeEmColor, #fff3cd) 15%, transparent);
+    color: var(--SmartThemeEmColor, #856404);
+    display: grid;
+    grid-template-columns: auto 1fr;
+    column-gap: 0.5rem;
+    align-items: center;
+}
+
+.mvu-warning__icon {
+    line-height: 1;
+}
+
+.mvu-warning__text {
+    word-break: break-word;
 }
 
 .mvu-pi-advanced-textarea {

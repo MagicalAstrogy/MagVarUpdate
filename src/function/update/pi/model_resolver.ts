@@ -9,6 +9,7 @@ import {
     type PiWireApi,
 } from './provider_registry';
 import {
+    getPiProviderApiBaseUrl,
     normalizePiApiBaseEndpoint,
     normalizePiTargetEndpoint,
     PiEndpointValidationError,
@@ -125,7 +126,7 @@ export function isPiDefaultProviderEndpoint(
     try {
         return (
             normalizePiApiBaseEndpoint(api, requested) ===
-            normalizePiApiBaseEndpoint(api, definition.defaultBaseUrl)
+            normalizePiApiBaseEndpoint(api, getPiProviderApiBaseUrl(definition, api))
         );
     } catch {
         return false;
@@ -242,17 +243,18 @@ export function validatePiConfiguration(input: ResolvePiModelInput): ValidatedPi
     }
 
     let endpoint: string;
+    const defaultEndpoint = getPiProviderApiBaseUrl(definition, api as PiWireApi);
     try {
         endpoint = requestedEndpoint
             ? normalizePiApiBaseEndpoint(api as PiWireApi, requestedEndpoint)
-            : definition.defaultBaseUrl;
+            : defaultEndpoint;
     } catch (error) {
         if (error instanceof PiEndpointValidationError) {
             throw new PiModelResolutionError('invalid_endpoint', error.message);
         }
         throw error;
     }
-    const usesDefaultEndpoint = endpoint === normalizePiEndpoint(definition.defaultBaseUrl);
+    const usesDefaultEndpoint = endpoint === normalizePiEndpoint(defaultEndpoint);
     const modelId = requiredString(input.piConfig, 'model', 'missing_model', 'More source model');
     const manualContextWindow = validateNonNegativeInteger(
         input.piConfig.contextWindow,

@@ -1,5 +1,17 @@
 jest.mock('@/function/update/pi/pi_gateway', () => {
     const streams = () => ({ stream: jest.fn(), streamSimple: jest.fn() });
+    const catalogModel = (provider: string, api: string, id: string, baseUrl: string) => ({
+        id,
+        name: id,
+        provider,
+        api,
+        baseUrl,
+        reasoning: false,
+        input: ['text'],
+        cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+        contextWindow: 128_000,
+        maxTokens: 16_000,
+    });
     return {
         createModels: jest.fn(),
         createProvider: jest.fn(),
@@ -7,11 +19,44 @@ jest.mock('@/function/update/pi/pi_gateway', () => {
         OPENAI_CODEX_MODELS: {},
         ANTHROPIC_MODELS: {},
         GOOGLE_MODELS: {},
+        FIREWORKS_MODELS: {},
+        GITHUB_COPILOT_MODELS: {
+            'copilot-anthropic': catalogModel(
+                'github-copilot',
+                'anthropic-messages',
+                'copilot-anthropic',
+                'https://api.individual.githubcopilot.com'
+            ),
+            'copilot-responses': catalogModel(
+                'github-copilot',
+                'openai-responses',
+                'copilot-responses',
+                'https://api.individual.githubcopilot.com'
+            ),
+        },
+        MISTRAL_MODELS: {},
+        OPENCODE_MODELS: {
+            'opencode-anthropic': catalogModel(
+                'opencode',
+                'anthropic-messages',
+                'opencode-anthropic',
+                'https://opencode.ai/zen'
+            ),
+            'opencode-google': catalogModel(
+                'opencode',
+                'google-generative-ai',
+                'opencode-google',
+                'https://opencode.ai/zen/v1'
+            ),
+        },
+        OPENCODE_GO_MODELS: {},
+        VERCEL_AI_GATEWAY_MODELS: {},
         openAIResponsesApi: jest.fn(streams),
         openAICompletionsApi: jest.fn(streams),
         openAICodexResponsesApi: jest.fn(streams),
         anthropicMessagesApi: jest.fn(streams),
         googleGenerativeAIApi: jest.fn(streams),
+        mistralConversationsApi: jest.fn(streams),
     };
 });
 jest.mock('@/function/update/pi/credential_store', () => ({
@@ -31,6 +76,7 @@ import {
 import { getBrowserOAuthAuth } from '@/function/update/pi/oauth';
 import { createModels, createProvider } from '@/function/update/pi/pi_gateway';
 import { getPiProviderDefinition } from '@/function/update/pi/provider_registry';
+import { PiProxyUnavailableError } from '@/function/update/pi/sillytavern_proxy';
 
 type FetchMock = jest.Mock<Promise<Response>, [RequestInfo | URL, RequestInit?]>;
 
@@ -48,6 +94,31 @@ function invalidJsonResponse(): Response {
         status: 200,
         json: jest.fn().mockRejectedValue(new SyntaxError('invalid JSON with secret-value')),
     } as unknown as Response;
+}
+
+function textResponse(body: string, status: number): Response {
+    return {
+        ok: status >= 200 && status < 300,
+        status,
+        text: jest.fn().mockResolvedValue(body),
+    } as unknown as Response;
+}
+
+function proxyEnabledResponse(): Response {
+    return textResponse('mvu-st-cors-proxy-probe', 200);
+}
+
+function proxyDisabledResponse(): Response {
+    return textResponse(
+        'CORS proxy is disabled. Enable it in config.yaml or use the --corsProxy flag.',
+        404
+    );
+}
+
+function proxiedTarget(call: unknown[]): URL {
+    const value = String(call[0]);
+    expect(value).toMatch(/^\/proxy\//);
+    return new URL(decodeURIComponent(value.slice('/proxy/'.length)));
 }
 
 function requestUrl(call: unknown[]): URL {
@@ -175,6 +246,208 @@ describe('extra-model model-list discovery', () => {
         expect(body).not.toHaveProperty('proxy_password');
     });
 
+    test('routes a built-in OpenAI-compatible provider through its protocol-specific base URL', async () => {
+        const fetchMock: FetchMock = jest
+            .fn()
+            .mockResolvedValue(jsonResponse({ data: [{ id: 'accounts/fireworks/model-a' }] }));
+
+        await expect(
+            fetchPiModelList(
+                {
+                    provider: 'fireworks',
+                    api: 'openai-completions',
+                    authType: 'api_key',
+                    endpoint: '',
+                    apiKey: 'fireworks-secret',
+                    useProxy: true,
+                },
+                { fetch: fetchMock }
+            )
+        ).resolves.toEqual(['accounts/fireworks/model-a']);
+
+        expect(fetchMock).toHaveBeenCalledTimes(1);
+        expect(fetchMock.mock.calls[0][0]).toBe('/api/backends/chat-completions/status');
+        expect(JSON.parse(requestInit(fetchMock.mock.calls[0]).body as string)).toEqual({
+            reverse_proxy: 'https://api.fireworks.ai/inference/v1',
+            proxy_password: 'fireworks-secret',
+            chat_completion_source: 'openai',
+        });
+    });
+
+    test('uses Fireworks OpenAI discovery even when generation uses Anthropic Messages', async () => {
+        const fetchMock: FetchMock = jest
+            .fn()
+            .mockResolvedValueOnce(proxyEnabledResponse())
+            .mockResolvedValueOnce(jsonResponse({ data: [{ id: 'fireworks-model' }] }));
+
+        await expect(
+            fetchPiModelList(
+                {
+                    provider: 'fireworks',
+                    api: 'anthropic-messages',
+                    authType: 'api_key',
+                    endpoint: '',
+                    apiKey: 'fireworks-secret',
+                    useProxy: false,
+                },
+                { fetch: fetchMock }
+            )
+        ).resolves.toEqual(['fireworks-model']);
+
+        expect(fetchMock).toHaveBeenCalledTimes(2);
+        expect(fetchMock.mock.calls[0][0]).toBe(
+            `/proxy/${encodeURIComponent('data:text/plain,mvu-st-cors-proxy-probe')}`
+        );
+        expect(fetchMock.mock.calls[1][0]).toBe('/api/backends/chat-completions/status');
+        expect(JSON.parse(requestInit(fetchMock.mock.calls[1]).body as string)).toEqual({
+            reverse_proxy: 'https://api.fireworks.ai/inference/v1',
+            proxy_password: 'fireworks-secret',
+            chat_completion_source: 'openai',
+        });
+    });
+
+    test('uses OpenAI-shaped discovery for OpenCode Google and filters known other-API ids', async () => {
+        const fetchMock: FetchMock = jest
+            .fn()
+            .mockResolvedValueOnce(proxyEnabledResponse())
+            .mockResolvedValueOnce(
+                jsonResponse({
+                    data: [
+                        { id: 'opencode-anthropic' },
+                        { id: 'opencode-google' },
+                        { id: 'new-google-model' },
+                    ],
+                })
+            );
+
+        await expect(
+            fetchPiModelList(
+                {
+                    provider: 'opencode',
+                    api: 'google-generative-ai',
+                    authType: 'api_key',
+                    endpoint: '',
+                    apiKey: 'opencode-secret',
+                },
+                { fetch: fetchMock }
+            )
+        ).resolves.toEqual(['new-google-model', 'opencode-google']);
+
+        expect(fetchMock.mock.calls[1][0]).toBe('/api/backends/chat-completions/status');
+        expect(JSON.parse(requestInit(fetchMock.mock.calls[1]).body as string)).toEqual({
+            reverse_proxy: 'https://opencode.ai/zen/v1',
+            proxy_password: 'opencode-secret',
+            chat_completion_source: 'openai',
+        });
+    });
+
+    test('uses the Copilot model route, bearer auth, and required client headers through ST', async () => {
+        const fetchMock: FetchMock = jest
+            .fn()
+            .mockResolvedValueOnce(proxyEnabledResponse())
+            .mockResolvedValueOnce(
+                jsonResponse({
+                    data: [
+                        { id: 'copilot-anthropic' },
+                        { id: 'copilot-responses' },
+                        { id: 'new-copilot-model' },
+                    ],
+                })
+            );
+
+        await expect(
+            fetchPiModelList(
+                {
+                    provider: 'github-copilot',
+                    api: 'anthropic-messages',
+                    authType: 'api_key',
+                    endpoint: '',
+                    apiKey: 'copilot-token',
+                },
+                { fetch: fetchMock }
+            )
+        ).resolves.toEqual(['copilot-anthropic', 'new-copilot-model']);
+
+        expect(fetchMock.mock.calls[1][0]).toBe('/api/backends/chat-completions/status');
+        const body = JSON.parse(requestInit(fetchMock.mock.calls[1]).body as string);
+        expect(body).toMatchObject({
+            custom_url: 'https://api.individual.githubcopilot.com',
+            chat_completion_source: 'custom',
+        });
+        expect(JSON.parse(body.custom_include_headers)).toEqual({
+            'User-Agent': 'GitHubCopilotChat/0.35.0',
+            'Editor-Version': 'vscode/1.107.0',
+            'Editor-Plugin-Version': 'copilot-chat/0.35.0',
+            'Copilot-Integration-Id': 'vscode-chat',
+            'X-GitHub-Api-Version': '2026-06-01',
+            Authorization: 'Bearer copilot-token',
+        });
+    });
+
+    test('uses the Vercel AI Gateway OpenAI model catalog through ST', async () => {
+        const fetchMock: FetchMock = jest
+            .fn()
+            .mockResolvedValue(jsonResponse({ data: [{ id: 'provider/model' }] }));
+
+        await expect(
+            fetchPiModelList(
+                {
+                    provider: 'vercel-ai-gateway',
+                    api: 'anthropic-messages',
+                    authType: 'api_key',
+                    endpoint: '',
+                    apiKey: 'vercel-secret',
+                },
+                { fetch: fetchMock }
+            )
+        ).resolves.toEqual(['provider/model']);
+
+        expect(JSON.parse(requestInit(fetchMock.mock.calls[0]).body as string)).toEqual({
+            reverse_proxy: 'https://ai-gateway.vercel.sh/v1',
+            proxy_password: 'vercel-secret',
+            chat_completion_source: 'openai',
+        });
+    });
+
+    test('fetches Mistral models directly with bearer authentication', async () => {
+        const signal = new AbortController().signal;
+        const fetchMock: FetchMock = jest.fn().mockResolvedValue(
+            jsonResponse({
+                data: [{ id: ' mistral-z ' }, { name: 'mistral-a' }, { id: 'mistral-a' }],
+            })
+        );
+
+        await expect(
+            fetchPiModelList(
+                {
+                    provider: 'mistral',
+                    api: 'mistral-conversations',
+                    authType: 'api_key',
+                    endpoint: '',
+                    apiKey: 'mistral-secret',
+                    customHeaders: '{"X-Tenant":"alpha"}',
+                    signal,
+                },
+                { fetch: fetchMock }
+            )
+        ).resolves.toEqual(['mistral-a', 'mistral-z']);
+
+        expect(fetchMock).toHaveBeenCalledTimes(1);
+        expect(String(fetchMock.mock.calls[0][0])).toBe('https://api.mistral.ai/v1/models');
+        const init = requestInit(fetchMock.mock.calls[0]);
+        expect(init.method).toBe('GET');
+        expect(init.cache).toBe('no-store');
+        expect(init.credentials).toBe('omit');
+        expect(init.redirect).toBe('error');
+        expect(init.referrerPolicy).toBe('no-referrer');
+        expect(init.signal).toBe(signal);
+        expect(init.headers).toMatchObject({
+            Accept: 'application/json',
+            'X-Tenant': 'alpha',
+            Authorization: 'Bearer mistral-secret',
+        });
+    });
+
     test('paginates the official Anthropic model endpoint with direct-browser API-key headers', async () => {
         const signal = new AbortController().signal;
         const fetchMock: FetchMock = jest
@@ -231,6 +504,70 @@ describe('extra-model model-list discovery', () => {
             });
             expect(init.headers).not.toHaveProperty('Authorization');
         }
+    });
+
+    test('uses the generic ST proxy for direct discovery when a custom endpoint opts in', async () => {
+        const signal = new AbortController().signal;
+        const fetchMock: FetchMock = jest
+            .fn()
+            .mockResolvedValueOnce(proxyEnabledResponse())
+            .mockResolvedValueOnce(
+                jsonResponse({ data: [{ id: 'claude-tenant' }], has_more: false })
+            );
+
+        await expect(
+            fetchPiModelList(
+                {
+                    provider: 'anthropic',
+                    api: 'anthropic-messages',
+                    authType: 'api_key',
+                    endpoint: 'https://tenant.example/anthropic/v1/messages',
+                    apiKey: 'tenant-secret',
+                    useProxy: true,
+                    signal,
+                },
+                { fetch: fetchMock }
+            )
+        ).resolves.toEqual(['claude-tenant']);
+
+        expect(fetchMock).toHaveBeenCalledTimes(2);
+        expect(fetchMock.mock.calls[0][0]).toBe(
+            `/proxy/${encodeURIComponent('data:text/plain,mvu-st-cors-proxy-probe')}`
+        );
+        const target = proxiedTarget(fetchMock.mock.calls[1]);
+        expect(target.origin + target.pathname).toBe('https://tenant.example/anthropic/v1/models');
+        expect(target.searchParams.get('limit')).toBe('100');
+        const init = requestInit(fetchMock.mock.calls[1]);
+        expect(init.method).toBe('GET');
+        expect(init.credentials).toBe('same-origin');
+        expect(init.signal).toBe(signal);
+        expect(init.headers).toMatchObject({
+            'x-api-key': 'tenant-secret',
+            'anthropic-version': '2023-06-01',
+        });
+    });
+
+    test('throws PiProxyUnavailableError before model discovery when ST proxy is disabled', async () => {
+        const fetchMock: FetchMock = jest.fn().mockResolvedValue(proxyDisabledResponse());
+
+        await expect(
+            fetchPiModelList(
+                {
+                    provider: 'anthropic',
+                    api: 'anthropic-messages',
+                    authType: 'api_key',
+                    endpoint: 'https://tenant.example/anthropic/v1/messages',
+                    apiKey: 'tenant-secret',
+                    useProxy: true,
+                },
+                { fetch: fetchMock }
+            )
+        ).rejects.toEqual(expect.any(PiProxyUnavailableError));
+
+        expect(fetchMock).toHaveBeenCalledTimes(1);
+        expect(fetchMock.mock.calls[0][0]).toBe(
+            `/proxy/${encodeURIComponent('data:text/plain,mvu-st-cors-proxy-probe')}`
+        );
     });
 
     test('uses bearer and OAuth beta headers for official Anthropic OAuth discovery', async () => {
@@ -368,18 +705,21 @@ describe('extra-model model-list discovery', () => {
 
     test('keeps only list-visible Codex subscription entries and sends OAuth account headers', async () => {
         const signal = new AbortController().signal;
-        const fetchMock: FetchMock = jest.fn().mockResolvedValue(
-            jsonResponse({
-                models: [
-                    { slug: 'gpt-codex-z', supported_in_api: false, visibility: 'list' },
-                    { id: 'gpt-codex-a', visibility: 'list' },
-                    { slug: 'hidden', visibility: 'hide' },
-                    { slug: 'internal', visibility: 'none' },
-                    { slug: 'missing-visibility' },
-                    null,
-                ],
-            })
-        );
+        const fetchMock: FetchMock = jest
+            .fn()
+            .mockResolvedValueOnce(proxyEnabledResponse())
+            .mockResolvedValueOnce(
+                jsonResponse({
+                    models: [
+                        { slug: 'gpt-codex-z', supported_in_api: false, visibility: 'list' },
+                        { id: 'gpt-codex-a', visibility: 'list' },
+                        { slug: 'hidden', visibility: 'hide' },
+                        { slug: 'internal', visibility: 'none' },
+                        { slug: 'missing-visibility' },
+                        null,
+                    ],
+                })
+            );
 
         await expect(
             fetchPiModelList(
@@ -399,15 +739,13 @@ describe('extra-model model-list discovery', () => {
             )
         ).resolves.toEqual(['gpt-codex-a', 'gpt-codex-z']);
 
-        const url = requestUrl(fetchMock.mock.calls[0]);
+        expect(fetchMock).toHaveBeenCalledTimes(2);
+        const url = proxiedTarget(fetchMock.mock.calls[1]);
         expect(url.origin + url.pathname).toBe('https://chatgpt.com/backend-api/codex/models');
         expect(url.searchParams.get('client_version')).toBe('0.144.0');
-        const init = requestInit(fetchMock.mock.calls[0]);
+        const init = requestInit(fetchMock.mock.calls[1]);
         expect(init.method).toBe('GET');
-        expect(init.cache).toBe('no-store');
-        expect(init.credentials).toBe('omit');
-        expect(init.redirect).toBe('error');
-        expect(init.referrerPolicy).toBe('no-referrer');
+        expect(init.credentials).toBe('same-origin');
         expect(init.signal).toBe(signal);
         expect(init.headers).toMatchObject({
             Accept: 'application/json',

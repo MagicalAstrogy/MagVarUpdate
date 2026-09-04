@@ -329,6 +329,44 @@ describe('Pi payload transform', () => {
         ).toThrow('does not support native JSON-object output');
     });
 
+    test('maps Mistral structured modes to its camelCase pre-wire payload', () => {
+        const input = {
+            model: 'mistral-large-latest',
+            messages: [],
+            stream: true,
+        };
+
+        expect(
+            transformPiPayload(input, {
+                api: 'mistral-conversations',
+                responseFormat: '格式化输出',
+                jsonSchema: schema,
+            })
+        ).toEqual({
+            ...input,
+            responseFormat: {
+                type: 'json_schema',
+                jsonSchema: {
+                    name: 'mvu_update',
+                    description: 'MVU patch',
+                    schemaDefinition: schema.value,
+                    strict: true,
+                },
+            },
+        });
+        expect(
+            transformPiPayload(input, {
+                api: 'mistral-conversations',
+                responseFormat: '格式化输出(v4兼容)',
+            })
+        ).toEqual({ ...input, responseFormat: { type: 'json_object' } });
+        expect(input).toEqual({
+            model: 'mistral-large-latest',
+            messages: [],
+            stream: true,
+        });
+    });
+
     test('applies custom fields but protects protocol fields', () => {
         expect(
             transformPiPayload(
@@ -408,5 +446,25 @@ describe('Pi payload transform', () => {
                 { api: 'google-generative-ai', sampling }
             )
         ).toMatchObject({ config: { temperature: 1, topP: 0.8, topK: 32 } });
+        expect(
+            transformPiPayload({ messages: [] }, { api: 'mistral-conversations', sampling })
+        ).toEqual({
+            messages: [],
+            topP: 0.8,
+            frequencyPenalty: 0.2,
+            presencePenalty: -0.1,
+        });
+    });
+
+    test('protects the Mistral camelCase output limit field', () => {
+        expect(() =>
+            transformPiPayload(
+                { model: 'mistral-large-latest', messages: [], maxTokens: 4096 },
+                {
+                    api: 'mistral-conversations',
+                    customIncludeBody: { maxTokens: 1 },
+                }
+            )
+        ).toThrow("cannot override protected field 'maxTokens'");
     });
 });

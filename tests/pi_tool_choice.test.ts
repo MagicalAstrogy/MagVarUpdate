@@ -8,6 +8,8 @@ describe('Pi capability-aware tool choice', () => {
         ['anthropic-messages', 'required', 'any'],
         ['openai-completions', 'any', 'required'],
         ['openai-codex-responses', 'required', 'required'],
+        ['mistral-conversations', 'any', 'any'],
+        ['mistral-conversations', 'required', 'required'],
     ] as const)('maps %s %s', (api, choice, expected) => {
         expect(resolvePiToolChoice(api, choice)).toBe(expected);
     });
@@ -25,6 +27,10 @@ describe('Pi capability-aware tool choice', () => {
         expect(resolvePiToolChoice('anthropic-messages', choice)).toEqual({
             type: 'tool',
             name: 'update_variables',
+        });
+        expect(resolvePiToolChoice('mistral-conversations', choice)).toEqual({
+            type: 'function',
+            function: { name: 'update_variables' },
         });
     });
 

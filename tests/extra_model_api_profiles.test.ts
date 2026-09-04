@@ -31,6 +31,7 @@ const base_pi_settings = {
     api: 'anthropic-messages',
     authType: 'oauth' as const,
     endpoint: 'https://api.anthropic.com',
+    useProxy: true,
     model: 'claude-sonnet-4-5',
     contextWindow: 200_000,
     credentials: {
@@ -218,6 +219,7 @@ describe('extra model api profiles', () => {
                 api: 'anthropic-messages',
                 authType: 'oauth',
                 endpoint: 'https://api.anthropic.com',
+                useProxy: true,
                 model: 'claude-sonnet-4-5',
                 contextWindow: 200_000,
                 customHeaders: 'X-Test: true',
@@ -341,6 +343,7 @@ describe('extra model api profiles', () => {
                     api,
                     authType: 'api_key',
                     endpoint,
+                    useProxy: false,
                     model: 'model-a',
                     contextWindow: 128_000,
                     customHeaders: '',
@@ -491,6 +494,7 @@ describe('extra model api profiles', () => {
         expect(selected.pi).toMatchObject({
             provider: 'anthropic',
             api: 'anthropic-messages',
+            useProxy: true,
             model: 'claude-sonnet-4-5',
             credentials,
             apiKeys: base_pi_settings.apiKeys,
@@ -517,6 +521,10 @@ describe('extra model api profiles', () => {
         saved.pi!.credentials.anthropic = { type: 'oauth', access: 'refreshed' };
         expect(isActiveExtraModelApiProfileDirty(saved)).toBe(false);
         saved.pi!.apiKeys!['anthropic\nhttps://proxy.example'] = 'rotated';
+        expect(isActiveExtraModelApiProfileDirty(saved)).toBe(false);
+        saved.pi!.useProxy = false;
+        expect(isActiveExtraModelApiProfileDirty(saved)).toBe(true);
+        saved.pi!.useProxy = true;
         expect(isActiveExtraModelApiProfileDirty(saved)).toBe(false);
         saved.pi!.model = 'claude-opus-4-1';
         expect(isActiveExtraModelApiProfileDirty(saved)).toBe(true);
@@ -1109,6 +1117,7 @@ describe('extra model api profiles', () => {
             api: '',
             authType: 'api_key',
             endpoint: '',
+            useProxy: false,
             model: '',
             contextWindow: 0,
             credentials: base_pi_settings.credentials,

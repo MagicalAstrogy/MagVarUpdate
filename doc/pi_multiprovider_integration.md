@@ -1,11 +1,14 @@
 # Pi 多来源额外模型接入
 
-Pi 链路为“额外模型解析”新增了一条浏览器直连路径。它复用 SillyTavern/Slash-Runner完成提示词构建，再由
-`@earendil-works/pi-ai` 调用所选 Provider。原有的“与插头相同”和“自定义”路径保持不变。
+Pi 链路为“额外模型解析”新增了一条由浏览器执行 Provider
+adapter 的路径。它复用 SillyTavern/Slash-Runner 完成提示词构建，再由 `@earendil-works/pi-ai`
+调用所选 Provider；根据来源与 wire API 的审计结果，请求会直接发送，或经 SillyTavern 的通用 CORS
+Proxy 转发。原有的“与插头相同”和“自定义”路径保持不变。
 
-当前实现已具备自动化测试和真实 SillyTavern/Firefox UI
-smoke 覆盖，但尚未完成使用真实 Anthropic/OpenAI Codex
-OAuth 账号的完整浏览器请求验收。OAuth、CORS 和上游账号权限仍需在实际部署环境中验证。
+当前“更多”注册 34 个带确定请求地址的来源：32 个来自锁定版 Pi 的
+`Provider.baseUrl`，另加 Pi 目录已给出分 API 地址的 OpenCode
+Zen/Go。原四来源版本已具备自动化测试和真实 SillyTavern/Firefox UI
+smoke 覆盖；34 来源与 Proxy 路由的最终全仓测试、lint、声明构建、生产构建和 bundle 边界扫描均已通过。完整发布验收仍以任务清单 H-03 为准；真实 OAuth、Provider 权限、Proxy 部署状态和上游行为仍需在实际环境中验证。
 
 ## 模型来源
 
@@ -22,35 +25,131 @@ OAuth 账号的完整浏览器请求验收。OAuth、CORS 和上游账号权限�
 来源、wire
 API、认证方式和 endpoint 的合法组合由同一份注册表同时约束 UI 与运行时。非法组合会在 Provider 请求之前直接报错。
 
-| 来源          | wire API                                 | 认证             | endpoint                                                |
-| ------------- | ---------------------------------------- | ---------------- | ------------------------------------------------------- |
-| OpenAI        | `openai-responses`、`openai-completions` | API Key          | 默认 `https://api.openai.com/v1`，可按下述规则自定义    |
-| OpenAI Codex  | `openai-codex-responses`                 | OAuth            | 固定 `https://chatgpt.com/backend-api`                  |
-| Anthropic     | `anthropic-messages`                     | API Key 或 OAuth | 默认 `https://api.anthropic.com`；API Key 可自定义      |
-| Google Gemini | `google-generative-ai`                   | API Key          | 固定 `https://generativelanguage.googleapis.com/v1beta` |
+除 Anthropic（API Key 或 OAuth）和 OpenAI Codex（仅 OAuth）外，下表来源都使用 API
+Key。即使 Pi 上游还为个别来源实现了其他认证方式，MVU 也不会将其显示为可用 OAuth；浏览器手工 OAuth 仍只注册 Anthropic 与 OpenAI
+Codex。
+
+| 来源                       | wire API                                                                               | 默认 API base URL                                                                                    |
+| -------------------------- | -------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| Ant Ling                   | `openai-completions`                                                                   | `https://api.ant-ling.com/v1`                                                                        |
+| Anthropic                  | `anthropic-messages`                                                                   | `https://api.anthropic.com`                                                                          |
+| Baseten                    | `openai-completions`                                                                   | `https://inference.baseten.co/v1`                                                                    |
+| Cerebras                   | `openai-completions`                                                                   | `https://api.cerebras.ai/v1`                                                                         |
+| DeepSeek                   | `openai-completions`                                                                   | `https://api.deepseek.com`                                                                           |
+| Fireworks                  | `anthropic-messages`、`openai-completions`                                             | Messages：`https://api.fireworks.ai/inference`；Completions：`https://api.fireworks.ai/inference/v1` |
+| GitHub Copilot             | `anthropic-messages`、`openai-completions`、`openai-responses`                         | `https://api.individual.githubcopilot.com`                                                           |
+| Google Gemini              | `google-generative-ai`                                                                 | `https://generativelanguage.googleapis.com/v1beta`                                                   |
+| Groq                       | `openai-completions`                                                                   | `https://api.groq.com/openai/v1`                                                                     |
+| Hugging Face               | `openai-completions`                                                                   | `https://router.huggingface.co/v1`                                                                   |
+| Kimi For Coding            | `anthropic-messages`                                                                   | `https://api.kimi.com/coding`                                                                        |
+| MiniMax                    | `anthropic-messages`                                                                   | `https://api.minimax.io/anthropic`                                                                   |
+| MiniMax（中国）            | `anthropic-messages`                                                                   | `https://api.minimaxi.com/anthropic`                                                                 |
+| Mistral                    | `mistral-conversations`                                                                | `https://api.mistral.ai`                                                                             |
+| Moonshot AI                | `openai-completions`                                                                   | `https://api.moonshot.ai/v1`                                                                         |
+| Moonshot AI（中国）        | `openai-completions`                                                                   | `https://api.moonshot.cn/v1`                                                                         |
+| NVIDIA                     | `openai-completions`                                                                   | `https://integrate.api.nvidia.com/v1`                                                                |
+| OpenAI                     | `openai-responses`、`openai-completions`                                               | `https://api.openai.com/v1`                                                                          |
+| OpenAI Codex               | `openai-codex-responses`                                                               | `https://chatgpt.com/backend-api`                                                                    |
+| OpenCode Zen               | `anthropic-messages`、`google-generative-ai`、`openai-completions`、`openai-responses` | Messages：`https://opencode.ai/zen`；其他 API：`https://opencode.ai/zen/v1`                          |
+| OpenCode Go                | `anthropic-messages`、`openai-completions`、`openai-responses`                         | Messages：`https://opencode.ai/zen/go`；其他 API：`https://opencode.ai/zen/go/v1`                    |
+| OpenRouter                 | `openai-completions`                                                                   | `https://openrouter.ai/api/v1`                                                                       |
+| Qwen Token Plan            | `openai-completions`                                                                   | `https://token-plan.ap-southeast-1.maas.aliyuncs.com/compatible-mode/v1`                             |
+| Qwen Token Plan（中国）    | `openai-completions`                                                                   | `https://token-plan.cn-beijing.maas.aliyuncs.com/compatible-mode/v1`                                 |
+| Qwen Token Plan Individual | `openai-completions`                                                                   | `https://token-plan.ap-southeast-1.maas.aliyuncs.com/compatible-mode/v1`                             |
+| Together                   | `openai-completions`                                                                   | `https://api.together.ai/v1`                                                                         |
+| Vercel AI Gateway          | `anthropic-messages`                                                                   | `https://ai-gateway.vercel.sh`                                                                       |
+| xAI                        | `openai-responses`                                                                     | `https://api.x.ai/v1`                                                                                |
+| Xiaomi                     | `openai-completions`                                                                   | `https://api.xiaomimimo.com/v1`                                                                      |
+| Xiaomi Token Plan AMS      | `openai-completions`                                                                   | `https://token-plan-ams.xiaomimimo.com/v1`                                                           |
+| Xiaomi Token Plan（中国）  | `openai-completions`                                                                   | `https://token-plan-cn.xiaomimimo.com/v1`                                                            |
+| Xiaomi Token Plan SGP      | `openai-completions`                                                                   | `https://token-plan-sgp.xiaomimimo.com/v1`                                                           |
+| Z.AI                       | `openai-completions`                                                                   | `https://api.z.ai/api/coding/paas/v4`                                                                |
+| Z.AI Coding（中国）        | `openai-completions`                                                                   | `https://open.bigmodel.cn/api/coding/paas/v4`                                                        |
 
 OpenAI Codex OAuth 是独立的 Responses 适配器，不能作为普通 OpenAI Responses API
 Key 请求使用。同样，OAuth 不能与自定义 endpoint 或另一个 wire API 任意组合。
+
+固定来源的 endpoint 由注册表决定并在界面隐藏；Fireworks、OpenCode Zen 和 OpenCode Go 会随所选 wire
+API 自动切换 base
+URL。来源不会按页面加载时的一次性 CORS 探测结果过滤；注册表只对已经审计确认需要转发的 Provider/API 组合启用 Proxy，其他组合保持直连。上游的权限、协议或未登记的 CORS 变化仍会通过经过脱敏的
+`toastr` 错误呈现。
+
+需要运行时账号、区域或资源标识才能拼出地址的动态模板来源不进入菜单，包括 Amazon Bedrock、Azure
+OpenAI Responses、Cloudflare AI Gateway、Cloudflare Workers AI、Google Vertex 和 Radius。OpenCode
+Zen/Go 虽由 Pi provider factory 动态构造，但其 model
+catalog 已提供确定的分 API 地址，因此属于本次 34 个具体来源。
 
 OpenAI 或 Anthropic API
 Key 的自定义 endpoint 可以使用任意有效的 HTTPS 地址；明文 HTTP 只允许明确的本机 loopback host：
 `localhost`、`127.0.0.1` 或
 `[::1]`。地址不得包含用户名/密码、query 或 fragment，远端 HTTP、内网 HTTP、其他协议和非法 URL 都会在请求前 fail-closed。显式填写但规范化后与 Provider 默认地址一致的 endpoint 仍按默认链路处理。
 
+## CORS Proxy 路由
+
+以下是已审计并登记的 15 个精确 Provider/wire API 组合。只有这些内置地址会自动使用 SillyTavern
+Proxy；同一 Provider 的其他 API 不会因为名称相同而一并代理。
+
+|   # | 来源            | wire API                 |
+| --: | --------------- | ------------------------ |
+|   1 | Ant Ling        | `openai-completions`     |
+|   2 | Fireworks       | `anthropic-messages`     |
+|   3 | GitHub Copilot  | `anthropic-messages`     |
+|   4 | GitHub Copilot  | `openai-responses`       |
+|   5 | Kimi For Coding | `anthropic-messages`     |
+|   6 | MiniMax（中国） | `anthropic-messages`     |
+|   7 | NVIDIA          | `openai-completions`     |
+|   8 | OpenAI Codex    | `openai-codex-responses` |
+|   9 | OpenCode Zen    | `anthropic-messages`     |
+|  10 | OpenCode Zen    | `google-generative-ai`   |
+|  11 | OpenCode Zen    | `openai-completions`     |
+|  12 | OpenCode Zen    | `openai-responses`       |
+|  13 | OpenCode Go     | `anthropic-messages`     |
+|  14 | OpenCode Go     | `openai-completions`     |
+|  15 | OpenCode Go     | `openai-responses`       |
+
+二级来源与 API 下拉框会在有效路由的显示文本后附加字面量
+`(Proxy)`；多 API 来源会按当前 API 更新标记。OpenAI/Anthropic API
+Key 的自定义 endpoint 不套用上述静态矩阵：输入值规范化后不同于默认地址时显示“使用 Proxy”勾选框，并由
+`pi.useProxy` 决定传输；显式填写的默认 operation/base URL 仍按内置路由处理。该选项也会随 Pi
+API 方案保存和恢复。所有补充说明都放在相邻的 `HelpIcon` 中，不用常驻说明文本占用表单空间。
+
+Proxy 必须在 SillyTavern 中通过 `config.yaml` 的 `enableCorsProxy: true` 或启动参数 `--corsProxy`
+开启，并在修改配置后重启。界面会用由 SillyTavern 本地解析、不会访问外部 Provider 的 data URL
+sentinel 检查 `/proxy/:url`
+路由；有效路由需要 Proxy 而探测结果为关闭或不可用时，在对应配置区显示“没有开启Proxy”警告。生成请求和“获取模型列表”都会再次独立检查，并在提交 Provider 请求前强制刷新探测、fail-fast；等待可随当前请求取消，单次探测最多等待 5 秒。实际转发阶段再次发现路由关闭时也会保留
+`proxy_unavailable` 分类并通过 `toastr` 明确报错，不会静默退回浏览器直连。
+
+Provider 生成请求经 `/proxy/<encoded-target>` 转发，目标被限制在当前配置的 Provider base
+URL 及其子路径，并且只接受可重放的 JSON 请求体。OpenAI
+Codex 经 Proxy 时固定使用 SSE，避免选择 Proxy 无法承载的 WebSocket 传输。OpenCode Zen 的
+`google-generative-ai` 使用项目内的、请求级 Proxy-aware Google
+adapter；不需要 Proxy 的 Google 路径继续使用上游 Pi adapter。
+
+模型发现仍按 Provider 的真实目录协议执行。需要 Proxy 的有效 target 会先做同样的可用性检查；直接访问 Anthropic、Google、Mistral 或 Codex 目录的请求会使用受限 Proxy
+fetch，而原本就通过 SillyTavern 模型状态接口读取 OpenAI 结构目录的分支继续使用该接口，不做二次 Proxy 包装。失败不会清空手工填写的模型 ID。
+
 ## 配置步骤
 
 1. 在“模型来源”中选择“更多”。
-2. 在二级“来源”菜单中选择 Provider；API 和认证选项会随来源调整或锁定。
+2. 在二级“来源”菜单中选择 Provider；API 和认证选项会随来源调整或锁定，`(Proxy)`
+   表示该有效路由需要SillyTavern Proxy。
 3. API Key 模式填写现有“密钥”字段；该输入框只投影当前槽位，“自定义”使用独立的 `customApiKey`，Pi API
-   Key 则按“Provider + 规范化后的有效 endpoint”分槽保存在 `pi.apiKeys`。OAuth 模式按下一节完成登录。
-4. 填写模型 ID，也可以从 Pi 内置模型目录选择。
+   Key 则按“Provider + 规范化后的有效 endpoint”分槽保存在
+   `pi.apiKeys`。自定义 endpoint 可按目标的 CORS 策略勾选“使用 Proxy”；OAuth 模式按下一节完成登录。
+4. 填写模型 ID，也可以从 Pi 内置模型目录选择；“获取模型列表”会按当前来源/API/认证请求上游可见模型。
 5. 设置 `contextWindow` 和现有“最大回复 token 数”。
-6. 根据所选 API/model 的能力提示选择应答格式和采样参数。
+6. 如果当前路由标有 `(Proxy)`，先确认 SillyTavern 已启用 Proxy 且界面没有“没有开启Proxy”警告。
+7. 根据所选 API/model 的能力提示选择应答格式和采样参数。
 
 自定义 body 使用 Provider adapter 的原生 payload。Google SDK 的请求参数位于 `config`
 内，因此 Google 的 include 需要写成 `config: { ... }`，exclude 使用 `config.<field>`；例如
 `config.safetySettings`。MVU 会拒绝覆盖 signal、system、tools、token 上限、采样和结构化输出等受保护字段，也会拒绝会被 Google
 SDK 静默忽略的顶层 include。
+
+模型列表发现按 Provider 的实际目录协议选择路径：OpenAI-compatible 来源，以及目录为 OpenAI 结构的 Fireworks、GitHub
+Copilot、OpenCode Zen/Go 和 Vercel AI
+Gateway，复用 SillyTavern 的模型状态接口；官方 Anthropic、Google 和 Mistral 使用各自模型端点，OpenAI
+Codex 使用登录账号的订阅目录。共享目录返回多个生成协议的模型时，已知目录 ID 会按当前 API 过滤，未知新 ID 仍会保留供手工配置。模型列表接口与生成接口的 CORS/权限可以不同；获取失败只会明确报错，仍可手工输入模型 ID，不会改走另一个 Provider。
 
 `contextWindow` 与“最大回复 token 数”都必须是正整数，且后者不能大于前者。选择目录模型时，
 `contextWindow` 默认使用目录元数据；手动填写正整数会覆盖目录值。模型不在目录中时必须手工填写
@@ -66,7 +165,7 @@ SDK 静默忽略的顶层 include。
 API 方案现在通过 `backend` 区分两类快照：
 
 - `backend: 'custom'`：保存原有自定义 API 字段。
-- `backend: 'pi'`：保存结构完整的 Pi 连接快照，包括 provider、API、认证方式、endpoint、model、
+- `backend: 'pi'`：保存结构完整的 Pi 连接快照，包括 provider、API、认证方式、endpoint、`useProxy`、model、
   `contextWindow`、`customHeaders`、`customIncludeBody` 和 `customExcludeBody`。
 
 旧方案没有 `backend` 时按 `custom`
@@ -96,8 +195,8 @@ profile 也会在迁移或导入时移除其无归属的顶层 key。
 
 手工改变 Pi Provider、wire API、认证方式或规范化后的实际 endpoint 时，界面还会清空当前的
 `customHeaders`、`customIncludeBody` 和
-`customExcludeBody`，避免 header 或 body 中的私有值被带到另一个请求目标。填写空 endpoint 与显式填写 canonical 默认地址视为同一目标，不会误清；切换 API
-profile 则恢复该 profile 自己保存的三项快照。
+`customExcludeBody`，避免 header 或 body 中的私有值被带到另一个请求目标。填写空 endpoint 与显式填写 canonical 默认地址在模型/key 解析和传输策略上都视为同一内置目标；只有规范化后不同于默认地址的 endpoint 才以“使用 Proxy”勾选值为准。切换 API
+profile 则恢复该 profile 自己保存的完整连接快照，包括 `useProxy`。
 
 保存 `backend: 'pi'` 方案时如果缺少结构完整的 Pi 连接快照会直接拒绝。加载或迁移已存在的 malformed Pi
 profile 时也会 fail-closed：保留隔离的
@@ -128,10 +227,11 @@ profile 时也会 fail-closed：保留隔离的
 host、端口、路径和 state，并一次性消费登录尝试。虽然粘贴时接受 `127.0.0.1` 与 `localhost`
 两种等价本机 host，授权请求和 token exchange 始终使用注册表中的原始 redirect URI。
 
-如果 token
-endpoint 阻止浏览器 CORS，请求会直接报错；MVU 不会静默改走代理或服务端 relay。这意味着手工 callback、PKCE/state 和 credential 保存逻辑可用，并不保证上游允许当前页面完成纯浏览器 token
-exchange。Anthropic token endpoint 以及 OpenAI Codex 请求端点的 CORS/origin
-allowlist 尤其需要在实际部署来源上验证；被拒绝时只能由上游放行该来源，不能由前端代码绕过。
+SillyTavern Proxy 只用于已选择的模型生成与模型目录请求，不代理 OAuth authorize、token
+exchange 或 refresh。若 token
+endpoint 阻止浏览器 CORS，请求会直接报错，不会静默改走 Proxy 或服务端 relay。这意味着手工 callback、PKCE/state 和 credential 保存逻辑可用，并不保证上游允许当前页面完成纯浏览器 token
+exchange。模型请求是否使用 Proxy 与 OAuth
+token 请求是否可直连是两个独立条件，都需要在实际部署来源中验证。
 
 ## 能力与错误边界
 
@@ -146,6 +246,7 @@ API 请求形状判断，不根据目录模型或自定义 endpoint 的静态能
 | OpenAI Codex Responses  | 支持                            | `text.format`             | `text.format`     |
 | Anthropic Messages      | 支持                            | `output_config.format`    | 不支持            |
 | Google Generative AI    | 支持 `any`，不支持 named choice | `responseJsonSchema`      | JSON MIME         |
+| Mistral Conversations   | 支持                            | `responseFormat`          | `responseFormat`  |
 
 - 表中支持的请求形状会对目录外模型和自定义 endpoint 乐观发送。若目标 endpoint/model 实际拒绝，MVU 会保留错误类别并通过
   `toastr` 显示经过脱敏、可操作的提示。
@@ -190,19 +291,31 @@ chat。仓库不修改 SillyTavern 或 Slash-Runner，也不增加额外的 Slas
   map 都不进入 API 方案快照；日志和归一化 Provider 错误不应包含 key、code、token、请求 header 或响应正文。
 - Prompt 捕获请求永远使用空凭据和 `.invalid` endpoint。即使捕获监听器失效，也不应把真实 Pi
   endpoint、key 或 model 发送给 SillyTavern 后端。
+- Proxy 模式会把模型请求及其凭据交给当前 SillyTavern 实例转发，只应连接可信的 SillyTavern，并且只为可信、不跨站重定向的 HTTPS（或允许的 loopback
+  HTTP）JSON 模型 endpoint 开启。代理 fetch 会限制目标 origin/base
+  path 和 JSON 请求体，但这不等同于服务端密钥保险库或对目标服务的信任验证。
+- SillyTavern 自身使用 HTTP Basic Auth 时，代理请求与上游依赖 `Authorization` 的 Bearer/API
+  Key 认证可能在同一个 header 边界发生冲突；这是当前已知限制。OAuth 授权和 token/refresh 请求不通过该 Proxy。
+- AbortSignal 会传到浏览器访问 SillyTavern
+  Proxy 的 fetch；但在 SillyTavern 收到上游响应头之前，当前通用 Proxy 不能保证把浏览器断连继续传播到上游。因此点击停止可终止本地等待，却不能据此保证真实 Provider 已停止生成或计费。
 
 ## 当前限制与验收状态
 
 - 不持久化跨轮 Pi Context，不回放 reasoning signature，不把回复写回聊天。
-- 远程图片和视频输入未支持；浏览器 CORS 不能由 Pi 绕过。
-- 真实 Anthropic/Codex OAuth 是否可用取决于上游 token/request
-  endpoint 对当前 SillyTavern 页面来源的 CORS/origin 放行；自动化测试只覆盖浏览器协议逻辑和 mock
-  exchange。
-- 未导入 `providers/all`，生产包只选择 OpenAI、OpenAI Codex、Anthropic 和 Google 所需入口。
+- 远程图片和视频输入未支持。Pi
+  adapter 本身不会绕过浏览器 CORS；已审计的 15 个组合可借助已启用的 SillyTavern
+  Proxy，其余来源/API 仍按注册表直连，未登记的 CORS 改动会作为请求错误呈现。
+- 真实 Anthropic/Codex OAuth 是否可用取决于上游 token/refresh
+  endpoint 对当前 SillyTavern 页面来源的 CORS/origin 放行；OAuth
+  token/refresh 不使用 Proxy，自动化测试只覆盖浏览器协议逻辑和 mock
+  exchange。Codex 模型目录和生成请求使用 Proxy，并不改变 OAuth token exchange 的这一限制。
+- 未导入 `providers/all`。生产代码显式引入 34 个已注册来源的独立 model
+  catalog，以及六种实际使用的 wire
+  adapter；不加载需要账号/区域参数才能生成地址、且当前没有具体目录 URL 的其他 Pi Provider。
 - 自动化测试覆盖配置、profile、捕获、消息适配、OAuth mock、凭据并发、payload、wire
   API 请求形状、token
-  preflight、中止和 MVU 路由。真实 ST/Firefox 已验证本地产物加载、“更多”与四类来源、Anthropic API
-  Key/OAuth endpoint 显隐、context/maxToken 编辑、Pi
+  preflight、中止和 MVU 路由。以下真实 ST/Firefox 记录来自扩展前的四来源版本：已验证本地产物加载、“更多”与四类来源、Anthropic
+  API Key/OAuth endpoint 显隐、context/maxToken 编辑、Pi
   profile 保存/切换/删除/整页刷新持久化和凭据排除。隔离的 OAuth UI smoke 还以本地 mock 精确 token
   endpoint 验证了登录尝试、合法 loopback
   callback 成功交换、刷新后登录恢复、确认登出与凭据删除，并验证取消、state
@@ -260,11 +373,12 @@ chat。仓库不修改 SillyTavern 或 Slash-Runner，也不增加额外的 Slas
   case 在请求发出后停止，观察到 signal 中止、native fetch `AbortError`、BiDi
   `network.fetchError=aborted`、零重试和零结果写入。真实凭据只在 native
   fetch 传输边界替换固定 placeholder，从未进入 Vue/Pinia/ST 设置；扫描确认没有持久化真实凭据，页面内存、临时目录和全部进程均已清理。
-- 本次全量 Jest 结果为 59 suites、1116 passed、53 skipped；全仓 lint、type declaration build 与
-  `CI=true yarn build` 均成功。最终生产 bundle 为 1,170,517 B（gzip-9 274,004 B），SHA-256 为
-  `acd9e798daacd81a14c2ac7928df3542f95e6af514dd9b0c71b649f86a8c50a1`，相对迁移前基线（`61010da`）约为 3.80×（gzip
-  3.38×）；增量已定位到锁版打包的 Pi 与四类已选 Provider SDK。产物扫描未发现 `providers/all`、Node
-  callback server，或 Pi/Provider SDK、`p-retry`、`retry` 的未锁版 CDN 导入。
+- Proxy 增量合并后的最终状态通过 62 个测试套件（1162 passed、53
+  skipped）、`yarn lint`、`yarn build:dts` 与生产构建。构建后依赖边界扫描确认 source
+  map 只包含 34 个独立 model catalog、六种 wire adapter 和项目内 Google Proxy adapter，并继续排除
+  `providers/all`、未注册 Provider factory 与 Node callback server。生产包为 1,649,123 B / gzip-9
+  313,620 B，SHA-256 为
+  `1a4117629e47fb52dfcff58f82626a3312b8f06d13ae271016cf479e1be940fe`；这些自动化结果不构成 34 个真实 Provider 的浏览器发布验收，后者仍见 H-03。
 
 需要快速退出 Pi 路径时，可用下列任一方式；两种方式都不会删除已保存的 Pi 配置或 OAuth credential：
 

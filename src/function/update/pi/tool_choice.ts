@@ -47,5 +47,8 @@ export function resolvePiToolChoice(api: Api, choice: MvuToolChoice | undefined)
         }
         return 'any';
     }
+    if (api === 'mistral-conversations') {
+        return named ? { type: 'function', function: { name: named } } : normalized;
+    }
     throw new Error(`More source API '${api}' does not support required tool choice`);
 }

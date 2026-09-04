@@ -42,6 +42,7 @@ const PROTECTED_FIELDS = new Set([
     'max_tokens',
     'max_completion_tokens',
     'max_output_tokens',
+    'maxTokens',
 ]);
 
 const GOOGLE_PROTECTED_CONFIG_FIELDS = new Set([
@@ -238,6 +239,23 @@ function applyNativeStructuredOutput(
         };
     }
 
+    if (api === 'mistral-conversations') {
+        return {
+            ...payload,
+            responseFormat: is_json_schema
+                ? {
+                      type: 'json_schema',
+                      jsonSchema: {
+                          name: schema!.name,
+                          ...(schema!.description ? { description: schema!.description } : {}),
+                          schemaDefinition: schema!.value,
+                          strict: schema!.strict ?? true,
+                      },
+                  }
+                : { type: 'json_object' },
+        };
+    }
+
     throw new Error(`More source API '${api}' does not support native structured output`);
 }
 
@@ -282,6 +300,18 @@ function applyApiSampling(
                 ...(sampling.topP === undefined ? {} : { topP: sampling.topP }),
                 ...(sampling.topK === undefined ? {} : { topK: sampling.topK }),
             },
+        };
+    }
+    if (api === 'mistral-conversations') {
+        return {
+            ...payload,
+            ...(sampling.topP === undefined ? {} : { topP: sampling.topP }),
+            ...(sampling.frequencyPenalty === undefined
+                ? {}
+                : { frequencyPenalty: sampling.frequencyPenalty }),
+            ...(sampling.presencePenalty === undefined
+                ? {}
+                : { presencePenalty: sampling.presencePenalty }),
         };
     }
     return payload;

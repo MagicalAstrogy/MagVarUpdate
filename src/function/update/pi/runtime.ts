@@ -8,6 +8,7 @@ import {
 import { PiContextAdapterError, toPiContext, type ToPiContextOptions } from './context_adapter';
 import { PiRequestAbortedError, registerPiRequestController } from './controller_registry';
 import { getPiCredentialStore } from './credential_store';
+import { assertGoogleProxyAdapterCompatible } from './google_proxy_adapter';
 import {
     PiModelResolutionError,
     resolvePiModelFromExtraModelSettings,
@@ -31,12 +32,19 @@ import {
 import {
     createPiApiImplementations,
     resolvePiCapabilities,
+    shouldUsePiCorsProxy,
     type PiApiCapabilities,
     type PiWireApi,
 } from './provider_registry';
 import { fromPiAssistantMessage, PiResultAdapterError, toPiToolDefinition } from './result_adapter';
 import { assertPiTokenBudget } from './token_preflight';
 import { resolvePiToolChoice, type MvuToolChoice } from './tool_choice';
+import {
+    assertSillyTavernProxyAvailable,
+    createSillyTavernProxyFetch,
+    getSillyTavernProxyStatus,
+    PiProxyUnavailableError,
+} from './sillytavern_proxy';
 
 installPiAbortSignalPolyfills();
 
@@ -58,6 +66,7 @@ export type PiRuntimeErrorCode =
     | 'unsupported_capability'
     | 'unsupported_image_input'
     | 'token_budget'
+    | 'proxy_unavailable'
     | 'network'
     | 'provider'
     | 'protocol';
@@ -123,6 +132,7 @@ export interface PiRuntimePreflight {
     readonly jsonSchema?: PiJsonSchema;
     readonly credentialStore: CredentialStore;
     readonly fetch?: FetchFunction;
+    readonly useCorsProxy: boolean;
 }
 
 export type PiRuntimeProgressCallback = (event: AssistantMessageEvent) => void | Promise<void>;
@@ -419,6 +429,12 @@ export async function assertPiRuntimeConfiguration(
             'More source connection settings must be an object'
         );
     }
+    const useCorsProxy = shouldUsePiCorsProxy(
+        resolution.definition,
+        resolution.model.api,
+        optionalStringField(piSettings, 'endpoint'),
+        piSettings.useProxy
+    );
     let headers: ProviderHeaders | undefined;
     let customIncludeBody: Record<string, unknown> | undefined;
     let customExcludeBody: string[] | undefined;
@@ -478,6 +494,7 @@ export async function assertPiRuntimeConfiguration(
         jsonSchema,
         credentialStore,
         fetch: input.fetch,
+        useCorsProxy,
     });
     validatePayloadConfiguration(preflight);
     return preflight;
@@ -562,14 +579,23 @@ function createStreamOptions(
     preflight: PiRuntimePreflight,
     signal: AbortSignal
 ): ApiStreamOptions<Api> {
+    const providerFetch = preflight.useCorsProxy
+        ? createSillyTavernProxyFetch({
+              baseUrl: preflight.resolution.model.baseUrl,
+              ...(preflight.fetch === undefined ? {} : { fetch: preflight.fetch }),
+          })
+        : preflight.fetch;
     return {
         signal,
         apiKey: preflight.resolution.apiKey,
-        fetch: preflight.fetch,
+        fetch: providerFetch,
         headers: preflight.headers === undefined ? undefined : { ...preflight.headers },
         temperature: preflight.capabilities.temperature ? preflight.temperature : undefined,
         maxTokens: preflight.resolution.effectiveMaxTokens,
         ...(preflight.toolChoice === undefined ? {} : { toolChoice: preflight.toolChoice }),
+        ...(preflight.useCorsProxy && preflight.resolution.model.api === 'openai-codex-responses'
+            ? { transport: 'sse' as const }
+            : {}),
         onPayload: createPiPayloadTransform({
             api: preflight.resolution.model.api,
             responseFormat: nativeStructuredFormat(preflight.responseFormat),
@@ -591,9 +617,30 @@ function isNetworkFailure(error: unknown): boolean {
     );
 }
 
+function isGoogleProxyAdapterCompatibilityFailure(error: unknown): boolean {
+    // Keep the runtime boundary independent from the Google adapter module: provider registration
+    // imports the runtime-facing gateway, so importing the adapter here would create a cycle.
+    return (
+        error instanceof Error &&
+        (error as Error & { code?: unknown }).code === 'google_proxy_adapter_incompatible'
+    );
+}
+
 function normalizeRuntimeFailure(error: unknown): Error {
     if (error instanceof PiRuntimeError) {
         return error;
+    }
+    if (error instanceof PiProxyUnavailableError) {
+        return new PiRuntimeError(
+            'proxy_unavailable',
+            'SillyTavern CORS proxy is not enabled or unavailable.'
+        );
+    }
+    if (isGoogleProxyAdapterCompatibilityFailure(error)) {
+        return new PiRuntimeError(
+            'protocol',
+            'The installed Google Generative AI SDK is incompatible with the browser proxy transport required by this build.'
+        );
     }
     if (error instanceof PiResultAdapterError && error.code === 'aborted') {
         // The generation id is supplied by the request-level abort conversion below.
@@ -700,6 +747,18 @@ export async function runPiRequest(
             throw new PiRequestAbortedError(input.generationId, registration.signal.reason);
         }
 
+        if (preflight.useCorsProxy) {
+            try {
+                await assertSillyTavernProxyAvailable({
+                    ...(preflight.fetch === undefined ? {} : { fetch: preflight.fetch }),
+                    signal: registration.signal,
+                    force: true,
+                });
+            } catch (error) {
+                throw normalizeRuntimeFailure(error);
+            }
+        }
+
         let context: ReturnType<typeof toPiContext>['context'];
         try {
             ({ context } = toPiContext(input.messages, input.contextOptions));
@@ -731,6 +790,11 @@ export async function runPiRequest(
             authContext: BROWSER_AUTH_CONTEXT,
         });
         models.setProvider(createRuntimeProvider(preflight));
+        if (preflight.useCorsProxy && preflight.resolution.model.api === 'google-generative-ai') {
+            // Pi wraps provider setup in lazyStream and would otherwise erase the compatibility
+            // error code. Check the instance-only SDK seam before entering that boundary.
+            assertGoogleProxyAdapterCompatible();
+        }
         const stream = models.stream(
             preflight.resolution.model,
             context,
@@ -762,7 +826,18 @@ export async function runPiRequest(
                 ? error
                 : new PiRequestAbortedError(input.generationId, error);
         }
-        const normalizedError = normalizeRuntimeFailure(error);
+        const proxy_status = preflight.useCorsProxy
+            ? getSillyTavernProxyStatus({
+                  ...(preflight.fetch === undefined ? {} : { fetch: preflight.fetch }),
+              })
+            : 'unchecked';
+        const normalizedError =
+            proxy_status === 'disabled' || proxy_status === 'unavailable'
+                ? new PiRuntimeError(
+                      'proxy_unavailable',
+                      'SillyTavern CORS proxy is not enabled or unavailable.'
+                  )
+                : normalizeRuntimeFailure(error);
         if (!registration.signal.aborted) {
             // Abort listeners must not observe the raw provider error either.
             registration.controller.abort(normalizedError);

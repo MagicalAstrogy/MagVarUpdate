@@ -13,6 +13,7 @@ export type ExtraModelPiConnectionFields = {
     api: string;
     authType: string;
     endpoint: string;
+    useProxy: boolean;
     model: string;
     contextWindow: number | string;
     customHeaders: string;
@@ -96,6 +97,9 @@ function clonePiConnectionFields(
             cloned[field] = cloned[field].trim();
         }
     }
+    // Profiles saved before this option existed, and malformed imported values, must retain the
+    // direct-transport default rather than becoming enabled through truthiness coercion.
+    cloned.useProxy = cloned.useProxy === true;
     const context_window = normalizeExtraModelPiProfileContextWindow(cloned.contextWindow);
     if (context_window !== undefined) {
         cloned.contextWindow = context_window;
@@ -134,6 +138,7 @@ function hasCompletePiConnectionSnapshot(
         typeof pi.authType === 'string' &&
         (pi.authType.trim() === 'api_key' || pi.authType.trim() === 'oauth') &&
         typeof pi.endpoint === 'string' &&
+        typeof pi.useProxy === 'boolean' &&
         typeof pi.model === 'string' &&
         typeof pi.contextWindow === 'number' &&
         Number.isInteger(pi.contextWindow) &&
@@ -226,6 +231,7 @@ function clearPiConnectionFields(pi: ExtraModelPiSettings): ExtraModelPiSettings
         api: '',
         authType: 'api_key',
         endpoint: '',
+        useProxy: false,
         model: '',
         contextWindow: 0,
         credentials: klona(cloned.credentials),

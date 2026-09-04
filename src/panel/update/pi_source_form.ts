@@ -1,6 +1,7 @@
 import type { Api, Model } from '@/function/update/pi/pi_gateway';
 import { isPiDefaultProviderEndpoint } from '@/function/update/pi/model_resolver';
 import {
+    getPiProviderApiBaseUrl,
     normalizePiApiBaseEndpoint,
     resolvePiApiKeyScope,
 } from '@/function/update/pi/provider_target';
@@ -103,7 +104,9 @@ export function resolvePiRequestTargetIdentity(
     endpoint: string
 ): string {
     const requested_endpoint =
-        endpoint.trim() === '' && definition ? definition.defaultBaseUrl : endpoint.trim();
+        endpoint.trim() === '' && definition
+            ? getPiProviderApiBaseUrl(definition, api as PiWireApi)
+            : endpoint.trim();
     let endpoint_identity: string;
     try {
         endpoint_identity = normalizePiApiBaseEndpoint(api as PiWireApi, requested_endpoint);
@@ -253,6 +256,22 @@ export function resolvePiContextWindow(
         : 0;
 }
 
+/** Resolve the Source form's effective window under the same catalog/endpoint rule as runtime. */
+export function resolvePiSourceContextWindow(
+    definition: PiProviderDefinition,
+    api: PiWireApi,
+    endpoint: string,
+    configured_context_window: unknown,
+    catalog_model?: Model<Api>
+): number {
+    return resolvePiContextWindow(
+        configured_context_window,
+        isPiEndpointCatalogCompatible(definition, endpoint, api)
+            ? catalog_model?.contextWindow
+            : undefined
+    );
+}
+
 export const PI_INVALID_CONTEXT_WINDOW_INPUT = '__invalid_context_window__';
 
 export function parsePiContextWindowInput(value: string, bad_input = false): number | string {
@@ -262,6 +281,7 @@ export function parsePiContextWindowInput(value: string, bad_input = false): num
     if (value.trim() === '') {
         return 0;
     }
+
     const parsed = Number(value);
     return Number.isInteger(parsed) && parsed > 0 ? parsed : value;
 }

@@ -509,10 +509,32 @@ export const panelMessages = defineMessages({
         'zh-CN': '留空使用默认地址：{endpoint}',
         en: 'Leave blank to use the default: {endpoint}',
     },
+    'panel.source.pi.endpointPlaceholder': {
+        'zh-CN': '请输入 API 基础地址',
+        en: 'Enter an API base URL',
+    },
     'panel.source.pi.endpointHelp': {
         'zh-CN':
             '建议填写 API 基础地址；若粘贴了以 /responses、/chat/completions 或 /v1/messages 结尾的接口地址，将按当前 API 自动调整。',
         en: 'Enter the API base URL. If you paste an operation URL ending in /responses, /chat/completions, or /v1/messages, it is adjusted automatically for the selected API.',
+    },
+    'panel.source.pi.proxy.use': {
+        'zh-CN': '使用 Proxy',
+        en: 'Use Proxy',
+    },
+    'panel.source.pi.proxy.help': {
+        'zh-CN':
+            '通过 SillyTavern 的 CORS Proxy 转发对该自定义 API 地址的模型列表和生成请求。只应对可信且不会重定向到其他站点的地址启用；OAuth 请求不经过此代理。',
+        en: "Route model-list and generation requests for this custom API URL through SillyTavern's CORS Proxy. Enable this only for trusted URLs that do not redirect to another site; OAuth requests do not use this proxy.",
+    },
+    'panel.source.pi.proxy.notEnabled': {
+        'zh-CN': '没有开启Proxy',
+        en: 'Proxy is not enabled',
+    },
+    'panel.source.pi.proxy.notEnabledHelp': {
+        'zh-CN':
+            '请在 SillyTavern 的 config.yaml 中开启 enableCorsProxy，或使用 --corsProxy 启动参数，然后重启 SillyTavern。',
+        en: 'Enable enableCorsProxy in SillyTavern config.yaml, or start SillyTavern with --corsProxy, then restart SillyTavern.',
     },
     'panel.source.pi.model': {
         'zh-CN': '模型',
@@ -545,6 +567,10 @@ export const panelMessages = defineMessages({
     'panel.source.pi.api.googleGenerativeAi': {
         'zh-CN': 'Google Generative AI',
         en: 'Google Generative AI',
+    },
+    'panel.source.pi.api.mistralConversations': {
+        'zh-CN': 'Mistral Conversations',
+        en: 'Mistral Conversations',
     },
     'panel.source.pi.auth.apiKey': {
         'zh-CN': 'API Key',
@@ -647,8 +673,8 @@ export const panelMessages = defineMessages({
     },
     'panel.source.pi.customExcludeBodyHelp': {
         'zh-CN':
-            '使用 YAML 字符串数组，或用换行/逗号分隔字段；留空即禁用。Google 配置字段使用 config.<字段名> 路径。',
-        en: 'Use a YAML string array, or separate fields with newlines/commas; leave empty to disable. Use config.<field> paths for Google configuration fields.',
+            '使用 YAML 字符串数组，或用换行/逗号分隔字段；留空即禁用。Google 配置字段使用 config.&lt;字段名&gt; 路径。',
+        en: 'Use a YAML string array, or separate fields with newlines/commas; leave empty to disable. Use config.&lt;field&gt; paths for Google configuration fields.',
     },
     'panel.source.pi.clearCustomField': {
         'zh-CN': '清空',

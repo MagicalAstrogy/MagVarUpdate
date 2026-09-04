@@ -24,6 +24,7 @@ import { PiModelResolutionError } from '@/function/update/pi/model_resolver';
 import { PiOAuthError } from '@/function/update/pi/oauth';
 import { PiResultAdapterError } from '@/function/update/pi/result_adapter';
 import { PiRuntimeError } from '@/function/update/pi/runtime';
+import { PiProxyUnavailableError } from '@/function/update/pi/sillytavern_proxy';
 
 describe('Pi error localization boundary', () => {
     const original_locale = i18n.global.locale.value;
@@ -164,14 +165,26 @@ describe('Pi error localization boundary', () => {
     });
 
     test.each([
-        [
-            '工具调用',
-            'The target endpoint did not accept the tool-calling request.',
-        ],
-        [
-            '格式化输出',
-            'The target endpoint did not accept the formatted-output request.',
-        ],
+        ['zh-CN' as const, '没有开启Proxy。'],
+        ['en' as const, 'Proxy is not enabled.'],
+    ])('localizes unavailable SillyTavern proxy errors in %s', (locale, text) => {
+        i18n.global.locale.value = locale;
+        const direct_error = new PiProxyUnavailableError('disabled');
+        const runtime_error = new PiRuntimeError(
+            'proxy_unavailable',
+            'SillyTavern proxy leaked a secret',
+            false
+        );
+
+        expect(getLocalizedPiErrorMessage(direct_error)).toContain(text);
+        expect(getPiRequestFailureToastMessage(runtime_error, '工具调用')).toContain(text);
+        expect(runtime_error.retryable).toBe(false);
+        expect(runtime_error.message).not.toContain('secret');
+    });
+
+    test.each([
+        ['工具调用', 'The target endpoint did not accept the tool-calling request.'],
+        ['格式化输出', 'The target endpoint did not accept the formatted-output request.'],
         [
             '格式化输出(v4兼容)',
             'The target endpoint did not accept the v4-compatible formatted-output request.',

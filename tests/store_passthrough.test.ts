@@ -19,6 +19,7 @@ describe('settings unknown field passthrough', () => {
             api: 'openai-responses',
             authType: 'api_key',
             endpoint: '',
+            useProxy: false,
             model: '',
             contextWindow: 0,
             credentials: {},
@@ -40,6 +41,7 @@ describe('settings unknown field passthrough', () => {
                         api: 'future-wire-api',
                         authType: 'oauth',
                         endpoint: 'https://api.example/v1',
+                        useProxy: true,
                         model: 'future-model',
                         contextWindow: 200000.6,
                         credentials: {
@@ -67,6 +69,7 @@ describe('settings unknown field passthrough', () => {
                                 api: 'future-wire-api',
                                 authType: 'oauth',
                                 endpoint: 'https://api.example/v1',
+                                useProxy: true,
                                 model: 'future-model',
                                 contextWindow: 200000,
                                 credentials: { leaked: { type: 'oauth', access: 'must-remove' } },
@@ -94,6 +97,7 @@ describe('settings unknown field passthrough', () => {
             provider: 'future-provider',
             api: 'future-wire-api',
             contextWindow: 200000.6,
+            useProxy: true,
             credentials: {
                 'future-provider': {
                     type: 'future_credential',
@@ -108,7 +112,7 @@ describe('settings unknown field passthrough', () => {
         expect(config.api方案列表[0]).toMatchObject({
             backend: 'pi',
             密钥: '',
-            pi: { future_profile_pi: { keep: true } },
+            pi: { useProxy: true, future_profile_pi: { keep: true } },
         });
         expect(config.api方案列表[0].pi).not.toHaveProperty('credentials');
         expect(config.api方案列表[0].pi).not.toHaveProperty('apiKeys');
@@ -192,6 +196,7 @@ describe('settings unknown field passthrough', () => {
             pi: { contextWindow: 200_000 },
         });
         expect(typeof config.api方案列表[0].pi?.contextWindow).toBe('number');
+        expect(config.api方案列表[0].pi?.useProxy).toBe(false);
         expect(config.api地址).toBe('https://hidden-custom.example/v1');
         expect(config.模型名称).toBe('hidden-custom-model');
     });

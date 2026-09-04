@@ -1,3 +1,5 @@
+/** @jest-environment-options {"url":"http://localhost/"} */
+
 jest.mock('@/function/update/pi/pi_gateway', () => {
     const api = (name: string) => ({
         name,
@@ -24,7 +26,9 @@ jest.mock('@/function/update/pi/pi_gateway', () => {
                   ? 'https://api.anthropic.com'
                   : provider === 'google'
                     ? 'https://generativelanguage.googleapis.com/v1beta'
-                    : 'https://chatgpt.com/backend-api',
+                    : provider === 'opencode'
+                      ? 'https://opencode.ai/zen/v1'
+                      : 'https://chatgpt.com/backend-api',
         reasoning: false,
         input,
         cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
@@ -80,6 +84,16 @@ jest.mock('@/function/update/pi/pi_gateway', () => {
                 ['text', 'image']
             ),
         },
+        OPENCODE_MODELS: {
+            'gemini-custom': model(
+                'gemini-custom',
+                'google-generative-ai',
+                'opencode',
+                1_000_000,
+                65_536,
+                ['text', 'image']
+            ),
+        },
         openAIResponsesApi: jest.fn(() => api('openai-responses')),
         openAICompletionsApi: jest.fn(() => api('openai-completions')),
         openAICodexResponsesApi: jest.fn(() => api('openai-codex-responses')),
@@ -88,6 +102,11 @@ jest.mock('@/function/update/pi/pi_gateway', () => {
     };
 });
 
+jest.mock('@/function/update/pi/google_proxy_adapter', () => ({
+    assertGoogleProxyAdapterCompatible: jest.fn(),
+    createGoogleProxyAwareApi: jest.fn((upstream: unknown) => upstream),
+}));
+
 import {
     beginPiRequestAttempt,
     clearPiRequestControllers,
@@ -95,6 +114,7 @@ import {
     PiRequestAbortedError,
     stopExtraModelRequestById,
 } from '@/function/update/pi/controller_registry';
+import { assertGoogleProxyAdapterCompatible } from '@/function/update/pi/google_proxy_adapter';
 import {
     capturePrompt,
     getPendingPromptCaptureDiagnostics,
@@ -104,6 +124,7 @@ import type {
     AssistantMessageEvent,
     Credential,
     CredentialStore,
+    FetchFunction,
 } from '@/function/update/pi/pi_gateway';
 import { createModels, createProvider } from '@/function/update/pi/pi_gateway';
 import {
@@ -162,6 +183,24 @@ function usage() {
         totalTokens: 2,
         cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
     };
+}
+
+function makeProxyEnabledFetch(): jest.MockedFunction<FetchFunction> {
+    return jest.fn(async _input => {
+        return {
+            status: 200,
+            text: jest.fn().mockResolvedValue('mvu-st-cors-proxy-probe'),
+        } as unknown as Response;
+    });
+}
+
+function makeTextResponse(body: string, status: number): Response {
+    const response = {
+        status,
+        text: jest.fn().mockResolvedValue(body),
+        clone: jest.fn(() => makeTextResponse(body, status)),
+    };
+    return response as unknown as Response;
 }
 
 function assistant(
@@ -264,6 +303,31 @@ describe('pi runtime preflight', () => {
         });
         expect(credentialStore.read).not.toHaveBeenCalled();
         expect(Object.isFrozen(preflight)).toBe(true);
+    });
+
+    test('uses the explicit checkbox only for custom endpoints', async () => {
+        const basePi = {
+            provider: 'openai',
+            api: 'openai-responses',
+            authType: 'api_key',
+            endpoint: 'https://compatible.example.test/v1',
+            model: 'dynamic-model',
+            contextWindow: 128_000,
+            customHeaders: '',
+            customIncludeBody: '',
+            customExcludeBody: '',
+        };
+        const enabled = await assertPiRuntimeConfiguration({
+            settings: makeSettings({ pi: { ...basePi, useProxy: true } }),
+            credentialStore: makeCredentialStore(),
+        });
+        const disabled = await assertPiRuntimeConfiguration({
+            settings: makeSettings({ pi: { ...basePi, useProxy: false } }),
+            credentialStore: makeCredentialStore(),
+        });
+
+        expect(enabled.useCorsProxy).toBe(true);
+        expect(disabled.useCorsProxy).toBe(false);
     });
 
     test('validates Google custom body against its SDK config envelope', async () => {
@@ -515,6 +579,154 @@ describe('pi runtime execution', () => {
 
     afterEach(() => clearPiRequestControllers());
 
+    test('fails before provider dispatch when a required SillyTavern proxy is disabled', async () => {
+        const proxyFetch = jest.fn(async () =>
+            makeTextResponse(
+                'CORS proxy is disabled. Enable it in config.yaml or use the --corsProxy flag.',
+                404
+            )
+        );
+        const credentialStore = makeCredentialStore({
+            type: 'oauth',
+            access: 'header.payload.signature',
+            refresh: 'refresh-token',
+            expires: Date.now() + 60 * 60 * 1000,
+        });
+        const preflight = await assertPiRuntimeConfiguration({
+            settings: makeSettings({
+                密钥: '',
+                pi: {
+                    provider: 'openai-codex',
+                    api: 'openai-codex-responses',
+                    authType: 'oauth',
+                    endpoint: '',
+                    model: 'codex-known',
+                    contextWindow: 0,
+                    customHeaders: '',
+                    customIncludeBody: '',
+                    customExcludeBody: '',
+                },
+            }),
+            credentialStore,
+            fetch: proxyFetch,
+        });
+
+        const error = await runPiRequest({
+            preflight,
+            messages: [{ role: 'user', content: 'hello' }],
+            generationId: 'runtime-proxy-disabled',
+        }).catch(value => value);
+
+        expect(error).toMatchObject({
+            name: 'PiRuntimeError',
+            code: 'proxy_unavailable',
+            retryable: false,
+        });
+        expect(isNonRetryablePiRuntimeError(error)).toBe(true);
+        expect(createProvider).not.toHaveBeenCalled();
+        expect(stream).not.toHaveBeenCalled();
+    });
+
+    test('keeps the proxy error when an adapter converts a late proxy failure to provider data', async () => {
+        const proxyFetch = jest
+            .fn()
+            .mockResolvedValueOnce(makeTextResponse('mvu-st-cors-proxy-probe', 200))
+            .mockResolvedValueOnce(
+                makeTextResponse(
+                    'CORS proxy is disabled. Enable it in config.yaml or use the --corsProxy flag.',
+                    404
+                )
+            );
+        const provider_error = assistant([], 'error', 'Connection error.');
+        stream.mockImplementation((_model, _context, options) => ({
+            async *[Symbol.asyncIterator]() {
+                try {
+                    await options.fetch('https://opencode.ai/zen/v1/responses', {
+                        method: 'POST',
+                        headers: { 'content-type': 'application/json' },
+                        body: '{"model":"gpt-custom"}',
+                        signal: options.signal,
+                    });
+                } catch {
+                    // Pi adapters expose fetch failures as assistant error events/results.
+                }
+                yield { type: 'error', reason: 'error', error: provider_error };
+            },
+            result: jest.fn(async () => provider_error),
+        }));
+        const preflight = await assertPiRuntimeConfiguration({
+            settings: makeSettings({
+                pi: {
+                    provider: 'opencode',
+                    api: 'openai-responses',
+                    authType: 'api_key',
+                    endpoint: '',
+                    model: 'gpt-custom',
+                    contextWindow: 128_000,
+                    customHeaders: '',
+                    customIncludeBody: '',
+                    customExcludeBody: '',
+                },
+            }),
+            credentialStore: makeCredentialStore(),
+            fetch: proxyFetch,
+        });
+
+        const error = await runPiRequest({
+            preflight,
+            messages: [{ role: 'user', content: 'hello' }],
+            generationId: 'runtime-proxy-disabled-after-probe',
+        }).catch(value => value);
+
+        expect(error).toMatchObject({
+            name: 'PiRuntimeError',
+            code: 'proxy_unavailable',
+            retryable: false,
+        });
+        expect(isNonRetryablePiRuntimeError(error)).toBe(true);
+        expect(proxyFetch).toHaveBeenCalledTimes(2);
+    });
+
+    test('checks the Google proxy SDK seam before Models.lazyStream can erase its error code', async () => {
+        const proxyFetch = makeProxyEnabledFetch();
+        const preflight = await assertPiRuntimeConfiguration({
+            settings: makeSettings({
+                pi: {
+                    provider: 'opencode',
+                    api: 'google-generative-ai',
+                    authType: 'api_key',
+                    endpoint: '',
+                    model: 'gemini-custom',
+                    contextWindow: 1_000_000,
+                    customHeaders: '',
+                    customIncludeBody: '',
+                    customExcludeBody: '',
+                },
+            }),
+            credentialStore: makeCredentialStore(),
+            fetch: proxyFetch,
+        });
+        const compatibilityCause = Object.assign(new Error('Google transport seam unavailable'), {
+            code: 'google_proxy_adapter_incompatible',
+            retryable: false,
+        });
+        jest.mocked(assertGoogleProxyAdapterCompatible).mockImplementationOnce(() => {
+            throw compatibilityCause;
+        });
+
+        const error = await runPiRequest({
+            preflight,
+            messages: [{ role: 'user', content: 'hello' }],
+            generationId: 'runtime-google-proxy-precheck',
+        }).catch(cause => cause);
+
+        expect(error).toMatchObject({ code: 'protocol', retryable: false });
+        expect(isNonRetryablePiRuntimeError(error)).toBe(true);
+        expect(createModels).toHaveBeenCalledTimes(1);
+        expect(assertGoogleProxyAdapterCompatible).toHaveBeenCalledTimes(1);
+        expect(stream).not.toHaveBeenCalled();
+    });
+
     test('creates a browser-safe provider, streams progress, and maps request payload fields', async () => {
         const final = assistant([{ type: 'text', text: 'done' }]);
         const events: AssistantMessageEvent[] = [
@@ -754,6 +966,7 @@ describe('pi runtime execution', () => {
     test('maps Codex structured output through the Responses text envelope', async () => {
         const final = assistant([{ type: 'text', text: '{"result":"ok"}' }]);
         stream.mockReturnValue(fakeStream(final));
+        const proxyFetch = makeProxyEnabledFetch();
         const credentialStore = makeCredentialStore({
             type: 'oauth',
             access: 'header.payload.signature',
@@ -778,6 +991,7 @@ describe('pi runtime execution', () => {
             }),
             jsonSchema: JSON_SCHEMA,
             credentialStore,
+            fetch: proxyFetch,
         });
 
         await runPiRequest({
@@ -787,6 +1001,24 @@ describe('pi runtime execution', () => {
         });
 
         const options = stream.mock.calls[0][2];
+        expect(preflight.useCorsProxy).toBe(true);
+        expect(options.transport).toBe('sse');
+        expect(options.fetch).toEqual(expect.any(Function));
+        const target = 'https://chatgpt.com/backend-api/codex/responses?stream=true';
+        const signal = new AbortController().signal;
+        await options.fetch(target, {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: '{"model":"codex-known"}',
+            signal,
+        });
+        expect(proxyFetch).toHaveBeenLastCalledWith(`/proxy/${encodeURIComponent(target)}`, {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: '{"model":"codex-known"}',
+            signal,
+            credentials: 'same-origin',
+        });
         expect(options.onPayload({ input: [], text: { verbosity: 'low' } })).toMatchObject({
             text: {
                 verbosity: 'low',
@@ -803,6 +1035,7 @@ describe('pi runtime execution', () => {
     test('wires browser OAuth and the shared credential store into pi Models', async () => {
         const final = assistant([{ type: 'text', text: 'oauth response' }]);
         stream.mockReturnValue(fakeStream(final));
+        const proxyFetch = makeProxyEnabledFetch();
         const credentialStore = makeCredentialStore({
             type: 'oauth',
             access: 'header.payload.signature',
@@ -825,6 +1058,7 @@ describe('pi runtime execution', () => {
                 },
             }),
             credentialStore,
+            fetch: proxyFetch,
         });
 
         await expect(
@@ -854,6 +1088,8 @@ describe('pi runtime execution', () => {
             })
         );
         const streamOptions = stream.mock.calls[0][2];
+        expect(streamOptions.transport).toBe('sse');
+        expect(streamOptions.fetch).toEqual(expect.any(Function));
         expect(streamOptions.apiKey).toBeUndefined();
         expect(preflight.temperature).toBeUndefined();
         expect(streamOptions.temperature).toBeUndefined();
