@@ -95,7 +95,7 @@ describe('pi prompt capture', () => {
                 user_input: 'hello',
                 ordered_prompts,
                 should_stream: false,
-                should_silence: true,
+                should_silence: false,
                 tools: [],
                 tool_choice: 'none',
                 json_schema: undefined,

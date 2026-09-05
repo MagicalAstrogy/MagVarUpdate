@@ -1,3 +1,4 @@
+import { installPiAbortSignalPolyfills } from '@/function/update/pi/abort_signal';
 import { getPiCredentialStore } from '@/function/update/pi/credential_store';
 import { parsePiCustomHeaders } from '@/function/update/pi/config_parser';
 import { getBrowserOAuthAuth } from '@/function/update/pi/oauth';
@@ -648,6 +649,7 @@ export async function resolvePiModelListOAuthCredential(
     definition: PiProviderDefinition,
     signal?: AbortSignal
 ): Promise<PiModelListOAuthCredential> {
+    installPiAbortSignalPolyfills();
     const credential_store = getPiCredentialStore();
     try {
         signal?.throwIfAborted();

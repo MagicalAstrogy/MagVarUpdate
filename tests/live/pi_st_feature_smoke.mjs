@@ -472,7 +472,7 @@ async function runConcurrency(webDriver) {
     return evidence;
 }
 
-async function runSendButtonConcurrency(webDriver) {
+async function runSendButtonLifecycle(webDriver) {
     await configurePi(webDriver, 'openai', '聊天消息');
     const setup = await webDriver.executeAsync(
         `
@@ -623,6 +623,30 @@ async function runSendButtonConcurrency(webDriver) {
                 );
             }
 
+            stage = 'pi-native-stop';
+            const piStopButton = document.querySelector('#mes_stop');
+            const piSendButton = document.querySelector('#send_but');
+            const piGenerationActive = document.body.dataset.generating === 'true';
+            const piStopButtonVisible = Boolean(piStopButton) &&
+                window.getComputedStyle(piStopButton).display !== 'none';
+            const piSendButtonHidden = Boolean(piSendButton) &&
+                window.getComputedStyle(piSendButton).display === 'none';
+            if (!piGenerationActive || !piStopButtonVisible || !piSendButtonHidden) {
+                throw new Error('pi-generation-controls-not-active');
+            }
+            piStopButton.click();
+            const piStopped = await Promise.race([
+                state.sendPiInvocation,
+                delay(10000).then(() => ({ settled: false })),
+            ]);
+            const piNativeStopAborted = state.pendingProvider?.signal?.aborted === true &&
+                state.pendingProvider?.abortObserved === true;
+            if (!piStopped.settled || !piNativeStopAborted) {
+                throw new Error('pi-native-stop-failed');
+            }
+            const piGenerationIdle = document.body.dataset.generating !== 'true';
+            if (!piGenerationIdle) throw new Error('pi-generation-not-idle-after-stop');
+
             stage = 'send-button';
             const textarea = document.querySelector('#send_textarea');
             const sendButton = document.querySelector('#send_but');
@@ -641,6 +665,11 @@ async function runSendButtonConcurrency(webDriver) {
             );
             done({
                 reached: Boolean(state.sendMainPending),
+                piGenerationActive,
+                piStopButtonVisible,
+                piSendButtonHidden,
+                piNativeStopAborted,
+                piGenerationIdle,
                 stage,
                 online: window.SillyTavern.getContext().onlineStatus !== 'no_connection',
                 isGenerating: document.body.dataset.generating === 'true',
@@ -1277,7 +1306,13 @@ export async function runPiStFeatureSmoke({
         legacyFinalResults[0].displayData === legacyFinalResults[1].displayData &&
         legacyFinalResults[0].deltaData === legacyFinalResults[1].deltaData;
 
-    const sendButtonConcurrency = await runSendButtonConcurrency(webDriver);
+    const sendButtonConcurrency = await runSendButtonLifecycle(webDriver);
+    checks.piNativeGenerationLifecycle =
+        sendButtonConcurrency.piGenerationActive &&
+        sendButtonConcurrency.piStopButtonVisible &&
+        sendButtonConcurrency.piSendButtonHidden &&
+        sendButtonConcurrency.piNativeStopAborted &&
+        sendButtonConcurrency.piGenerationIdle;
     checks.sendButtonUserMessage =
         sendButtonConcurrency.textareaCleared &&
         sendButtonConcurrency.chatDelta >= 1 &&
@@ -1356,7 +1391,7 @@ export async function runPiStFeatureSmoke({
         },
         checks,
         diagnostics: {
-            sendButtonConcurrencyOrder: 'pi-provider-before-send-button',
+            sendButtonLifecycleOrder: 'pi-provider-native-stop-before-next-send-button',
             retryAfterPendingMain:
                 'not used: after send, the pending user message is the last chat floor, so retry-extra-model settles without dispatching a Pi request',
         },

@@ -901,6 +901,51 @@ describe('extra-model model-list discovery', () => {
         );
     });
 
+    test('refreshes saved credentials without prior generation when AbortSignal statics are missing', async () => {
+        const descriptors = Object.getOwnPropertyDescriptors(AbortSignal);
+        jest.useFakeTimers();
+        Object.defineProperty(AbortSignal, 'any', { configurable: true, value: undefined });
+        Object.defineProperty(AbortSignal, 'timeout', { configurable: true, value: undefined });
+        const stored = {
+            type: 'oauth',
+            access: 'expired',
+            refresh: 'saved-refresh',
+            expires: 0,
+        };
+        const models = {
+            setProvider: jest.fn(),
+            getAuth: jest.fn(async (_provider, { signal }) => {
+                // The pinned pi getAuth refresh path uses both primitives before refreshing.
+                const refresh_signal = AbortSignal.any([signal, AbortSignal.timeout(30_000)]);
+                refresh_signal.throwIfAborted();
+                stored.access = 'refreshed';
+                stored.expires = Date.now() + 3_600_000;
+            }),
+        };
+        jest.mocked(createModels).mockReturnValue(models as never);
+        jest.mocked(createProvider).mockImplementation(options => options as never);
+        jest.mocked(getBrowserOAuthAuth).mockReturnValue({} as never);
+        jest.mocked(getPiCredentialStore).mockReturnValue({
+            read: jest.fn(async () => stored),
+        } as never);
+        try {
+            await expect(
+                resolvePiModelListOAuthCredential(
+                    getPiProviderDefinition('openai-codex')!,
+                    new AbortController().signal
+                )
+            ).resolves.toEqual({ accessToken: 'refreshed', expiresAt: stored.expires });
+            expect(models.getAuth).toHaveBeenCalledTimes(1);
+        } finally {
+            for (const key of ['any', 'timeout'] as const) {
+                Reflect.deleteProperty(AbortSignal, key);
+                if (descriptors[key]) Object.defineProperty(AbortSignal, key, descriptors[key]);
+            }
+            jest.clearAllTimers();
+            jest.useRealTimers();
+        }
+    });
+
     test('reads the refreshed OAuth token and account id from one persisted snapshot', async () => {
         const signal = new AbortController().signal;
         const credential_store = {

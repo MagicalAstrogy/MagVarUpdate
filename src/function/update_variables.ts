@@ -4,6 +4,7 @@ import {
     getSchemaForPath,
     reconcileAndApplySchema,
 } from '@/function/schema';
+import { waitForEarlierVariableUpdates } from '@/function/update/variable_update_queue';
 import { tr } from '@/i18n';
 import { useDataStore } from '@/store';
 import { getLastValidVariable, isJsonPatch } from '@/util';
@@ -1574,6 +1575,7 @@ export async function updateVariables(
 }
 
 export async function handleVariablesInMessage(message_id: number) {
+    await waitForEarlierVariableUpdates(message_id);
     const chat_message = getChatMessages(message_id).at(-1);
     if (!chat_message) {
         return;

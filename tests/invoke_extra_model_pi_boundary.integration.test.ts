@@ -365,7 +365,7 @@ function expectFixedCapture(record: FetchRecord, providerNeedles: readonly strin
     expect(record.body).toEqual(
         expect.objectContaining({
             should_stream: false,
-            should_silence: true,
+            should_silence: false,
             tools: [],
             tool_choice: 'none',
             custom_api: {
@@ -492,11 +492,11 @@ describe('requestReply production Pi capture/runtime boundary', () => {
 
         expect(records).toHaveLength(2);
         expectFixedCapture(
-            records[0],
+            records[1],
             ['boundary-api-key', config.endpoint, config.model].filter(Boolean)
         );
 
-        const providerRecord = records[1];
+        const providerRecord = records[0];
         expect(providerRecord.url.pathname).toBe(config.expectedPath);
         expect(providerRecord.init.signal).toBeInstanceOf(AbortSignal);
         expect(providerRecord.init.signal!.aborted).toBe(false);
@@ -561,28 +561,28 @@ describe('requestReply production Pi capture/runtime boundary', () => {
         await expect(generateExtraModel()).resolves.toBe(VALID_UPDATE);
 
         expect(records).toHaveLength(3);
-        expectFixedCapture(records[0], [
+        expectFixedCapture(records[2], [
             'sk-ant-oat-boundary-expired',
             'boundary-refresh-old',
             'claude-catalog',
         ]);
-        expect(records[1].url.toString()).toBe('https://platform.claude.com/v1/oauth/token');
-        expect(records[1].body).toMatchObject({
+        expect(records[0].url.toString()).toBe('https://platform.claude.com/v1/oauth/token');
+        expect(records[0].body).toMatchObject({
             grant_type: 'refresh_token',
             refresh_token: 'boundary-refresh-old',
         });
-        expect(records[1].init.signal).toBeInstanceOf(AbortSignal);
-        expect(records[1].init.signal!.aborted).toBe(false);
+        expect(records[0].init.signal).toBeInstanceOf(AbortSignal);
+        expect(records[0].init.signal!.aborted).toBe(false);
 
-        expect(records[2].url.pathname).toBe('/v1/messages');
-        expect(records[2].body).toMatchObject({
+        expect(records[1].url.pathname).toBe('/v1/messages');
+        expect(records[1].body).toMatchObject({
             __mvuEffectiveContextWindow: 200_000,
             __mvuEffectiveMaxTokens: 1024,
         });
-        expect(new Headers(records[2].init.headers).get('Authorization')).toBe(
+        expect(new Headers(records[1].init.headers).get('Authorization')).toBe(
             'Bearer sk-ant-oat-boundary-refreshed'
         );
-        expect(new Headers(records[2].init.headers).has('x-api-key')).toBe(false);
+        expect(new Headers(records[1].init.headers).has('x-api-key')).toBe(false);
         expect(store.settings.额外模型解析配置.pi.credentials.anthropic).toMatchObject({
             type: 'oauth',
             access: 'sk-ant-oat-boundary-refreshed',

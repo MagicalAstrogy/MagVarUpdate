@@ -13,8 +13,19 @@ export type PromptCaptureDiagnostics = {
     captureError?: string;
 };
 
-export type PromptCaptureResult = PromptCaptureDiagnostics & {
+export type CapturedPrompt = {
+    generationId: string;
     messages: SillyTavern.SendingMessage[];
+};
+
+export type PromptCaptureResult<T = undefined> = PromptCaptureDiagnostics &
+    CapturedPrompt & {
+        result?: T;
+    };
+
+export type PromptCaptureOptions<T> = {
+    onCaptured: (prompt: CapturedPrompt) => Promise<T>;
+    onStopped: (generation_id: string) => void;
 };
 
 type MutablePromptCaptureState = PromptCaptureDiagnostics & {
@@ -79,7 +90,7 @@ export function buildPromptCaptureConfig<TConfig extends GenerateConfig>(
         ...config,
         generation_id,
         should_stream: false,
-        should_silence: true,
+        should_silence: config.should_silence ?? true,
         tools: [],
         tool_choice: 'none',
         json_schema: undefined,
@@ -114,10 +125,11 @@ function recordCaptureError(state: MutablePromptCaptureState, message: string): 
     state.captureError ??= message;
 }
 
-export async function capturePrompt<TConfig extends GenerateConfig>(
+export async function capturePrompt<TConfig extends GenerateConfig, T = undefined>(
     run: GenerateRunner<TConfig>,
-    config: TConfig
-): Promise<PromptCaptureResult> {
+    config: TConfig,
+    options?: PromptCaptureOptions<T>
+): Promise<PromptCaptureResult<T>> {
     const generation_id = config.generation_id || uuidv4();
     const marker = encodePromptCaptureMarker(generation_id);
 
@@ -133,8 +145,24 @@ export async function capturePrompt<TConfig extends GenerateConfig>(
         stopSucceeded: false,
     };
     const capture_config = buildPromptCaptureConfig(config, generation_id);
+    let captured_result: T | undefined;
+    let callback_failed = false;
+    let callback_error: unknown;
+    let callback_started = false;
+    let listening_for_stop = options !== undefined;
+    const stop_listener = (stopped_id?: string) => {
+        if (listening_for_stop && stopped_id === generation_id) {
+            options?.onStopped(generation_id);
+        }
+    };
+    const remove_stop_listener = () => {
+        listening_for_stop = false;
+        if (options) {
+            eventRemoveListener(tavern_events.GENERATION_STOPPED, stop_listener);
+        }
+    };
 
-    const listener = (generate_data: SettingsReadyData) => {
+    const listener = async (generate_data: SettingsReadyData) => {
         const event_generation_id = decodePromptCaptureMarker(generate_data?.model);
         if (
             event_generation_id !== generation_id ||
@@ -144,7 +172,7 @@ export async function capturePrompt<TConfig extends GenerateConfig>(
         }
 
         state.markerMatched = true;
-        if (state.captureError !== undefined || hasCompletedCapture(state)) {
+        if (state.captureError !== undefined || state.captured) {
             return;
         }
         if (!Array.isArray(generate_data.messages)) {
@@ -162,6 +190,23 @@ export async function capturePrompt<TConfig extends GenerateConfig>(
             return;
         }
         state.captured = true;
+        if (options) {
+            callback_started = true;
+            try {
+                // Settings-ready listeners are awaited by Slash. Keep generation (and its
+                // native Stop button) active until the provider request has settled.
+                captured_result = await options.onCaptured({
+                    generationId: generation_id,
+                    messages: state.messages,
+                });
+            } catch (error) {
+                callback_failed = true;
+                callback_error = error;
+            }
+        }
+        // This stop only prevents the fixed capture request from reaching ST's backend.
+        // It must not be mistaken for a user cancellation of the successful Pi request.
+        remove_stop_listener();
         try {
             state.stopSucceeded = stopGenerationById(generation_id);
         } catch {
@@ -177,6 +222,9 @@ export async function capturePrompt<TConfig extends GenerateConfig>(
     pending_prompt_captures.set(generation_id, state);
 
     try {
+        if (options) {
+            eventOn(tavern_events.GENERATION_STOPPED, stop_listener);
+        }
         subscription = eventMakeLast(tavern_events.CHAT_COMPLETION_SETTINGS_READY, listener);
 
         let runner_failed = false;
@@ -190,6 +238,9 @@ export async function capturePrompt<TConfig extends GenerateConfig>(
 
         if (state.captureError !== undefined) {
             throw new Error(state.captureError);
+        }
+        if (callback_failed) {
+            throw callback_error;
         }
         if (runner_failed && !hasCompletedCapture(state)) {
             throw runner_error;
@@ -206,8 +257,10 @@ export async function capturePrompt<TConfig extends GenerateConfig>(
             captured: state.captured,
             stopSucceeded: state.stopSucceeded,
             messages: state.messages,
+            ...(callback_started ? { result: captured_result } : {}),
         };
     } finally {
+        remove_stop_listener();
         try {
             subscription?.stop();
         } finally {
@@ -224,10 +277,16 @@ export async function capturePrompt<TConfig extends GenerateConfig>(
     }
 }
 
-export function captureGeneratePrompt(config: GenerateConfig): Promise<PromptCaptureResult> {
-    return capturePrompt(generate, config);
+export function captureGeneratePrompt<T = undefined>(
+    config: GenerateConfig,
+    options?: PromptCaptureOptions<T>
+): Promise<PromptCaptureResult<T>> {
+    return capturePrompt(generate, config, options);
 }
 
-export function captureGenerateRawPrompt(config: GenerateRawConfig): Promise<PromptCaptureResult> {
-    return capturePrompt(generateRaw, config);
+export function captureGenerateRawPrompt<T = undefined>(
+    config: GenerateRawConfig,
+    options?: PromptCaptureOptions<T>
+): Promise<PromptCaptureResult<T>> {
+    return capturePrompt(generateRaw, config, options);
 }

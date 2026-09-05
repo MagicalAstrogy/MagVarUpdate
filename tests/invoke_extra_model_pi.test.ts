@@ -121,8 +121,12 @@ describe('invoke extra model through Pi', () => {
         mockRunPiRequest.mockResolvedValue(VALID_UPDATE);
         mockIsPiRequestAbortedError.mockReturnValue(false);
         mockStopExtraModelRequestById.mockReturnValue(true);
-        mockCaptureGeneratePrompt.mockImplementation(async config => captureResult(config));
-        mockCaptureGenerateRawPrompt.mockImplementation(async config => captureResult(config));
+        const capture: typeof captureGeneratePrompt = async (config, options) => {
+            const prompt = captureResult(config);
+            return { ...prompt, result: await options?.onCaptured(prompt) };
+        };
+        mockCaptureGeneratePrompt.mockImplementation(capture);
+        mockCaptureGenerateRawPrompt.mockImplementation(capture);
     });
 
     afterEach(() => {

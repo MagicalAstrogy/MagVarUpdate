@@ -23,13 +23,15 @@ import {
     isPiRequestAbortedError,
     PiRequestAbortedError,
     stopExtraModelRequestById,
+    stopPiRequestById,
 } from '@/function/update/pi/controller_registry';
 import { localizePiError } from '@/function/update/pi/error_localization';
 import { isPiMultiproviderEnabled } from '@/function/update/pi/feature_flag';
 import {
     captureGeneratePrompt,
     captureGenerateRawPrompt,
-    type PromptCaptureResult,
+    type CapturedPrompt,
+    type PromptCaptureOptions,
 } from '@/function/update/pi/prompt_capture';
 import type { PiExtraModelSettings, PiRuntimePreflight } from '@/function/update/pi/runtime';
 import { tr } from '@/i18n';
@@ -481,7 +483,13 @@ async function invokeExtraModel(
             ? beginPiRequestAttempt(generation_id)
             : undefined;
     try {
-        const result = await requestReply(generation_id, batch_id, pi_preflight, request_settings);
+        const result = await requestReply(
+            generation_id,
+            batch_id,
+            pi_preflight,
+            request_settings,
+            pi_attempt?.signal
+        );
 
         const tag = _([...result.matchAll(/<(update(?:variable)?|variableupdate)>/gi)]).last()?.[1];
         if (!tag) {
@@ -560,10 +568,12 @@ function normalizeGenerateResult(result: string | GenerateToolCallResult): strin
 }
 
 async function runCapturedPiPrompt(
-    capture: PromptCaptureResult,
-    preflight: PiRuntimePreflight
+    capture: CapturedPrompt,
+    preflight: PiRuntimePreflight,
+    signal?: AbortSignal
 ): Promise<string | GenerateToolCallResult> {
     const { runPiRequest } = await loadPiRuntime();
+    signal?.throwIfAborted();
     return runPiRequest({
         preflight,
         messages: capture.messages,
@@ -571,24 +581,50 @@ async function runCapturedPiPrompt(
     });
 }
 
+function piPromptCaptureOptions(
+    preflight: PiRuntimePreflight,
+    signal?: AbortSignal
+): PromptCaptureOptions<string | GenerateToolCallResult> {
+    return {
+        onCaptured: capture => runCapturedPiPrompt(capture, preflight, signal),
+        onStopped: stopPiRequestById,
+    };
+}
+
 async function executeGenerate(
     config: GenerateConfig,
-    pi_preflight?: PiRuntimePreflight
+    pi_preflight?: PiRuntimePreflight,
+    pi_signal?: AbortSignal
 ): Promise<string | GenerateToolCallResult> {
     if (!pi_preflight) {
         return generate(config);
     }
-    return runCapturedPiPrompt(await captureGeneratePrompt(config), pi_preflight);
+    const capture = await captureGeneratePrompt(
+        { ...config, should_silence: false },
+        piPromptCaptureOptions(pi_preflight, pi_signal)
+    );
+    if (capture.result === undefined) {
+        throw await createPiProtocolError();
+    }
+    return capture.result;
 }
 
 async function executeGenerateRaw(
     config: GenerateRawConfig,
-    pi_preflight?: PiRuntimePreflight
+    pi_preflight?: PiRuntimePreflight,
+    pi_signal?: AbortSignal
 ): Promise<string | GenerateToolCallResult> {
     if (!pi_preflight) {
         return generateRaw(config);
     }
-    return runCapturedPiPrompt(await captureGenerateRawPrompt(config), pi_preflight);
+    const capture = await captureGenerateRawPrompt(
+        { ...config, should_silence: false },
+        piPromptCaptureOptions(pi_preflight, pi_signal)
+    );
+    if (capture.result === undefined) {
+        throw await createPiProtocolError();
+    }
+    return capture.result;
 }
 
 function normalizeGenerateResultByResponseFormat(
@@ -612,7 +648,8 @@ async function requestReply(
     generation_id?: string,
     batch_id?: string,
     pi_preflight?: PiRuntimePreflight,
-    request_settings = useDataStore().settings.额外模型解析配置
+    request_settings = useDataStore().settings.额外模型解析配置,
+    pi_signal?: AbortSignal
 ): Promise<string> {
     const store = useDataStore();
     const is_pi_request = pi_preflight !== undefined;
@@ -727,7 +764,8 @@ async function requestReply(
                     },
                 ],
             },
-            pi_preflight
+            pi_preflight,
+            pi_signal
         );
         return normalizeGenerateResultByResponseFormat(result, response_format, is_pi_request);
     }
@@ -752,7 +790,8 @@ async function requestReply(
                     injects,
                     ordered_prompts,
                 },
-                pi_preflight
+                pi_preflight,
+                pi_signal
             ),
             response_format,
             is_pi_request
@@ -797,7 +836,8 @@ async function requestReply(
                 },
             ],
         },
-        pi_preflight
+        pi_preflight,
+        pi_signal
     );
     return normalizeGenerateResultByResponseFormat(result, response_format, is_pi_request);
 }

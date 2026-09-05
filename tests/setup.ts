@@ -104,6 +104,7 @@ const __eventHandlers = new Map<string, Array<(...args: unknown[]) => unknown>>(
 // Mock tavern events
 (globalThis as any).tavern_events = {
     GENERATION_ENDED: 'GENERATION_ENDED',
+    GENERATION_STOPPED: 'GENERATION_STOPPED',
     MESSAGE_SENT: 'MESSAGE_SENT',
     GENERATION_STARTED: 'GENERATION_STARTED',
     WORLDINFO_UPDATED: 'WORLDINFO_UPDATED',

@@ -272,12 +272,15 @@ Provider 目录和上游能力会变化；上表只表示 MVU 已实现请求形
 1. 生成唯一 `generation_id`，用固定 `custom` 通道和 model marker 发起提示词构建；endpoint 固定为
    `.invalid`，key、真实 model、自定义 header 和 body 均为空。
 2. 在本次请求上下文中，将 `CHAT_COMPLETION_SETTINGS_READY`
-   监听器注册到末位，复制已有监听器处理后的最终 `messages`，再调用
-   `stopGenerationById(generation_id)`。
-3. 只有 marker 匹配、消息复制和定向 stop 全部成功时，才把随后固定失败的 fetch 视为正常控制流；其他错误原样进入失败路径。
-4. 捕获的消息转换为 Pi Context，使用同一个 ID 注册 Provider `AbortController` 并执行流式请求。
-5. “停止 Pi 额外模型解析”按钮会同时尝试停止 Slash 捕获阶段和 Pi
-   Provider 阶段；并发策略选出结果后也会中止其余请求并等待清理。
+   监听器注册到末位，复制已有监听器处理后的最终 `messages`。
+3. 在该异步监听器内，将消息转换为 Pi Context，使用同一个 ID 注册 Provider `AbortController`
+   并等待流式请求完成。整个等待期间保持 Slash 的非静默生成状态，酒馆显示停止按钮。
+4. Provider 请求结束后调用 `stopGenerationById(generation_id)`，阻止固定捕获请求发送到酒馆后端。
+   只有 marker 匹配、消息复制和定向 stop 全部成功时，才把随后固定失败的 fetch 视为正常控制流；Provider 错误仍进入失败路径。
+5. 酒馆停止按钮产生的定向停止事件会中止对应 Pi 请求；“停止 Pi 额外模型解析”按钮也会停止当前批次。
+   内部捕获清理不会被当作用户取消。并发策略选出结果后会中止其余请求并等待清理。
+
+后续消息的变量快照会等待前一条回复的变量写入结束，覆盖生成结束到变量保存完成之间的间隙。
 
 Pi 的最终结果只转换回现有的 `string | GenerateToolCallResult` 接口，不追加到 Pi
 Context，也不直接写入 SillyTavern
@@ -349,7 +352,7 @@ chat。仓库不修改 SillyTavern 或 Slash-Runner，也不增加额外的 Slas
   和
   `delta_data`。最近一次终态为 14 次 capture、14 次 Provider 协议请求、2 次 Legacy 请求和 4 次状态请求，fetch、临时 profile 与进程均完成清理。该 runner 还通过真实
   `#send_but`/`#mes_stop`
-  路径验证“Pi 先挂起 → 主聊天发起 → 分别停止”的完整并发顺序；prompt 不串线，两个 stop 不互相中止。主聊天 pending 后再点额外解析重试因最后楼层为 user 而按产品语义 no-op，并被明确记录。runner 使用浏览器内 mock
+  路径验证“Pi 等待时隐藏发送按钮 → 酒馆停止按钮取消 Pi → 恢复发送 → 发起并停止下一轮主聊天”的顺序，并检查后续聊天的 prompt。主聊天 pending 后再点额外解析重试因最后楼层为 user 而按产品语义 no-op，并被明确记录。runner 使用浏览器内 mock
   Provider 响应，因此不验证真实 TLS/CORS、账号权限、配额、上游响应或服务端取消。
 - `update:pi:st-prompt-fixtures`
   在隔离真实浏览器中同时捕获 Legacy 与 Pi 的当前预设、其他预设、内置破限三条 prompt 路径，并生成带版本/产物 provenance 的回归 fixtures。三路分别为 12/11/15 条 messages，逐路 JSON 完全一致且没有允许差异或 normalization；覆盖宏、prompt-only 正则、角色卡、世界书过滤与深度、历史裁剪、注入和

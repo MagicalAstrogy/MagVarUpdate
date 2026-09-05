@@ -3,14 +3,16 @@ import { isFunctionCallingSupported } from '@/function/is_function_calling_suppo
 import { invokeExtraModelWithStrategy } from '@/function/update/invoke_extra_model';
 import { getPiRequestFailureToastMessage } from '@/function/update/pi/error_localization';
 import { isPiMultiproviderEnabled } from '@/function/update/pi/feature_flag';
+import { withPendingVariableUpdate } from '@/function/update/variable_update_queue';
 import { handleVariablesInMessage } from '@/function/update_variables';
 import { tr } from '@/i18n';
 import { useDataStore } from '@/store';
 
-export async function onMessageReceived(
-    message_id: number,
-    { force = false }: { force?: boolean } = {}
-) {
+export async function onMessageReceived(message_id: number, options: { force?: boolean } = {}) {
+    return withPendingVariableUpdate(message_id, () => receiveMessage(message_id, options));
+}
+
+async function receiveMessage(message_id: number, { force = false }: { force?: boolean } = {}) {
     const current_chatmsg = getChatMessages(message_id).at(-1);
     if (!current_chatmsg) {
         return;
