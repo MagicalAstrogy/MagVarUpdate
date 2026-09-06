@@ -443,9 +443,13 @@ const EXPECTED_PI_PROVIDER_DEFINITIONS = [
     {
         key: 'openrouter',
         defaultApi: 'openai-completions',
-        allowedApis: ['openai-completions'],
+        allowedApis: ['openai-completions', 'anthropic-messages'],
         defaultBaseUrl: 'https://openrouter.ai/api/v1',
-        fields: API_KEY_FIELDS,
+        apiBaseUrls: {
+            'openai-completions': 'https://openrouter.ai/api/v1',
+            'anthropic-messages': 'https://openrouter.ai/api',
+        },
+        fields: MULTI_API_KEY_FIELDS,
     },
     {
         key: 'qwen-token-plan',

@@ -4,7 +4,7 @@
  * Keep this module limited to the adapters and catalogs that MVU supports. In particular, do
  * not import built-in provider factories or the aggregate provider entry point: the application
  * owns provider registration and OAuth orchestration so the browser bundle cannot pull in pi's
- * Node callback flows.
+ * Node callback flows. Production resolves these entry points through versioned browser ESM.
  */
 export {
     Type,
@@ -106,7 +106,8 @@ export {
     convertMessages as convertGoogleMessages,
     convertTools as convertGoogleTools,
     isThinkingPart as isGoogleThinkingPart,
-    mapStopReason as mapGoogleStopReason,
+    // The local Google SDK can add enum values before Pi updates its own pinned SDK.
+    mapStopReasonString as mapGoogleStopReason,
     resolveGoogleFunctionCallingMode,
     resolveGoogleThinkingLevel,
     retainThoughtSignature as retainGoogleThoughtSignature,

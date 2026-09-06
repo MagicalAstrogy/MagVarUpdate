@@ -526,8 +526,8 @@ export const panelMessages = defineMessages({
     },
     'panel.source.pi.proxy.help': {
         'zh-CN':
-            '如果获取模型列表或生成请求因 CORS（浏览器跨域限制）失败，可以尝试勾选，通过 SillyTavern 转发请求。需要先在 SillyTavern 中开启 Proxy。',
-        en: 'If fetching models or generating a response fails because of CORS (browser cross-origin restrictions), try enabling this to forward requests through SillyTavern. Proxy must also be enabled in SillyTavern.',
+            '如果获取模型列表或生成请求因 CORS（浏览器跨域限制）失败，可以尝试勾选，通过 SillyTavern 转发请求。需要先在 SillyTavern 中开启 Proxy。开启这个功能后，任意前端脚本都可以无障碍地访问任意站点，请在了解相关的风险后决定是否打开这个功能。',
+        en: 'If fetching models or generating a response fails because of CORS (browser cross-origin restrictions), try enabling this to forward requests through SillyTavern. Proxy must also be enabled in SillyTavern. Once enabled, any frontend script can freely access any website. Decide whether to enable this feature only after understanding the risks.',
     },
     'panel.source.pi.proxy.notEnabled': {
         'zh-CN': '当前来源需要 Proxy，但 SillyTavern 的 Proxy 未开启或无法连接。',
@@ -535,8 +535,8 @@ export const panelMessages = defineMessages({
     },
     'panel.source.pi.proxy.notEnabledHelp': {
         'zh-CN':
-            '打开 SillyTavern 的 config.yaml，将 enableCorsProxy 设为 true，保存后重启 SillyTavern。如果酒馆由他人托管，请联系管理员开启。',
-        en: 'Open SillyTavern config.yaml, set enableCorsProxy to true, save, and restart SillyTavern. If someone else hosts your server, ask its administrator to enable it.',
+            '打开 SillyTavern 的 config.yaml，将 enableCorsProxy 设为 true，保存后重启 SillyTavern。如果酒馆由他人托管，请联系管理员开启。开启这个功能后，任意前端脚本都可以无障碍地访问任意站点，请在了解相关的风险后决定是否打开这个功能。',
+        en: 'Open SillyTavern config.yaml, set enableCorsProxy to true, save, and restart SillyTavern. If someone else hosts your server, ask its administrator to enable it. Once enabled, any frontend script can freely access any website. Decide whether to enable this feature only after understanding the risks.',
     },
     'panel.source.pi.model': {
         'zh-CN': '模型',

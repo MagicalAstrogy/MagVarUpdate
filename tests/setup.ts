@@ -4,6 +4,10 @@ import _ from 'lodash';
 import { createPinia, setActivePinia } from 'pinia';
 import { klona } from 'klona';
 import { watch } from 'vue';
+import { ReadableStream, TransformStream, WritableStream } from 'node:stream/web';
+
+// jsdom lacks the Web Streams globals used by current browser SDKs at module initialization.
+Object.assign(globalThis, { ReadableStream, TransformStream, WritableStream });
 
 // Make lodash available globally as it's used in the source code
 (globalThis as any)._ = _;

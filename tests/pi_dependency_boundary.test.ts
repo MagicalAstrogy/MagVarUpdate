@@ -49,7 +49,8 @@ const ALLOWED_PI_IMPORTS = [
     `${PI_ROOT}/api/openai-codex-responses.lazy`,
 ] as const;
 
-const LOCAL_PI_SDK_DEPENDENCIES = [
+const EXTERNAL_PI_SDK_DEPENDENCIES = [
+    PI_ROOT,
     'openai',
     '@anthropic-ai/sdk',
     '@google/genai',
@@ -57,16 +58,6 @@ const LOCAL_PI_SDK_DEPENDENCIES = [
     'p-retry',
     'retry',
     'klona',
-] as const;
-
-const EXCLUDED_PI_PROVIDER_FACTORIES = [
-    'all',
-    'amazon-bedrock',
-    'azure-openai-responses',
-    'cloudflare-ai-gateway',
-    'cloudflare-workers-ai',
-    'google-vertex',
-    'radius',
 ] as const;
 
 function readWorkspaceFile(relative_path: string): string {
@@ -97,50 +88,43 @@ describe('pi dependency boundary', () => {
         expect(source).not.toContain('/oauth');
     });
 
-    test('webpack bundles every audited pi entry point locally', () => {
-        const webpack_source = readWorkspaceFile('webpack.config.ts');
-
+    test('loads Pi entry points and Google SDK through versioned browser ESM', () => {
+        const manifest = JSON.parse(readWorkspaceFile('package.json')) as {
+            dependencies: Record<string, string>;
+        };
+        const bundle = readWorkspaceFile('artifact/bundle.js');
+        const cdn = 'https://testingcf.jsdelivr.net/npm/';
         for (const specifier of ALLOWED_PI_IMPORTS) {
-            expect(webpack_source).toContain(`'${specifier}'`);
+            expect(bundle).toContain(
+                `${cdn}${PI_ROOT}@${manifest.dependencies[PI_ROOT]}${specifier.slice(PI_ROOT.length)}/+esm`
+            );
         }
-        for (const specifier of LOCAL_PI_SDK_DEPENDENCIES) {
-            expect(webpack_source).toContain(`'${specifier}'`);
+        expect(bundle).toContain(
+            `${cdn}@google/genai@${manifest.dependencies['@google/genai']}/+esm`
+        );
+        expect(bundle).not.toContain(`${cdn}${PI_ROOT}/`);
+        expect(bundle).not.toContain(`${cdn}@google/genai/`);
+        for (const name of [PI_ROOT, '@google/genai']) {
+            const installed = JSON.parse(readWorkspaceFile(`node_modules/${name}/package.json`));
+            expect(manifest.dependencies[name]).toBe(installed.version);
         }
-        expect(webpack_source).toContain('BUNDLED_PI_AI_MODULES.has(request)');
     });
 
-    test('committed artifact keeps the audited SDK dependency graph out of CDN externals', () => {
-        const bundle = readWorkspaceFile('artifact/bundle.js');
+    test('does not embed third-party Pi or provider SDK code in the MVU artifact', () => {
         const source_map = JSON.parse(
             readWorkspaceFile('artifact/bundle.js.map')
         ) as WebpackSourceMap;
-
-        for (const specifier of LOCAL_PI_SDK_DEPENDENCIES) {
-            expect(hasLocalModuleSource(source_map, specifier)).toBe(true);
-            expect(bundle).not.toContain(`https://testingcf.jsdelivr.net/npm/${specifier}/+esm`);
+        for (const specifier of EXTERNAL_PI_SDK_DEPENDENCIES) {
+            expect(hasLocalModuleSource(source_map, specifier)).toBe(false);
         }
-
-        const p_retry_index = source_map.sources.findIndex(source =>
-            source.includes('/node_modules/p-retry/index.js')
-        );
-        expect(p_retry_index).toBeGreaterThanOrEqual(0);
-        expect(source_map.sourcesContent?.[p_retry_index]).toMatch(/require\(['"]retry['"]\)/);
-        expect(hasLocalModuleSource(source_map, 'retry')).toBe(true);
-
-        const expected_catalog_sources = ALLOWED_PI_IMPORTS.filter(specifier =>
-            specifier.startsWith(`${PI_ROOT}/providers/`)
-        )
-            .map(specifier => `${specifier.slice(`${PI_ROOT}/providers/`.length)}.js`)
-            .sort();
-        const bundled_provider_sources = source_map.sources.flatMap(source => {
-            const match = /\/pi-ai\/dist\/providers\/([^/]+\.js)$/.exec(source);
-            return match ? [match[1]] : [];
-        });
-        expect(bundled_provider_sources.sort()).toEqual(expected_catalog_sources);
-        for (const provider of EXCLUDED_PI_PROVIDER_FACTORIES) {
-            expect(source_map.sources).not.toEqual(
-                expect.arrayContaining([expect.stringMatching(`/providers/${provider}\\.js$`)])
-            );
-        }
+        // The project-owned routing and transport adapters still belong to MVU.
+        expect(
+            source_map.sources.some(source => source.includes('/src/function/update/pi/runtime.ts'))
+        ).toBe(true);
+        expect(
+            source_map.sources.some(source =>
+                source.includes('/src/function/update/pi/non_streaming_fetch.ts')
+            )
+        ).toBe(true);
     });
 });

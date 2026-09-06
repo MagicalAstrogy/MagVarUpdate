@@ -350,10 +350,14 @@ export const PI_PROVIDER_TARGET_REGISTRY: Readonly<
         key: 'openrouter',
         providerId: 'openrouter',
         defaultApi: 'openai-completions',
-        allowedApis: Object.freeze(['openai-completions'] as const),
+        allowedApis: Object.freeze(['openai-completions', 'anthropic-messages'] as const),
         defaultAuthType: 'api_key',
         allowedAuthTypes: Object.freeze(['api_key'] as const),
         defaultBaseUrl: 'https://openrouter.ai/api/v1',
+        apiBaseUrls: Object.freeze({
+            'openai-completions': 'https://openrouter.ai/api/v1',
+            'anthropic-messages': 'https://openrouter.ai/api',
+        }),
         allowCustomEndpoint: false,
     }),
     'qwen-token-plan': definePiProviderTarget({

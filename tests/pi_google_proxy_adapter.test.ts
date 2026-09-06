@@ -775,14 +775,31 @@ describe('Google proxy-aware adapter', () => {
         }
         expect(fetch_impl).not.toHaveBeenCalled();
 
-        const api_call = jest.fn(async (_url: string, _init: RequestInit) =>
-            completedTextResponse('ok')
+        const api_call = jest.fn(
+            async (
+                _url: string,
+                _init: RequestInit,
+                _retry?: unknown,
+                _timeout?: number,
+                _signal?: AbortSignal
+            ) => completedTextResponse('ok')
         );
         const client = { apiClient: { apiCall: api_call } };
         installGoogleClientFetch(client, fetch_impl as unknown as FetchFunction);
         await client.apiClient.apiCall('https://example.invalid', {});
         expect(fetch_impl).toHaveBeenCalledWith('https://example.invalid', {});
         expect(api_call).not.toHaveBeenCalled();
+        expect(() =>
+            installGoogleClientFetch(
+                {
+                    apiClient: {
+                        apiCall: async (_url: string, _init: RequestInit) =>
+                            completedTextResponse('old SDK'),
+                    },
+                },
+                fetch_impl as FetchFunction
+            )
+        ).toThrow(GoogleProxyAdapterCompatibilityError);
     });
 });
 

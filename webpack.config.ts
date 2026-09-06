@@ -17,60 +17,19 @@ import unpluginVueComponents from 'unplugin-vue-components/webpack';
 import { VueLoaderPlugin } from 'vue-loader';
 import webpack from 'webpack';
 
-const BUNDLED_PI_AI_MODULES = new Set([
-    '@earendil-works/pi-ai',
-    // These SDKs receive the user's Pi API key/OAuth token at request time. Keep their exact
-    // yarn.lock versions in the local bundle instead of turning them into unversioned CDN code.
-    'openai',
-    '@anthropic-ai/sdk',
-    '@google/genai',
-    'partial-json',
-    'p-retry',
-    'retry',
-    'klona',
-    '@earendil-works/pi-ai/providers/ant-ling.models',
-    '@earendil-works/pi-ai/providers/anthropic.models',
-    '@earendil-works/pi-ai/providers/baseten.models',
-    '@earendil-works/pi-ai/providers/cerebras.models',
-    '@earendil-works/pi-ai/providers/deepseek.models',
-    '@earendil-works/pi-ai/providers/fireworks.models',
-    '@earendil-works/pi-ai/providers/github-copilot.models',
-    '@earendil-works/pi-ai/providers/google.models',
-    '@earendil-works/pi-ai/providers/groq.models',
-    '@earendil-works/pi-ai/providers/huggingface.models',
-    '@earendil-works/pi-ai/providers/kimi-coding.models',
-    '@earendil-works/pi-ai/providers/minimax.models',
-    '@earendil-works/pi-ai/providers/minimax-cn.models',
-    '@earendil-works/pi-ai/providers/mistral.models',
-    '@earendil-works/pi-ai/providers/moonshotai.models',
-    '@earendil-works/pi-ai/providers/moonshotai-cn.models',
-    '@earendil-works/pi-ai/providers/nvidia.models',
-    '@earendil-works/pi-ai/providers/openai.models',
-    '@earendil-works/pi-ai/providers/openai-codex.models',
-    '@earendil-works/pi-ai/providers/opencode.models',
-    '@earendil-works/pi-ai/providers/opencode-go.models',
-    '@earendil-works/pi-ai/providers/openrouter.models',
-    '@earendil-works/pi-ai/providers/qwen-token-plan.models',
-    '@earendil-works/pi-ai/providers/qwen-token-plan-cn.models',
-    '@earendil-works/pi-ai/providers/qwen-token-plan-individual.models',
-    '@earendil-works/pi-ai/providers/together.models',
-    '@earendil-works/pi-ai/providers/vercel-ai-gateway.models',
-    '@earendil-works/pi-ai/providers/xai.models',
-    '@earendil-works/pi-ai/providers/xiaomi.models',
-    '@earendil-works/pi-ai/providers/xiaomi-token-plan-ams.models',
-    '@earendil-works/pi-ai/providers/xiaomi-token-plan-cn.models',
-    '@earendil-works/pi-ai/providers/xiaomi-token-plan-sgp.models',
-    '@earendil-works/pi-ai/providers/zai.models',
-    '@earendil-works/pi-ai/providers/zai-coding-cn.models',
-    '@earendil-works/pi-ai/api/openai-responses.lazy',
-    '@earendil-works/pi-ai/api/openai-completions.lazy',
-    '@earendil-works/pi-ai/api/anthropic-messages.lazy',
-    '@earendil-works/pi-ai/api/google-generative-ai.lazy',
-    '@earendil-works/pi-ai/api/google-shared',
-    '@earendil-works/pi-ai/api/simple-options',
-    '@earendil-works/pi-ai/api/mistral-conversations.lazy',
-    '@earendil-works/pi-ai/api/openai-codex-responses.lazy',
-]);
+const PI_ESM_PACKAGES = ['@earendil-works/pi-ai', '@google/genai'] as const;
+const package_json = JSON.parse(
+    fs.readFileSync(path.join(import.meta.dirname, 'package.json'), 'utf8')
+) as { dependencies: Record<string, string> };
+const PI_ESM_VERSIONS = Object.fromEntries(
+    PI_ESM_PACKAGES.map(name => {
+        const version = package_json.dependencies[name];
+        if (!/^\d+\.\d+\.\d+$/.test(version)) {
+            throw new Error(`${name} must use an exact version for browser ESM imports`);
+        }
+        return [name, version];
+    })
+);
 
 let io: Server;
 function watch_tavern_helper(compiler: webpack.Compiler) {
@@ -412,10 +371,18 @@ function config(_env: any, argv: any): webpack.Configuration {
                 return callback();
             }
 
-            // pi-ai is intentionally bundled from a small, audited set of entry points. Other
-            // dependencies keep the existing CDN externalization behavior below.
-            if (BUNDLED_PI_AI_MODULES.has(request)) {
-                return callback();
+            // Load Pi and its provider SDKs as browser ESM instead of embedding them in MVU.
+            // Version every direct Pi/Google entry point from the same manifest used by local
+            // builds/tests; Pi's own dependency graph is then resolved by the CDN.
+            const pi_package = PI_ESM_PACKAGES.find(
+                name => request === name || request.startsWith(`${name}/`)
+            );
+            if (pi_package) {
+                const subpath = request.slice(pi_package.length);
+                return callback(
+                    null,
+                    `module-import https://testingcf.jsdelivr.net/npm/${pi_package}@${PI_ESM_VERSIONS[pi_package]}${subpath}/+esm`
+                );
             }
 
             if (

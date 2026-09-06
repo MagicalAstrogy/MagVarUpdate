@@ -150,7 +150,7 @@ function isGenerationUrl(api: PiWireApi, url: URL): boolean {
 }
 
 /**
- * Pi 0.84's complete() still sends streaming HTTP requests. Keep its audited request builders,
+ * Pi 0.85's complete() still sends streaming HTTP requests. Keep its audited request builders,
  * authentication and result parsers, but request a real JSON response on the wire. Only after
  * receiving that entire response do we expose equivalent events to Pi's stream-only parsers.
  * This wrapper is instance-local and composes outside the optional SillyTavern proxy transport.

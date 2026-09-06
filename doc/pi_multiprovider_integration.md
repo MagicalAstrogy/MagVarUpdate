@@ -10,6 +10,23 @@ Proxy 转发。原有的“与插头相同”和“自定义”路径保持不�
 Zen/Go。原四来源版本已具备自动化测试和真实 SillyTavern/Firefox UI
 smoke 覆盖；34 来源与 Proxy 路由的最终全仓测试、lint、声明构建、生产构建和 bundle 边界扫描均已通过。完整发布验收仍以任务清单 H-03 为准；真实 OAuth、Provider 权限、Proxy 部署状态和上游行为仍需在实际环境中验证。
 
+## 依赖版本与 ESM 加载
+
+当前使用 `@earendil-works/pi-ai@0.85.1` 和
+`@google/genai@2.21.0`。Pi 的间接依赖沿用其发布版本声明（包括 Anthropic SDK
+0.123.0 和 Pi 内部的 Google SDK 1.52.0），不强行替换上游依赖。
+
+生产构建通过 jsDelivr 的版本化 `+esm` 地址加载 Pi、模型目录、各 API adapter 和直接使用的 Google
+SDK，第三方实现不再打入 MVU。Webpack 从 `package.json`
+读取精确版本，所有 Pi 子路径使用同一版本；本地类型检查和测试继续使用 `yarn.lock`
+中安装的依赖。MVU 自己的请求路由、OAuth 管理、Proxy 和非流式转换仍属于 MVU 代码。
+
+新版 Google SDK 将取消信号和超时改为 `apiCall`
+的独立参数，实例级传输适配会将它们转交给 fetch，保持流式和非流式请求均可停止。结束原因使用 Pi 的字符串映射，以兼容新版 SDK 新增的原因。
+
+可用 `yarn test:pi:esm` 在隔离 Firefox 中验证远程 ESM 加载、34 个模型目录、6 个实际 adapter、OAuth
+Header 和 Google 取消信号。该检查只下载公开 ESM 模块，Provider 请求和凭据全部使用本地模拟值。
+
 ## 模型来源
 
 | 模型来源   | 请求路径                         | 配置位置         |
@@ -52,7 +69,7 @@ Codex。
 | OpenAI Codex               | `openai-codex-responses`                                                               | `https://chatgpt.com/backend-api`                                                                    |
 | OpenCode Zen               | `anthropic-messages`、`google-generative-ai`、`openai-completions`、`openai-responses` | Messages：`https://opencode.ai/zen`；其他 API：`https://opencode.ai/zen/v1`                          |
 | OpenCode Go                | `anthropic-messages`、`openai-completions`、`openai-responses`                         | Messages：`https://opencode.ai/zen/go`；其他 API：`https://opencode.ai/zen/go/v1`                    |
-| OpenRouter                 | `openai-completions`                                                                   | `https://openrouter.ai/api/v1`                                                                       |
+| OpenRouter                 | `openai-completions`、`anthropic-messages`                                             | Completions：`https://openrouter.ai/api/v1`；Messages：`https://openrouter.ai/api`                   |
 | Qwen Token Plan            | `openai-completions`                                                                   | `https://token-plan.ap-southeast-1.maas.aliyuncs.com/compatible-mode/v1`                             |
 | Qwen Token Plan（中国）    | `openai-completions`                                                                   | `https://token-plan.cn-beijing.maas.aliyuncs.com/compatible-mode/v1`                                 |
 | Qwen Token Plan Individual | `openai-completions`                                                                   | `https://token-plan.ap-southeast-1.maas.aliyuncs.com/compatible-mode/v1`                             |
@@ -69,8 +86,8 @@ Codex。
 OpenAI Codex OAuth 是独立的 Responses 适配器，不能作为普通 OpenAI Responses API
 Key 请求使用。同样，OAuth 不能与自定义 endpoint 或另一个 wire API 任意组合。
 
-固定来源的 endpoint 由注册表决定并在界面隐藏；Fireworks、OpenCode Zen 和 OpenCode Go 会随所选 wire
-API 自动切换 base
+固定来源的 endpoint 由注册表决定并在界面隐藏；Fireworks、OpenRouter、OpenCode Zen 和 OpenCode
+Go 会随所选 wire API 自动切换 base
 URL。来源不会按页面加载时的一次性 CORS 探测结果过滤；注册表只对已经审计确认需要转发的 Provider/API 组合启用 Proxy，其他组合保持直连。上游的权限、协议或未登记的 CORS 变化仍会通过经过脱敏的
 `toastr` 错误呈现。
 
@@ -85,6 +102,9 @@ Key 的自定义 endpoint 可以使用任意有效的 HTTPS 地址；明文 HTTP
 `[::1]`。地址不得包含用户名/密码、query 或 fragment，远端 HTTP、内网 HTTP、其他协议和非法 URL 都会在请求前 fail-closed。显式填写但规范化后与 Provider 默认地址一致的 endpoint 仍按默认链路处理。
 
 ## CORS Proxy 路由
+
+两个 Proxy
+HelpIcon 均提示：开启这个功能后，任意前端脚本都可以无障碍地访问任意站点，请在了解相关的风险后决定是否打开这个功能。
 
 以下是已审计并登记的 15 个精确 Provider/wire API 组合。只有这些内置地址会自动使用 SillyTavern
 Proxy；同一 Provider 的其他 API 不会因为名称相同而一并代理。
@@ -148,7 +168,7 @@ fetch，而原本就通过 SillyTavern 模型状态接口读取 OpenAI 结构目
 “更多”默认发送非流式请求，勾选“兼容假流式”后才发送流式请求；两种模式都等完整回复后再更新变量。OpenAI
 Codex 的账号接口要求 `stream: true`，该来源的开关显示为固定开启。
 
-Pi 0.84.4 的 `complete()` 仍通过流式 HTTP 实现，因此普通应答由 `non_streaming_fetch.ts`
+Pi 0.85.1 的 `complete()` 仍通过流式 HTTP 实现，因此普通应答由 `non_streaming_fetch.ts`
 适配：保留 Pi 的鉴权和请求构建，在 HTTP 层发送 `stream: false`（Google 使用
 `generateContent`），再将完整 JSON 应答转换为 Pi 解析器可读取的事件。该转换在收到完整应答后进行，保持工具调用、结束原因和取消信号，并与 Proxy 组合；OAuth 和模型列表请求不受影响。
 
@@ -230,7 +250,8 @@ profile 时也会 fail-closed：保留隔离的
 
 登录步骤：
 
-1. 选择 OAuth 后点击“登录”，再打开或复制界面给出的授权链接。
+1. 选择带账号登录的来源（Anthropic 账号登录或 OpenAI
+   Codex）后点击“登录”，再打开或复制界面给出的授权链接。
 2. 在 Provider 页面完成授权。浏览器最后访问本机地址时页面无法打开属于预期行为。
 3. 从浏览器地址栏复制完整 callback URL，包括协议、host、端口、路径、`code` 和 `state` 查询参数。
 4. 将完整 URL 粘贴回密码型 callback 输入框，点击“完成登录”。
@@ -241,6 +262,20 @@ profile 时也会 fail-closed：保留隔离的
 `state`，也不要重复使用已经提交过的 callback。实现会校验协议、loopback
 host、端口、路径和 state，并一次性消费登录尝试。虽然粘贴时接受 `127.0.0.1` 与 `localhost`
 两种等价本机 host，授权请求和 token exchange 始终使用注册表中的原始 redirect URI。
+
+生成请求不需要用户手填 OAuth Header：MVU 将 access token 交给 Pi
+adapter，由 adapter 自动设置请求头。
+
+- Anthropic：`Authorization: Bearer ...`、`anthropic-version`、`anthropic-beta`（包含
+  `claude-code-20250219` 和 `oauth-2025-04-20`）、`x-app: cli`、`User-Agent: claude-cli/...`
+  及浏览器访问标记。具体 CLI 版本跟随 Pi 更新。
+- OpenAI Codex：`Authorization: Bearer ...`、从 token 解析的
+  `chatgpt-account-id`、`originator: pi`、`User-Agent`，以及 SSE 所需的
+  `OpenAI-Beta: responses=experimental` 等。
+
+模型列表通过 MVU 的目录接口调用，另行设置 Bearer 认证以及对应的 Anthropic beta /
+x-app 或 Codex 账号 ID /
+originator。ESM 浏览器测试检查的是 SDK 交给传输层的 Header；真实服务端的认证授权结果仍由上游决定。
 
 SillyTavern Proxy 只用于已选择的模型生成与模型目录请求，不代理 OAuth authorize、token
 exchange 或 refresh。若 token
@@ -292,7 +327,7 @@ Provider 目录和上游能力会变化；上表只表示 MVU 已实现请求形
    并等待请求完成。整个等待期间保持 Slash 的非静默生成状态，酒馆显示停止按钮；不再提供单独的“停止‘更多’额外模型解析”按钮。
 4. Provider 请求结束后调用
    `stopGenerationById(generation_id)`，阻止固定捕获请求发送到酒馆后端。只有 marker 匹配、消息复制和定向 stop 全部成功时，才把随后固定失败的 fetch 视为正常控制流；Provider 错误仍进入失败路径。
-5. 酒馆停止按钮产生的定向停止事件会中止对应 Pi 请求；“停止 Pi 额外模型解析”按钮也会停止当前批次。内部捕获清理不会被当作用户取消。并发策略选出结果后会中止其余请求并等待清理。
+5. 酒馆停止按钮产生的定向停止事件会中止对应 Pi 请求。内部捕获清理不会被当作用户取消。并发策略选出结果后会中止其余请求并等待清理。
 
 后续消息的变量快照会等待前一条回复的变量写入结束，覆盖生成结束到变量保存完成之间的间隙。
 

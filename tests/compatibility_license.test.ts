@@ -30,7 +30,7 @@ const EXPECTED_RUNTIME_PACKAGES = [
 ] as const;
 
 describe('compatibility LICENSE notice', () => {
-    test('lists the runtime, bundled provider, and emitted loader dependencies', () => {
+    test('lists the runtime, ESM provider, and emitted loader dependencies', () => {
         expect(OPEN_SOURCE_LICENSES.map(component => component.packageName).sort()).toEqual(
             [...EXPECTED_RUNTIME_PACKAGES].sort()
         );

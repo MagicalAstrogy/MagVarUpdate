@@ -9,26 +9,26 @@ export type OpenSourceLicense = Readonly<{
 }>;
 
 /**
- * Runtime libraries used directly by MVU, bundled provider libraries, and the loader runtimes
+ * Runtime libraries used directly by MVU, ESM provider libraries, and the loader runtimes
  * emitted into the production bundle. Build- and test-only tooling is intentionally excluded.
  */
 export const OPEN_SOURCE_LICENSES = [
     {
         packageName: '@anthropic-ai/sdk',
-        version: '0.91.1',
+        version: '0.123.0',
         license: 'MIT',
         projectUrl: 'https://github.com/anthropics/anthropic-sdk-typescript',
     },
     {
         packageName: '@earendil-works/pi-ai',
         displayName: 'Earendil Works AI',
-        version: '0.84.4',
+        version: '0.85.1',
         license: 'MIT',
         projectUrl: 'https://github.com/earendil-works/pi',
     },
     {
         packageName: '@google/genai',
-        version: '1.52.0',
+        version: '2.21.0',
         license: 'Apache-2.0',
         projectUrl: 'https://github.com/googleapis/js-genai',
     },

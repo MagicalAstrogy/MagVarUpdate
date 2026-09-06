@@ -22,11 +22,12 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@anthropic-ai/sdk@npm:0.91.1":
-  version: 0.91.1
-  resolution: "@anthropic-ai/sdk@npm:0.91.1"
+"@anthropic-ai/sdk@npm:0.123.0":
+  version: 0.123.0
+  resolution: "@anthropic-ai/sdk@npm:0.123.0"
   dependencies:
     json-schema-to-ts: ^3.1.1
+    standardwebhooks: ^1.0.0
   peerDependencies:
     zod: ^3.25.0 || ^4.0.0
   peerDependenciesMeta:
@@ -34,7 +35,7 @@ __metadata:
       optional: true
   bin:
     anthropic-ai-sdk: bin/cli
-  checksum: e38232c9bad55166a62621b8290c859321510ee42607012ab715d1dcc7e76ccebc95f99b1f331b6437d410c21e31f101ddeeee5cb97eba7b0b25ca1beea308da
+  checksum: 20dfb255c5e5c918e01a092fb80daa655f5db824978a0db10cbebe353ac3c6c28665f2be7bfa82d07e43ef59b32f685bf3c7b593cd48a38d393ee9501cab81eb
   languageName: node
   linkType: hard
 
@@ -863,13 +864,13 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@earendil-works/pi-ai@npm:0.84.4":
-  version: 0.84.4
-  resolution: "@earendil-works/pi-ai@npm:0.84.4"
+"@earendil-works/pi-ai@npm:0.85.1":
+  version: 0.85.1
+  resolution: "@earendil-works/pi-ai@npm:0.85.1"
   dependencies:
-    "@anthropic-ai/sdk": 0.91.1
+    "@anthropic-ai/sdk": 0.123.0
     "@aws-sdk/client-bedrock-runtime": 3.1048.0
-    "@earendil-works/pi-telemetry": ^0.84.4
+    "@earendil-works/pi-telemetry": ^0.85.1
     "@google/genai": 1.52.0
     "@smithy/node-http-handler": 4.7.3
     http-proxy-agent: 7.0.2
@@ -879,14 +880,14 @@ __metadata:
     typebox: 1.3.7
   bin:
     pi-ai: dist/cli.js
-  checksum: da0d9028f7aed41f7d7351375b7772e17cfca60258ae44f9c6a21c733bec7998f8f9da2373e8e742cc0f5bf7956c74f7c6fd3c9335714e0d3a43db6d580cbde5
+  checksum: 49ef005480b6e58801997721f10167dc325b7d55b9e0591075431f493ebe4d17eeff9f26acad7bfbcd2aec17c47d78799bca6f5d5f04d37f70b29371059e37fd
   languageName: node
   linkType: hard
 
-"@earendil-works/pi-telemetry@npm:^0.84.4":
-  version: 0.84.4
-  resolution: "@earendil-works/pi-telemetry@npm:0.84.4"
-  checksum: e4aaafe4308b644dc06cbc858cea402df01fd64ad14fdc30356293fae448a1ac5e8f48eb81468f8ba997b0c653c1a69ec57aa49cdc80d0a0084b19dd0d8a5290
+"@earendil-works/pi-telemetry@npm:^0.85.1":
+  version: 0.85.1
+  resolution: "@earendil-works/pi-telemetry@npm:0.85.1"
+  checksum: 33eba1bfc20ea42f9928ddd2a6c024078d40b486228bad3be926ce7e83c0c3799e71a29da3698996a368d15c6243c0511f6cf4265a110a92a8ca04156cd573db
   languageName: node
   linkType: hard
 
@@ -1067,6 +1068,23 @@ __metadata:
     "@modelcontextprotocol/sdk":
       optional: true
   checksum: 7fd874262e12196040883c47d0e239af87e2b021ab01aba63edd5c3f40320c26725c04207a231c3fc925036d13bd96e52adf4c5cfd86efebbca7262c0ac64ad5
+  languageName: node
+  linkType: hard
+
+"@google/genai@npm:2.21.0":
+  version: 2.21.0
+  resolution: "@google/genai@npm:2.21.0"
+  dependencies:
+    google-auth-library: ^10.3.0
+    p-retry: ^4.6.2
+    protobufjs: ^7.5.4
+    ws: ^8.18.0
+  peerDependencies:
+    "@modelcontextprotocol/sdk": ^1.25.2
+  peerDependenciesMeta:
+    "@modelcontextprotocol/sdk":
+      optional: true
+  checksum: c37c5f344591ecdf8dddd452711222f33525065bf9f607dc8458c8412f79059bcd1fc1158c825afa8093f92c6ca161bdc37c05d4293ff1c1d0f5d5fc3f9a4df3
   languageName: node
   linkType: hard
 
@@ -1877,6 +1895,13 @@ __metadata:
   version: 3.1.2
   resolution: "@socket.io/component-emitter@npm:3.1.2"
   checksum: 89888f00699eb34e3070624eb7b8161fa29f064aeb1389a48f02195d55dd7c52a504e52160016859f6d6dffddd54324623cdd47fd34b3d46f9ed96c18c456edc
+  languageName: node
+  linkType: hard
+
+"@stablelib/base64@npm:^1.0.0":
+  version: 1.0.1
+  resolution: "@stablelib/base64@npm:1.0.1"
+  checksum: 3ef4466d1d6889ac3fc67407bc21aa079953981c322eeca3b29f426d05506c63011faab1bfc042d7406e0677a94de6c9d2db2ce079afdd1eccae90031bfb5859
   languageName: node
   linkType: hard
 
@@ -4943,6 +4968,13 @@ __metadata:
   languageName: node
   linkType: hard
 
+"fast-sha256@npm:^1.3.0":
+  version: 1.3.0
+  resolution: "fast-sha256@npm:1.3.0"
+  checksum: 2b0bea7d3a9955e67abd2d3fbef4ce57f7dbb75708fc206d14973bd1d97aaf35b5c0a59c1d65be6f755df43d73b7657b9eac4fb3c2d58e6849966db1ef1fa186
+  languageName: node
+  linkType: hard
+
 "fast-uri@npm:^3.0.1":
   version: 3.0.6
   resolution: "fast-uri@npm:3.0.6"
@@ -6914,9 +6946,9 @@ __metadata:
   version: 0.0.0-use.local
   resolution: "mag-variable-update@workspace:."
   dependencies:
-    "@earendil-works/pi-ai": 0.84.4
-    "@google/genai": 1.52.0
+    "@earendil-works/pi-ai": 0.85.1
     "@eslint/js": ^9.29.0
+    "@google/genai": 2.21.0
     "@intlify/devtools-types": 11.1.12
     "@tailwindcss/postcss": ^4.1.13
     "@types/jest": ^29.5.14
@@ -9003,6 +9035,16 @@ __metadata:
   dependencies:
     escape-string-regexp: ^2.0.0
   checksum: 052bf4d25bbf5f78e06c1d5e67de2e088b06871fa04107ca8d3f0e9d9263326e2942c8bedee3545795fc77d787d443a538345eef74db2f8e35db3558c6f91ff7
+  languageName: node
+  linkType: hard
+
+"standardwebhooks@npm:^1.0.0":
+  version: 1.1.1
+  resolution: "standardwebhooks@npm:1.1.1"
+  dependencies:
+    "@stablelib/base64": ^1.0.0
+    fast-sha256: ^1.3.0
+  checksum: 80737c89accc42a501c0456e3313c6eaa19c901cf41ee68bdf0d10644f0c57d344e0c14560d0a65984e878d18e9b00466908f4f1323e54f0403e1dcf6120f08e
   languageName: node
   linkType: hard
 

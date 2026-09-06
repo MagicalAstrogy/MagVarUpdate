@@ -4,6 +4,7 @@ import {
     type GenerateContentParameters,
     type ThinkingConfig,
 } from '@google/genai';
+import { installPiAbortSignalPolyfills } from './abort_signal';
 import {
     buildBaseOptions,
     calculateCost,
@@ -44,7 +45,13 @@ import {
  */
 type InjectableGoogleClient = {
     apiClient?: {
-        apiCall?: (url: string, init: RequestInit) => Promise<Response>;
+        apiCall?: (
+            url: string,
+            init: RequestInit,
+            retryOptions?: unknown,
+            timeout?: number,
+            abortSignal?: AbortSignal
+        ) => Promise<Response>;
     };
 };
 
@@ -75,11 +82,37 @@ export interface GoogleProxyOptions extends StreamOptions {
 /** Install one fetch implementation on one client instance. Never mutates globals/prototypes. */
 export function installGoogleClientFetch(client: unknown, fetch_impl: FetchFunction): void {
     const api_client = (client as InjectableGoogleClient | null)?.apiClient;
-    if (!api_client || typeof api_client.apiCall !== 'function') {
+    if (
+        !api_client ||
+        typeof api_client.apiCall !== 'function' ||
+        api_client.apiCall.length !== 5
+    ) {
         throw new GoogleProxyAdapterCompatibilityError();
     }
 
-    const injected = (url: string, init: RequestInit) => fetch_impl(url, init);
+    installPiAbortSignalPolyfills();
+    // GenAI 2.x moved abort/timeout out of RequestInit into apiCall arguments. Pi owns retries,
+    // but the injected transport must preserve those signals through response-body consumption.
+    const injected = (
+        url: string,
+        init: RequestInit,
+        _retry_options?: unknown,
+        timeout?: number,
+        abort_signal?: AbortSignal
+    ) => {
+        const signals = [init.signal, abort_signal].filter(
+            (signal): signal is AbortSignal => signal != null
+        );
+        if (timeout !== undefined && timeout > 0) {
+            signals.push(AbortSignal.timeout(timeout));
+        }
+        if (signals.length === 0) {
+            return fetch_impl(url, init);
+        }
+        const signal = AbortSignal.any(signals);
+        signal.throwIfAborted();
+        return fetch_impl(url, { ...init, signal });
+    };
     try {
         api_client.apiCall = injected;
     } catch {

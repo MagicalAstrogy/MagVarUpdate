@@ -304,6 +304,23 @@ try {
     );
     assert.equal(denied.stopReason, 'error');
 
+    current_case = 'new Google SDK finish reasons must not commit incomplete tool output';
+    const excessive_tools = await run(
+        'google-generative-ai',
+        createPiNonStreamingFetch('google-generative-ai', async () =>
+            Response.json({
+                ...google_response,
+                candidates: [
+                    {
+                        ...google_response.candidates[0],
+                        finishReason: 'TOO_MANY_TOOL_CALLS',
+                    },
+                ],
+            })
+        )
+    );
+    assert.equal(excessive_tools.stopReason, 'error');
+
     current_case = 'native cancellation while waiting for a complete JSON response';
     const controller = new AbortController();
     let started;
