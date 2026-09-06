@@ -137,21 +137,21 @@ describe('Pi Source UI contract', () => {
         );
     });
 
-    test('captures and revalidates OAuth UI context around confirmation awaits', () => {
-        const begin = source.slice(
-            source.indexOf('async function beginOAuthLogin'),
-            source.indexOf('async function completeOAuthLogin')
+    test('keeps credential refresh and logout bound to the initiating UI context', () => {
+        const refresh = source.slice(
+            source.indexOf('async function refreshOAuthCredentials'),
+            source.indexOf('async function logoutOAuth')
         );
         const logout = source.slice(
             source.indexOf('async function logoutOAuth'),
             source.indexOf('async function copyOAuthAuthorizationUrl')
         );
 
-        expect(begin.indexOf('captureOAuthUiContext(provider)')).toBeLessThan(
-            begin.indexOf('await SillyTavern.callGenericPopup')
+        expect(refresh.indexOf('captureOAuthUiContext(provider)')).toBeLessThan(
+            refresh.indexOf('await refreshPiOAuth')
         );
-        expect(begin.indexOf('await SillyTavern.callGenericPopup')).toBeLessThan(
-            begin.indexOf('!isOAuthUiContextCurrent(confirmation_context)')
+        expect(refresh.indexOf('await refreshPiOAuth')).toBeLessThan(
+            refresh.indexOf('isOAuthUiContextCurrent(operation_context)')
         );
         expect(logout.indexOf('captureOAuthUiContext(provider)')).toBeLessThan(
             logout.indexOf('await SillyTavern.callGenericPopup')

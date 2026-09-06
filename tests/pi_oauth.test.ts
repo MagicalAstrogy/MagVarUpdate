@@ -28,7 +28,9 @@ import {
     getBrowserOAuthAuth,
     getPiOAuthCredentialStatus,
     logoutPiOAuth,
+    refreshPiOAuth,
 } from '@/function/update/pi/oauth';
+import { createPiCredentialStore } from '@/function/update/pi/credential_store';
 
 class TestCredentialStore implements CredentialStore {
     readonly credentials = new Map<string, Credential>();
@@ -123,6 +125,136 @@ afterEach(() => {
 });
 
 describe('browser-safe Pi OAuth', () => {
+    test('manually refreshes an unexpired Codex credential and persists token rotation', async () => {
+        const store = new TestCredentialStore();
+        const now = 2_000_000_000_000;
+        store.credentials.set('openai-codex', oauthCredential({ expires: now + 86_400_000 }));
+        const access = codexJwt('refreshed-account', 'manual');
+        const fetchMock = jest.fn().mockResolvedValue(
+            response({
+                access_token: access,
+                refresh_token: 'manual-rotated-refresh',
+                expires_in: 3600,
+            })
+        );
+
+        const status = await refreshPiOAuth('openai-codex', {
+            credentialStore: store,
+            fetch: fetchMock,
+            now: () => now,
+        });
+        expect(status).toEqual({ loggedIn: true, type: 'oauth', expiresAt: now + 3_600_000 });
+        expect(JSON.stringify(status)).not.toContain(access);
+        expect(fetchMock).toHaveBeenCalledTimes(1);
+        expect(fetchMock.mock.calls[0][0]).toBe('https://auth.openai.com/oauth/token');
+        expect(
+            Object.fromEntries(new URLSearchParams(fetchMock.mock.calls[0][1].body))
+        ).toMatchObject({
+            grant_type: 'refresh_token',
+            refresh_token: 'old-refresh',
+        });
+        expect(store.credentials.get('openai-codex')).toMatchObject({
+            access,
+            refresh: 'manual-rotated-refresh',
+            expires: now + 3_600_000,
+            accountId: 'refreshed-account',
+        });
+    });
+
+    test('preserves the refresh token when a refresh response does not rotate it', async () => {
+        const store = new TestCredentialStore();
+        store.credentials.set('anthropic', oauthCredential());
+        await refreshPiOAuth('anthropic', {
+            credentialStore: store,
+            fetch: jest
+                .fn()
+                .mockResolvedValue(response({ access_token: 'new-access', expires_in: 3600 })),
+        });
+        expect(store.credentials.get('anthropic')).toMatchObject({
+            access: 'new-access',
+            refresh: 'old-refresh',
+        });
+    });
+
+    test('preserves saved credentials when manual refresh fails', async () => {
+        const store = new TestCredentialStore();
+        const original = oauthCredential();
+        store.credentials.set('anthropic', original);
+        await expect(
+            refreshPiOAuth('anthropic', {
+                credentialStore: store,
+                fetch: jest.fn().mockResolvedValue(response({ error: 'invalid_grant' }, 400)),
+            })
+        ).rejects.toMatchObject({ code: 'token_http' });
+        expect(store.credentials.get('anthropic')).toEqual(original);
+    });
+
+    test('requires existing credentials and never starts a login flow', async () => {
+        const fetchMock = jest.fn();
+        await expect(
+            refreshPiOAuth('openai-codex', {
+                credentialStore: new TestCredentialStore(),
+                fetch: fetchMock,
+            })
+        ).rejects.toMatchObject({ code: 'missing_credential' });
+        expect(fetchMock).not.toHaveBeenCalled();
+    });
+
+    test('shares the credential lock and uses an automatic refresh that completed while waiting', async () => {
+        const store = createPiCredentialStore();
+        await store.modify('anthropic', async () => oauthCredential());
+        let finish!: (credential: OAuthCredential) => void;
+        const responseReady = new Promise<OAuthCredential>(resolve => {
+            finish = resolve;
+        });
+        const automatic = store.modify('anthropic', () => responseReady);
+        const fetchMock = jest.fn();
+        const manual = refreshPiOAuth('anthropic', { credentialStore: store, fetch: fetchMock });
+        const refreshed = oauthCredential({
+            access: 'auto-refreshed',
+            refresh: 'auto-rotated',
+            expires: Date.now() + 3_600_000,
+        });
+        finish(refreshed);
+        await automatic;
+        await expect(manual).resolves.toEqual({
+            loggedIn: true,
+            type: 'oauth',
+            expiresAt: refreshed.expires,
+        });
+        expect(fetchMock).not.toHaveBeenCalled();
+        expect(await store.read('anthropic')).toEqual(refreshed);
+    });
+
+    test('cancels a pending manual refresh without overwriting saved credentials', async () => {
+        const store = new TestCredentialStore();
+        const original = oauthCredential();
+        store.credentials.set('anthropic', original);
+        const controller = new AbortController();
+        let started!: () => void;
+        const requestStarted = new Promise<void>(resolve => {
+            started = resolve;
+        });
+        const fetchMock = jest.fn(
+            (_input: RequestInfo | URL, init?: RequestInit) =>
+                new Promise<Response>((_resolve, reject) => {
+                    init!.signal!.addEventListener('abort', () => reject(init!.signal!.reason), {
+                        once: true,
+                    });
+                    started();
+                })
+        );
+        const pending = refreshPiOAuth('anthropic', {
+            credentialStore: store,
+            fetch: fetchMock,
+            signal: controller.signal,
+        });
+        await requestStarted;
+        controller.abort();
+        await expect(pending).rejects.toMatchObject({ code: 'cancelled' });
+        expect(store.credentials.get('anthropic')).toEqual(original);
+    });
+
     test('builds Anthropic PKCE authorization and accepts the 127.0.0.1 callback without changing redirect_uri', async () => {
         const now = 1_800_000_000_000;
         const store = new TestCredentialStore();

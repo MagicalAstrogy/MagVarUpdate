@@ -705,13 +705,17 @@ export const panelMessages = defineMessages({
         'zh-CN': '登录',
         en: 'Sign in',
     },
-    'panel.source.pi.oauth.relogin': {
-        'zh-CN': '重新登录',
-        en: 'Sign in again',
+    'panel.source.pi.oauth.refresh': {
+        'zh-CN': '刷新凭证',
+        en: 'Refresh credentials',
     },
-    'panel.source.pi.oauth.reloginConfirm': {
-        'zh-CN': '确定要重新登录 {provider} 吗？完成新授权后，保存的 OAuth 凭据将被替换。',
-        en: 'Sign in to {provider} again? The saved OAuth credential will be replaced after the new authorization succeeds.',
+    'panel.source.pi.oauth.refreshing': {
+        'zh-CN': '正在刷新凭证…',
+        en: 'Refreshing credentials…',
+    },
+    'panel.source.pi.oauth.refreshSucceeded': {
+        'zh-CN': '凭证已刷新。',
+        en: 'Credentials refreshed.',
     },
     'panel.source.pi.oauth.cancel': {
         'zh-CN': '取消登录',

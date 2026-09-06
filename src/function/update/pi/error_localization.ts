@@ -31,6 +31,7 @@ const MODEL_RESOLUTION_KEYS = {
 } as const satisfies Record<string, MessageKey>;
 
 const OAUTH_KEYS = {
+    missing_credential: 'runtime.pi.missingOAuthCredential',
     cancelled: 'runtime.pi.oauth.cancelled',
     browser_unavailable: 'runtime.pi.oauth.browserUnavailable',
     unsupported_provider: 'runtime.pi.oauth.unsupportedProvider',

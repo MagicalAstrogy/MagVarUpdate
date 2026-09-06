@@ -153,8 +153,8 @@ fetch，而原本就通过 SillyTavern 模型状态接口读取 OpenAI 结构目
 ## 配置步骤
 
 1. 在“模型来源”中选择“更多”。
-2. 在“来源”菜单中选择对应渠道。例如 OpenAI 分为 `OpenAI Chat Completion Compatible` 和
-   `OpenAI Responses Compatible`，Anthropic 分为 API 密钥和账号登录。`(Proxy)`
+2. 在“来源”菜单中选择对应渠道。列表前三项依次为 `Anthropic API Key Compatible`、
+   `OpenAI Responses Compatible`、`OpenAI Chat Completion Compatible`。Anthropic账号登录为独立选项。`(Proxy)`
    表示该选项需要 SillyTavern Proxy。
 3. API Key 模式填写现有“密钥”字段；该输入框只投影当前槽位，“自定义”使用独立的 `customApiKey`，Pi API
    Key 则按“Provider + 规范化后的有效 endpoint”分槽保存在
@@ -255,8 +255,10 @@ profile 时也会 fail-closed：保留隔离的
 2. 在 Provider 页面完成授权。浏览器最后访问本机地址时页面无法打开属于预期行为。
 3. 从浏览器地址栏复制完整 callback URL，包括协议、host、端口、路径、`code` 和 `state` 查询参数。
 4. 将完整 URL 粘贴回密码型 callback 输入框，点击“完成登录”。
-5. 登录成功后可查看状态；“重新登录”只会在新 credential 成功保存后替换旧值，“登出”会删除该Provider 的 OAuth
-   credential。
+5. 登录成功后显示“刷新凭证”和“登出”。“刷新凭证”会使用当前 refresh
+   token 主动续期并更新有效期，不打开授权页；“登出”会删除该 Provider 的凭据，需要更换账号或重新授权时可登出后再登录。
+
+手动刷新与请求中的自动刷新共用凭据锁。如果等待期间已被其他请求刷新或替换，会直接使用新凭据，避免重复轮换；刷新失败保留原凭据。操作中切换来源、方案或关闭面板时会取消等待，并防止旧操作结果更新新来源的界面。
 
 不要手工修改 callback 的端口、路径、`code` 或
 `state`，也不要重复使用已经提交过的 callback。实现会校验协议、loopback

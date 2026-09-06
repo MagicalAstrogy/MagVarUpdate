@@ -1,10 +1,12 @@
 import { getPiCredentialStore } from './credential_store';
+import { installPiAbortSignalPolyfills } from './abort_signal';
 import type { CredentialStore, ModelAuth, OAuthAuth, OAuthCredential } from './pi_gateway';
 import { getPiProviderRegistration, type PiOAuthDefinition } from './provider_registry';
 
 const DEFAULT_ATTEMPT_TTL_MS = 10 * 60 * 1000;
 const CLOSED_ATTEMPT_TTL_MS = 10 * 60 * 1000;
 const MAX_CLOSED_ATTEMPTS = 128;
+const REFRESH_TIMEOUT_MS = 15_000;
 const OPENAI_CODEX_PROVIDER_ID = 'openai-codex';
 const ANTHROPIC_PROVIDER_ID = 'anthropic';
 const OPENAI_ACCOUNT_CLAIM = 'https://api.openai.com/auth';
@@ -22,6 +24,7 @@ export type PiOAuthErrorCode =
     | 'token_http'
     | 'token_response'
     | 'account_id'
+    | 'missing_credential'
     | 'credential_store';
 
 export class PiOAuthError extends Error {
@@ -78,6 +81,9 @@ export type PiOAuthOperationOptions = {
     signal?: AbortSignal;
     credentialStore?: CredentialStore;
 };
+
+export type RefreshPiOAuthOptions = PiOAuthOperationOptions &
+    Pick<PiOAuthDependencies, 'fetch' | 'now'>;
 
 export type BrowserOAuthAuthOptions = Pick<PiOAuthDependencies, 'fetch' | 'crypto' | 'now'> & {
     attemptTtlMs?: number;
@@ -719,6 +725,64 @@ export async function getPiOAuthCredentialStatus(
         type: 'oauth',
         expiresAt: credential.expires,
     };
+}
+
+/** Force a refresh from the UI, sharing the same credential lock as Pi's automatic refresh. */
+export async function refreshPiOAuth(
+    providerId: string,
+    options: RefreshPiOAuthOptions = {}
+): Promise<PiOAuthCredentialStatus> {
+    throwIfAborted(options.signal);
+    const auth = getBrowserOAuthAuth(providerId, options);
+    const store = getCredentialStore(options);
+    installPiAbortSignalPolyfills();
+    const signal = AbortSignal.any([
+        ...(options.signal ? [options.signal] : []),
+        AbortSignal.timeout(REFRESH_TIMEOUT_MS),
+    ]);
+    const missingCredential = () =>
+        oauthError('missing_credential', 'Sign in before refreshing OAuth credentials.');
+    try {
+        const observed = await store.read(providerId, { signal });
+        if (observed?.type !== 'oauth') {
+            throw missingCredential();
+        }
+        const refreshed = await store.modify(
+            providerId,
+            async current => {
+                throwIfAborted(signal);
+                if (current?.type !== 'oauth') {
+                    throw missingCredential();
+                }
+                // An automatic refresh or another login may have completed while we queued.
+                // Keep that result instead of reusing or rotating its token a second time.
+                if (
+                    current.access !== observed.access ||
+                    current.refresh !== observed.refresh ||
+                    current.expires !== observed.expires
+                ) {
+                    return undefined;
+                }
+                return auth.refresh(current, signal);
+            },
+            { signal }
+        );
+        if (refreshed?.type !== 'oauth') {
+            throw missingCredential();
+        }
+        return { loggedIn: true, type: 'oauth', expiresAt: refreshed.expires };
+    } catch (error) {
+        if (options.signal?.aborted) {
+            throw cancellationError();
+        }
+        if (signal.aborted) {
+            throw oauthError('browser_network', 'The OAuth credential refresh timed out.');
+        }
+        if (error instanceof PiOAuthError) {
+            throw error;
+        }
+        throw oauthError('credential_store', 'The refreshed OAuth credential could not be saved.');
+    }
 }
 
 function createBrowserOAuthAuth(

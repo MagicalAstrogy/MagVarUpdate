@@ -169,15 +169,20 @@
 
                 <div class="mvu-api-profile-actions">
                     <input
+                        v-if="!oauthStatus.loggedIn"
                         class="menu_button menu_button_icon interactable"
                         type="button"
-                        :value="
-                            oauthStatus.loggedIn
-                                ? t('panel.source.pi.oauth.relogin')
-                                : t('panel.source.pi.oauth.login')
-                        "
-                        :disabled="oauthBusy"
+                        :value="t('panel.source.pi.oauth.login')"
+                        :disabled="oauthBusy || oauthStatusLoading"
                         @click="beginOAuthLogin"
+                    />
+                    <input
+                        v-else
+                        class="menu_button menu_button_icon interactable"
+                        type="button"
+                        :value="t('panel.source.pi.oauth.refresh')"
+                        :disabled="oauthBusy || oauthStatusLoading"
+                        @click="refreshOAuthCredentials"
                     />
                     <input
                         v-if="oauthAttempt"
@@ -191,7 +196,7 @@
                         class="menu_button menu_button_icon interactable"
                         type="button"
                         :value="t('panel.source.pi.oauth.logout')"
-                        :disabled="oauthBusy"
+                        :disabled="oauthBusy || oauthStatusLoading"
                         @click="logoutOAuth"
                     />
                 </div>
@@ -469,6 +474,7 @@ import {
     completePiOAuth,
     getPiOAuthCredentialStatus,
     logoutPiOAuth,
+    refreshPiOAuth,
     PiOAuthError,
     type PiOAuthAttemptView,
     type PiOAuthCredentialStatus,
@@ -687,7 +693,35 @@ function selectModelSource(source: string): void {
 
 initializeApiKeyCache();
 
-const pi_source_choices = listPiProviderDefinitions().flatMap(listPiSourceChoices);
+const pinned_pi_sources = [
+    {
+        provider: 'anthropic',
+        api: 'anthropic-messages',
+        authType: 'api_key',
+        label: 'Anthropic API Key Compatible',
+    },
+    {
+        provider: 'openai',
+        api: 'openai-responses',
+        authType: 'api_key',
+        label: 'OpenAI Responses Compatible',
+    },
+    {
+        provider: 'openai',
+        api: 'openai-completions',
+        authType: 'api_key',
+        label: 'OpenAI Chat Completion Compatible',
+    },
+].map(choice => ({ value: getPiSourceChoiceValue(choice), label: choice.label }));
+const pi_source_choices = _.sortBy(
+    listPiProviderDefinitions().flatMap(listPiSourceChoices),
+    choice => {
+        const index = pinned_pi_sources.findIndex(
+            pinned => pinned.value === getPiSourceChoiceValue(choice)
+        );
+        return index === -1 ? pinned_pi_sources.length : index;
+    }
+);
 const pi_source_choice_value = computed(() =>
     getPiSourceChoiceValue(store.settings.额外模型解析配置.pi)
 );
@@ -984,13 +1018,14 @@ function getPiProviderOptionLabel(choice: PiSourceChoice): string {
         is_selected ? pi.endpoint : '',
         is_selected ? pi.useProxy : false
     );
+    const pinned = pinned_pi_sources.find(
+        pinned => pinned.value === getPiSourceChoiceValue(choice)
+    );
+    if (pinned) {
+        return withPiProxySuffix(pinned.label, uses_proxy);
+    }
     let label = definition.displayName[locale.value === 'zh-CN' ? 'zh-CN' : 'en'];
-    if (definition.key === 'openai') {
-        label =
-            choice.api === 'openai-completions'
-                ? 'OpenAI Chat Completion Compatible'
-                : 'OpenAI Responses Compatible';
-    } else if (definition.allowedApis.length > 1) {
+    if (definition.allowedApis.length > 1) {
         label += ` · ${getPiApiLabel(choice.api)}`;
     }
     if (definition.allowedAuthTypes.length > 1) {
@@ -1438,31 +1473,13 @@ watch(
 
 async function beginOAuthLogin(): Promise<void> {
     const provider = selected_pi_provider.value;
-    if (!show_pi_oauth.value || !provider) {
-        return;
-    }
-    const confirmation_context = captureOAuthUiContext(provider);
-
-    if (oauthStatus.value.loggedIn) {
-        const display_name = provider.displayName[locale.value === 'zh-CN' ? 'zh-CN' : 'en'];
-        const result = await SillyTavern.callGenericPopup(
-            t('panel.source.pi.oauth.reloginConfirm', { provider: display_name }),
-            SillyTavern.POPUP_TYPE.CONFIRM,
-            '',
-            {
-                okButton: t('panel.source.pi.oauth.relogin'),
-                cancelButton: t('common.cancel'),
-            }
-        );
-        if (
-            result !== SillyTavern.POPUP_RESULT.AFFIRMATIVE ||
-            !isOAuthUiContextCurrent(confirmation_context)
-        ) {
-            return;
-        }
-    }
-
-    if (!isOAuthUiContextCurrent(confirmation_context)) {
+    if (
+        !show_pi_oauth.value ||
+        !provider ||
+        oauthStatus.value.loggedIn ||
+        oauthBusy.value ||
+        oauthStatusLoading.value
+    ) {
         return;
     }
 
@@ -1562,9 +1579,57 @@ async function completeOAuthLogin(): Promise<void> {
     }
 }
 
+async function refreshOAuthCredentials(): Promise<void> {
+    const provider = selected_pi_provider.value;
+    if (
+        !show_pi_oauth.value ||
+        !provider ||
+        !oauthStatus.value.loggedIn ||
+        oauthBusy.value ||
+        oauthStatusLoading.value
+    ) {
+        return;
+    }
+
+    cancelOAuthLogin(false);
+    const operation_context = captureOAuthUiContext(provider);
+    const operation_controller = new AbortController();
+    oauthOperationController = operation_controller;
+    oauthBusy.value = true;
+    oauthProgress.value = t('panel.source.pi.oauth.refreshing');
+    try {
+        const status = await refreshPiOAuth(provider.providerId, {
+            signal: operation_controller.signal,
+        });
+        if (isOAuthUiContextCurrent(operation_context)) {
+            oauthStatus.value = status;
+            oauthProgress.value = t('panel.source.pi.oauth.refreshSucceeded');
+        }
+    } catch (error) {
+        if (isOAuthUiContextCurrent(operation_context)) {
+            if (error instanceof PiOAuthError && error.code === 'missing_credential') {
+                oauthStatus.value = { loggedIn: false };
+            }
+            oauthError.value = getOAuthErrorMessage(error);
+            oauthProgress.value = '';
+        }
+    } finally {
+        if (isOAuthUiContextCurrent(operation_context)) {
+            oauthBusy.value = false;
+            oauthOperationController = undefined;
+        }
+    }
+}
+
 async function logoutOAuth(): Promise<void> {
     const provider = selected_pi_provider.value;
-    if (!provider || !oauthStatus.value.loggedIn) {
+    if (
+        !show_pi_oauth.value ||
+        !provider ||
+        !oauthStatus.value.loggedIn ||
+        oauthBusy.value ||
+        oauthStatusLoading.value
+    ) {
         return;
     }
     const confirmation_context = captureOAuthUiContext(provider);

@@ -562,12 +562,12 @@ export const runtimeMessages = defineMessages({
         en: 'Enter an API key for the selected provider under More.',
     },
     'runtime.pi.missingOAuthCredential': {
-        'zh-CN': '“更多”中所选来源尚未完成 OAuth 登录，请先登录或重新登录。',
-        en: 'The selected provider under More is not signed in with OAuth. Sign in or sign in again before retrying.',
+        'zh-CN': '“更多”中所选来源尚未完成 OAuth 登录，请先登录。',
+        en: 'The selected provider under More is not signed in with OAuth. Sign in before retrying.',
     },
     'runtime.pi.oauthCredentialExpired': {
-        'zh-CN': '“更多”的 OAuth 凭据已过期且无法刷新，请重新登录。',
-        en: 'The OAuth credential for More has expired and could not be refreshed. Sign in again.',
+        'zh-CN': '“更多”的 OAuth 凭据已过期且无法刷新，请登出后再登录。',
+        en: 'The OAuth credential for More has expired and could not be refreshed. Sign out, then sign in again.',
     },
     'runtime.pi.invalidEndpoint': {
         'zh-CN':
@@ -770,8 +770,8 @@ export const runtimeMessages = defineMessages({
         en: 'The response from More is not complete; deferred results are not currently supported.',
     },
     'runtime.pi.oauth.cancelled': {
-        'zh-CN': '“更多”的 OAuth 登录已取消，原凭据未更改。',
-        en: 'OAuth sign-in under More was cancelled. The existing credential was not changed.',
+        'zh-CN': '“更多”的 OAuth 操作已取消，原凭据未更改。',
+        en: 'The OAuth operation under More was cancelled. The existing credential was not changed.',
     },
     'runtime.pi.oauth.browserUnavailable': {
         'zh-CN':
