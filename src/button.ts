@@ -3,7 +3,6 @@ import { isExtraModelSupported } from '@/function/is_extra_model_supported';
 import { isFunctionCallingSupported } from '@/function/is_function_calling_supported';
 import { cleanUpMetadata, reconcileAndApplySchema } from '@/function/schema';
 import { onMessageReceived } from '@/function/update/on_message_received';
-import { stopAllExtraModelRequests } from '@/function/update/pi/controller_registry';
 import { isPiMultiproviderEnabled } from '@/function/update/pi/feature_flag';
 import { handleVariablesInMessage, updateVariables } from '@/function/update_variables';
 import { tr, type MessageKey } from '@/i18n';
@@ -534,20 +533,6 @@ export const buttons: Button[] = [
             toastr.info(
                 tr('runtime.button.extraModelParsingCompleted'),
                 tr('runtime.button.extraModelRetryTitle')
-            );
-        },
-    },
-    {
-        name: '停止“更多”额外模型解析',
-        label_key: 'panel.button.stopPiExtraModelParsing',
-        function: () => {
-            const stopped_count = stopAllExtraModelRequests();
-            toastr.info(
-                stopped_count > 0
-                    ? tr('runtime.button.piExtraModelStopped', { count: stopped_count })
-                    : tr('runtime.button.piExtraModelNotRunning'),
-                tr('runtime.button.piExtraModelStopTitle'),
-                { timeOut: 3000 }
             );
         },
     },

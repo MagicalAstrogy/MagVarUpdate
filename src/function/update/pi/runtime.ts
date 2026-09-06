@@ -16,6 +16,8 @@ import {
     type ResolvedPiModel,
 } from './model_resolver';
 import { getBrowserOAuthAuth } from './oauth';
+import { createPiNonStreamingFetch } from './non_streaming_fetch';
+import { isPiStreamingRequired } from './provider_target';
 import { createPiPayloadTransform, transformPiPayload, type PiJsonSchema } from './payload';
 import {
     createModels,
@@ -134,6 +136,7 @@ export interface PiRuntimePreflight {
     readonly credentialStore: CredentialStore;
     readonly fetch?: FetchFunction;
     readonly useCorsProxy: boolean;
+    readonly streaming: boolean;
 }
 
 export type PiRuntimeProgressCallback = (event: AssistantMessageEvent) => void | Promise<void>;
@@ -435,6 +438,8 @@ export async function assertPiRuntimeConfiguration(
     const resolution = resolvePiModelFromExtraModelSettings(settings);
     const responseFormat = resolveResponseFormat(settings, input.responseFormat);
     const capabilities = capabilityFor(resolution);
+    const streaming =
+        settings['兼容假流式'] === true || isPiStreamingRequired(resolution.model.api);
     if (!capabilities.streaming) {
         throw new PiRuntimeError(
             'unsupported_capability',
@@ -516,6 +521,7 @@ export async function assertPiRuntimeConfiguration(
         credentialStore,
         fetch: input.fetch,
         useCorsProxy,
+        streaming,
     });
     validatePayloadConfiguration(preflight);
     return preflight;
@@ -609,7 +615,9 @@ function createStreamOptions(
     return {
         signal,
         apiKey: preflight.resolution.apiKey,
-        fetch: providerFetch,
+        fetch: preflight.streaming
+            ? providerFetch
+            : createPiNonStreamingFetch(preflight.resolution.model.api as PiWireApi, providerFetch),
         headers: preflight.headers === undefined ? undefined : { ...preflight.headers },
         temperature: preflight.capabilities.temperature ? preflight.temperature : undefined,
         maxTokens: preflight.resolution.effectiveMaxTokens,
@@ -811,16 +819,17 @@ export async function runPiRequest(
             authContext: BROWSER_AUTH_CONTEXT,
         });
         models.setProvider(createRuntimeProvider(preflight));
-        if (preflight.useCorsProxy && preflight.resolution.model.api === 'google-generative-ai') {
+        const options = createStreamOptions(preflight, registration.signal);
+        if (
+            preflight.resolution.model.api === 'google-generative-ai' &&
+            options.fetch &&
+            options.fetch !== globalThis.fetch
+        ) {
             // Pi wraps provider setup in lazyStream and would otherwise erase the compatibility
             // error code. Check the instance-only SDK seam before entering that boundary.
             assertGoogleProxyAdapterCompatible();
         }
-        const stream = models.stream(
-            preflight.resolution.model,
-            context,
-            createStreamOptions(preflight, registration.signal)
-        );
+        const stream = models.stream(preflight.resolution.model, context, options);
 
         for await (const event of stream) {
             // Provider error events can contain raw response bodies, request headers, or echoed

@@ -7,6 +7,35 @@ import { klona } from 'klona';
 
 export type ExtraModelApiProfileBackend = 'custom' | 'pi';
 
+export type ExtraModelApiRequestFields = {
+    破限方案: '使用内置破限' | '使用当前预设' | '使用其他预设';
+    其他预设名称: string;
+    随机头部: boolean;
+    应答格式: '聊天消息' | '工具调用' | '格式化输出' | '格式化输出(v4兼容)';
+    关闭thinking: boolean;
+    兼容假流式: boolean;
+};
+
+const API_REQUEST_FIELDS = [
+    '破限方案',
+    '其他预设名称',
+    '随机头部',
+    '应答格式',
+    '关闭thinking',
+    '兼容假流式',
+] as const satisfies readonly (keyof ExtraModelApiRequestFields)[];
+
+function extractApiRequestFields(
+    config: Partial<ExtraModelApiRequestFields>
+): Partial<ExtraModelApiRequestFields> {
+    return Object.fromEntries(
+        API_REQUEST_FIELDS.filter(field => config[field] !== undefined).map(field => [
+            field,
+            config[field],
+        ])
+    );
+}
+
 export type ExtraModelPiConnectionFields = {
     [key: string]: unknown;
     provider: string;
@@ -26,7 +55,7 @@ export type ExtraModelPiSettings = ExtraModelPiConnectionFields & {
     apiKeys?: Record<string, string>;
 };
 
-export type ExtraModelApiProfile = {
+export type ExtraModelApiProfile = Partial<ExtraModelApiRequestFields> & {
     [key: string]: unknown;
     名称: string;
     backend?: ExtraModelApiProfileBackend;
@@ -36,7 +65,7 @@ export type ExtraModelApiProfile = {
     pi?: ExtraModelPiConnectionFields;
 };
 
-export type ExtraModelApiProfileFields = {
+export type ExtraModelApiProfileFields = Partial<ExtraModelApiRequestFields> & {
     模型来源?: '与插头相同' | '自定义' | '更多';
     api地址: string;
     密钥: string;
@@ -258,6 +287,7 @@ export function extractExtraModelApiProfileFields(
         api地址: backend === 'pi' ? '' : config.api地址,
         密钥: backend === 'pi' && !hasValidPiApiKeyTarget(pi_snapshot) ? '' : config.密钥,
         模型名称: backend === 'pi' ? '' : config.模型名称,
+        ...extractApiRequestFields(config),
         ...(backend === 'pi' && pi_snapshot !== undefined ? { pi: pi_snapshot } : {}),
     };
 }
@@ -269,6 +299,7 @@ export function applyExtraModelApiProfile(
     const normalized_profile = normalizeExtraModelApiProfile(profile);
     const result: ExtraModelApiProfileFields = {
         ...config,
+        ...extractApiRequestFields(normalized_profile),
         模型来源: normalized_profile.backend === 'pi' ? '更多' : '自定义',
         密钥: normalized_profile.密钥,
         当前api方案: normalized_profile.名称,
@@ -358,6 +389,16 @@ export function isActiveExtraModelApiProfileDirty(config: ExtraModelApiProfileFi
     const normalized_profile = normalizeExtraModelApiProfile(profile);
     const backend = getExtraModelApiProfileBackend(config);
     if (normalized_profile.backend !== backend || normalized_profile.密钥 !== config.密钥) {
+        return true;
+    }
+
+    if (
+        API_REQUEST_FIELDS.some(
+            field =>
+                normalized_profile[field] !== undefined &&
+                normalized_profile[field] !== config[field]
+        )
+    ) {
         return true;
     }
 
@@ -483,7 +524,15 @@ export async function deleteActiveExtraModelApiProfileWithConfirmation(
 export function migrateExtraModelApiProfiles<T extends ExtraModelApiProfileFields>(config: T): T {
     let migrated = {
         ...config,
-        api方案列表: normalizeExtraModelApiProfileList(config.api方案列表),
+        // Old profiles only stored connection fields. Copy the current request options into
+        // every profile once; saved per-profile values must survive subsequent loads/imports.
+        api方案列表: normalizeExtraModelApiProfileList(
+            config.api方案列表.map(profile => ({
+                ...profile,
+                ...extractApiRequestFields(config),
+                ...extractApiRequestFields(profile),
+            }))
+        ),
         当前api方案: normalizeExtraModelApiProfileName(config.当前api方案),
     } as T;
 

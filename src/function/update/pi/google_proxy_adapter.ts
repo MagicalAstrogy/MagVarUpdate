@@ -631,7 +631,7 @@ function streamSimpleWithInjectedFetch(
 
 /**
  * Use Pi's upstream Google implementation for ordinary browser requests. Only requests carrying
- * a distinct fetch implementation (the SillyTavern proxy transport) use the local bridge.
+ * a distinct fetch implementation (Proxy or non-streaming transport) use the local bridge.
  */
 export function createGoogleProxyAwareApi(upstream: ProviderStreams): ProviderStreams {
     return {

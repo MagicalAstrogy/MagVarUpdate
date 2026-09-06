@@ -13,6 +13,7 @@ import {
     selectExtraModelApiProfile,
     upsertExtraModelApiProfile,
     type ExtraModelApiProfile,
+    type ExtraModelApiRequestFields,
 } from '@/function/update/extra_model_api_profiles';
 import { useDataStore } from '@/store';
 import { reactive } from 'vue';
@@ -58,6 +59,78 @@ describe('extra model api profiles', () => {
 
     afterEach(() => {
         (globalThis as any).SillyTavern.extensionSettings = {};
+    });
+
+    const request_options: ExtraModelApiRequestFields = {
+        破限方案: '使用其他预设',
+        其他预设名称: '变量预设',
+        随机头部: false,
+        应答格式: '格式化输出(v4兼容)',
+        关闭thinking: true,
+        兼容假流式: true,
+    };
+
+    test('migrates current request options into every old profile and preserves them on reload', () => {
+        (globalThis as any).SillyTavern.extensionSettings = {
+            mvu_settings: {
+                额外模型解析配置: {
+                    ...base_config,
+                    ...request_options,
+                    api方案列表: [
+                        { 名称: 'A', api地址: 'https://a.test/v1', 模型名称: 'a', 密钥: '' },
+                        { 名称: 'B', api地址: 'https://b.test/v1', 模型名称: 'b', 密钥: '' },
+                    ],
+                    当前api方案: 'A',
+                },
+            },
+        };
+        const store = useDataStore();
+        expect(store.settings.额外模型解析配置).toMatchObject(request_options);
+        expect(store.settings.额外模型解析配置.api方案列表).toEqual([
+            expect.objectContaining({ 名称: 'A', ...request_options }),
+            expect.objectContaining({ 名称: 'B', ...request_options }),
+        ]);
+
+        const saved = saveCurrentExtraModelApiProfile({
+            ...selectExtraModelApiProfile(store.settings.额外模型解析配置, 'B'),
+            破限方案: '使用内置破限',
+            其他预设名称: '',
+            随机头部: true,
+            应答格式: '聊天消息',
+            关闭thinking: false,
+            兼容假流式: false,
+        });
+        (globalThis as any).SillyTavern.extensionSettings.mvu_settings.额外模型解析配置 = saved;
+        store._reload_settings();
+        const reloaded = store.settings.额外模型解析配置;
+        expect(reloaded.api方案列表[0]).toMatchObject(request_options);
+        expect(reloaded.api方案列表[1]).toMatchObject({
+            破限方案: '使用内置破限',
+            其他预设名称: '',
+            随机头部: true,
+            应答格式: '聊天消息',
+            关闭thinking: false,
+            兼容假流式: false,
+        });
+        expect(selectExtraModelApiProfile(reloaded, 'A')).toMatchObject(request_options);
+    });
+
+    test.each<[keyof ExtraModelApiRequestFields, unknown]>([
+        ['破限方案', '使用当前预设'],
+        ['其他预设名称', '另一个预设'],
+        ['随机头部', true],
+        ['应答格式', '工具调用'],
+        ['关闭thinking', false],
+        ['兼容假流式', false],
+    ])('detects unsaved %s changes and saves them in an independent profile', (field, value) => {
+        const original = saveAsNewExtraModelApiProfile({ ...base_config, ...request_options }, 'A');
+        const changed = { ...original, [field]: value };
+        expect(isActiveExtraModelApiProfileDirty(original)).toBe(false);
+        expect(isActiveExtraModelApiProfileDirty(changed)).toBe(true);
+        const saved = saveAsNewExtraModelApiProfile(changed, 'B');
+        expect(isActiveExtraModelApiProfileDirty(saved)).toBe(false);
+        expect(selectExtraModelApiProfile(saved, 'A')[field]).toBe(request_options[field]);
+        expect(selectExtraModelApiProfile(saved, 'B')[field]).toBe(value);
     });
 
     test('migrates legacy single api fields into a default profile', () => {
@@ -1208,6 +1281,12 @@ describe('extra model api profiles', () => {
                 api地址: 'https://legacy.example/v1',
                 密钥: 'legacy-key',
                 模型名称: 'legacy-model',
+                破限方案: '使用内置破限',
+                其他预设名称: '',
+                随机头部: true,
+                应答格式: '聊天消息',
+                关闭thinking: false,
+                兼容假流式: false,
             },
         ]);
         expect(store.settings.额外模型解析配置.当前api方案).toBe(

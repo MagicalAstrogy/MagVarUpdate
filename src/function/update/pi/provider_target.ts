@@ -46,6 +46,11 @@ export const PI_WIRE_APIS = [
 ] as const;
 export type PiWireApi = (typeof PI_WIRE_APIS)[number];
 
+/** The ChatGPT account endpoint requires stream:true and has no JSON-response mode. */
+export function isPiStreamingRequired(api: string): boolean {
+    return api === 'openai-codex-responses';
+}
+
 export const PI_AUTH_TYPES = ['api_key', 'oauth'] as const;
 export type PiAuthType = (typeof PI_AUTH_TYPES)[number];
 

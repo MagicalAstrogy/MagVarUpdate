@@ -107,8 +107,9 @@ Proxy；同一 Provider 的其他 API 不会因为名称相同而一并代理。
 |  14 | OpenCode Go     | `openai-completions`     |
 |  15 | OpenCode Go     | `openai-responses`       |
 
-二级来源与 API 下拉框会在有效路由的显示文本后附加字面量
-`(Proxy)`；多 API 来源会按当前 API 更新标记。OpenAI/Anthropic API
+“来源”下拉框会在需要代理的选项后附加
+`(Proxy)`。可选的 API 或认证方式直接拆分为来源选项，不再单独显示 API 接口和认证方式字段。OpenAI/Anthropic
+API
 Key 的自定义 endpoint 不套用上述静态矩阵：输入值规范化后不同于默认地址时显示“使用 Proxy”勾选框，并由
 `pi.useProxy` 决定传输；显式填写的默认 operation/base URL 仍按内置路由处理。该选项也会随 Pi
 API 方案保存和恢复。所有补充说明都放在相邻的 `HelpIcon` 中，不用常驻说明文本占用表单空间。
@@ -116,14 +117,15 @@ API 方案保存和恢复。所有补充说明都放在相邻的 `HelpIcon` 中�
 Proxy 必须在 SillyTavern 中通过 `config.yaml` 的 `enableCorsProxy: true` 或启动参数 `--corsProxy`
 开启，并在修改配置后重启。界面会用由 SillyTavern 本地解析、不会访问外部 Provider 的 data URL
 sentinel 检查 `/proxy/:url`
-路由；有效路由需要 Proxy 而探测结果为关闭或不可用时，在对应配置区显示“没有开启Proxy”警告。生成请求和“获取模型列表”都会再次独立检查，并在提交 Provider 请求前强制刷新探测、fail-fast；等待可随当前请求取消，单次探测最多等待 5 秒。实际转发阶段再次发现路由关闭时也会保留
+路由；有效路由需要 Proxy 而探测结果为关闭或不可用时，紧接“来源”下拉框显示醒目的 Proxy 未开启或无法连接警告。生成请求和“获取模型列表”都会再次独立检查，并在提交 Provider 请求前强制刷新探测、fail-fast；等待可随当前请求取消，单次探测最多等待 5 秒。实际转发阶段再次发现路由关闭时也会保留
 `proxy_unavailable` 分类并通过 `toastr` 明确报错，不会静默退回浏览器直连。
 
 Provider 生成请求经 `/proxy/<encoded-target>` 转发，目标被限制在当前配置的 Provider base
 URL 及其子路径，并且只接受可重放的 JSON 请求体。OpenAI
 Codex 经 Proxy 时固定使用 SSE，避免选择 Proxy 无法承载的 WebSocket 传输。OpenCode Zen 的
 `google-generative-ai` 使用项目内的、请求级 Proxy-aware Google
-adapter；不需要 Proxy 的 Google 路径继续使用上游 Pi adapter。
+adapter；非流式 Google 请求也使用该 adapter 的实例级传输入口；无需自定义传输的流式 Google 请求继续使用上游 Pi
+adapter。
 
 模型发现仍按 Provider 的真实目录协议执行。需要 Proxy 的有效 target 会先做同样的可用性检查；直接访问 Anthropic、Google、Mistral 或 Codex 目录的请求会使用受限 Proxy
 fetch，而原本就通过 SillyTavern 模型状态接口读取 OpenAI 结构目录的分支继续使用该接口，不做二次 Proxy 包装。失败不会清空手工填写的模型 ID。
@@ -131,15 +133,24 @@ fetch，而原本就通过 SillyTavern 模型状态接口读取 OpenAI 结构目
 ## 配置步骤
 
 1. 在“模型来源”中选择“更多”。
-2. 在二级“来源”菜单中选择 Provider；API 和认证选项会随来源调整或锁定，`(Proxy)`
-   表示该有效路由需要SillyTavern Proxy。
+2. 在“来源”菜单中选择对应渠道。例如 OpenAI 分为 `OpenAI Chat Completion Compatible` 和
+   `OpenAI Responses Compatible`，Anthropic 分为 API 密钥和账号登录。`(Proxy)`
+   表示该选项需要 SillyTavern Proxy。
 3. API Key 模式填写现有“密钥”字段；该输入框只投影当前槽位，“自定义”使用独立的 `customApiKey`，Pi API
    Key 则按“Provider + 规范化后的有效 endpoint”分槽保存在
    `pi.apiKeys`。自定义 endpoint 可按目标的 CORS 策略勾选“使用 Proxy”；OAuth 模式按下一节完成登录。
 4. 填写模型 ID，也可以从 Pi 内置模型目录选择；“获取模型列表”会按当前来源/API/认证请求上游可见模型。
 5. 设置 `contextWindow` 和现有“最大回复 token 数”。
-6. 如果当前路由标有 `(Proxy)`，先确认 SillyTavern 已启用 Proxy 且界面没有“没有开启Proxy”警告。
-7. 根据所选 API/model 的能力提示选择应答格式和采样参数。
+6. 如果当前路由标有 `(Proxy)`，先确认 SillyTavern 已启用 Proxy 且来源下方没有 Proxy 警告。
+7. 在来源上方选择破限方案、应答格式和“兼容假流式”，并按需调整采样参数。
+8. 在“模型来源”顶部的“API 方案”中保存配置，或选择已有方案。
+
+“更多”默认发送非流式请求，勾选“兼容假流式”后才发送流式请求；两种模式都等完整回复后再更新变量。OpenAI
+Codex 的账号接口要求 `stream: true`，该来源的开关显示为固定开启。
+
+Pi 0.84.4 的 `complete()` 仍通过流式 HTTP 实现，因此普通应答由 `non_streaming_fetch.ts`
+适配：保留 Pi 的鉴权和请求构建，在 HTTP 层发送 `stream: false`（Google 使用
+`generateContent`），再将完整 JSON 应答转换为 Pi 解析器可读取的事件。该转换在收到完整应答后进行，保持工具调用、结束原因和取消信号，并与 Proxy 组合；OAuth 和模型列表请求不受影响。
 
 自定义 body 使用 Provider adapter 的原生 payload。Google SDK 的请求参数位于 `config`
 内，因此 Google 的 include 需要写成 `config: { ... }`，exclude 使用 `config.<field>`；例如
@@ -162,7 +173,11 @@ Codex 使用登录账号的订阅目录。共享目录返回多个生成协议�
 
 ## API 方案与 `ExtraModelApiProfile`
 
-API 方案现在通过 `backend` 区分两类快照：
+API 方案位于“模型来源”栏最上方。破限方案、其他预设名称、随机头部、应答格式、关闭 thinking 和兼容假流式均随方案保存、切换，并参与未保存修改检查。“请求内容”原位置保留迁移提示。
+
+已有方案缺少这些字段时，将用户当前的对应值补入所有方案；已保存的方案专属值不覆盖，重复加载或导入也不会重置。此次来源选项拆分是分支内的新功能，不增加旧 Pi 来源标识迁移。
+
+API 方案通过 `backend` 区分两类快照：
 
 - `backend: 'custom'`：保存原有自定义 API 字段。
 - `backend: 'pi'`：保存结构完整的 Pi 连接快照，包括 provider、API、认证方式、endpoint、`useProxy`、model、
@@ -274,11 +289,10 @@ Provider 目录和上游能力会变化；上表只表示 MVU 已实现请求形
 2. 在本次请求上下文中，将 `CHAT_COMPLETION_SETTINGS_READY`
    监听器注册到末位，复制已有监听器处理后的最终 `messages`。
 3. 在该异步监听器内，将消息转换为 Pi Context，使用同一个 ID 注册 Provider `AbortController`
-   并等待流式请求完成。整个等待期间保持 Slash 的非静默生成状态，酒馆显示停止按钮。
-4. Provider 请求结束后调用 `stopGenerationById(generation_id)`，阻止固定捕获请求发送到酒馆后端。
-   只有 marker 匹配、消息复制和定向 stop 全部成功时，才把随后固定失败的 fetch 视为正常控制流；Provider 错误仍进入失败路径。
-5. 酒馆停止按钮产生的定向停止事件会中止对应 Pi 请求；“停止 Pi 额外模型解析”按钮也会停止当前批次。
-   内部捕获清理不会被当作用户取消。并发策略选出结果后会中止其余请求并等待清理。
+   并等待请求完成。整个等待期间保持 Slash 的非静默生成状态，酒馆显示停止按钮；不再提供单独的“停止‘更多’额外模型解析”按钮。
+4. Provider 请求结束后调用
+   `stopGenerationById(generation_id)`，阻止固定捕获请求发送到酒馆后端。只有 marker 匹配、消息复制和定向 stop 全部成功时，才把随后固定失败的 fetch 视为正常控制流；Provider 错误仍进入失败路径。
+5. 酒馆停止按钮产生的定向停止事件会中止对应 Pi 请求；“停止 Pi 额外模型解析”按钮也会停止当前批次。内部捕获清理不会被当作用户取消。并发策略选出结果后会中止其余请求并等待清理。
 
 后续消息的变量快照会等待前一条回复的变量写入结束，覆盖生成结束到变量保存完成之间的间隙。
 
@@ -351,8 +365,8 @@ chat。仓库不修改 SillyTavern 或 Slash-Runner，也不增加额外的 Slas
   transport 并发时的 prompt/stop 隔离；以及“自定义”和“与插头相同”各一次旧链路回归。两条旧链路使用同一非空确定性更新，并精确比较最终正文、UpdateVariable、`stat_data`、`display_data`
   和
   `delta_data`。最近一次终态为 14 次 capture、14 次 Provider 协议请求、2 次 Legacy 请求和 4 次状态请求，fetch、临时 profile 与进程均完成清理。该 runner 还通过真实
-  `#send_but`/`#mes_stop`
-  路径验证“Pi 等待时隐藏发送按钮 → 酒馆停止按钮取消 Pi → 恢复发送 → 发起并停止下一轮主聊天”的顺序，并检查后续聊天的 prompt。主聊天 pending 后再点额外解析重试因最后楼层为 user 而按产品语义 no-op，并被明确记录。runner 使用浏览器内 mock
+  `#send_but`/`#mes_stop` 路径验证“Pi 等待时隐藏发送按钮 → 酒馆停止按钮取消 Pi
+  → 恢复发送 → 发起并停止下一轮主聊天”的顺序，并检查后续聊天的 prompt。主聊天 pending 后再点额外解析重试因最后楼层为 user 而按产品语义 no-op，并被明确记录。runner 使用浏览器内 mock
   Provider 响应，因此不验证真实 TLS/CORS、账号权限、配额、上游响应或服务端取消。
 - `update:pi:st-prompt-fixtures`
   在隔离真实浏览器中同时捕获 Legacy 与 Pi 的当前预设、其他预设、内置破限三条 prompt 路径，并生成带版本/产物 provenance 的回归 fixtures。三路分别为 12/11/15 条 messages，逐路 JSON 完全一致且没有允许差异或 normalization；覆盖宏、prompt-only 正则、角色卡、世界书过滤与深度、历史裁剪、注入和

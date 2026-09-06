@@ -255,6 +255,8 @@ function configurePi(config: RouteCase): ReturnType<typeof useDataStore> {
     Object.assign(store.settings.额外模型解析配置, {
         模型来源: '更多' as const,
         应答格式: '聊天消息' as const,
+        // This boundary fixture supplies a streaming-only fake adapter.
+        兼容假流式: true,
         请求方式: '依次请求，失败后重试' as const,
         请求次数: 1,
         破限方案: config.route,

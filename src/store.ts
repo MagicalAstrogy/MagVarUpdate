@@ -85,6 +85,16 @@ const ExtraModelPiSettings = z
     .loose()
     .prefault({});
 
+export const EXTRA_MODEL_RESPONSE_FORMATS = [
+    '聊天消息',
+    '工具调用',
+    '格式化输出',
+    '格式化输出(v4兼容)',
+] as const;
+
+const ExtraModelResponseFormat = z.enum(EXTRA_MODEL_RESPONSE_FORMATS);
+const ExtraModelJailbreakStrategy = z.enum(['使用内置破限', '使用当前预设', '使用其他预设']);
+
 const ExtraModelApiProfile = z
     .object({
         名称: z.string().trim().min(1),
@@ -93,6 +103,13 @@ const ExtraModelApiProfile = z
         密钥: z.string().default(''),
         模型名称: z.string().default(''),
         pi: ExtraModelPiProfile.optional(),
+        // Leave missing fields absent so migration can inherit the user's current values.
+        破限方案: ExtraModelJailbreakStrategy.optional().catch(undefined),
+        其他预设名称: z.string().optional().catch(undefined),
+        随机头部: z.boolean().optional().catch(undefined),
+        应答格式: ExtraModelResponseFormat.optional().catch(undefined),
+        关闭thinking: z.boolean().optional().catch(undefined),
+        兼容假流式: z.boolean().optional().catch(undefined),
     })
     .loose()
     .transform(({ customApiKey: _customApiKey, ...profile }) => profile);
@@ -105,15 +122,6 @@ const ExtraModelApiProfileList = z
             (profile): profile is z.infer<typeof ExtraModelApiProfile> => profile !== null
         )
     );
-
-export const EXTRA_MODEL_RESPONSE_FORMATS = [
-    '聊天消息',
-    '工具调用',
-    '格式化输出',
-    '格式化输出(v4兼容)',
-] as const;
-
-const ExtraModelResponseFormat = z.enum(EXTRA_MODEL_RESPONSE_FORMATS);
 
 const OldSettings = z
     .object({
@@ -218,9 +226,7 @@ const NewSettings = z
         更新方式: z.enum(['随AI输出', '额外模型解析']).default('随AI输出'),
         额外模型解析配置: z
             .object({
-                破限方案: z
-                    .enum(['使用内置破限', '使用当前预设', '使用其他预设'])
-                    .default('使用内置破限'),
+                破限方案: ExtraModelJailbreakStrategy.default('使用内置破限'),
                 其他预设名称: z.string().default(''),
                 使用函数调用: z.boolean().optional(),
                 应答格式: ExtraModelResponseFormat.optional(),
@@ -327,10 +333,9 @@ const NewSettings = z
     })
     .loose()
     .transform(data => {
-        if (data.internal.已开启默认不兼容假流式 === false) {
-            data.额外模型解析配置.兼容假流式 = false;
-            data.internal.已开启默认不兼容假流式 = true;
-        }
+        // The schema supplies false for new installs. Preserve explicitly saved values during
+        // profile migration instead of resetting both the current mode and its inherited value.
+        data.internal.已开启默认不兼容假流式 = true;
         return data;
     })
     .prefault({});

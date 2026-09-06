@@ -9,7 +9,6 @@ import {
     resolvePiCapabilities,
     type PiApiCapabilities,
     type PiAuthType,
-    type PiFieldMode,
     type PiProviderDefinition,
     type PiWireApi,
 } from '@/function/update/pi/provider_registry';
@@ -23,6 +22,29 @@ export type PiSourceSelection = {
     api: PiWireApi;
     authType: PiAuthType;
 };
+
+export type PiSourceChoice = PiSourceSelection & {
+    provider: string;
+};
+
+/** UI-only identity: persisted provider/API/auth fields retain their existing wire values. */
+export function getPiSourceChoiceValue(choice: {
+    provider: string;
+    api: string;
+    authType: string;
+}): string {
+    return JSON.stringify([choice.provider, choice.api, choice.authType]);
+}
+
+/** Flatten only supported combinations, keeping account login tied to its required API. */
+export function listPiSourceChoices(definition: PiProviderDefinition): PiSourceChoice[] {
+    return definition.allowedAuthTypes.flatMap(authType => {
+        const apis = authType === 'oauth' ? [definition.oauth?.api] : definition.allowedApis;
+        return apis
+            .filter((api): api is PiWireApi => !!api && definition.allowedApis.includes(api))
+            .map(api => ({ provider: definition.key, api, authType }));
+    });
+}
 
 export type PiOAuthUiContext = Readonly<{
     generation: number;
@@ -144,37 +166,6 @@ export function isPiOAuthUiContextCurrent(
         current.providerId === captured.providerId &&
         current.profileName === captured.profileName
     );
-}
-
-/**
- * Keep an unsupported persisted value visible until the user explicitly replaces it.
- * This lets the form report migration/configuration errors without silently changing settings.
- */
-export function includePersistedPiOption<T extends string>(
-    allowed_values: readonly T[],
-    persisted_value: string
-): readonly string[] {
-    return persisted_value !== '' && !allowed_values.includes(persisted_value as T)
-        ? [persisted_value, ...allowed_values]
-        : allowed_values;
-}
-
-/**
- * A normally locked field becomes editable when its persisted value is invalid, so choosing an
- * allowed value is an explicit repair action. With no registered choices it remains locked.
- */
-export function isPiSourceFieldReadonly(
-    mode: PiFieldMode | undefined,
-    allowed_values: readonly string[],
-    persisted_value: string
-): boolean {
-    if (allowed_values.length === 0) {
-        return true;
-    }
-    if (!allowed_values.includes(persisted_value)) {
-        return false;
-    }
-    return mode !== 'select' || allowed_values.length <= 1;
 }
 
 export function resolvePiSourceSelection(

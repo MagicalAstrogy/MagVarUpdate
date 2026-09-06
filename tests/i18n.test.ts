@@ -81,13 +81,13 @@ describe('MVU localization', () => {
         );
     });
 
-    test('keeps the Pi API field label separate from its nested option translations', () => {
+    test('translates provider labels and protocols used in combined source choices', () => {
         locale_ref.value = 'zh-CN';
-        expect(tr('panel.source.pi.apiLabel')).toBe('API 接口');
+        expect(tr('panel.source.pi.provider')).toBe('来源');
         expect(tr('panel.source.pi.api.anthropicMessages')).toBe('Anthropic Messages');
 
         locale_ref.value = 'en';
-        expect(tr('panel.source.pi.apiLabel')).toBe('API protocol');
+        expect(tr('panel.source.pi.provider')).toBe('Provider');
         expect(tr('panel.source.pi.api.openaiResponses')).toBe('OpenAI Responses');
     });
 

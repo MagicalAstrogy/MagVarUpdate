@@ -632,6 +632,34 @@ describe('pi runtime execution', () => {
 
     afterEach(() => clearPiRequestControllers());
 
+    test.each([undefined, false, true])(
+        'uses pseudo-streaming=%s to choose the request transport and freezes it across retries',
+        async enabled => {
+            const fetch = jest.fn();
+            const settings = makeSettings({ 兼容假流式: enabled });
+            const preflight = await assertPiRuntimeConfiguration({
+                settings,
+                credentialStore: makeCredentialStore(),
+                fetch,
+            });
+            expect(preflight.streaming).toBe(enabled === true);
+            settings.兼容假流式 = enabled !== true;
+            stream.mockReturnValue(fakeStream(assistant([{ type: 'text', text: 'done' }])));
+            await runPiRequest({
+                preflight,
+                messages: [{ role: 'user', content: 'update' }],
+                generationId: `runtime-stream-mode-${enabled}`,
+            });
+            const transport = stream.mock.calls[0][2].fetch;
+            if (enabled) {
+                expect(transport).toBe(fetch);
+            } else {
+                expect(transport).toEqual(expect.any(Function));
+                expect(transport).not.toBe(fetch);
+            }
+        }
+    );
+
     test('fails before provider dispatch when a required SillyTavern proxy is disabled', async () => {
         const proxyFetch = jest.fn(async () =>
             makeTextResponse(
@@ -709,6 +737,7 @@ describe('pi runtime execution', () => {
         }));
         const preflight = await assertPiRuntimeConfiguration({
             settings: makeSettings({
+                兼容假流式: true,
                 pi: {
                     provider: 'opencode',
                     api: 'openai-responses',
@@ -1055,6 +1084,7 @@ describe('pi runtime execution', () => {
 
         const options = stream.mock.calls[0][2];
         expect(preflight.useCorsProxy).toBe(true);
+        expect(preflight.streaming).toBe(true);
         expect(options.transport).toBe('sse');
         expect(options.fetch).toEqual(expect.any(Function));
         const target = 'https://chatgpt.com/backend-api/codex/responses?stream=true';

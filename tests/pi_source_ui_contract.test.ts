@@ -120,7 +120,7 @@ describe('Pi Source UI contract', () => {
         expect(source).toContain('v-model="store.settings.额外模型解析配置.pi.useProxy"');
         expect(source).toContain('return use_proxy ? `${label} (Proxy)` : label;');
         expect(source).toContain('shouldUsePiCorsProxy(');
-        expect(source).toContain('definition.defaultApi');
+        expect(source).toContain('listPiSourceChoices');
         expect(source).toContain('useProxy: pi.useProxy');
         expect(source).toContain('store.settings.额外模型解析配置.pi.useProxy,');
     });
@@ -135,12 +135,6 @@ describe('Pi Source UI contract', () => {
         expect(source).toContain(
             "(error as Error & { code?: unknown }).code === 'proxy_unavailable'"
         );
-    });
-
-    test('uses a Pi API field label key that cannot collide with nested API option keys', () => {
-        expect(source).toContain("t('panel.source.pi.apiLabel')");
-        expect(source).not.toContain("t('panel.source.pi.api')");
-        expect(source).toContain("t('panel.source.pi.api.mistralConversations')");
     });
 
     test('captures and revalidates OAuth UI context around confirmation awaits', () => {

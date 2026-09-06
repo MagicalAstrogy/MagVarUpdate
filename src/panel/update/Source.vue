@@ -1,15 +1,5 @@
 <template>
     <Detail :title="t('panel.source.section')">
-        <Select
-            :model-value="store.settings.额外模型解析配置.模型来源"
-            :options="model_source_options"
-            @update:model-value="selectModelSource"
-        />
-
-        <div v-if="pi_feature_disabled" class="mvu-field-error">
-            {{ t('panel.source.pi.featureDisabled') }}
-        </div>
-
         <Detail v-if="is_profile_source" :title="t('panel.source.profile.section')">
             <Field :label="t('panel.source.profile.current')">
                 <div class="mvu-api-profile-controls">
@@ -60,6 +50,18 @@
             </div>
         </Detail>
 
+        <ApiOptions />
+
+        <Select
+            :model-value="store.settings.额外模型解析配置.模型来源"
+            :options="model_source_options"
+            @update:model-value="selectModelSource"
+        />
+
+        <div v-if="pi_feature_disabled" class="mvu-field-error">
+            {{ t('panel.source.pi.featureDisabled') }}
+        </div>
+
         <template v-if="is_custom_source">
             <div class="mvu-field-grid">
                 <Field :label="t('panel.source.apiAddress')">
@@ -94,41 +96,19 @@
             <div class="mvu-field-grid">
                 <Field :label="t('panel.source.pi.provider')">
                     <Select
-                        :model-value="store.settings.额外模型解析配置.pi.provider"
+                        :model-value="pi_source_choice_value"
                         :options="pi_provider_options"
                         @update:model-value="selectPiProvider"
                     />
                 </Field>
 
-                <Field :label="t('panel.source.pi.apiLabel')">
-                    <select
-                        :value="store.settings.额外模型解析配置.pi.api"
-                        class="text_pole"
-                        :disabled="pi_api_readonly"
-                        @change="selectPiApi"
-                    >
-                        <option v-for="api in pi_api_display_options" :key="api" :value="api">
-                            {{ getPiApiLabel(api) }}
-                        </option>
-                    </select>
-                </Field>
-
-                <Field :label="t('panel.source.pi.authType')">
-                    <select
-                        :value="store.settings.额外模型解析配置.pi.authType"
-                        class="text_pole"
-                        :disabled="pi_auth_readonly"
-                        @change="selectPiAuth"
-                    >
-                        <option
-                            v-for="auth_type in pi_auth_display_options"
-                            :key="auth_type"
-                            :value="auth_type"
-                        >
-                            {{ getPiAuthLabel(auth_type) }}
-                        </option>
-                    </select>
-                </Field>
+                <div v-if="show_pi_proxy_warning" class="mvu-warning">
+                    <span class="mvu-warning__icon">⚠️</span>
+                    <span class="mvu-warning__text">
+                        {{ t('panel.source.pi.proxy.notEnabled') }}
+                        <HelpIcon :help="t('panel.source.pi.proxy.notEnabledHelp')" />
+                    </span>
+                </div>
 
                 <Field v-if="show_pi_endpoint" :label="t('panel.source.pi.endpoint')">
                     <template #label-suffix>
@@ -177,14 +157,6 @@
 
             <div v-if="pi_configuration_error" class="mvu-field-error">
                 {{ pi_configuration_error }}
-            </div>
-
-            <div v-if="show_pi_proxy_warning" class="mvu-warning">
-                <span class="mvu-warning__icon">⚠️</span>
-                <span class="mvu-warning__text">
-                    {{ t('panel.source.pi.proxy.notEnabled') }}
-                    <HelpIcon :help="t('panel.source.pi.proxy.notEnabledHelp')" />
-                </span>
             </div>
 
             <Detail v-if="show_pi_oauth" :title="t('panel.source.pi.oauth.section')">
@@ -537,9 +509,9 @@ import RangeNumber from '@/panel/component/RangeNumber.vue';
 import Select from '@/panel/component/Select.vue';
 import {
     findPiCatalogModel,
-    includePersistedPiOption,
+    getPiSourceChoiceValue,
+    listPiSourceChoices,
     isPiOAuthUiContextCurrent,
-    isPiSourceFieldReadonly,
     parsePiContextWindowInput,
     resolvePiApiKeyScope,
     resolvePiContextWindow,
@@ -551,8 +523,10 @@ import {
     transitionPiApiKey,
     transitionPiRequestOverrides,
     type PiOAuthUiContext,
+    type PiSourceChoice,
     validatePiTokenSettings,
 } from '@/panel/update/pi_source_form';
+import ApiOptions from '@/panel/update/ApiOptions.vue';
 import { useDataStore } from '@/store';
 import { compare } from 'compare-versions';
 import { computed, onBeforeUnmount, ref, watch } from 'vue';
@@ -713,53 +687,18 @@ function selectModelSource(source: string): void {
 
 initializeApiKeyCache();
 
-const pi_provider_definitions = listPiProviderDefinitions();
-const pi_provider_options = computed(() => {
-    const options = pi_provider_definitions.map(definition => ({
-        value: definition.key,
-        label: getPiProviderOptionLabel(definition),
-    }));
-    const persisted_provider = store.settings.额外模型解析配置.pi.provider;
-    return getPiProviderDefinition(persisted_provider)
-        ? options
-        : [
-              {
-                  value: persisted_provider,
-                  label: t('panel.source.pi.unknownProviderOption', {
-                      provider: persisted_provider,
-                  }),
-              },
-              ...options,
-          ];
-});
+const pi_source_choices = listPiProviderDefinitions().flatMap(listPiSourceChoices);
+const pi_source_choice_value = computed(() =>
+    getPiSourceChoiceValue(store.settings.额外模型解析配置.pi)
+);
+const pi_provider_options = computed(() =>
+    pi_source_choices.map(choice => ({
+        value: getPiSourceChoiceValue(choice),
+        label: getPiProviderOptionLabel(choice),
+    }))
+);
 const selected_pi_provider = computed<PiProviderDefinition | undefined>(() =>
     getPiProviderDefinition(store.settings.额外模型解析配置.pi.provider)
-);
-const pi_api_options = computed(
-    () => selected_pi_provider.value?.allowedApis ?? ([] as readonly PiWireApi[])
-);
-const pi_auth_options = computed(
-    () => selected_pi_provider.value?.allowedAuthTypes ?? ([] as readonly PiAuthType[])
-);
-const pi_api_display_options = computed(() =>
-    includePersistedPiOption(pi_api_options.value, store.settings.额外模型解析配置.pi.api)
-);
-const pi_auth_display_options = computed(() =>
-    includePersistedPiOption(pi_auth_options.value, store.settings.额外模型解析配置.pi.authType)
-);
-const pi_api_readonly = computed(() =>
-    isPiSourceFieldReadonly(
-        selected_pi_provider.value?.fields.api,
-        pi_api_options.value,
-        store.settings.额外模型解析配置.pi.api
-    )
-);
-const pi_auth_readonly = computed(() =>
-    isPiSourceFieldReadonly(
-        selected_pi_provider.value?.fields.authType,
-        pi_auth_options.value,
-        store.settings.额外模型解析配置.pi.authType
-    )
 );
 const show_pi_endpoint = computed(
     () =>
@@ -846,7 +785,9 @@ const pi_context_window_help = computed(() => {
             value: effective_context_window.value,
         });
     }
-    return uses_manual_context_window.value ? t('panel.source.pi.contextWindowOverride') : '';
+    return uses_manual_context_window.value
+        ? t('panel.source.pi.contextWindowOverride')
+        : t('panel.source.pi.contextWindowHelp');
 });
 const pi_token_errors = computed(() =>
     is_pi_source.value
@@ -912,39 +853,15 @@ function applyPiSourceSelection(definition: PiProviderDefinition, api: string, a
     pi.endpoint = resolvePiEndpointSelection(definition, resolved.authType, pi.endpoint);
 }
 
-function selectPiProvider(provider_key: string): void {
-    const definition = getPiProviderDefinition(provider_key);
-    if (!definition) {
+function selectPiProvider(value: string): void {
+    const choice = pi_source_choices.find(choice => getPiSourceChoiceValue(choice) === value);
+    const definition = choice && getPiProviderDefinition(choice.provider);
+    if (!choice || !definition) {
         return;
     }
     applyPiConnectionTransition(() => {
-        applyPiSourceSelection(definition, definition.defaultApi, definition.defaultAuthType);
+        applyPiSourceSelection(definition, choice.api, choice.authType);
     });
-}
-
-function selectPiSourceField(field: 'api' | 'authType', event: Event): void {
-    const definition = selected_pi_provider.value;
-    const input = event.target as HTMLSelectElement | null;
-    if (!definition || !input) {
-        return;
-    }
-    applyPiConnectionTransition(() => {
-        const pi = store.settings.额外模型解析配置.pi;
-        if (field === 'api') {
-            pi.api = input.value;
-        } else {
-            pi.authType = input.value as PiAuthType;
-        }
-        applyPiSourceSelection(definition, pi.api, pi.authType);
-    });
-}
-
-function selectPiApi(event: Event): void {
-    selectPiSourceField('api', event);
-}
-
-function selectPiAuth(event: Event): void {
-    selectPiSourceField('authType', event);
 }
 
 function selectPiEndpoint(event: Event): void {
@@ -1057,20 +974,32 @@ function withPiProxySuffix(label: string, use_proxy: boolean): string {
     return use_proxy ? `${label} (Proxy)` : label;
 }
 
-function getPiProviderOptionLabel(definition: PiProviderDefinition): string {
+function getPiProviderOptionLabel(choice: PiSourceChoice): string {
+    const definition = getPiProviderDefinition(choice.provider)!;
     const pi = store.settings.额外模型解析配置.pi;
-    const is_selected = definition.key === pi.provider;
-    const api =
-        is_selected && definition.allowedApis.includes(pi.api as PiWireApi)
-            ? (pi.api as PiWireApi)
-            : definition.defaultApi;
+    const is_selected = getPiSourceChoiceValue(choice) === pi_source_choice_value.value;
     const uses_proxy = shouldUsePiCorsProxy(
         definition,
-        api,
+        choice.api,
         is_selected ? pi.endpoint : '',
         is_selected ? pi.useProxy : false
     );
-    const label = definition.displayName[locale.value === 'zh-CN' ? 'zh-CN' : 'en'];
+    let label = definition.displayName[locale.value === 'zh-CN' ? 'zh-CN' : 'en'];
+    if (definition.key === 'openai') {
+        label =
+            choice.api === 'openai-completions'
+                ? 'OpenAI Chat Completion Compatible'
+                : 'OpenAI Responses Compatible';
+    } else if (definition.allowedApis.length > 1) {
+        label += ` · ${getPiApiLabel(choice.api)}`;
+    }
+    if (definition.allowedAuthTypes.length > 1) {
+        label += ` · ${
+            choice.authType === 'oauth'
+                ? t('panel.source.pi.auth.accountLogin')
+                : t('panel.source.pi.auth.apiKey')
+        }`;
+    }
     return withPiProxySuffix(label, uses_proxy);
 }
 
@@ -1099,22 +1028,7 @@ function getPiApiLabel(api: string): string {
             label = api;
             break;
     }
-    const pi = store.settings.额外模型解析配置.pi;
-    return withPiProxySuffix(
-        label,
-        shouldUsePiCorsProxy(selected_pi_provider.value, api, pi.endpoint, pi.useProxy)
-    );
-}
-
-function getPiAuthLabel(auth_type: string): string {
-    switch (auth_type) {
-        case 'api_key':
-            return t('panel.source.pi.auth.apiKey');
-        case 'oauth':
-            return t('panel.source.pi.auth.oauth');
-        default:
-            return auth_type;
-    }
+    return label;
 }
 
 function getPiModelLabel(model: Model<Api>): string {

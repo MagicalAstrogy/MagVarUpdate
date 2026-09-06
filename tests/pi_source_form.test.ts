@@ -55,10 +55,10 @@ jest.mock('@/function/update/pi/pi_gateway', () => {
 
 import {
     findPiCatalogModel,
-    includePersistedPiOption,
+    getPiSourceChoiceValue,
+    listPiSourceChoices,
     isPiEndpointCatalogCompatible,
     isPiOAuthUiContextCurrent,
-    isPiSourceFieldReadonly,
     parsePiContextWindowInput,
     resolvePiContextWindow,
     resolvePiSourceContextWindow,
@@ -371,24 +371,23 @@ describe('Pi source form helpers', () => {
         expect(isPiOAuthUiContextCurrent(captured, { ...current, mounted: false })).toBe(false);
     });
 
-    test('keeps unsupported persisted IDs visible without normalizing them', () => {
-        const allowed = ['openai-responses', 'openai-completions'] as const;
-
-        expect(includePersistedPiOption(allowed, 'future-openai-api')).toEqual([
-            'future-openai-api',
-            ...allowed,
+    test('offers distinct source choices for OpenAI protocols and Anthropic login methods', () => {
+        const openai = listPiSourceChoices(getPiProviderDefinition('openai')!);
+        expect(openai).toEqual([
+            { provider: 'openai', api: 'openai-responses', authType: 'api_key' },
+            { provider: 'openai', api: 'openai-completions', authType: 'api_key' },
         ]);
-        expect(includePersistedPiOption(allowed, 'openai-responses')).toBe(allowed);
-        expect(includePersistedPiOption(allowed, '')).toBe(allowed);
-    });
-
-    test('unlocks a fixed field only to let the user explicitly repair an invalid value', () => {
-        const allowed = ['anthropic-messages'] as const;
-
-        expect(isPiSourceFieldReadonly('readonly', allowed, 'anthropic-messages')).toBe(true);
-        expect(isPiSourceFieldReadonly('readonly', allowed, 'future-anthropic-api')).toBe(false);
-        expect(isPiSourceFieldReadonly('select', ['api_key', 'oauth'], 'api_key')).toBe(false);
-        expect(isPiSourceFieldReadonly(undefined, [], 'unknown')).toBe(true);
+        expect(new Set(openai.map(getPiSourceChoiceValue)).size).toBe(2);
+        expect(listPiSourceChoices(getPiProviderDefinition('anthropic')!)).toEqual([
+            { provider: 'anthropic', api: 'anthropic-messages', authType: 'api_key' },
+            { provider: 'anthropic', api: 'anthropic-messages', authType: 'oauth' },
+        ]);
+        expect(listPiSourceChoices(getPiProviderDefinition('openai-codex')!)).toEqual([
+            { provider: 'openai-codex', api: 'openai-codex-responses', authType: 'oauth' },
+        ]);
+        expect(listPiSourceChoices(getPiProviderDefinition('google')!)).toEqual([
+            { provider: 'google', api: 'google-generative-ai', authType: 'api_key' },
+        ]);
     });
 
     test('keeps valid configurable API and auth selections', () => {

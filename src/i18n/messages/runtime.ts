@@ -150,18 +150,6 @@ export const runtimeMessages = defineMessages({
         'zh-CN': '解析完成',
         en: 'Parsing completed',
     },
-    'runtime.button.piExtraModelStopTitle': {
-        'zh-CN': '[MVU]停止“更多”额外模型解析',
-        en: '[MVU] Stop extra-model parsing from More',
-    },
-    'runtime.button.piExtraModelStopped': {
-        'zh-CN': '已停止 {count} 个“更多”额外模型请求',
-        en: 'Stopped {count} extra-model request(s) from More',
-    },
-    'runtime.button.piExtraModelNotRunning': {
-        'zh-CN': '当前没有正在运行的“更多”额外模型请求',
-        en: 'No extra-model request from More is currently running',
-    },
     'runtime.button.cleanupPrompt': {
         'zh-CN':
             '<h4>清除旧楼层变量信息以减小聊天文件大小，避免手机崩溃</h4>请填写要保留变量信息的楼层数（如 10 为保留最后 10 层，每 [{interval}] 层保留一层作为快照）<br><strong>注意：你需要通过重演才能回退游玩到未保留变量信息的楼层</strong>',

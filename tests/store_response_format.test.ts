@@ -13,6 +13,7 @@ describe('extra model response format settings', () => {
         const store = useDataStore();
 
         expect(store.settings.额外模型解析配置.应答格式).toBe('聊天消息');
+        expect(store.settings.额外模型解析配置.兼容假流式).toBe(false);
     });
 
     test('migrates legacy function calling flag to tool calling response format', () => {
