@@ -1,3 +1,7 @@
+/**
+ * 测试场景：读取本地测试凭证，构建隔离的 Node 测试入口并运行真实 OpenRouter 多协议冒烟测试。
+ * 输出经过凭证替换后再展示，临时编译目录在结束时删除。
+ */
 import childProcess from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -17,11 +21,13 @@ if (!apiKey || credentials.some(credential => credential !== apiKey)) {
 }
 
 const temporaryRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'mvu-pi-live-'));
+/** 输出处理：隐藏测试凭证后再返回进程输出，避免联调日志带出秘密。 */
 const redact = value =>
     value
         .replaceAll(apiKey, '<credential-redacted>')
         .replace(/sk-[A-Za-z0-9_-]{12,}/g, '<credential-redacted>');
 
+/** 构建准备：将真实 OpenRouter 测试入口编译到临时目录，供独立 Node 进程执行。 */
 function compileHarness() {
     return new Promise((resolve, reject) => {
         const compiler = webpack({

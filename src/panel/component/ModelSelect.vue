@@ -57,6 +57,7 @@ const fetched_models = ref<string[]>([]);
 let request_generation = 0;
 let request_controller: AbortController | undefined;
 
+/** 清理并去重目录模型选项，名称为空时使用模型标识作为标签。 */
 function normalizedCatalogModels(): ModelSelectOption[] {
     const seen = new Set<string>();
     return props.catalogModels.flatMap(option => {
@@ -94,6 +95,7 @@ const selected = computed({
     },
 });
 
+/** 取消当前模型发现并递增请求代次，使迟到的响应无法更新当前列表。 */
 function cancelActiveRequest(): void {
     request_generation += 1;
     request_controller?.abort();
@@ -101,11 +103,13 @@ function cancelActiveRequest(): void {
     loading.value = false;
 }
 
+/** 连接目标变化时取消发现请求并清空远程结果，保留传入的固定目录选项。 */
 function resetFetchedModels(): void {
     cancelActiveRequest();
     fetched_models.value = [];
 }
 
+/** 请求活动连接的模型列表，只有当前代次且未取消的响应才能写入列表和界面状态。 */
 async function refresh(): Promise<void> {
     if (loading.value || props.disabled) {
         return;

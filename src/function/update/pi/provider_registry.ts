@@ -382,6 +382,7 @@ const MULTI_API_KEY_FIELDS: Readonly<PiProviderFieldVisibility> = Object.freeze(
     api: 'select',
 });
 
+/** 从轻量目标定义构造固定 API Key 服务商，补充展示信息、目录和协议能力。 */
 function fixedApiKeyProvider(
     key: PiProviderKey,
     name: string,
@@ -493,10 +494,12 @@ export const PI_PROVIDER_REGISTRY: Readonly<Record<PiProviderKey, PiProviderDefi
         ),
     } satisfies Record<PiProviderKey, PiProviderDefinition>);
 
+/** 按注册顺序返回支持的服务商定义，供来源界面生成选项。 */
 export function listPiProviderDefinitions(): readonly PiProviderDefinition[] {
     return PI_PROVIDER_KEYS.map(key => PI_PROVIDER_REGISTRY[key]);
 }
 
+/** 按注册键读取服务商定义，拒绝命中对象原型上的同名属性。 */
 export function getPiProviderDefinition(key: string): PiProviderDefinition | undefined {
     return Object.prototype.hasOwnProperty.call(PI_PROVIDER_REGISTRY, key)
         ? PI_PROVIDER_REGISTRY[key as PiProviderKey]
@@ -506,6 +509,7 @@ export function getPiProviderDefinition(key: string): PiProviderDefinition | und
 /** Compatibility spelling used by the OAuth/UI integration. */
 export const getPiProviderRegistration = getPiProviderDefinition;
 
+/** 取得服务商的固定模型目录，未知服务商返回空列表。 */
 export function getPiCatalogModels(key: PiProviderKey | string): readonly Model<Api>[] {
     const definition = getPiProviderDefinition(key);
     if (!definition) {
@@ -517,6 +521,7 @@ export function getPiCatalogModels(key: PiProviderKey | string): readonly Model<
         : models;
 }
 
+/** 综合模型元数据和已知模型限制判断是否可发送 temperature。 */
 function modelSupportsTemperature(model: Model<Api> | undefined): boolean {
     const compat = model?.compat;
     return (
@@ -584,7 +589,7 @@ const GOOGLE_NO_SAMPLING_MODEL_IDS: ReadonlySet<string> = new Set([
     'gemini-3.7-flash',
 ]);
 
-/** Whether pinned catalog metadata is valid for the selected provider wire API. */
+/** 验证固定目录模型是否适用于当前服务商协议，避免借用另一协议的能力元数据。 */
 export function isPiCatalogModelApiCompatible(
     definition: PiProviderDefinition,
     model: Model<Api>,
@@ -602,10 +607,8 @@ export function isPiCatalogModelApiCompatible(
 }
 
 /**
- * Re-resolve and verify catalog metadata instead of trusting the caller's `catalogHit` bit.
- * Verified metadata is used for model-sensitive media, streaming, and sampling controls. Tools
- * and response formats intentionally remain wire-API capabilities: the real endpoint response is
- * authoritative when a particular model or compatible endpoint does not implement one of them.
+ * 重新查找并校验目录项，不直接信任调用方的 catalogHit 标记。
+ * 只有确认匹配的元数据才能影响图片、流式和采样能力。
  */
 function verifiedCatalogModel(
     definition: PiProviderDefinition,
@@ -635,6 +638,7 @@ function verifiedCatalogModel(
     return catalogModel;
 }
 
+/** 将服务商协议能力与可信目录模型限制合并，给出当前请求可用的能力。 */
 export function resolvePiCapabilities(
     definition: PiProviderDefinition,
     api: PiWireApi,
@@ -686,7 +690,7 @@ export function resolvePiCapabilities(
     });
 }
 
-/** Create only the lazy wire implementations explicitly allowed by this source. */
+/** 仅创建当前来源明确允许的协议懒加载适配器，避免引入无关服务商实现。 */
 export function createPiApiImplementations(
     definitionOrKey: PiProviderDefinition | PiProviderKey | string
 ): Partial<Record<PiWireApi, ProviderStreams>> {

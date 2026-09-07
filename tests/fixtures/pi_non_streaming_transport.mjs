@@ -1,3 +1,7 @@
+/**
+ * 测试场景：为非流式传输测试启动原生 Node ESM 场景，动态编译生产 TypeScript 并使用真实 Pi 适配器解析响应。
+ * 所有模型 HTTP 响应都由本地模拟提供，覆盖协议转换、代理组合、失败和取消。
+ */
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
@@ -7,7 +11,7 @@ import { ModuleKind, ScriptTarget, transpileModule } from 'typescript';
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const module_urls = new Map();
 
-// Compile the production TS modules without bundling or substituting any provider adapter.
+/** 模块准备：编译生产 TypeScript 并递归解析导入为 ESM 地址，复用真实服务商适配器。 */
 function moduleUrl(filename) {
     if (module_urls.has(filename)) return module_urls.get(filename);
     const { outputText } = transpileModule(readFileSync(filename, 'utf8'), {
@@ -185,6 +189,7 @@ try {
             .result();
     }
 
+    // 协议矩阵：真实适配器各发送一次非流式请求，并还原文本、思考、工具参数及用量。
     for (const [api, fixture] of Object.entries(fixtures)) {
         current_case = `${api}: actual wire request and parsed text/tools`;
         let sent = 0;
@@ -234,6 +239,7 @@ try {
         assert.equal(sent, 1);
     }
 
+    // 代理组合：非流式改写与酒馆代理共同工作，认证头和 JSON 请求体仍被保留。
     current_case = 'proxy composition uses non-streaming HTTP and retains auth';
     let proxy_requests = 0;
     const proxy_fetch = createSillyTavernProxyFetch({
@@ -262,6 +268,7 @@ try {
     );
     assert.equal(proxy_requests, 1);
 
+    // 失败终态：截断、异常结构和 HTTP 拒绝不能转换为成功结果。
     current_case = 'provider errors and incomplete replies retain their terminal status';
     for (const [api, fixture] of [
         [
@@ -304,6 +311,7 @@ try {
     );
     assert.equal(denied.stopReason, 'error');
 
+    // Google 新结束原因：工具调用过多等失败不能提交不完整的工具结果。
     current_case = 'new Google SDK finish reasons must not commit incomplete tool output';
     const excessive_tools = await run(
         'google-generative-ai',
@@ -321,6 +329,7 @@ try {
     );
     assert.equal(excessive_tools.stopReason, 'error');
 
+    // 非流式取消：等待完整 JSON 期间停止，真实 Pi 解析结果必须以 aborted 结束。
     current_case = 'native cancellation while waiting for a complete JSON response';
     const controller = new AbortController();
     let started;
@@ -344,6 +353,7 @@ try {
     controller.abort(new Error('User stopped generation'));
     assert.equal((await waiting).stopReason, 'aborted');
 
+    // 非生成请求：模型列表等其他请求和响应对象原样透传。
     current_case = 'non-generation traffic remains untouched';
     const request = new Request('https://provider.test/v1/models');
     const response = Response.json({ data: [] });

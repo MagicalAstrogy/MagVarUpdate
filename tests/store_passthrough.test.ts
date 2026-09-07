@@ -1,6 +1,10 @@
+/**
+ * 测试场景：验证设置加载的逐字段容错和未知字段保留，重点覆盖 Pi 方案快照、凭证缓存及无效预算的不可发送状态。
+ */
 import { useDataStore } from '@/store';
 import { nextTick } from 'vue';
 
+// 设置持久化契约：损坏字段不会重置整份配置，未知信息可保留，但不能成为可发送的错误连接。
 describe('settings unknown field passthrough', () => {
     beforeEach(() => {
         (globalThis as any).SillyTavern.extensionSettings = {};
@@ -10,6 +14,7 @@ describe('settings unknown field passthrough', () => {
         (globalThis as any).SillyTavern.extensionSettings = {};
     });
 
+    // Pi 默认值与快照：保留旧来源默认行为，剔除方案中误放的凭证，残缺快照不补成完整连接。
     test('provides fail-closed pi defaults without changing the legacy model source', () => {
         const store = useDataStore();
 
@@ -154,6 +159,7 @@ describe('settings unknown field passthrough', () => {
         expect(config.pi).toMatchObject({ provider: '', api: '', model: '' });
     });
 
+    // 导入规范化：方案名称、窗口和连接标识按统一规则处理。
     test('normalizes profile names and numeric contextWindow strings during import', () => {
         (globalThis as any).SillyTavern.extensionSettings = {
             mvu_settings: {
@@ -256,6 +262,7 @@ describe('settings unknown field passthrough', () => {
         expect(config.api方案列表[0].密钥).toBe('profile-secret');
     });
 
+    // 秘密和单项容错：无效目标清除活动密钥，损坏方案或选择项不影响其他有效设置。
     test('clears an active root key for an invalid Pi target while preserving isolated caches', () => {
         const pi = {
             provider: 'openai',
@@ -516,6 +523,7 @@ describe('settings unknown field passthrough', () => {
         expect(config.api地址).toBe('https://api.example/v1');
     });
 
+    // 缓存与预算容错：坏缓存可局部恢复，无效窗口和回复预算保留给预检拒绝。
     test('contains malformed API-key caches without resetting unrelated settings', () => {
         (globalThis as any).SillyTavern.extensionSettings = {
             mvu_settings: {
@@ -593,6 +601,7 @@ describe('settings unknown field passthrough', () => {
         expect((store.settings as any).future_top_level).toBe('keep');
     });
 
+    // 前向兼容：当前设置写回和旧设置迁移都保留各层未知字段。
     test('preserves unknown fields at every current settings level when writing back', async () => {
         (globalThis as any).SillyTavern.extensionSettings = {
             mvu_settings: {

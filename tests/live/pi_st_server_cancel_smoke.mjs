@@ -1,3 +1,7 @@
+/**
+ * 测试场景：结合真实酒馆浏览器和本地回环流式服务器，验证停止 Pi 后网络连接确实关闭且主生成保持独立。
+ * 请求使用本地测试密钥，收集服务端和浏览器两侧取消证据。
+ */
 import http from 'node:http';
 import { setTimeout as delay } from 'node:timers/promises';
 
@@ -15,12 +19,14 @@ class ServerCancelSmokeError extends Error {
     }
 }
 
+/** 取消证据断言：用固定错误码报告浏览器或本地服务器观察到的异常。 */
 function assertServerCancel(value, code) {
     if (!value) {
         throw new ServerCancelSmokeError(code);
     }
 }
 
+/** 服务端观测：为单一路由初始化请求、响应和连接关闭记录。 */
 function createRouteEvidence() {
     return {
         preflights: 0,
@@ -40,6 +46,7 @@ function createRouteEvidence() {
     };
 }
 
+/** 本地流式环境：为 Pi 与主生成提供独立路由，并记录客户端取消造成的连接关闭。 */
 function createLoopbackStreamingServer() {
     const evidence = {
         pi: createRouteEvidence(),
@@ -197,6 +204,7 @@ function createLoopbackStreamingServer() {
     };
 }
 
+/** 服务端同步：等待请求或连接进入指定状态，避免仅凭浏览器信号推断网络已取消。 */
 async function waitForServer(harness, predicate, code, timeoutMs = 20_000) {
     const deadline = Date.now() + timeoutMs;
     let current = harness.snapshot();
@@ -210,6 +218,7 @@ async function waitForServer(harness, predicate, code, timeoutMs = 20_000) {
     );
 }
 
+/** 连接准备：在浏览器中设置本次 Pi 来源、协议及所需应答选项。 */
 async function configurePi(webDriver, scriptName, endpoint) {
     const result = await webDriver.executeAsync(
         `
@@ -279,6 +288,7 @@ async function configurePi(webDriver, scriptName, endpoint) {
     assertServerCancel(result?.ok, `configure-pi-${result?.stage ?? 'failed'}`);
 }
 
+/** 浏览器观测：安装请求与停止探针，将界面动作关联到本地流式服务器。 */
 async function installBrowserHarness(webDriver, scriptName, endpoint) {
     const result = await webDriver.execute(
         `
@@ -395,6 +405,7 @@ async function installBrowserHarness(webDriver, scriptName, endpoint) {
     );
 }
 
+/** 启动 Pi：触发额外模型更新并保留其执行和取消状态。 */
 async function startPiRequest(webDriver) {
     const started = await webDriver.execute(`
         const state = window.__mvuServerCancelSmoke;
@@ -442,6 +453,7 @@ async function startPiRequest(webDriver) {
     );
 }
 
+/** 启动主生成：通过实际发送链路建立独立请求，用于验证 Pi 停止的隔离性。 */
 async function startMainSend(webDriver) {
     const result = await webDriver.executeAsync(
         `
@@ -526,6 +538,7 @@ async function startMainSend(webDriver) {
     return result;
 }
 
+/** 定向停止：取消 Pi 更新并观察主生成仍处于活动状态。 */
 async function stopPiAndObserveIsolation(webDriver) {
     const stopped = await webDriver.execute(`
         const state = window.__mvuServerCancelSmoke;
@@ -536,6 +549,7 @@ async function stopPiAndObserveIsolation(webDriver) {
     assertServerCancel(stopped, 'pi-stop-not-dispatched');
 }
 
+/** 浏览器证据：读取 Pi 与主生成各自的信号、执行结果和请求计数。 */
 async function readBrowserIsolation(webDriver) {
     return webDriver.executeAsync(
         `
@@ -559,6 +573,7 @@ async function readBrowserIsolation(webDriver) {
     );
 }
 
+/** 独立停止主生成：确认其取消不额外触发或重启 Pi 请求。 */
 async function stopMain(webDriver) {
     const result = await webDriver.executeAsync(
         `
@@ -613,6 +628,7 @@ async function stopMain(webDriver) {
     return result;
 }
 
+/** 浏览器恢复：撤销测试探针并恢复被替换的请求和事件入口。 */
 async function cleanupBrowserHarness(webDriver) {
     return webDriver.execute(`
         const state = window.__mvuServerCancelSmoke;
@@ -640,6 +656,7 @@ async function cleanupBrowserHarness(webDriver) {
     `);
 }
 
+/** 端到端取消：同时建立两条本地流，分别停止并交叉核对浏览器和服务器证据。 */
 export async function runPiStServerCancelSmoke({
     webDriver,
     scriptName,
@@ -655,6 +672,7 @@ export async function runPiStServerCancelSmoke({
         const endpoint = await harness.listen();
         await configurePi(webDriver, scriptName, endpoint);
         await installBrowserHarness(webDriver, scriptName, endpoint);
+        // Pi 流建立：先确认服务端收到请求并发送响应头，再启动并行主生成。
         await startPiRequest(webDriver);
         await waitForServer(
             harness,
@@ -662,6 +680,7 @@ export async function runPiStServerCancelSmoke({
             'pi-server-not-streaming'
         );
 
+        // 双流并行：主生成开始后，两条服务端响应都应保持打开。
         const mainSend = await startMainSend(webDriver);
         const bothStreaming = await waitForServer(
             harness,
@@ -671,6 +690,7 @@ export async function runPiStServerCancelSmoke({
         assertServerCancel(!bothStreaming.pi.responseClosed, 'pi-stream-closed-before-stop');
         assertServerCancel(!bothStreaming.main.responseClosed, 'main-stream-closed-before-stop');
 
+        // 定向停止 Pi：服务端观察到客户端关闭，主生成信号与连接仍保持活动。
         await stopPiAndObserveIsolation(webDriver);
         const afterPiStop = await waitForServer(
             harness,
@@ -690,6 +710,7 @@ export async function runPiStServerCancelSmoke({
             'pi-stop-hit-main-stream'
         );
 
+        // 独立停止主生成：主连接随后关闭，期间没有额外派发或重启 Pi 请求。
         const mainStop = await stopMain(webDriver);
         const afterMainStop = await waitForServer(
             harness,

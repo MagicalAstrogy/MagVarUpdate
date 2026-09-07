@@ -1,7 +1,8 @@
+/** 兼容性面板使用的依赖许可信息，保留包版本以便与安装结果核对。 */
 export type OpenSourceLicense = Readonly<{
-    /** Exact package identifier retained for auditing against yarn.lock. */
+    /** 保留准确包名，便于对照 yarn.lock 审核。 */
     packageName: string;
-    /** Optional public label for an internal package whose technical name is not product copy. */
+    /** 内部技术包名不适合作为产品文案时使用的展示名称。 */
     displayName?: string;
     version: string;
     license: string;
@@ -9,8 +10,8 @@ export type OpenSourceLicense = Readonly<{
 }>;
 
 /**
- * Runtime libraries used directly by MVU, ESM provider libraries, and the loader runtimes
- * emitted into the production bundle. Build- and test-only tooling is intentionally excluded.
+ * 收录 MVU 直接使用的运行时依赖、ESM 服务商依赖及产物中实际包含的加载器运行库。
+ * 仅供构建或测试使用的工具不进入面板清单。
  */
 export const OPEN_SOURCE_LICENSES = [
     {

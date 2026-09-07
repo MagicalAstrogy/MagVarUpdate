@@ -1,3 +1,6 @@
+/**
+ * 测试场景：验证设置中的 OAuth 凭证读取与拷贝、按服务商串行修改、取消写入以及切换 Pinia 仓库。
+ */
 import {
     createPiCredentialStore,
     getPiCredentialStore,
@@ -26,11 +29,13 @@ function deferred<T = void>() {
     return { promise, resolve, reject };
 }
 
+// 凭证仓库契约：只暴露合法 OAuth 凭证，同一服务商修改有序，不同服务商可独立推进。
 describe('pi CredentialStore', () => {
     beforeEach(() => {
         (globalThis as any).SillyTavern.extensionSettings = {};
     });
 
+    // 读取与列表：保留服务商扩展字段，列表只暴露元数据，不使用遗留 API Key 充当 OAuth 凭证。
     test('strictly exposes valid OAuth credentials while preserving provider-specific fields', async () => {
         const credentials = useDataStore().settings.额外模型解析配置.pi.credentials;
         credentials.openai = oauth('access-openai', { accountId: 'account-1' });
@@ -79,6 +84,7 @@ describe('pi CredentialStore', () => {
         expect(JSON.stringify(listed)).not.toContain('must-not-be-exposed');
     });
 
+    // 串行修改：刷新和删除共享服务商队列，无效更新不能覆盖已有凭证。
     test('serializes refreshes for one provider while allowing other providers to progress', async () => {
         const settings = useDataStore().settings.额外模型解析配置.pi;
         settings.credentials.openai = oauth('old');
@@ -160,6 +166,7 @@ describe('pi CredentialStore', () => {
         expect(JSON.stringify(credentials.openai)).not.toContain('must-not-be-stored');
     });
 
+    // 取消与活动仓库：等待或执行中取消都阻止迟到写入，共享实例每次读取当前 Pinia。
     test('honors cancellation before operations and while queued without overwriting credentials', async () => {
         const credentials = useDataStore().settings.额外模型解析配置.pi.credentials;
         credentials.openai = oauth('old');

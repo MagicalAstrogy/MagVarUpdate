@@ -433,6 +433,7 @@ export const buttons: Button[] = [
     {
         name: '重试额外模型解析',
         label_key: 'panel.button.retryExtraModelParsing',
+        /** 按所选来源校验重试入口；Pi 使用自身能力预检，旧来源继续检查酒馆助手工具支持。 */
         function: async () => {
             const store = useDataStore();
             if (store.effective_settings.更新方式 === '随AI输出') {

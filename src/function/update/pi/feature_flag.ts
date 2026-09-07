@@ -1,9 +1,7 @@
 /**
- * Release kill switch for the Pi multiprovider path.
- *
- * - Build-time: `MVU_PI_MULTIPROVIDER_ENABLED=false yarn build` makes the path unavailable.
- * - Runtime: set `globalThis.__MVU_PI_MULTIPROVIDER_ENABLED__ = false` before MVU loads, then
- *   reload the page. A runtime override cannot re-enable a build that was compiled off.
+ * 读取 Pi 多服务商功能的发布开关。
+ * 构建时可用 MVU_PI_MULTIPROVIDER_ENABLED=false 关闭；运行时可在加载前将
+ * globalThis.__MVU_PI_MULTIPROVIDER_ENABLED__ 设为 false，运行时不能重新开启已关闭的构建。
  */
 export function isPiMultiproviderEnabled(): boolean {
     const build_enabled =

@@ -3,19 +3,23 @@ import type { PiWireApi } from './provider_target';
 
 type JsonObject = Record<string, unknown>;
 
+/** 校验响应结构为非空、非数组对象。 */
 function isObject(value: unknown): value is JsonObject {
     return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
+/** 拒绝不符合协议的非流式响应，不将可能包含提示词或凭证的响应正文写入错误。 */
 function invalidResponse(): never {
     // Do not include provider bodies: they can echo prompts, headers, or credentials.
     throw new Error('More source received an invalid non-streaming response');
 }
 
+/** 把单个协议事件编码为 SSE 文本，供 Pi 现有流解析器消费。 */
 function event(data: JsonObject): string {
     return `${typeof data.type === 'string' ? `event: ${data.type}\n` : ''}data: ${JSON.stringify(data)}\n\n`;
 }
 
+/** 把 Chat Completions 完整响应转换为增量结束事件，补齐工具调用下标。 */
 function completionEvents(response: JsonObject): string {
     if (!Array.isArray(response.choices) || response.choices.length === 0) {
         return invalidResponse();
@@ -44,6 +48,7 @@ function completionEvents(response: JsonObject): string {
     return event({ ...response, object: 'chat.completion.chunk', choices }) + 'data: [DONE]\n\n';
 }
 
+/** 把 Responses 完整输出转换为输出项事件和终态事件，保留失败与截断状态。 */
 function responsesEvents(response: JsonObject): string {
     const status = response.status;
     if (!['completed', 'incomplete', 'failed', 'cancelled'].includes(String(status))) {
@@ -68,6 +73,7 @@ function responsesEvents(response: JsonObject): string {
     );
 }
 
+/** 把 Anthropic 完整响应转换为消息和内容块事件，工具参数通过增量事件交给 Pi 解析。 */
 function anthropicEvents(response: JsonObject): string {
     if (!Array.isArray(response.content) || typeof response.stop_reason !== 'string') {
         return invalidResponse();
@@ -111,6 +117,7 @@ function anthropicEvents(response: JsonObject): string {
     );
 }
 
+/** 按请求协议选择非流式响应转换器，拒绝错误对象和不支持的响应结构。 */
 function toEvents(api: PiWireApi, response: unknown): string {
     if (!isObject(response) || response.error) {
         return invalidResponse();
@@ -133,6 +140,7 @@ function toEvents(api: PiWireApi, response: unknown): string {
     }
 }
 
+/** 识别需要改写传输方式的生成接口，避免影响认证和模型列表等其他请求。 */
 function isGenerationUrl(api: PiWireApi, url: URL): boolean {
     switch (api) {
         case 'openai-completions':
@@ -150,10 +158,8 @@ function isGenerationUrl(api: PiWireApi, url: URL): boolean {
 }
 
 /**
- * Pi 0.85's complete() still sends streaming HTTP requests. Keep its audited request builders,
- * authentication and result parsers, but request a real JSON response on the wire. Only after
- * receiving that entire response do we expose equivalent events to Pi's stream-only parsers.
- * This wrapper is instance-local and composes outside the optional SillyTavern proxy transport.
+ * 保留 Pi 的请求构造、认证和结果解析，只将支持的生成请求改为真正的非流式 HTTP。
+ * 返回的 JSON 在本地转换为 Pi 可消费的事件流；Codex 的强制流式协议保持原样。
  */
 export function createPiNonStreamingFetch(
     api: PiWireApi,

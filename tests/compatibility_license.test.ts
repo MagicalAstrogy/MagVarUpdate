@@ -1,3 +1,6 @@
+/**
+ * 测试场景：核对兼容性面板的许可证清单、安装包元数据和生产 source map 中的实际依赖。
+ */
 import { OPEN_SOURCE_LICENSES } from '@/panel/open_source_licenses';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -29,6 +32,7 @@ const EXPECTED_RUNTIME_PACKAGES = [
     'zod',
 ] as const;
 
+// 许可信息契约：依赖覆盖、版本与许可一致性，以及界面展示名称。
 describe('compatibility LICENSE notice', () => {
     test('lists the runtime, ESM provider, and emitted loader dependencies', () => {
         expect(OPEN_SOURCE_LICENSES.map(component => component.packageName).sort()).toEqual(
@@ -62,6 +66,7 @@ describe('compatibility LICENSE notice', () => {
         }
     });
 
+    // 产物覆盖：检查生产 source map 中实际包含的包都能在许可证清单中找到。
     test('covers every package emitted into the production source map', () => {
         const source_map = JSON.parse(
             fs.readFileSync(path.join(process.cwd(), 'artifact/bundle.js.map'), 'utf8')

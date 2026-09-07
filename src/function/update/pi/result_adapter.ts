@@ -10,6 +10,7 @@ export type PiResultAdapterErrorCode =
     | 'provider-error';
 
 export class PiResultAdapterError extends Error {
+    /** 保留结果转换错误码，供运行时决定取消、重试及界面提示。 */
     constructor(
         message: string,
         readonly code: PiResultAdapterErrorCode
@@ -23,6 +24,7 @@ export type PiToolDefinitionOptions = {
     constrainedSampling?: Tool['constrainedSampling'];
 };
 
+/** 仅接受普通或空原型对象，作为工具参数与 Schema 的结构边界。 */
 function isPlainObject(value: unknown): value is Record<string, unknown> {
     if (typeof value !== 'object' || value === null || Array.isArray(value)) {
         return false;
@@ -31,6 +33,7 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
     return prototype === Object.prototype || prototype === null;
 }
 
+/** 复制工具 Schema，无法复制时转换为工具定义错误，避免共享结构被修改。 */
 function cloneSchema(schema: Record<string, unknown>): Record<string, unknown> {
     try {
         return structuredClone(schema);
@@ -42,6 +45,7 @@ function cloneSchema(schema: Record<string, unknown>): Record<string, unknown> {
     }
 }
 
+/** 校验函数工具名称和对象 Schema，再转换为 Pi 工具定义及约束采样配置。 */
 export function toPiToolDefinition(
     definition: ToolDefinition,
     options: PiToolDefinitionOptions = {}
@@ -73,6 +77,7 @@ export function toPiToolDefinition(
 
 export const toPiTool = toPiToolDefinition;
 
+/** 把 Pi 工具调用转换为酒馆结果结构，序列化参数并保留思考签名。 */
 function normalizeToolCall(call: ToolCall): GenerateToolCallResult['tool_calls'][number] {
     if (!call.id?.trim() || !call.name?.trim() || !isPlainObject(call.arguments)) {
         throw new PiResultAdapterError('更多来源返回了无效的工具调用', 'invalid-tool-call');
@@ -99,6 +104,7 @@ function normalizeToolCall(call: ToolCall): GenerateToolCallResult['tool_calls']
     };
 }
 
+/** 只允许完整文本或工具调用结果继续转换，分别拒绝截断、取消、延迟和服务商失败。 */
 function assertSuccessfulStopReason(message: AssistantMessage): void {
     switch (message.stopReason) {
         case 'stop':
@@ -140,6 +146,10 @@ function assertSuccessfulStopReason(message: AssistantMessage): void {
     }
 }
 
+/**
+ * 提取助手文本及工具调用并返回 MVU 可消费的结果。
+ * 空响应、仅有思考或工具结束却没有调用都视为协议失败，不写入聊天上下文。
+ */
 export function fromPiAssistantMessage(message: AssistantMessage): string | GenerateToolCallResult {
     assertSuccessfulStopReason(message);
 

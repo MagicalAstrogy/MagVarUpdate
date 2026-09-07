@@ -1,3 +1,7 @@
+/**
+ * 测试场景：通过真实 OpenRouter 请求验证 Responses、Chat Completions 和 Anthropic Messages 三条 Pi 运行时路径。
+ * 脚本从环境读取测试凭证，以最小变量更新响应检查路径、认证头和结果转换。
+ */
 import type { CredentialStore, FetchFunction } from '@/function/update/pi/pi_gateway';
 import { JSDOM } from 'jsdom';
 
@@ -40,6 +44,7 @@ const LIVE_MODEL = process.env.MVU_PI_OPENROUTER_MODEL ?? 'inclusionai/ling-3.0-
 
 let currentStage = 'bootstrap';
 
+/** 认证隔离：提供本场景所需的最小凭证仓库，避免依赖真实持久化设置。 */
 function makeCredentialStore(): CredentialStore {
     return {
         async read() {
@@ -55,6 +60,7 @@ function makeCredentialStore(): CredentialStore {
     };
 }
 
+/** 场景编排：准备依赖环境、执行本文件测试流程，并统一收集结果与清理资源。 */
 async function main(): Promise<void> {
     currentStage = 'credential';
     const apiKey = process.env.MVU_PI_OPENROUTER_API_KEY ?? '';

@@ -1,3 +1,6 @@
+/**
+ * 测试场景：验证酒馆消息转换为 Pi 上下文时的顺序、角色、图片和工具调用关联，且不修改原始提示词。
+ */
 import { PI_IMAGE_INPUT_LIMITS, toPiContext } from '@/function/update/pi/context_adapter';
 
 const NOW = 1_725_000_000_000;
@@ -65,7 +68,9 @@ function makeAlignedPngBase64(decodedBytes: number): string {
     return `iVBORw0KGgoA${'A'.repeat(encodedLength - 12)}`;
 }
 
+// 上下文转换契约：显式处理 system 位置、空内容、多模态和历史工具返回值。
 describe('toPiContext', () => {
+    // 系统消息布局：合并连续前置 system，并按策略处理后置 system 的归属或拒绝。
     test('combines only the contiguous leading system messages in source order', () => {
         const input: InputMessage[] = [
             { role: 'system', content: 'first instruction' },
@@ -169,6 +174,7 @@ describe('toPiContext', () => {
         );
     });
 
+    // 消息元数据：角色名、空消息策略、诊断下标和历史助手占位信息保持稳定。
     test('keeps message names as stable explicit prefixes for user and assistant text', () => {
         const input: InputMessage[] = [
             { role: 'user', name: 'Alice', content: 'hello' },
@@ -269,6 +275,7 @@ describe('toPiContext', () => {
         });
     });
 
+    // 有效图片：验证 data URL 格式、图片类型和多块顺序。
     test('converts user data URL images into pi image blocks without changing block order', () => {
         const input: InputMessage[] = [
             {
@@ -379,6 +386,7 @@ describe('toPiContext', () => {
         });
     });
 
+    // 图片边界：拒绝远程地址、超限载荷、过多图片、非法编码和视频内容。
     test('rejects remote images instead of silently fetching or dropping them', () => {
         const input: InputMessage[] = [
             {
@@ -512,6 +520,7 @@ describe('toPiContext', () => {
         expect(() => toPiContext(input, { now: () => NOW })).toThrow(/video|视频/i);
     });
 
+    // 历史工具与输入隔离：调用和返回值正确关联，无效结构报错，原始对象不被修改。
     test('converts historical tool calls and correlates their following tool results', () => {
         const input: InputMessage[] = [
             { role: 'user', content: 'look it up' },

@@ -1,9 +1,13 @@
+/**
+ * 测试场景：验证自定义请求头和正文增删字段的 YAML/JSON 解析、空配置以及受保护认证字段限制。
+ */
 import {
     parsePiCustomExcludeBody,
     parsePiCustomHeaders,
     parsePiCustomIncludeBody,
 } from '@/function/update/pi/config_parser';
 
+// 配置解析：允许规定形状的覆盖值，拒绝错误类型及认证头覆盖，空输入保持未配置。
 describe('Pi custom request config parser', () => {
     test('parses headers without exposing authentication overrides', () => {
         expect(parsePiCustomHeaders('X-Trace: request-1\nX-Default: null')).toEqual({

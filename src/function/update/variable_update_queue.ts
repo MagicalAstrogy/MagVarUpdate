@@ -6,7 +6,10 @@ type PendingVariableUpdate = {
 
 const pending_updates = new Set<PendingVariableUpdate>();
 
-/** Keep later message snapshots behind the complete response update, including variable writes. */
+/**
+ * 登记一条消息从解析到变量写入的完整异步任务，并在结束时通知等待者。
+ * 无论成功或失败都释放等待，避免后续消息永久阻塞。
+ */
 export async function withPendingVariableUpdate<T>(
     message_id: number,
     run: () => Promise<T>
@@ -28,6 +31,7 @@ export async function withPendingVariableUpdate<T>(
     }
 }
 
+/** 只等待当前聊天中更早消息的变量更新，使新消息快照包含已经完成的前序写入。 */
 export async function waitForEarlierVariableUpdates(message_id: number): Promise<void> {
     await Promise.all(
         [...pending_updates]

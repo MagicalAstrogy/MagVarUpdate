@@ -17,9 +17,8 @@ import { computed, ref, toRaw, watch } from 'vue';
 import * as z from 'zod';
 
 /**
- * Keep invalid imported/UI values distinguishable from the valid `0 = use catalog` sentinel.
- * The Pi request preflight is responsible for rejecting anything except zero or a positive
- * integer, so malformed settings never silently fall back to catalog metadata.
+ * 保留导入或界面中的无效窗口值，使其与合法的“0 = 使用目录值”明确区分。
+ * 请求预检只接受 0 或正整数，避免错误配置静默回退到目录元数据。
  */
 const ExtraModelPiContextWindow = z
     .union([z.number(), z.string()])
@@ -37,11 +36,13 @@ const ExtraModelPiContextWindow = z
         return Number.isInteger(parsed) && parsed >= 0 ? parsed : value;
     });
 
+// 方案快照使用规范化整数；无效值使整个连接快照失效，而不污染其余设置。
 const ExtraModelPiProfileContextWindow = z
     .union([z.number(), z.string()])
     .transform(value => normalizeExtraModelPiProfileContextWindow(value))
     .pipe(z.number());
 
+// 方案只保存连接与请求覆盖，OAuth 凭证和按目标缓存的密钥由活动设置独立持有。
 const ExtraModelPiProfileSnapshot = z
     .object({
         provider: z.string().trim(),
@@ -61,16 +62,16 @@ const ExtraModelPiProfileSnapshot = z
     .loose()
     .transform(({ credentials: _credentials, apiKeys: _apiKeys, ...connection }) => connection);
 
-// A partial imported Pi snapshot must not inherit provider/API defaults and become sendable. Keep
-// the containing profile, but drop its malformed connection so profile application fails closed.
+// 导入的残缺 Pi 快照不能靠默认服务商或协议补成可发送连接。
+// 保留外层方案，只丢弃无效连接，应用时再要求用户补全。
 const ExtraModelPiProfile = z.union([ExtraModelPiProfileSnapshot, z.undefined()]).catch(undefined);
 
+// 活动连接容许保留未知字段，实际可发送性由统一预检决定。
 const ExtraModelPiSettings = z
     .object({
         provider: z.string().trim().default('openai'),
         api: z.string().trim().default('openai-responses'),
-        // Keep future/imported identifiers inspectable. Provider validation and profile saving both
-        // reject unsupported values, while migration clears any unowned shared root key.
+        // 保留未知认证标识供用户查看；请求和方案保存会拒绝它，迁移会清除无归属的活动密钥。
         authType: z.string().trim().default('api_key'),
         endpoint: z.string().trim().default(''),
         useProxy: z.boolean().catch(false).default(false),
@@ -103,7 +104,7 @@ const ExtraModelApiProfile = z
         密钥: z.string().default(''),
         模型名称: z.string().default(''),
         pi: ExtraModelPiProfile.optional(),
-        // Leave missing fields absent so migration can inherit the user's current values.
+        // 缺失选项保持未设置，使旧自定义方案可以一次性继承当前请求选项。
         破限方案: ExtraModelJailbreakStrategy.optional().catch(undefined),
         其他预设名称: z.string().optional().catch(undefined),
         随机头部: z.boolean().optional().catch(undefined),
@@ -114,6 +115,7 @@ const ExtraModelApiProfile = z
     .loose()
     .transform(({ customApiKey: _customApiKey, ...profile }) => profile);
 
+// 逐项容错，单个损坏方案只被过滤，不使整份用户设置重置。
 const ExtraModelApiProfileList = z
     .array(ExtraModelApiProfile.nullable().catch(null))
     .catch([])
@@ -278,8 +280,7 @@ const NewSettings = z
                     .transform(value => _.clamp(Math.round(value), 2, 100)),
                 最大回复token数: z.coerce
                     .number()
-                    // Unlike contextWindow, zero has no valid sentinel meaning for Pi, so it can
-                    // safely retain malformed imports as a request-blocking local value.
+                    // 回复 token 的 0 没有默认值语义，可保留为阻止请求的无效导入值。
                     .catch(0)
                     .default(4096)
                     .transform(value => Math.max(0, value)),
@@ -333,8 +334,7 @@ const NewSettings = z
     })
     .loose()
     .transform(data => {
-        // The schema supplies false for new installs. Preserve explicitly saved values during
-        // profile migration instead of resetting both the current mode and its inherited value.
+        // 新安装由 Schema 提供 false；迁移时保留已保存的流式选项及方案继承值。
         data.internal.已开启默认不兼容假流式 = true;
         return data;
     })

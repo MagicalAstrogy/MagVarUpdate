@@ -1,3 +1,6 @@
+/**
+ * 测试场景：模拟酒馆设置就绪事件，验证请求标记、最终提示词拷贝、定向停止、并发隔离和异常清理。
+ */
 import {
     buildPromptCaptureConfig,
     captureGeneratePrompt,
@@ -22,6 +25,7 @@ function settingsReadyData(config: GenerateConfig, messages: SillyTavern.Sending
     };
 }
 
+// 捕获生命周期：只接管匹配编号的提示词，在成功阻止占位请求后返回，并释放所有监听。
 describe('pi prompt capture', () => {
     beforeEach(() => {
         event_make_last_mock.mockClear();
@@ -39,6 +43,7 @@ describe('pi prompt capture', () => {
         expect(getPendingPromptCaptureDiagnostics()).toEqual([]);
     });
 
+    // 标记与配置隔离：标记可规范往返，捕获请求不继承凭证、工具或业务覆盖。
     test('round-trips canonical markers and rejects malformed markers', () => {
         const generation_id = 'request:/ with spaces/中文';
         const marker = encodePromptCaptureMarker(generation_id);
@@ -123,6 +128,7 @@ describe('pi prompt capture', () => {
         expect(JSON.stringify(result)).not.toContain('https://real.example');
     });
 
+    // 成功路径：最后执行的监听获得深拷贝提示词，生成编号贯穿包装入口和停止操作。
     test('registers last, captures the final deep clone, stops by id, and swallows the fixed failure', async () => {
         const source_messages: SillyTavern.SendingMessage[] = [
             { role: 'system', content: 'before filter' },
@@ -249,6 +255,7 @@ describe('pi prompt capture', () => {
         expect(event_make_last_mock).toHaveBeenCalledTimes(2);
     });
 
+    // 并发捕获：不同编号互不串用，同编号重复登记被拒绝。
     test('isolates concurrent captures by marker and generation id', async () => {
         let started = 0;
         let release_barrier!: () => void;
@@ -320,6 +327,7 @@ describe('pi prompt capture', () => {
         await expect(first_capture).rejects.toBe(first_error);
     });
 
+    // 失败与清理：未匹配事件、构造失败、停止失败和残缺消息都不能伪装为成功，失效停止句柄也会清理。
     test.each([
         ['ordinary model', 'ordinary-model'],
         ['empty marker id', PI_PROMPT_CAPTURE_MODEL_PREFIX],

@@ -13,6 +13,10 @@ const ESTIMATED_IMAGE_BYTES_PER_TOKEN = 64;
 // lower pixels-per-token ratio leaves deliberate cross-provider headroom.
 const ESTIMATED_IMAGE_PIXELS_PER_TOKEN = 500;
 
+/**
+ * 按 UTF-8 字节保守估算文本 token，兼顾中文与非基本平面字符。
+ * 这是发送前的预算保护，不用于精确计费。
+ */
 function estimateTextTokens(value: string): number {
     if (!value) {
         return 0;
@@ -37,6 +41,7 @@ function estimateTextTokens(value: string): number {
     return Math.ceil(ascii_bytes / 3 + non_ascii_bytes / 2);
 }
 
+/** 根据 Base64 长度与填充估算解码字节数，避免为预算检查复制或解码整张图片。 */
 function estimateDecodedBase64Bytes(data: string): number {
     if (!data) {
         return 0;
@@ -47,10 +52,12 @@ function estimateDecodedBase64Bytes(data: string): number {
     return Math.max(0, Math.floor((data.length * 3) / 4) - padding);
 }
 
+/** 优先使用上下文转换时记录的图片大小，外部内容块再按 Base64 长度估算。 */
 function getEstimatedImageBytes(image: ImageContent): number {
     return getPiImageMetadata(image)?.decodedBytes ?? estimateDecodedBase64Bytes(image.data);
 }
 
+/** 取图片最小预算、字节估算和像素面积估算中的最大值，保留跨服务商余量。 */
 function estimateImageTokens(image: ImageContent): number {
     const metadata = getPiImageMetadata(image);
     const estimated_bytes = getEstimatedImageBytes(image);
@@ -76,9 +83,11 @@ function estimateImageTokens(image: ImageContent): number {
     );
 }
 
+/** 检查单图、总图片数量和累计解码大小，即使外部绕过上下文转换也执行预算限制。 */
 function assertPiImageInputBudget(context: Context): void {
     let image_count = 0;
     let decoded_bytes = 0;
+    /** 累计单个图片块并立即检查各项图片限制，超限时停止遍历。 */
     const countImage = (image: ImageContent): void => {
         const image_bytes = getEstimatedImageBytes(image);
         if (image_bytes > PI_IMAGE_INPUT_LIMITS.maxDecodedBytesPerImage) {
@@ -111,6 +120,7 @@ function assertPiImageInputBudget(context: Context): void {
     }
 }
 
+/** 按消息角色估算文本、思考、工具参数和图片，并计入消息结构开销。 */
 function estimateMessageTokens(message: Message): number {
     let tokens = 6;
     if (message.role === 'user') {
@@ -144,6 +154,7 @@ function estimateMessageTokens(message: Message): number {
     return tokens + estimateTextTokens(message.toolName);
 }
 
+/** 汇总系统提示词、历史消息和工具定义的输入 token 估算。 */
 export function estimatePiContextTokens(context: Context): number {
     let tokens = estimateTextTokens(context.systemPrompt ?? '');
     for (const message of context.messages) {
@@ -155,6 +166,10 @@ export function estimatePiContextTokens(context: Context): number {
     return Math.max(1, tokens);
 }
 
+/**
+ * 预留回复 token 和安全余量后检查完整输入预算，不在此截断提示词。
+ * 同时校验图片限制；超限错误携带估算明细，供界面解释原因。
+ */
 export function assertPiTokenBudget(
     context: Context,
     context_window: number,

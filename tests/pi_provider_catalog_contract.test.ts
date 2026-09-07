@@ -1,8 +1,12 @@
+/**
+ * 测试场景：使用真实 Pi 模型目录核对全部 34 个预置服务商与运行时注册表的对应关系。
+ */
 const { execFileSync } = jest.requireActual(
     'node:child_process'
 ) as typeof import('node:child_process');
 const { join } = jest.requireActual('node:path') as typeof import('node:path');
 
+// 真实目录契约：服务商标识、模型所属协议和注册信息必须匹配。
 describe('Pi preset provider catalog contract', () => {
     test('all 34 real catalogs match the real provider registry', () => {
         const script = String.raw`

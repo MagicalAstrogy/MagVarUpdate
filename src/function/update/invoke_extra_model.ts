@@ -62,11 +62,13 @@ type PiRuntimeModule = typeof import('@/function/update/pi/runtime');
 
 let pi_runtime_module: Promise<PiRuntimeModule> | undefined;
 
+/** 按需加载 Pi 运行时，并复用模块加载结果。 */
 function loadPiRuntime(): Promise<PiRuntimeModule> {
     pi_runtime_module ??= import(/* webpackMode: "eager" */ '@/function/update/pi/runtime');
     return pi_runtime_module;
 }
 
+/** 创建统一的 Pi 应答协议错误，避免将不合规的模型输出直接展示给用户。 */
 async function createPiProtocolError(): Promise<Error> {
     const { PiRuntimeError } = await loadPiRuntime();
     return new PiRuntimeError('protocol', tr('runtime.pi.protocolError'));
@@ -90,13 +92,14 @@ function supportsRequestScopedTools(): boolean {
     return version !== '' && compare(version, MIN_FUNCTION_CALLING_TAVERN_HELPER_VERSION, '>=');
 }
 
+/** 为 Pi 批次复制设置快照，避免面板编辑改变重试语义；旧来源保留原有设置读取方式。 */
 function getRequestSettings(): PiExtraModelSettings {
     const config = useDataStore().settings.额外模型解析配置;
-    // A Pi batch owns its prompt and response contract as well as its provider credentials.
-    // Panel edits apply to the next batch, including when this one needs another capture attempt.
+    // Pi 的提示词、应答格式和凭证属于同一批次；当前批次重试时也使用原快照。
     return config.模型来源 === '更多' ? klona(config) : config;
 }
 
+/** 在进入重试策略前完成 Pi 配置预检，使固定配置错误只报告一次。 */
 async function preparePiRuntimePreflight(
     config: PiExtraModelSettings
 ): Promise<PiRuntimePreflight | undefined> {
@@ -118,6 +121,7 @@ async function preparePiRuntimePreflight(
     });
 }
 
+/** 从失败结果中识别应立即终止的 Pi 错误，供串行和并发策略共同使用。 */
 async function getNonRetryablePiError(error: unknown): Promise<unknown | undefined> {
     const { isNonRetryablePiRuntimeError } = await loadPiRuntime();
     const errors = error instanceof AggregateError ? error.errors : [error];
@@ -178,6 +182,7 @@ let temporary_json_object_response_format_state: {
     original_body: unknown;
 } | null = null;
 
+/** 为旧生成链路临时设置 JSON 对象应答格式，并通过清理机制恢复。 */
 async function setTemporaryJsonObjectResponseFormat() {
     if (
         useDataStore().settings.额外模型解析配置.模型来源 !== '自定义' ||
@@ -239,6 +244,7 @@ async function restoreTemporaryJsonObjectResponseFormat() {
     await saveSillyTavernSettings();
 }
 
+/** 将额外解析接入酒馆生成状态，协调发送按钮、停止按钮和生命周期事件。 */
 async function setExtraAnalysisStates(is_pi_request = false) {
     const store = useDataStore();
 
@@ -276,6 +282,10 @@ async function unsetExtraAnalysisStates() {
 
 let is_analysis_in_progress = false;
 
+/**
+ * 根据串行或并发策略调用额外模型，统一管理请求状态、重试和停止操作。
+ * Pi 设置预检与请求快照在策略开始前完成，取消及不可重试错误会终止后续尝试。
+ */
 export async function invokeExtraModelWithStrategy(): Promise<string | null> {
     const batch_id = generateRandomHeader();
     if (is_analysis_in_progress) {
@@ -291,6 +301,7 @@ export async function invokeExtraModelWithStrategy(): Promise<string | null> {
 
         debug_extra_request_counter = 0;
 
+        /** 执行并记录一次额外模型尝试，使错误处理和活动请求清理使用同一请求编号。 */
         const recordedInvoke = async (generation_id?: string) => {
             try {
                 return await invokeExtraModel(
@@ -312,12 +323,14 @@ export async function invokeExtraModelWithStrategy(): Promise<string | null> {
                 throw localized_error;
             }
         };
+        /** 尝试耗尽后保留 Pi 的具体失败原因；旧来源继续使用空结果表示失败。 */
         const throwLastPiErrorOrReturnNull = (): null => {
             if (pi_preflight && last_pi_error !== undefined) {
                 throw last_pi_error;
             }
             return null;
         };
+        /** 封装单次串行尝试，区分正常失败、主动取消和不可重试的 Pi 错误。 */
         const safeInvoke = async (): Promise<{
             result: string | null;
             is_manual_canceled: boolean;
@@ -346,6 +359,7 @@ export async function invokeExtraModelWithStrategy(): Promise<string | null> {
             }
             return { result: null, is_manual_canceled: is_manual_canceled };
         };
+        /** 协调同批并发尝试，接收有效结果并停止其余请求；致命错误立即结束整批执行。 */
         const concurrentInvoke = async (times: number) => {
             const uuids = _.times(times, uuidv4);
             let attempts: Promise<string>[] = [];
@@ -449,9 +463,7 @@ export async function invokeExtraModelWithStrategy(): Promise<string | null> {
     }
 }
 
-/**
- * @brief 调用额外模型解析，可能会抛出异常。
- */
+/** 执行一次额外模型解析，按需建立生成状态，并在结束后恢复界面状态。 */
 export async function generateExtraModel(): Promise<string | null> {
     let did_set_extra_analysis_states = false;
     const request_settings = getRequestSettings();
@@ -472,6 +484,10 @@ export async function generateExtraModel(): Promise<string | null> {
 
 // 在点击停止按钮时，会触发异常 `Clicked stop button`: string ,需要专门处理。
 //仅内部使用，因为一部分状态的初始化是在外面执行的。
+/**
+ * 执行一次内部解析并验证变量更新块；由外层负责初始化生成状态。
+ * Pi 尝试的取消标记覆盖提示词捕获和实际请求，结束时统一释放。
+ */
 async function invokeExtraModel(
     generation_id?: string,
     batch_id?: string,
@@ -567,6 +583,7 @@ function normalizeGenerateResult(result: string | GenerateToolCallResult): strin
     return extractFromGenerateToolCallResult(result) ?? result.content;
 }
 
+/** 将捕获完成的提示词交给 Pi，并在加载运行时后再次检查取消状态。 */
 async function runCapturedPiPrompt(
     capture: CapturedPrompt,
     preflight: PiRuntimePreflight,
@@ -581,6 +598,7 @@ async function runCapturedPiPrompt(
     });
 }
 
+/** 连接捕获完成与停止回调，让 Slash 提示词生成和 Pi 请求共用同一生命周期。 */
 function piPromptCaptureOptions(
     preflight: PiRuntimePreflight,
     signal?: AbortSignal
@@ -591,6 +609,7 @@ function piPromptCaptureOptions(
     };
 }
 
+/** 沿用当前预设构造提示词；Pi 路径只捕获最终提示词，再由选定服务商执行。 */
 async function executeGenerate(
     config: GenerateConfig,
     pi_preflight?: PiRuntimePreflight,
@@ -609,6 +628,7 @@ async function executeGenerate(
     return capture.result;
 }
 
+/** 按显式提示词顺序执行生成；Pi 路径接管捕获结果，不向酒馆主模型重复发送。 */
 async function executeGenerateRaw(
     config: GenerateRawConfig,
     pi_preflight?: PiRuntimePreflight,
@@ -627,6 +647,7 @@ async function executeGenerateRaw(
     return capture.result;
 }
 
+/** 按请求的应答格式提取更新内容；严格模式下拒绝不符合格式的返回值。 */
 function normalizeGenerateResultByResponseFormat(
     result: string | GenerateToolCallResult,
     response_format: string,
@@ -644,6 +665,10 @@ function normalizeGenerateResultByResponseFormat(
     return normalizeGenerateResult(result);
 }
 
+/**
+ * 按本轮设置快照组装预设、世界书、工具及应答格式，并分派到对应生成链路。
+ * Pi 请求必须带有预检结果，不能回退到旧来源发送。
+ */
 async function requestReply(
     generation_id?: string,
     batch_id?: string,

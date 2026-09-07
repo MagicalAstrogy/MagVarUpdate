@@ -47,6 +47,7 @@ export type PiContextAdapterErrorCode =
     | 'unsupported-content';
 
 export class PiContextAdapterError extends Error {
+    /** 保留消息下标和错误类别，便于将上下文转换失败定位到原始提示词。 */
     constructor(
         message: string,
         readonly code: PiContextAdapterErrorCode,
@@ -112,6 +113,7 @@ type ImageInputBudget = {
 
 const imageMetadata = new WeakMap<ImageContent, PiImageMetadata>();
 
+/** 读取转换时记录的图片大小和尺寸，供预算检查复用，避免再次解码。 */
 export function getPiImageMetadata(image: ImageContent): PiImageMetadata | undefined {
     return imageMetadata.get(image);
 }
@@ -119,6 +121,7 @@ export function getPiImageMetadata(image: ImageContent): PiImageMetadata | undef
 export const SYSTEM_INJECTION_OPEN = '<system_injection source="sillytavern">';
 export const SYSTEM_INJECTION_CLOSE = '</system_injection>';
 
+/** 为导入的历史助手消息补齐零用量结构，避免把历史内容记为本次生成消耗。 */
 function makeZeroUsage(): Usage {
     return {
         input: 0,
@@ -136,10 +139,12 @@ function makeZeroUsage(): Usage {
     };
 }
 
+/** 转义消息名称中的 XML 特殊字符，防止名称破坏注入标记结构。 */
 function escapeXmlText(value: string): string {
     return value.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;');
 }
 
+/** 将有效的酒馆消息名称转换为可拼接的文本前缀。 */
 export function formatSendingMessageName(name: string | undefined): string {
     if (typeof name !== 'string' || name.trim() === '') {
         return '';
@@ -147,14 +152,17 @@ export function formatSendingMessageName(name: string | undefined): string {
     return `<message_name>${escapeXmlText(name)}</message_name>`;
 }
 
+/** 用明确的系统注入标记包裹后置 system 内容，保留其来源语义。 */
 function formatSystemInjection(text: string): string {
     return `${SYSTEM_INJECTION_OPEN}\n${text}\n${SYSTEM_INJECTION_CLOSE}`;
 }
 
+/** 识别仅含空白的内容，供严格校验和空消息处理使用。 */
 function isBlank(value: string): boolean {
     return value.trim().length === 0;
 }
 
+/** 仅接受普通对象或空原型对象，避免把类实例作为结构化消息内容。 */
 function isPlainObject(value: unknown): value is Record<string, unknown> {
     if (typeof value !== 'object' || value === null || Array.isArray(value)) {
         return false;
@@ -163,10 +171,12 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
     return prototype === Object.prototype || prototype === null;
 }
 
+/** 检查指定偏移处的文件头字节，用于验证声明的图片类型。 */
 function hasBytesAt(bytes: string, offset: number, expected: readonly number[]): boolean {
     return expected.every((value, index) => bytes.charCodeAt(offset + index) === value);
 }
 
+/** 核对 PNG、JPEG、GIF 或 WebP 文件签名，拒绝伪装为图片的数据。 */
 function hasRecognizableImageSignature(mimeType: string, bytes: string): boolean {
     if (mimeType === 'image/png') {
         return hasBytesAt(bytes, 0, [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
@@ -183,6 +193,7 @@ function hasRecognizableImageSignature(mimeType: string, bytes: string): boolean
     return false;
 }
 
+/** 判断字符是否属于标准 Base64 字母表，供图片载荷逐字符校验使用。 */
 function isBase64Character(code: number): boolean {
     return (
         (code >= 0x41 && code <= 0x5a) ||
@@ -193,14 +204,17 @@ function isBase64Character(code: number): boolean {
     );
 }
 
+/** 按大端读取图片头中的 16 位整数。 */
 function readUint16BigEndian(bytes: string, offset: number): number {
     return bytes.charCodeAt(offset) * 0x100 + bytes.charCodeAt(offset + 1);
 }
 
+/** 按小端读取图片头中的 16 位整数。 */
 function readUint16LittleEndian(bytes: string, offset: number): number {
     return bytes.charCodeAt(offset) + bytes.charCodeAt(offset + 1) * 0x100;
 }
 
+/** 按小端读取 WebP 图片头中的 24 位整数。 */
 function readUint24LittleEndian(bytes: string, offset: number): number {
     return (
         bytes.charCodeAt(offset) +
@@ -209,6 +223,7 @@ function readUint24LittleEndian(bytes: string, offset: number): number {
     );
 }
 
+/** 按大端读取图片头中的 32 位整数，并保持无符号取值。 */
 function readUint32BigEndian(bytes: string, offset: number): number {
     return (
         bytes.charCodeAt(offset) * 0x1000000 +
@@ -222,6 +237,7 @@ const JPEG_START_OF_FRAME_MARKERS = new Set([
     0xc0, 0xc1, 0xc2, 0xc3, 0xc5, 0xc6, 0xc7, 0xc9, 0xca, 0xcb, 0xcd, 0xce, 0xcf,
 ]);
 
+/** 扫描已解码的 JPEG 头部标记以提取尺寸；信息不足时不推测尺寸。 */
 function readJpegDimensions(bytes: string): PiImageMetadata['dimensions'] {
     if (bytes.length < 4 || bytes.charCodeAt(0) !== 0xff || bytes.charCodeAt(1) !== 0xd8) {
         return undefined;
@@ -259,6 +275,7 @@ function readJpegDimensions(bytes: string): PiImageMetadata['dimensions'] {
     return undefined;
 }
 
+/** 按 WebP 头部编码类型提取尺寸，兼容其不同帧头布局。 */
 function readWebpDimensions(bytes: string): PiImageMetadata['dimensions'] {
     if (bytes.length < 30 || !bytes.startsWith('RIFF') || bytes.slice(8, 12) !== 'WEBP') {
         return undefined;
@@ -290,6 +307,7 @@ function readWebpDimensions(bytes: string): PiImageMetadata['dimensions'] {
     return undefined;
 }
 
+/** 根据已验证的图片类型分派尺寸读取，无法读取时返回 undefined。 */
 function readImageDimensions(bytes: string, mimeType: string): PiImageMetadata['dimensions'] {
     if (mimeType === 'image/png' && bytes.length >= 24) {
         return {
@@ -312,6 +330,7 @@ function readImageDimensions(bytes: string, mimeType: string): PiImageMetadata['
     return undefined;
 }
 
+/** 在受限的头部长度内查找 data URL 分隔符，避免对异常长头部做无界扫描。 */
 function findDataUrlSeparator(url: string): number {
     const maximumOffset = Math.min(url.length, MAX_DATA_URL_HEADER_CHARACTERS + 1);
     for (let offset = 5; offset < maximumOffset; offset++) {
@@ -322,11 +341,16 @@ function findDataUrlSeparator(url: string): number {
     return -1;
 }
 
+/** 只解码识别图片类型和尺寸所需的有限头部，控制大图转换的内存开销。 */
 function decodeImageHeader(url: string, dataStart: number, encodedLength: number): string {
     const prefixLength = Math.min(encodedLength, MAX_ENCODED_IMAGE_HEADER_CHARACTERS);
     return atob(url.slice(dataStart, dataStart + prefixLength));
 }
 
+/**
+ * 校验 data URL、Base64 编码、文件签名和图片预算，并记录元数据。
+ * 仅接收受支持的内嵌图片，失败时携带原始消息下标，不自动下载远程地址。
+ */
 function parseBase64Image(
     url: string,
     sourceIndex: number,
@@ -478,6 +502,7 @@ function parseBase64Image(
     return image;
 }
 
+/** 将酒馆文本或图片块转换为 Pi 内容块，并执行对应的结构与图片校验。 */
 function convertContentBlock(
     block: ContentBlock,
     sourceIndex: number,
@@ -512,6 +537,7 @@ function convertContentBlock(
     );
 }
 
+/** 统一处理字符串和多块消息内容，逐块转换为 Pi 输入格式。 */
 function convertContent(
     content: SendingMessage['content'],
     sourceIndex: number,
@@ -527,14 +553,17 @@ function convertContent(
     return content.map(block => convertContentBlock(block, sourceIndex, allowImages, imageBudget));
 }
 
+/** 判断内容块是否包含可发送的文本或图片。 */
 function contentHasValue(content: PiInputContent[]): boolean {
     return content.some(block => block.type === 'image' || !isBlank(block.text));
 }
 
+/** 拼接文本内容块，供只允许纯文本的消息角色使用。 */
 function compactTextBlocks(content: PiInputContent[]): PiInputContent[] {
     return content.filter(block => block.type === 'image' || !isBlank(block.text));
 }
 
+/** 提取 system 消息的纯文本；严格模式下拒绝不支持的系统内容。 */
 function extractSystemText(message: SendingMessage, sourceIndex: number): string {
     const content = message.content;
     let text: string;
@@ -560,6 +589,7 @@ function extractSystemText(message: SendingMessage, sourceIndex: number): string
     return [name, text].filter(value => value !== '').join('\n');
 }
 
+/** 在消息正文前保留酒馆角色名，并避免生成空的名称前缀。 */
 function addNamePrefix(content: PiInputContent[], name: string | undefined): PiInputContent[] {
     const prefix = formatSendingMessageName(name);
     if (!prefix) {
@@ -568,6 +598,7 @@ function addNamePrefix(content: PiInputContent[], name: string | undefined): PiI
     return [{ type: 'text', text: prefix }, ...content];
 }
 
+/** 为后置 system 消息寻找最近的 user 消息，确定注入归属。 */
 function findNearestUserIndex(messages: readonly SendingMessage[], sourceIndex: number): number {
     let bestIndex = -1;
     let bestDistance = Number.POSITIVE_INFINITY;
@@ -584,10 +615,12 @@ function findNearestUserIndex(messages: readonly SendingMessage[], sourceIndex: 
     return bestIndex;
 }
 
+/** 初始化用户消息前后两组系统注入内容，保持原始相对顺序。 */
 function makeAttachments(): UserAttachments {
     return { before: [], after: [] };
 }
 
+/** 把名称及前后置系统注入与用户原始内容组合，保留多模态内容块。 */
 function decorateUserContent(
     content: PiInputContent[],
     name: string | undefined,
@@ -604,6 +637,7 @@ function decorateUserContent(
     return [...before, ...addNamePrefix(content, name), ...after];
 }
 
+/** 将历史工具参数解析为普通对象，拒绝无效 JSON 或非对象参数。 */
 function parseToolArguments(argumentsValue: string, sourceIndex: number): Record<string, unknown> {
     let parsed: unknown;
     try {
@@ -625,6 +659,7 @@ function parseToolArguments(argumentsValue: string, sourceIndex: number): Record
     return parsed;
 }
 
+/** 校验历史工具调用标识和参数，并转换为 Pi 工具调用块。 */
 function convertToolCalls(
     message: SendingMessage,
     sourceIndex: number,
@@ -656,6 +691,7 @@ function convertToolCalls(
     });
 }
 
+/** 转换历史助手文本和工具调用，并补齐 Pi 要求的历史消息元数据。 */
 function convertAssistantMessage(
     message: SendingMessage,
     sourceIndex: number,
@@ -682,6 +718,7 @@ function convertAssistantMessage(
     };
 }
 
+/** 将工具返回值关联到已知调用，保留工具名、错误标记及多模态结果。 */
 function convertToolResultMessage(
     message: SendingMessage,
     sourceIndex: number,
@@ -715,6 +752,7 @@ function convertToolResultMessage(
     };
 }
 
+/** 按严格或宽松策略处理空消息，抛出定位错误或记录被丢弃的下标。 */
 function handleEmptyMessage(
     mode: ContextAdapterMode,
     sourceIndex: number,
@@ -731,6 +769,10 @@ function handleEmptyMessage(
     return false;
 }
 
+/**
+ * 把酒馆最终提示词转换为 Pi 上下文，并返回转换诊断。
+ * 前置 system 合并为系统提示词，后置 system 按策略归入用户消息；同时校验工具关联和图片预算。
+ */
 export function toPiContext(
     input: readonly SendingMessage[],
     options: ToPiContextOptions = {}

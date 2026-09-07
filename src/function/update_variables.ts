@@ -23,6 +23,10 @@ import JSON5 from 'json5';
 import { klona } from 'klona';
 import * as math from 'mathjs';
 
+/**
+ * 只复制允许的数学函数和常量，并冻结为独立命名空间。
+ * 保留 Math.floor、math.pow 等表达式写法，避免模型表达式修改宿主或共享库。
+ */
 function createReadOnlyMathNamespace(
     source: Record<string, unknown>,
     names: readonly string[]
@@ -156,8 +160,10 @@ export function applyTemplate(
     }
 }
 
-// 一个更安全的、用于解析命令中值的辅助函数
-// 它会尝试将字符串解析为 JSON, 布尔值, null, 数字, 或数学表达式
+/**
+ * 依次尝试将命令值解析为 JSON、宽松数据字面量或数学表达式，失败后保留字符串。
+ * 宽松对象使用 JSON5；数学表达式在独立 mathjs 实例与只读命名空间中求值。
+ */
 export function parseCommandValue(valStr: string): any {
     if (typeof valStr !== 'string') return valStr;
     const trimmed = valStr.trim();
@@ -1574,6 +1580,7 @@ export async function updateVariables(
     return is_modified;
 }
 
+/** 等待同一聊天中更早消息的变量写入，再读取本条消息并建立或更新变量快照。 */
 export async function handleVariablesInMessage(message_id: number) {
     await waitForEarlierVariableUpdates(message_id);
     const chat_message = getChatMessages(message_id).at(-1);

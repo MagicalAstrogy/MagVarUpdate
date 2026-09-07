@@ -1,3 +1,6 @@
+/**
+ * 测试场景：验证 Pi 各层错误的双语本地化、敏感信息移除，以及错误身份、重试标记和取消元数据的保留。
+ */
 jest.mock('@/function/update/pi/pi_gateway', () => ({
     ANTHROPIC_MODELS: {},
     GOOGLE_MODELS: {},
@@ -26,6 +29,7 @@ import { PiResultAdapterError } from '@/function/update/pi/result_adapter';
 import { PiRuntimeError } from '@/function/update/pi/runtime';
 import { PiProxyUnavailableError } from '@/function/update/pi/sillytavern_proxy';
 
+// 本地化边界：固定错误文案替换消息和堆栈，保留分类语义，未知界面错误使用通用提示。
 describe('Pi error localization boundary', () => {
     const original_locale = i18n.global.locale.value;
 
@@ -33,6 +37,7 @@ describe('Pi error localization boundary', () => {
         i18n.global.locale.value = original_locale;
     });
 
+    // 已知错误分类：采样、模型解析、服务商、上下文和结果错误都有安全的双语提示。
     test.each(['zh-CN', 'en'] as const)('explains conflicting Anthropic samplers in %s', locale => {
         i18n.global.locale.value = locale;
         const error = new PiRuntimeError(
@@ -126,6 +131,7 @@ describe('Pi error localization boundary', () => {
         }
     );
 
+    // 结构化元数据：预算明细和取消编号保留，OAuth 与未知错误不泄漏原文。
     test.each([
         ['zh-CN' as const, '请求预计占用 900 个输入 token'],
         ['en' as const, 'The request is estimated to use 900 input tokens'],
@@ -177,6 +183,7 @@ describe('Pi error localization boundary', () => {
         );
     });
 
+    // 请求失败提示：代理和能力拒绝使用合适说明，不覆盖更具体或已经本地化的错误。
     test.each([
         ['zh-CN' as const, '没有开启Proxy。'],
         ['en' as const, 'Proxy is not enabled.'],

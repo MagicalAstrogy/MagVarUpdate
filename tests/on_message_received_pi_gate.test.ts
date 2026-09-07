@@ -1,3 +1,6 @@
+/**
+ * 测试场景：验证消息接收后的 Pi 功能开关、工具能力分流，以及按请求快照展示一次安全的失败提示。
+ */
 import { isExtraModelSupported } from '@/function/is_extra_model_supported';
 import { invokeExtraModelWithStrategy } from '@/function/update/invoke_extra_model';
 import { onMessageReceived } from '@/function/update/on_message_received';
@@ -19,6 +22,7 @@ const mockIsExtraModelSupported = jest.mocked(isExtraModelSupported);
 const mockInvokeExtraModelWithStrategy = jest.mocked(invokeExtraModelWithStrategy);
 const mockHandleVariablesInMessage = jest.mocked(handleVariablesInMessage);
 
+// 消息处理入口：Pi 与旧来源分别判断能力，并将错误归属到实际失败的请求。
 describe('onMessageReceived Pi source gate', () => {
     beforeEach(() => {
         jest.clearAllMocks();
@@ -78,6 +82,7 @@ describe('onMessageReceived Pi source gate', () => {
         }
     );
 
+    // 错误提示：服务商拒绝、面板切换和具体 Pi 错误保持正确归类，旧来源不使用 Pi 文案。
     test.each([
         ['工具调用', 'runtime.pi.toolRequestRejected'],
         ['格式化输出', 'runtime.pi.structuredOutputRequestRejected'],

@@ -41,6 +41,7 @@ export class PiProxyUnavailableError extends Error {
     readonly code = 'proxy_unavailable';
     readonly retryable = false;
 
+    /** 区分代理未启用和不可用，并标记为发送前应终止的配置类失败。 */
     constructor(readonly status: Exclude<SillyTavernProxyTerminalStatus, 'enabled'>) {
         super(
             status === 'disabled'
@@ -60,11 +61,13 @@ type ProbeEntry = {
 
 let probe_cache = new WeakMap<FetchFunction, Map<string, ProbeEntry>>();
 
+/** 读取注入或全局 fetch；浏览器缺少请求能力时返回 undefined。 */
 function resolveFetch(fetch_override?: FetchFunction): FetchFunction | undefined {
     const candidate = fetch_override ?? globalThis.fetch;
     return typeof candidate === 'function' ? candidate : undefined;
 }
 
+/** 从覆盖值或文档基础地址解析酒馆源地址，兼容 origin 为 null 的 srcdoc 脚本。 */
 function resolveOrigin(origin_override?: string): string | undefined {
     // Slash normally hosts scripts in srcdoc, where location.origin is "null" despite
     // inheriting the parent's origin. Use the same document base as relative browser fetch;
@@ -81,6 +84,7 @@ function resolveOrigin(origin_override?: string): string | undefined {
     }
 }
 
+/** 按 fetch 实现与酒馆源地址隔离探测缓存，复用同一目标的进行中检查。 */
 function getProbeEntry(fetch_impl: FetchFunction, origin: string): ProbeEntry {
     let entries = probe_cache.get(fetch_impl);
     if (!entries) {
@@ -95,14 +99,17 @@ function getProbeEntry(fetch_impl: FetchFunction, origin: string): ProbeEntry {
     return entry;
 }
 
+/** 将完整目标地址编码进酒馆通用 CORS 代理路径。 */
 function proxyUrl(target: string): string {
     return `/proxy/${encodeURIComponent(target)}`;
 }
 
+/** 忽略首尾空白后精确核对探测正文，避免把其他页面误识别为代理结果。 */
 function exactResponseText(actual: string, expected: string): boolean {
     return actual.trim() === expected;
 }
 
+/** 通过本地 data URL 和超时限制探测代理，区分启用、关闭和暂时不可达。 */
 async function performProbe(fetch_impl: FetchFunction): Promise<SillyTavernProxyTerminalStatus> {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), PROXY_PROBE_TIMEOUT_MS);
@@ -130,10 +137,12 @@ async function performProbe(fetch_impl: FetchFunction): Promise<SillyTavernProxy
     }
 }
 
+/** 保留信号原始取消原因，缺失时补齐标准 AbortError。 */
 function abortReason(signal: AbortSignal): unknown {
     return signal.reason ?? new DOMException('The operation was aborted', 'AbortError');
 }
 
+/** 允许调用方取消对共享探测的等待，不中断其他调用方共用的探测请求。 */
 function waitForProbe(
     promise: Promise<SillyTavernProxyTerminalStatus>,
     signal?: AbortSignal
@@ -145,10 +154,12 @@ function waitForProbe(
         return Promise.reject(abortReason(signal));
     }
     return new Promise((resolve, reject) => {
+        /** 解除当前等待者的监听并拒绝其 Promise，保留共享探测继续运行。 */
         const on_abort = () => {
             cleanup();
             reject(abortReason(signal));
         };
+        /** 移除当前等待者的取消监听，避免探测结束后残留引用。 */
         const cleanup = () => signal.removeEventListener('abort', on_abort);
         signal.addEventListener('abort', on_abort, { once: true });
         promise.then(
@@ -164,7 +175,7 @@ function waitForProbe(
     });
 }
 
-/** Read the cached state without starting a probe. */
+/** 只读取缓存中的代理状态，不触发新的网络探测。 */
 export function getSillyTavernProxyStatus(
     options: SillyTavernProxyProbeOptions = {}
 ): SillyTavernProxyStatus {
@@ -176,7 +187,10 @@ export function getSillyTavernProxyStatus(
     return getProbeEntry(fetch_impl, origin).status;
 }
 
-/** Cache confirmed states, retry transient failures, and merge concurrent checks per fetch/origin. */
+/**
+ * 合并并发探测并缓存确定的启用或关闭状态，暂时失败允许重试。
+ * force 可重新核对服务端状态；单个等待者取消不影响共享探测。
+ */
 export function probeSillyTavernProxy(
     options: SillyTavernProxyProbeOptions = {}
 ): Promise<SillyTavernProxyTerminalStatus> {
@@ -203,7 +217,7 @@ export function probeSillyTavernProxy(
     return waitForProbe(entry.promise, options.signal);
 }
 
-/** Fail before a provider request can be submitted when ST cannot provide the proxy route. */
+/** 在发送带凭证的服务商请求前确认代理可用，不可用时立即报错。 */
 export async function assertSillyTavernProxyAvailable(
     options: SillyTavernProxyProbeOptions = {}
 ): Promise<void> {
@@ -213,6 +227,7 @@ export async function assertSillyTavernProxyAvailable(
     }
 }
 
+/** 要求不含内嵌凭证的绝对 HTTP(S) 地址，作为代理目标的第一层校验。 */
 function parseHttpUrl(value: string | URL, name: string): URL {
     let url: URL;
     try {
@@ -226,10 +241,12 @@ function parseHttpUrl(value: string | URL, name: string): URL {
     return url;
 }
 
+/** 去除基础路径末尾斜杠，便于严格比较目标路径边界。 */
 function normalizeBasePath(pathname: string): string {
     return pathname === '/' ? '' : pathname.replace(/\/+$/, '');
 }
 
+/** 限制请求必须位于配置服务商的同源基础路径内，避免凭证随代理流向其他目标。 */
 function assertTargetAllowed(target: URL, base: URL): void {
     const base_path = normalizeBasePath(base.pathname);
     const in_base_path =
@@ -241,22 +258,27 @@ function assertTargetAllowed(target: URL, base: URL): void {
     }
 }
 
+/** 识别 Request 输入，供后续按 fetch 语义合并 init 覆盖值。 */
 function requestFromInput(input: FetchInput): Request | undefined {
     return typeof Request !== 'undefined' && input instanceof Request ? input : undefined;
 }
 
+/** 统一取得字符串、URL 或 Request 输入对应的目标地址。 */
 function requestUrl(input: FetchInput, request: Request | undefined): string {
     return request?.url ?? input.toString();
 }
 
+/** 按 init 优先、Request 次之的顺序解析 HTTP 方法并统一大写。 */
 function requestMethod(request: Request | undefined, init?: RequestInit): string {
     return (init?.method ?? request?.method ?? 'GET').toUpperCase();
 }
 
+/** 遵循 fetch 的覆盖顺序解析本次请求头。 */
 function requestHeaders(request: Request | undefined, init?: RequestInit): HeadersInit | undefined {
     return init?.headers ?? request?.headers;
 }
 
+/** 保留 init 显式传入的取消信号或 null，否则继承 Request 的信号。 */
 function requestSignal(
     request: Request | undefined,
     init?: RequestInit
@@ -267,6 +289,7 @@ function requestSignal(
     return request?.signal;
 }
 
+/** 将可重放的请求体转换为文本，拒绝无法安全复用的流或其他载荷。 */
 async function bodyToText(body: BodyInit): Promise<string> {
     if (typeof body === 'string') {
         return body;
@@ -288,6 +311,7 @@ async function bodyToText(body: BodyInit): Promise<string> {
     throw new TypeError('SillyTavern proxy only supports replayable JSON request bodies');
 }
 
+/** 优先读取 init 请求体，必要时克隆 Request 读取，避免消费原始输入。 */
 async function requestBodyText(
     request: Request | undefined,
     init?: RequestInit
@@ -304,6 +328,7 @@ async function requestBodyText(
     return undefined;
 }
 
+/** 从 Headers、键值数组或对象中按大小写不敏感名称查找请求头。 */
 function getHeader(headers: HeadersInit | undefined, wanted_name: string): string | undefined {
     if (!headers) {
         return undefined;
@@ -319,6 +344,7 @@ function getHeader(headers: HeadersInit | undefined, wanted_name: string): strin
     return entry?.[1] === undefined ? undefined : String(entry[1]);
 }
 
+/** 确认带正文的代理请求使用受支持的方法、JSON 类型和合法 JSON 内容。 */
 function assertJsonBody(method: string, headers: HeadersInit | undefined, body?: string): void {
     if (body === undefined) {
         return;
@@ -337,12 +363,14 @@ function assertJsonBody(method: string, headers: HeadersInit | undefined, body?:
     }
 }
 
+/** 在准备和转发请求的边界检查取消状态，保留原始取消原因。 */
 function throwIfAborted(signal: AbortSignal | null | undefined): void {
     if (signal?.aborted) {
         throw signal.reason ?? new DOMException('The operation was aborted', 'AbortError');
     }
 }
 
+/** 检查返回值是否为酒馆明确的代理关闭提示，不把普通上游 404 误判为代理关闭。 */
 async function isDisabledProxyResponse(response: Response): Promise<boolean> {
     if (response.status !== 404) {
         return false;
@@ -354,6 +382,7 @@ async function isDisabledProxyResponse(response: Response): Promise<boolean> {
     }
 }
 
+/** 将实际请求发现的代理终态写回对应探测缓存。 */
 function cacheTerminalStatus(
     fetch_impl: FetchFunction,
     origin: string,
@@ -365,8 +394,8 @@ function cacheTerminalStatus(
 }
 
 /**
- * Create a credential-bearing fetch that is constrained to one provider base URL and relays
- * requests through SillyTavern's generic CORS proxy.
+ * 创建受单一服务商基础地址约束的代理 fetch，转发认证头、JSON 正文和取消信号。
+ * 发送前确认代理可用，目标越界或载荷不兼容时拒绝转发。
  */
 export function createSillyTavernProxyFetch(options: SillyTavernProxyFetchOptions): FetchFunction {
     const base = parseHttpUrl(options.baseUrl, 'baseUrl');
@@ -411,7 +440,7 @@ export function createSillyTavernProxyFetch(options: SillyTavernProxyFetchOption
     };
 }
 
-/** @internal Test-only reset for module-level probe state. */
+/** @internal 仅供测试清空模块级探测缓存，避免用例之间共享状态。 */
 export function resetSillyTavernProxyStatusForTests(): void {
     probe_cache = new WeakMap();
 }

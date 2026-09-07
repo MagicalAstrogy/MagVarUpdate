@@ -1,3 +1,7 @@
+/**
+ * 测试场景：在真实酒馆浏览器中使用受控传输，验证 Pi 高级能力、来源分流、并发隔离和原生发送/停止生命周期。
+ * 由共享浏览器启动器调用，依赖其准备的 MVU 产物、角色卡及模拟请求环境。
+ */
 const CAPTURE_MODEL_PREFIX = 'mvu-pi-prompt-capture:';
 const MAIN_MODEL = 'H03_MAIN_MODEL';
 const MAIN_PROMPT_MARKER = 'H03_MAIN_ONLY_PROMPT';
@@ -22,19 +26,23 @@ class FeatureSmokeError extends Error {
     }
 }
 
+/** 功能断言：失败时只报告场景码，便于定位浏览器联调步骤。 */
 function assertFeature(value, code) {
     if (!value) {
         throw new FeatureSmokeError(code);
     }
 }
 
+/** 异步协调：为浏览器状态传播留出指定等待时间。 */
 const wait = milliseconds => new Promise(resolve => setTimeout(resolve, milliseconds));
+/** 进度记录：按测试配置输出阶段信息，辅助定位联调停滞。 */
 const trace = label => {
     if (process.env.MVU_PI_ST_FEATURE_TRACE === '1') {
         process.stderr.write(`[pi-st-features] ${label}\n`);
     }
 };
 
+/** 连接准备：在浏览器中设置本次 Pi 来源、协议及所需应答选项。 */
 async function configurePi(webDriver, provider, responseFormat, apiOverride) {
     trace(`configure:${provider}:${responseFormat}:start`);
     const definition = PROVIDERS[provider];
@@ -139,6 +147,7 @@ async function configurePi(webDriver, provider, responseFormat, apiOverride) {
 
 let activeScriptName = '';
 
+/** 请求触发：调用真实重试入口，收集本轮模拟传输与界面结果。 */
 async function invokeRetry(webDriver, scenario, { image = false, expectRejected = false } = {}) {
     trace(`invoke:${scenario}:start`);
     const started = await webDriver.execute(
@@ -194,6 +203,7 @@ async function invokeRetry(webDriver, scenario, { image = false, expectRejected 
     return result;
 }
 
+/** 取消场景：等待指定服务商请求开始后停止，核对请求信号与结果终态。 */
 async function runAbortCase(webDriver, provider) {
     await configurePi(webDriver, provider, '聊天消息');
     const started = await webDriver.execute(
@@ -253,6 +263,7 @@ async function runAbortCase(webDriver, provider) {
     return true;
 }
 
+/** 旧来源基线：切回原有生成链路，验证新增 Pi 功能没有接管其请求。 */
 async function configureLegacy(webDriver, source) {
     const result = await webDriver.executeAsync(
         `
@@ -296,6 +307,7 @@ async function configureLegacy(webDriver, source) {
     assertFeature(result?.ok, `legacy-configure-${source}`);
 }
 
+/** 并发隔离：同时运行主生成和 Pi 更新，验证提示词及停止操作互不串用。 */
 async function runConcurrency(webDriver) {
     await configurePi(webDriver, 'openai', '聊天消息');
     const setup = await webDriver.executeAsync(
@@ -472,6 +484,7 @@ async function runConcurrency(webDriver) {
     return evidence;
 }
 
+/** 发送按钮生命周期：通过真实界面发送和停止，验证 Pi 更新期间的主生成状态。 */
 async function runSendButtonLifecycle(webDriver) {
     await configurePi(webDriver, 'openai', '聊天消息');
     const setup = await webDriver.executeAsync(
@@ -835,6 +848,7 @@ async function runSendButtonLifecycle(webDriver) {
     return { ...setup, ...evidence };
 }
 
+/** 功能矩阵：安装受控传输后检查文本、工具、结构化输出、图片、并发及旧来源回归。 */
 export async function runPiStFeatureSmoke({
     webDriver,
     scriptName,
@@ -1143,6 +1157,7 @@ export async function runPiStFeatureSmoke({
     assertFeature(installed?.ok, `feature-install-${installed?.stage ?? 'failed'}`);
     trace('install:done');
 
+    // 并发基线：主生成和 Pi 更新分别持有自己的提示词及停止信号。
     const checks = {};
     const concurrency = await runConcurrency(webDriver);
     checks.concurrentPromptIsolation =
@@ -1154,6 +1169,7 @@ export async function runPiStFeatureSmoke({
         concurrency.mainAliveAfterPiStop &&
         concurrency.mainAbortedAfterOwnStop;
 
+    // 文本协议矩阵：不同服务商和 OpenAI 两种协议都只产生一次正确认证的文本请求。
     for (const testCase of [
         { provider: 'openai', api: 'openai-responses', name: 'openaiResponsesText' },
         { provider: 'openai', api: 'openai-completions', name: 'openaiCompletionsText' },
@@ -1171,6 +1187,7 @@ export async function runPiStFeatureSmoke({
     }
 
     for (const provider of ['openai', 'anthropic', 'google']) {
+        // 工具及图片场景：要求 MVU 工具被强制选择，OpenAI 场景额外携带内嵌图片。
         await configurePi(webDriver, provider, '工具调用');
         const tool = await invokeRetry(webDriver, `tool-${provider}`, {
             image: provider === 'openai',
@@ -1186,6 +1203,7 @@ export async function runPiStFeatureSmoke({
         }
     }
 
+    // 原生结构化输出：Google 和 Anthropic 使用各自 Schema 字段，不通过工具调用替代。
     await configurePi(webDriver, 'google', '格式化输出');
     const structured = await invokeRetry(webDriver, 'structured-google');
     checks.googleNativeStructured =
@@ -1198,8 +1216,10 @@ export async function runPiStFeatureSmoke({
         anthropicStructured.lastRequest?.hasNativeSchema === true;
 
     for (const provider of ['openai', 'anthropic', 'google']) {
+        // 服务商取消矩阵：停止事件必须到达每条实际请求，并形成取消终态。
         checks[`${provider}Abort`] = await runAbortCase(webDriver, provider);
     }
+    // 旧来源回归：建立可比较的变量快照，确认原生成路径仍按既有方式更新。
     const legacyBaseline = await webDriver.executeAsync(
         `
         const done = arguments[arguments.length - 1];

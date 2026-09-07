@@ -58,6 +58,7 @@ export interface FetchPiModelListInput {
 }
 
 export class ModelListFetchError extends Error {
+    /** 保留模型列表错误码，供界面区分配置、认证、网络及响应格式问题。 */
     constructor(message: string) {
         super(message);
         this.name = 'ModelListFetchError';
@@ -101,6 +102,7 @@ const OPENAI_MODEL_DISCOVERY: Readonly<
 
 type NullableHeaders = Record<string, string | null>;
 
+/** 解析可注入的请求实现，并保留浏览器 fetch 所需的调用上下文。 */
 function getFetch(dependencies: ModelListFetchDependencies): FetchLike {
     const fetch_impl = dependencies.fetch ?? globalThis.fetch;
     if (typeof fetch_impl !== 'function') {
@@ -109,6 +111,7 @@ function getFetch(dependencies: ModelListFetchDependencies): FetchLike {
     return fetch_impl.bind(globalThis) as FetchLike;
 }
 
+/** 清理空模型标识、去重并排序，使列表显示和比较保持稳定。 */
 function normalizeModelIds(values: readonly unknown[]): string[] {
     return [...new Set(values.flatMap(value => (typeof value === 'string' ? [value.trim()] : [])))]
         .filter(Boolean)
@@ -116,9 +119,8 @@ function normalizeModelIds(values: readonly unknown[]): string[] {
 }
 
 /**
- * Shared `/models` routes may return IDs belonging to several generation protocols. Drop only a
- * known catalog ID that is incompatible with the active protocol; retain unknown IDs so newly
- * published models remain manually usable with an explicit context window.
+ * 共享模型列表可能混有多个协议；仅过滤目录中已知不兼容的模型。
+ * 未知自定义模型继续保留，由实际请求配置决定其能力。
  */
 function filterDiscoveredModelIds(
     definition: PiProviderDefinition,
@@ -137,6 +139,7 @@ function filterDiscoveredModelIds(
     });
 }
 
+/** 校验列表响应中的对象结构，结构错误时抛出统一的发现错误。 */
 function requireRecord(value: unknown): Record<string, unknown> {
     if (typeof value !== 'object' || value === null || Array.isArray(value)) {
         throw new ModelListFetchError('The model-list response is not a JSON object.');
@@ -144,6 +147,7 @@ function requireRecord(value: unknown): Record<string, unknown> {
     return value as Record<string, unknown>;
 }
 
+/** 校验模型集合为数组，避免将错误响应当作空列表。 */
 function requireArray(value: unknown): unknown[] {
     if (!Array.isArray(value)) {
         throw new ModelListFetchError('The model-list response does not contain a model array.');
@@ -151,6 +155,7 @@ function requireArray(value: unknown): unknown[] {
     return value;
 }
 
+/** 按列表协议读取字符串字段，并处理必填项缺失或类型错误。 */
 function readStringField(value: unknown, ...fields: string[]): string | undefined {
     if (typeof value !== 'object' || value === null || Array.isArray(value)) {
         return undefined;
@@ -164,6 +169,7 @@ function readStringField(value: unknown, ...fields: string[]): string | undefine
     return undefined;
 }
 
+/** 读取并校验 HTTP 与 JSON 响应，不把上游原始响应正文带入错误提示。 */
 async function readJsonResponse(response: Response): Promise<Record<string, unknown>> {
     if (!response.ok) {
         throw new ModelListFetchError(
@@ -180,10 +186,12 @@ async function readJsonResponse(response: Response): Promise<Record<string, unkn
     }
 }
 
+/** 在规范化的基础地址后拼接模型发现路径。 */
 function appendPath(base_url: string, path: string): string {
     return `${base_url.replace(/\/+$/, '')}/${path.replace(/^\/+/, '')}`;
 }
 
+/** 解析模型发现请求的自定义请求头，并将解析失败归类为配置错误。 */
 function parseModelListCustomHeaders(value: string | undefined): NullableHeaders | undefined {
     try {
         return parsePiCustomHeaders(value ?? '');
@@ -192,7 +200,7 @@ function parseModelListCustomHeaders(value: string | undefined): NullableHeaders
     }
 }
 
-/** Merge headers case-insensitively; later sources override or remove earlier values. */
+/** 按大小写不敏感的名称合并请求头，后面的值覆盖前值，null 表示删除。 */
 function mergeModelListHeaders(
     ...sources: readonly (Readonly<NullableHeaders> | undefined)[]
 ): Record<string, string> {
@@ -214,7 +222,7 @@ function mergeModelListHeaders(
     return Object.fromEntries([...merged.values()].map(({ name, value }) => [name, value]));
 }
 
-/** The same SillyTavern OpenAI-compatible discovery path used by the Custom source. */
+/** 复用自定义来源的酒馆模型发现接口，转发地址、密钥和请求头。 */
 async function fetchSillyTavernOpenAIModelList(
     base_url: string,
     api_key: string,
@@ -255,7 +263,7 @@ async function fetchSillyTavernOpenAIModelList(
     );
 }
 
-/** Preserve the legacy Custom-source behavior that infers an omitted `/v1` base path. */
+/** 沿用自定义来源的模型发现行为，在省略时补齐 /v1 基础路径。 */
 export function fetchOpenAICompatibleModelList(
     base_url: string,
     api_key: string,
@@ -270,6 +278,7 @@ export function fetchOpenAICompatibleModelList(
     );
 }
 
+/** 校验当前服务商、协议、认证和端点是否构成受支持的模型发现目标。 */
 function validatePiModelListTarget(input: FetchPiModelListInput): {
     definition: PiProviderDefinition;
     api: PiWireApi;
@@ -309,6 +318,7 @@ function validatePiModelListTarget(input: FetchPiModelListInput): {
     };
 }
 
+/** 按服务商要求生成模型列表认证头，避免将密钥放入查询参数。 */
 function authHeaders(input: FetchPiModelListInput): Record<string, string> {
     if (input.authType === 'oauth') {
         const access_token = input.oauthCredential?.accessToken.trim();
@@ -320,6 +330,7 @@ function authHeaders(input: FetchPiModelListInput): Record<string, string> {
     return input.apiKey?.trim() ? { 'x-api-key': input.apiKey.trim() } : {};
 }
 
+/** 分页读取 Anthropic 模型列表，并保留取消信号及认证请求头。 */
 async function fetchAnthropicModelList(
     input: FetchPiModelListInput,
     base_url: string,
@@ -377,6 +388,7 @@ async function fetchAnthropicModelList(
     throw new ModelListFetchError('The Anthropic model list exceeded the pagination limit.');
 }
 
+/** 读取并筛选 Google 可用于生成的模型，处理分页和模型名称前缀。 */
 async function fetchGoogleModelList(
     input: FetchPiModelListInput,
     base_url: string,
@@ -437,7 +449,7 @@ async function fetchGoogleModelList(
     throw new ModelListFetchError('The Google model list exceeded the pagination limit.');
 }
 
-/** Fetch the Mistral catalog directly; its conversations base omits `/v1`. */
+/** 直接读取 Mistral 模型目录，其 conversations 基础地址需要补充 /v1 路径。 */
 async function fetchMistralModelList(
     input: FetchPiModelListInput,
     base_url: string,
@@ -464,6 +476,7 @@ async function fetchMistralModelList(
     );
 }
 
+/** 使用 Codex OAuth 访问账号可见的模型列表，并附带所需账号信息。 */
 async function fetchCodexModelList(
     input: FetchPiModelListInput,
     base_url: string,
@@ -506,6 +519,7 @@ async function fetchCodexModelList(
     );
 }
 
+/** 校验 Codex 列表查询所需的 OAuth 凭证和账号标识。 */
 function requireCodexModelListCredential(input: FetchPiModelListInput): {
     accessToken: string;
     accountId: string;
@@ -518,11 +532,15 @@ function requireCodexModelListCredential(input: FetchPiModelListInput): {
     return { accessToken: access_token, accountId: account_id };
 }
 
+/** 根据服务商或端点识别 OpenRouter，以选择其模型发现路径。 */
 function isOpenRouter(base_url: string): boolean {
     return new URL(base_url).hostname.toLowerCase() === 'openrouter.ai';
 }
 
-/** Fetch provider-visible model IDs for the active More-source connection. */
+/**
+ * 按“更多”来源的协议和传输设置读取当前账号可见的模型。
+ * 代理、认证和目录兼容过滤与活动连接保持一致。
+ */
 export async function fetchPiModelList(
     input: FetchPiModelListInput,
     dependencies: ModelListFetchDependencies = {}
@@ -644,7 +662,7 @@ export async function fetchPiModelList(
     }
 }
 
-/** Resolve and refresh the stored OAuth credential through the same pi auth machinery as requests. */
+/** 通过请求共用的认证实现读取并按需刷新 OAuth 凭证，再供模型列表查询使用。 */
 export async function resolvePiModelListOAuthCredential(
     definition: PiProviderDefinition,
     signal?: AbortSignal

@@ -1,3 +1,7 @@
+/**
+ * 测试场景：在真实酒馆中对三种提示词方案分别采集自定义来源与 Pi 来源的结果，校验一致后写入 JSON fixture。
+ * 使用固定测试角色、世界书和预设，记录来源证据并清理临时实例；该脚本会更新 fixture 文件。
+ */
 import { spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import fs from 'node:fs';
@@ -54,12 +58,14 @@ class FixtureError extends Error {
     }
 }
 
+/** fixture 断言：用明确场景码报告采集前置条件或内容一致性失败。 */
 function assertFixture(value, code, details) {
     if (!value) {
         throw new FixtureError(code, details);
     }
 }
 
+/** 文件检查：确认依赖路径指向文件，避免把目录当作可读取产物。 */
 function isFile(filePath) {
     try {
         return fs.statSync(filePath).isFile();
@@ -68,6 +74,7 @@ function isFile(filePath) {
     }
 }
 
+/** 环境定位：查找可用于临时测试实例的酒馆安装目录。 */
 function resolveSillyTavernRoot() {
     return [
         process.env.MVU_ST_ROOT,
@@ -82,6 +89,7 @@ function resolveSillyTavernRoot() {
         );
 }
 
+/** 驱动定位：解析当前环境可执行的 Firefox WebDriver。 */
 function resolveGeckodriver() {
     return (
         [process.env.MVU_GECKODRIVER, '/snap/firefox/current/usr/lib/firefox/geckodriver']
@@ -90,10 +98,12 @@ function resolveGeckodriver() {
     );
 }
 
+/** 完整性证据：计算文件摘要，检查联调前后使用的产物是否一致。 */
 function sha256(bytes) {
     return createHash('sha256').update(bytes).digest('hex');
 }
 
+/** 端口准备：分配当前可用的本地回环端口。 */
 async function allocatePort() {
     const server = net.createServer();
     await new Promise((resolve, reject) => {
@@ -107,6 +117,7 @@ async function allocatePort() {
     return port;
 }
 
+/** 环境隔离：为临时测试进程选择必要环境变量，避免沿用无关服务配置。 */
 function isolatedEnvironment(root) {
     const environment = {
         LANG: 'C.UTF-8',
@@ -126,6 +137,7 @@ function isolatedEnvironment(root) {
     return environment;
 }
 
+/** 浏览器隔离：创建本次测试专用配置目录，兼容沙箱安装的 Firefox。 */
 async function createFirefoxProfileRoot(geckodriver, runRoot) {
     const snapCommon = path.join(os.homedir(), 'snap', 'firefox', 'common');
     if (
@@ -142,6 +154,7 @@ async function createFirefoxProfileRoot(geckodriver, runRoot) {
     return { profileRoot, separate: false, allowedParent: runRoot };
 }
 
+/** 启动服务：保留子进程和输出观测，供就绪检查及最终清理使用。 */
 function startProcess(command, args, options) {
     const child = spawn(command, args, {
         ...options,
@@ -155,6 +168,7 @@ function startProcess(command, args, options) {
     return child;
 }
 
+/** 停止服务：关闭测试子进程，必要时升级终止方式以完成清理。 */
 async function stopProcess(child) {
     if (!child || child.exitCode !== null || child.signalCode !== null) {
         return true;
@@ -178,6 +192,7 @@ async function stopProcess(child) {
     return Promise.race([child.exitResult.then(() => true), delay(5_000).then(() => false)]);
 }
 
+/** 服务就绪：轮询本地 HTTP 入口，达到可用状态后再驱动浏览器。 */
 async function waitForHttp(url, child, timeoutMs, validator = response => response.ok) {
     const deadline = Date.now() + timeoutMs;
     while (Date.now() < deadline) {
@@ -197,6 +212,7 @@ async function waitForHttp(url, child, timeoutMs, validator = response => respon
     throw new FixtureError('http-readiness-timeout');
 }
 
+/** 产物服务：从本地提供测试使用的 MVU 产物，并记录加载次数。 */
 function startArtifactServer(bytes) {
     let requestCount = 0;
     const server = http.createServer((request, response) => {
@@ -228,6 +244,7 @@ function startArtifactServer(bytes) {
     return { server, getRequestCount: () => requestCount };
 }
 
+/** 服务绑定：仅在本地回环接口启动测试服务器并返回实际地址信息。 */
 async function listenLoopback(server) {
     await new Promise((resolve, reject) => {
         server.once('error', reject);
@@ -238,6 +255,7 @@ async function listenLoopback(server) {
     return address.port;
 }
 
+/** 服务清理：关闭本地测试服务器并等待关闭完成。 */
 async function closeServer(server) {
     if (!server?.listening) {
         return true;
@@ -248,6 +266,7 @@ async function closeServer(server) {
     });
 }
 
+/** 临时配置：将测试所需端口和数据目录写入隔离酒馆实例。 */
 async function prepareConfig(stRoot, configPath, dataRoot) {
     const defaultConfig = path.join(stRoot, 'default', 'config.yaml');
     assertFixture(isFile(defaultConfig), 'st-default-config-missing');
@@ -273,6 +292,7 @@ async function prepareConfig(stRoot, configPath, dataRoot) {
     await chmod(configPath, 0o600);
 }
 
+/** 驱动封装：建立本次浏览器会话使用的命令访问接口。 */
 function webdriver(baseUrl, getSessionId) {
     async function request(method, commandPath, body, timeoutMs = 30_000) {
         let response;
@@ -356,6 +376,7 @@ function webdriver(baseUrl, getSessionId) {
     };
 }
 
+/** 浏览器同步：轮询目标状态直到满足条件，超时后报告对应场景失败。 */
 async function waitForBrowser(driver, browserFunction, args = [], timeoutMs = 45_000) {
     const deadline = Date.now() + timeoutMs;
     const script = 'return (' + browserFunction.toString() + ').apply(null, arguments);';
@@ -372,6 +393,7 @@ async function waitForBrowser(driver, browserFunction, args = [], timeoutMs = 45
     throw new FixtureError('browser-readiness-timeout');
 }
 
+/** 异步采集包装：让浏览器任务完成后向 WebDriver 回传统一结果。 */
 function asyncBrowserScript(browserFunction) {
     return (
         'const done = arguments[arguments.length - 1];' +
@@ -385,10 +407,12 @@ function asyncBrowserScript(browserFunction) {
     );
 }
 
+/** 元素标识：兼容 WebDriver 返回的元素引用形状。 */
 function elementId(element) {
     return element?.['element-6066-11e4-a52e-4f735466cecf'] ?? element?.ELEMENT;
 }
 
+/** 确认操作：通过真实弹窗按钮完成场景中的确认或取消。 */
 async function clickPopup(driver, mode = 'auto') {
     return driver.execute(
         'const mode = arguments[0];' +
@@ -414,6 +438,7 @@ async function clickPopup(driver, mode = 'auto') {
     );
 }
 
+/** 初始界面整理：处理欢迎或确认弹窗，避免遮挡后续场景操作。 */
 async function settlePopups(driver, timeoutMs = 30_000) {
     const deadline = Date.now() + timeoutMs;
     let stable = 0;
@@ -435,6 +460,7 @@ async function settlePopups(driver, timeoutMs = 30_000) {
     throw new FixtureError('popup-settle-timeout');
 }
 
+/** 宿主就绪：检查酒馆助手入口可用后再安装或操作 MVU。 */
 function browserReadyForTavernHelper() {
     return Boolean(
         window.SillyTavern &&
@@ -443,16 +469,19 @@ function browserReadyForTavernHelper() {
     );
 }
 
+/** 角色导入检查：确认测试角色已经出现在酒馆角色列表。 */
 function browserHasImportedCharacter() {
     const characters = window.SillyTavern?.getContext?.().characters ?? [];
     return characters.some(character => String(character?.name ?? '').includes('青空'));
 }
 
+/** 角色选择检查：确认当前聊天属于测试角色，避免操作其他会话。 */
 function browserHasSelectedCharacter() {
     const context = window.SillyTavern?.getContext?.();
     return Boolean(context && context.characterId !== undefined && context.characterId !== null);
 }
 
+/** 产物就绪：等待测试脚本及 Mvu 接口完成加载。 */
 function browserArtifactReady(scriptName) {
     const iframe = [...document.querySelectorAll('iframe')].find(frame =>
         frame.id.startsWith('TH-script--' + scriptName)
@@ -464,6 +493,7 @@ function browserArtifactReady(scriptName) {
     );
 }
 
+/** 提示词环境：准备固定世界书、角色和预设，使不同来源的捕获结果可比较。 */
 async function preparePromptFixture(fixture) {
     const helper = window.TavernHelper;
     const context = window.SillyTavern.getContext();
@@ -737,6 +767,7 @@ async function preparePromptFixture(fixture) {
     };
 }
 
+/** 产物安装：把指定 MVU 产物加载到临时酒馆测试环境。 */
 async function installArtifact(setup) {
     const context = window.SillyTavern.getContext();
     const helper = window.TavernHelper;
@@ -821,6 +852,7 @@ async function installArtifact(setup) {
     return true;
 }
 
+/** 采集场景选择：切换提示词方案与来源，同时保持公共输入一致。 */
 function selectFixtureCase(scriptName, route, source) {
     const iframe = [...document.querySelectorAll('iframe')].find(frame =>
         frame.id.startsWith('TH-script--' + scriptName)
@@ -847,6 +879,7 @@ function selectFixtureCase(scriptName, route, source) {
     return { ok: routeSelected && sourceSelected };
 }
 
+/** 单次采集：观察最终设置事件并停止占位请求，返回提示词及采集证据。 */
 async function captureFixtureCase(capture) {
     const context = window.SillyTavern.getContext();
     const helper = window.TavernHelper;
@@ -947,6 +980,7 @@ async function captureFixtureCase(capture) {
     };
 }
 
+/** 内容检查：提取消息中的文本，供标记和过滤规则核对使用。 */
 function flattenMessageText(messages) {
     return messages
         .map(message => {
@@ -963,6 +997,7 @@ function flattenMessageText(messages) {
         .join('\n');
 }
 
+/** 来源对照：比较同一提示词方案的自定义和 Pi 捕获结果，核对内容及控制字段隔离。 */
 function validateCapturedPair(route, legacy, pi) {
     assertFixture(Array.isArray(legacy), 'legacy-messages-missing', route.id);
     assertFixture(Array.isArray(pi), 'pi-messages-missing', route.id);
@@ -1023,6 +1058,7 @@ function validateCapturedPair(route, legacy, pi) {
     );
 }
 
+/** 目录清理：核对临时测试目录归属后移除本次运行数据。 */
 async function removeRunRoot(runRoot) {
     if (!runRoot) {
         return true;
@@ -1037,6 +1073,7 @@ async function removeRunRoot(runRoot) {
     return !fs.existsSync(resolved);
 }
 
+/** 浏览器配置清理：核对路径后删除本次临时 Firefox 目录。 */
 async function removeProfileRoot(profile) {
     if (!profile?.separate) {
         return true;
@@ -1051,6 +1088,7 @@ async function removeProfileRoot(profile) {
     return !fs.existsSync(resolved);
 }
 
+/** 写入边界：确认 fixture 输出目录属于允许的测试位置。 */
 function validateOutputDirectory(outputDirectory) {
     outputDirectory ||= defaultOutputDirectory;
     assertFixture(path.isAbsolute(outputDirectory), 'output-directory-must-be-absolute');
@@ -1069,6 +1107,7 @@ function validateOutputDirectory(outputDirectory) {
     return resolved;
 }
 
+/** 场景编排：准备依赖环境、执行本文件测试流程，并统一收集结果与清理资源。 */
 async function main() {
     let phase = 'preflight';
     let runRoot;
@@ -1117,6 +1156,7 @@ async function main() {
         artifactServer = artifact.server;
         const artifactPort = await listenLoopback(artifactServer);
 
+        // 环境启动：使用隔离配置启动本地酒馆并等待服务就绪。
         phase = 'start-sillytavern';
         stProcess = startProcess(
             process.execPath,
@@ -1150,6 +1190,7 @@ async function main() {
         const stUrl = 'http://127.0.0.1:' + stPort;
         await waitForHttp(stUrl, stProcess, 45_000);
 
+        // 浏览器启动：建立本次测试专用 Firefox 与 WebDriver 会话。
         phase = 'start-webdriver';
         geckoProcess = startProcess(
             geckodriver,
@@ -1192,6 +1233,7 @@ async function main() {
         );
         await driver.setTimeouts();
 
+        // 宿主初始化：完成酒馆初始界面和酒馆助手的就绪检查。
         phase = 'initialize-sillytavern';
         await driver.navigate(stUrl);
         await waitForBrowser(driver, () => document.readyState === 'complete', [], 30_000);
@@ -1215,6 +1257,7 @@ async function main() {
         }
         await waitForBrowser(driver, browserReadyForTavernHelper, [], 45_000);
 
+        // 测试角色：导入并选择固定角色，后续操作限定在该测试聊天内。
         phase = 'import-character';
         const input = await driver.findElement('#character_import_file');
         const inputId = elementId(input);
@@ -1235,6 +1278,7 @@ async function main() {
         const popupEvidence = await settlePopups(driver, 35_000);
         await waitForBrowser(driver, browserHasSelectedCharacter, [], 35_000);
 
+        // 采集环境准备：使用固定角色、世界书和预设建立可重复的提示词输入。
         phase = 'prepare-prompt-fixture';
         const prepared = await driver.executeAsync(
             asyncBrowserScript(preparePromptFixture),
@@ -1248,6 +1292,7 @@ async function main() {
             JSON.stringify(prepared.value ?? null)
         );
 
+        // 产物加载：安装本地 MVU 产物，确认脚本入口与界面已可用。
         phase = 'load-artifact';
         const artifactUrl =
             'http://127.0.0.1:' + artifactPort + '/bundle.js?sha=' + artifactHash.slice(0, 12);
@@ -1272,6 +1317,7 @@ async function main() {
         await waitForBrowser(driver, browserArtifactReady, [SCRIPT_NAME], 90_000);
         assertFixture(artifact.getRequestCount() >= 1, 'artifact-not-requested');
 
+        // 六组来源对照：三种提示词方案各采集自定义和 Pi 两个来源，逐对验证一致性。
         phase = 'capture-six-cases';
         const captures = {};
         for (const route of ROUTES) {
@@ -1339,6 +1385,7 @@ async function main() {
             validateCapturedPair(route, captures[route.id].legacy, captures[route.id].pi);
         }
 
+        // fixture 写入：仅在捕获及一致性校验通过后保存 JSON 和来源证据。
         phase = 'write-fixtures';
         const version = await fetch(stUrl + '/version', {
             signal: AbortSignal.timeout(5_000),

@@ -1,3 +1,6 @@
+/**
+ * 测试场景：编译并静态检查 Source 与 ModelSelect 组件，验证模型发现、受控切换、帮助提示、代理和 OAuth 操作绑定。
+ */
 import { compileScript, compileTemplate, parse } from '@vue/compiler-sfc';
 
 const { readFileSync } = jest.requireActual('node:fs') as typeof import('node:fs');
@@ -7,7 +10,9 @@ const source = readFileSync(filename, 'utf8');
 const modelSelectFilename = resolve(process.cwd(), 'src/panel/component/ModelSelect.vue');
 const modelSelectSource = readFileSync(modelSelectFilename, 'utf8');
 
+// 界面契约：组件可编译，持久化配置可查看和清除，异步列表与认证操作不会串到新连接。
 describe('Pi Source UI contract', () => {
+    // 组件编译与模型选择：共享选择器支持手填模型，并取消目标变化后的过时请求。
     test('compiles the Source SFC template and script', () => {
         const parsed = parse(source, { filename });
         expect(parsed.errors).toEqual([]);
@@ -68,6 +73,7 @@ describe('Pi Source UI contract', () => {
         expect(modelSelectSource).toContain('model.value = value;');
     });
 
+    // 说明与配置归属：帮助内容通过 HelpIcon 展示，自定义覆盖可编辑，密钥切换受控。
     test('routes supplementary More-source explanations through HelpIcon suffixes', () => {
         expect(source).toContain("import HelpIcon from '@/panel/component/HelpIcon.vue';");
         expect(source).toContain('<HelpIcon :help="t(\'panel.source.pi.endpointHelp\')" />');
@@ -114,6 +120,7 @@ describe('Pi Source UI contract', () => {
         expect(source).toContain("pi.authType === 'api_key'");
     });
 
+    // 代理与 OAuth：正确标注代理来源、探测不可用状态，并绑定刷新和登出的发起界面。
     test('labels and controls routes that use the SillyTavern CORS proxy', () => {
         expect(source).toContain("import Checkbox from '@/panel/component/Checkbox.vue';");
         expect(source).toContain('v-if="show_pi_custom_endpoint_proxy"');

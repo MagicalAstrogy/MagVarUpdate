@@ -1,3 +1,6 @@
+/**
+ * 测试场景：验证宿主语言映射、动态翻译、插值占位符，以及“更多”来源文案与持久化枚举的边界。
+ */
 import { serializeCharacterSettingsOverride } from '@/function/character_override/schema';
 import { i18n, resolveMvuLocale, tr } from '@/i18n';
 import type { MessageKey } from '@/i18n';
@@ -17,6 +20,7 @@ function extractPlaceholders(message: string): string[] {
     return Array.from(message.matchAll(/\{([\w.-]+)\}/g), match => match[1]).sort();
 }
 
+// 本地化契约：语言切换只改变显示文案，资源占位符完整，设置枚举保留原值。
 describe('MVU localization', () => {
     const locale_ref = i18n.global.locale;
     const initial_locale = locale_ref.value;
@@ -81,6 +85,7 @@ describe('MVU localization', () => {
         );
     });
 
+    // Pi 界面文案：组合来源标签与协议名称都有对应翻译。
     test('translates provider labels and protocols used in combined source choices', () => {
         locale_ref.value = 'zh-CN';
         expect(tr('panel.source.pi.provider')).toBe('来源');
@@ -91,6 +96,7 @@ describe('MVU localization', () => {
         expect(tr('panel.source.pi.api.openaiResponses')).toBe('OpenAI Responses');
     });
 
+    // 资源一致性：双语资源非空且插值一致，内部 Pi 名称不泄漏到产品文案。
     test('every resource key has non-empty translations with matching placeholders', () => {
         const seen_keys = new Set<string>();
         let message_count = 0;

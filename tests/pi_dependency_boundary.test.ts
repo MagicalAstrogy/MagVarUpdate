@@ -1,3 +1,6 @@
+/**
+ * 测试场景：通过静态源码与产物检查，验证 Pi 只从统一网关导入，并经固定版本 ESM 加载而不嵌入主包。
+ */
 const { readFileSync } = jest.requireActual('node:fs') as {
     readFileSync(path: string, encoding: 'utf8'): string;
 };
@@ -73,6 +76,7 @@ function hasLocalModuleSource(source_map: WebpackSourceMap, specifier: string): 
     return source_map.sources.some(source => source.includes(`/node_modules/${specifier}/`));
 }
 
+// 依赖边界：允许的运行时入口、ESM 地址版本与生产产物中的第三方代码覆盖一致。
 describe('pi dependency boundary', () => {
     test('gateway imports only the audited pi runtime entry points', () => {
         const source = readWorkspaceFile('src/function/update/pi/pi_gateway.ts');

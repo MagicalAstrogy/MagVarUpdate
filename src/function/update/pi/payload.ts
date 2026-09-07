@@ -65,10 +65,15 @@ const GOOGLE_PROTECTED_CONFIG_FIELDS = new Set([
     'topP',
 ]);
 
+/** 判断请求体或自定义配置是否为非空、非数组对象。 */
 function isPlainObject(value: unknown): value is Record<string, unknown> {
     return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
+/**
+ * 先删除再合并自定义字段，同时阻止修改受保护的请求字段。
+ * 只浅拷贝原请求体以保留 AbortSignal 等浏览器对象，用户覆盖值单独深拷贝。
+ */
 function applyCustomFields(
     payload: Record<string, unknown>,
     include: Record<string, unknown>,
@@ -93,6 +98,7 @@ function applyCustomFields(
     return result;
 }
 
+/** 只接受 config.<字段> 形式的 Google 删除路径，避免歧义或删除整个生成配置。 */
 function googleConfigField(path: string): string {
     const match = /^config\.([^.]+)$/.exec(path);
     if (!match) {
@@ -103,6 +109,7 @@ function googleConfigField(path: string): string {
     return match[1];
 }
 
+/** 阻止自定义配置覆盖或删除由运行时管理的 Google 核心字段。 */
 function assertGoogleConfigFieldAllowed(field: string, operation: 'override' | 'exclude'): void {
     if (GOOGLE_PROTECTED_CONFIG_FIELDS.has(field)) {
         throw new Error(
@@ -111,6 +118,7 @@ function assertGoogleConfigFieldAllowed(field: string, operation: 'override' | '
     }
 }
 
+/** 将 Google 自定义参数限制在 config 内，保留现有配置中的取消信号等对象。 */
 function applyGoogleCustomFields(
     payload: Record<string, unknown>,
     include: Record<string, unknown>,
@@ -153,6 +161,7 @@ function applyGoogleCustomFields(
     return { ...payload, config };
 }
 
+/** 按协议写入原生 JSON Schema 或 JSON 对象输出配置，不支持的组合直接报错。 */
 function applyNativeStructuredOutput(
     payload: Record<string, unknown>,
     api: Api,
@@ -259,6 +268,7 @@ function applyNativeStructuredOutput(
     throw new Error(`More source API '${api}' does not support native structured output`);
 }
 
+/** 将统一采样选项转换为各协议的字段名称和嵌套位置。 */
 function applyApiSampling(
     payload: Record<string, unknown>,
     api: Api,
@@ -317,6 +327,7 @@ function applyApiSampling(
     return payload;
 }
 
+/** 统一应用请求覆盖、采样和原生应答格式，并保留协议核心字段的控制权。 */
 export function transformPiPayload(payload: unknown, options: PiPayloadTransformOptions): unknown {
     if (!isPlainObject(payload)) {
         throw new Error('More source provider payload must be an object');
@@ -345,6 +356,7 @@ export function transformPiPayload(payload: unknown, options: PiPayloadTransform
     return result;
 }
 
+/** 将本轮转换选项绑定为 Pi 的 onPayload 回调。 */
 export function createPiPayloadTransform(options: PiPayloadTransformOptions) {
     return (payload: unknown) => transformPiPayload(payload, options);
 }

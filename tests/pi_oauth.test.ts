@@ -1,3 +1,6 @@
+/**
+ * 测试场景：通过注入时钟、随机数、fetch 和凭证仓库，验证浏览器 OAuth 登录、回调校验、续期、取消及秘密隔离。
+ */
 import { webcrypto } from 'node:crypto';
 
 jest.mock('@/function/update/pi/pi_gateway', () => ({
@@ -124,7 +127,9 @@ afterEach(() => {
     jest.restoreAllMocks();
 });
 
+// 浏览器 OAuth 契约：Anthropic 与 Codex 按各自协议交换令牌，尝试和凭证操作互相隔离。
 describe('browser-safe Pi OAuth', () => {
+    // 手动刷新：未过期凭证也可刷新，支持令牌轮换，失败或缺失凭证不会发起新登录。
     test('manually refreshes an unexpired Codex credential and persists token rotation', async () => {
         const store = new TestCredentialStore();
         const now = 2_000_000_000_000;
@@ -200,6 +205,7 @@ describe('browser-safe Pi OAuth', () => {
         expect(fetchMock).not.toHaveBeenCalled();
     });
 
+    // 刷新竞态：与自动刷新共享修改锁，等待期间的有效刷新可复用，取消后不写回。
     test('shares the credential lock and uses an automatic refresh that completed while waiting', async () => {
         const store = createPiCredentialStore();
         await store.modify('anthropic', async () => oauthCredential());
@@ -255,6 +261,7 @@ describe('browser-safe Pi OAuth', () => {
         expect(store.credentials.get('anthropic')).toEqual(original);
     });
 
+    // 授权与交换：验证 PKCE、回环地址、JSON/表单协议，以及 Codex 账号声明提取。
     test('builds Anthropic PKCE authorization and accepts the 127.0.0.1 callback without changing redirect_uri', async () => {
         const now = 1_800_000_000_000;
         const store = new TestCredentialStore();
@@ -358,6 +365,7 @@ describe('browser-safe Pi OAuth', () => {
         expect(tokenBody.get('state')).toBeNull();
     });
 
+    // 回调归属与防重放：错误地址、state 不匹配、授权失败和重复回调都在适当边界拒绝。
     test.each([
         ['wrong host', (url: URL) => (url.hostname = 'example.com')],
         ['wrong port', (url: URL) => (url.port = '1234')],
@@ -430,6 +438,7 @@ describe('browser-safe Pi OAuth', () => {
         expect(fetchMock).toHaveBeenCalledTimes(1);
     });
 
+    // 有效期与取消：超时、主动取消和外部信号中止尝试，并保留原有凭证。
     test('expires attempts based on their deadline', async () => {
         let now = 1000;
         const attempt = await beginPiOAuth('anthropic', {
@@ -484,6 +493,7 @@ describe('browser-safe Pi OAuth', () => {
         expect(fetchMock).not.toHaveBeenCalled();
     });
 
+    // 响应校验与脱敏：网络、HTTP 和令牌字段错误不回显请求或响应中的秘密。
     test('normalizes CORS/network and token errors without leaking request or response secrets', async () => {
         const store = new TestCredentialStore();
         store.credentials.set('anthropic', oauthCredential());
@@ -554,6 +564,7 @@ describe('browser-safe Pi OAuth', () => {
         expect(store.credentials.get('anthropic')).toEqual(oauthCredential());
     });
 
+    // Pi 认证接入：两个 OAuth 实现都可续期并派生请求认证，状态和登出仅暴露必要信息。
     test('refreshes both browser OAuth implementations and derives request auth', async () => {
         const now = 2_000_000_000_000;
         const anthropicFetch = jest.fn().mockResolvedValue(

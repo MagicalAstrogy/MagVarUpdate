@@ -1,4 +1,7 @@
 /**
+ * 测试场景：贯通生产 requestReply、提示词捕获和 Pi 运行时，以模拟网络验证协议请求、OAuth 续期和发送前拒绝。
+ */
+/**
  * requestReply integration coverage for the browser Pi boundary.
  *
  * pi-ai is ESM-only while the repository Jest suite is CommonJS.  Keep the
@@ -389,6 +392,7 @@ function expectFixedCapture(record: FetchRecord, providerNeedles: readonly strin
     }
 }
 
+// 生产边界集成：从真实提示词配置进入请求构造，验证只捕获并发送一次且不会误走旧来源。
 describe('requestReply production Pi capture/runtime boundary', () => {
     const originalFetch = globalThis.fetch;
 
@@ -428,6 +432,7 @@ describe('requestReply production Pi capture/runtime boundary', () => {
         expect(getActivePiRequestIds()).toEqual([]);
     });
 
+    // 协议矩阵：逐个提示词方案核对捕获次数、目标地址、认证头和业务载荷。
     test.each([
         {
             route: '使用当前预设',
@@ -535,6 +540,7 @@ describe('requestReply production Pi capture/runtime boundary', () => {
         expect((globalThis as any).setChatMessages).not.toHaveBeenCalled();
     });
 
+    // 凭证续期：实际生成前自动刷新过期 OAuth 凭证。
     test('automatically refreshes an expired OAuth credential before the Anthropic request', async () => {
         const config: RouteCase = {
             route: '使用内置破限',
@@ -592,6 +598,7 @@ describe('requestReply production Pi capture/runtime boundary', () => {
         });
     });
 
+    // 拒绝与分流：无效配置在捕获或网络请求前失败，旧来源仍使用原链路。
     test.each([
         ['provider/API mismatch', { provider: 'openai', api: 'anthropic-messages' }],
         ['unsupported auth', { provider: 'openai', authType: 'oauth' }],

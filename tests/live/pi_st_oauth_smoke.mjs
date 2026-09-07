@@ -1,3 +1,7 @@
+/**
+ * 测试场景：在真实酒馆 Source 界面验证 OAuth 授权、回调、持久化、登出和卸载取消。
+ * 授权及令牌响应由浏览器探针控制，使用合成凭证检查状态归属和秘密清理。
+ */
 import { randomUUID } from 'node:crypto';
 import { setTimeout as delay } from 'node:timers/promises';
 
@@ -12,18 +16,21 @@ class OAuthSmokeError extends Error {
     }
 }
 
+/** OAuth 断言：以固定场景码报告界面或授权状态不符合预期。 */
 function assertOAuth(value, code) {
     if (!value) {
         throw new OAuthSmokeError(code);
     }
 }
 
+/** 检查汇总：要求当前步骤的每项证据均成立，再进入下一步。 */
 function assertChecks(checks, prefix) {
     for (const [name, passed] of Object.entries(checks)) {
         assertOAuth(passed, `${prefix}-${name}`);
     }
 }
 
+/** 浏览器同步：轮询目标状态直到满足条件，超时后报告对应场景失败。 */
 async function waitForBrowser(webDriver, script, args, code, timeoutMs = 30_000) {
     const deadline = Date.now() + timeoutMs;
     while (Date.now() < deadline) {
@@ -39,6 +46,7 @@ async function waitForBrowser(webDriver, script, args, code, timeoutMs = 30_000)
     throw new OAuthSmokeError(code);
 }
 
+/** 合成凭证：生成仅供浏览器探针使用的令牌数据，便于核对持久化和清理。 */
 function makeMockCredential() {
     const nonce = randomUUID().replaceAll('-', '');
     return {
@@ -47,6 +55,7 @@ function makeMockCredential() {
     };
 }
 
+/** 界面准备：选择 Anthropic 账号登录并确认初始登出状态与控件可见性。 */
 async function configureAnthropicOAuth(webDriver, scriptName) {
     return webDriver.executeAsync(
         `
@@ -126,6 +135,7 @@ async function configureAnthropicOAuth(webDriver, scriptName) {
     );
 }
 
+/** 授权隔离：拦截浏览器授权窗口和令牌请求，记录参数并返回合成凭证。 */
 async function installOAuthProbe(webDriver, scriptName, credential, mode = 'exchange') {
     return webDriver.execute(
         `
@@ -366,6 +376,7 @@ async function installOAuthProbe(webDriver, scriptName, credential, mode = 'exch
     );
 }
 
+/** 发起登录：点击界面入口，检查授权地址、PKCE、回调输入及按钮状态。 */
 async function beginAttempt(webDriver, scriptName) {
     return webDriver.executeAsync(
         `
@@ -457,6 +468,7 @@ async function beginAttempt(webDriver, scriptName) {
     );
 }
 
+/** 取消登录：核对尝试、回调和弹窗清理，确认尚未执行令牌交换。 */
 async function cancelAttempt(webDriver) {
     return webDriver.executeAsync(
         `
@@ -505,6 +517,7 @@ async function cancelAttempt(webDriver) {
     );
 }
 
+/** 回调归属：提交错误 state，确认浏览器本地拒绝且不回显敏感回调内容。 */
 async function rejectMismatchedState(webDriver) {
     return webDriver.executeAsync(
         `
@@ -580,6 +593,7 @@ async function rejectMismatchedState(webDriver) {
     );
 }
 
+/** 来源切换：离开 OAuth 来源后旧尝试失效，切回时不能恢复未完成授权。 */
 async function switchSourceClearsAttempt(webDriver) {
     return webDriver.executeAsync(
         `
@@ -645,6 +659,7 @@ async function switchSourceClearsAttempt(webDriver) {
     );
 }
 
+/** 成功回调：提交有效回环地址，核对交换参数、PKCE 和已登录界面。 */
 async function completeValidLoopback(webDriver) {
     return webDriver.executeAsync(
         `
@@ -799,6 +814,7 @@ async function completeValidLoopback(webDriver) {
     );
 }
 
+/** 持久化回归：页面重载后读取登录状态，确认无需重放旧回调。 */
 async function readReloadedStatus(webDriver, scriptName, credential, expectedSignedIn) {
     return webDriver.execute(
         `
@@ -876,6 +892,7 @@ async function readReloadedStatus(webDriver, scriptName, credential, expectedSig
     );
 }
 
+/** 保存同步：等待酒馆将测试设置写入临时实例，供重载验证使用。 */
 async function flushSettings(webDriver, scriptName) {
     const result = await webDriver.executeAsync(
         `
@@ -901,6 +918,7 @@ async function flushSettings(webDriver, scriptName) {
     assertOAuth(result?.ok, 'settings-flush');
 }
 
+/** 登出确认：通过实际确认弹窗注销账号，并核对凭证及界面状态清理。 */
 async function signOutThroughConfirmation(webDriver, scriptName) {
     const opened = await webDriver.executeAsync(
         `
@@ -1000,6 +1018,7 @@ async function signOutThroughConfirmation(webDriver, scriptName) {
     );
 }
 
+/** 卸载取消：登录尚未完成时卸载脚本，确认授权尝试和相关监听失效。 */
 async function beginAttemptThenUnload(webDriver, scriptName, credential) {
     const installed = await installOAuthProbe(webDriver, scriptName, credential, 'reject');
     assertOAuth(installed?.ok, 'unload-probe-install');
@@ -1059,6 +1078,7 @@ async function beginAttemptThenUnload(webDriver, scriptName, credential) {
     );
 }
 
+/** 失败清理：即使场景中途失败，也尝试移除探针、弹窗和测试凭证。 */
 async function bestEffortBrowserCleanup(webDriver) {
     try {
         await webDriver.execute(`
@@ -1076,6 +1096,7 @@ async function bestEffortBrowserCleanup(webDriver) {
     }
 }
 
+/** OAuth 生命周期：依次验证开始、取消、错误回调、成功登录、重载、登出与卸载。 */
 export async function runPiStOAuthSmoke({
     webDriver,
     scriptName,
@@ -1105,6 +1126,7 @@ export async function runPiStOAuthSmoke({
         const probeInstalled = await installOAuthProbe(webDriver, scriptName, credential);
         assertOAuth(probeInstalled?.ok, 'probe-install');
 
+        // 授权入口：验证只读授权地址、PKCE、state 和回调控件，尚不交换令牌。
         const initialAttempt = await beginAttempt(webDriver, scriptName);
         assertOAuth(initialAttempt?.ok, 'attempt-start');
         assertChecks(
@@ -1135,6 +1157,7 @@ export async function runPiStOAuthSmoke({
             'attempt'
         );
 
+        // 主动取消：尝试和回调被清空，取消信号到达探针且不生成凭证。
         const cancelled = await cancelAttempt(webDriver);
         assertOAuth(cancelled?.ok, 'cancel');
         assertChecks(
@@ -1150,6 +1173,7 @@ export async function runPiStOAuthSmoke({
             'cancel'
         );
 
+        // 错误回调：state 不匹配必须在本地拒绝，提示中不得回显完整回调。
         const mismatch = await rejectMismatchedState(webDriver);
         assertOAuth(mismatch?.ok, `mismatch-${mismatch?.stage ?? 'failed'}`);
         assertChecks(
@@ -1164,6 +1188,7 @@ export async function runPiStOAuthSmoke({
             'mismatch'
         );
 
+        // 来源切换：离开并重新进入 OAuth 界面后，旧授权尝试不能复活。
         const switched = await switchSourceClearsAttempt(webDriver);
         assertOAuth(switched?.ok, 'source-switch');
         assertChecks(
@@ -1180,6 +1205,7 @@ export async function runPiStOAuthSmoke({
             'source-switch'
         );
 
+        // 成功登录：使用受控令牌响应核对交换协议、账号状态和凭证持久化。
         const success = await completeValidLoopback(webDriver);
         assertOAuth(success?.ok, `success-${success?.stage ?? 'failed'}`);
         assertChecks(

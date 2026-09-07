@@ -25,6 +25,7 @@ const API_REQUEST_FIELDS = [
     '兼容假流式',
 ] as const satisfies readonly (keyof ExtraModelApiRequestFields)[];
 
+/** 提取已配置的请求选项，保留缺失字段，供方案保存和旧方案补全使用。 */
 function extractApiRequestFields(
     config: Partial<ExtraModelApiRequestFields>
 ): Partial<ExtraModelApiRequestFields> {
@@ -78,11 +79,15 @@ export type ExtraModelApiProfileFields = Partial<ExtraModelApiRequestFields> & {
 
 export const DEFAULT_EXTRA_MODEL_API_PROFILE_NAME = '默认';
 
+/** 统一方案名两端空白，避免查找、去重和保存使用不同的名称。 */
 function normalizeExtraModelApiProfileName(name: string): string {
     return name.trim();
 }
 
-/** Canonical persisted form for profile context windows; undefined means fail closed. */
+/**
+ * 将方案中的上下文窗口规范为非负整数，0 表示使用目录值。
+ * 返回 undefined 表示配置无效，调用方不得将其当作目录默认值。
+ */
 export function normalizeExtraModelPiProfileContextWindow(value: unknown): number | undefined {
     if (typeof value === 'number') {
         return Number.isInteger(value) && value >= 0 ? value : undefined;
@@ -99,12 +104,17 @@ export function normalizeExtraModelPiProfileContextWindow(value: unknown): numbe
     return Number.isInteger(parsed) && parsed >= 0 ? parsed : undefined;
 }
 
+/** 根据当前模型来源确定方案保存的是自定义连接还是 Pi 连接。 */
 function getExtraModelApiProfileBackend(
     config: ExtraModelApiProfileFields
 ): ExtraModelApiProfileBackend {
     return config.模型来源 === '更多' ? 'pi' : 'custom';
 }
 
+/**
+ * 生成脱离响应式代理的连接快照，并规范连接标识与上下文窗口。
+ * 快照不包含 OAuth 凭证或按目标缓存的 API Key，避免方案复制这些共享状态。
+ */
 function clonePiConnectionFields(
     pi: ExtraModelPiConnectionFields | ExtraModelPiSettings | undefined
 ): ExtraModelPiConnectionFields | undefined {
@@ -136,6 +146,7 @@ function clonePiConnectionFields(
     return cloned;
 }
 
+/** 仅为完整且受支持的 API Key 目标解析密钥缓存位置；无效连接返回空字符串。 */
 function resolvePiConnectionApiKeyScope(
     pi: ExtraModelPiConnectionFields | ExtraModelPiSettings | undefined
 ): string {
@@ -157,6 +168,7 @@ function resolvePiConnectionApiKeyScope(
     );
 }
 
+/** 检查导入快照是否具备全部连接字段及合法类型，避免用默认值补成可发送连接。 */
 function hasCompletePiConnectionSnapshot(
     pi: ExtraModelPiConnectionFields | ExtraModelPiSettings | undefined
 ): pi is ExtraModelPiConnectionFields | ExtraModelPiSettings {
@@ -178,6 +190,7 @@ function hasCompletePiConnectionSnapshot(
     );
 }
 
+/** 在结构完整的基础上检查服务商、协议和模型是否已填写。 */
 function hasConfiguredPiConnectionSnapshot(
     pi: ExtraModelPiConnectionFields | ExtraModelPiSettings | undefined
 ): pi is ExtraModelPiConnectionFields | ExtraModelPiSettings {
@@ -189,12 +202,14 @@ function hasConfiguredPiConnectionSnapshot(
     );
 }
 
+/** 判断连接能否归属到有效的 API Key 目标，作为保留方案密钥的条件。 */
 function hasValidPiApiKeyTarget(
     pi: ExtraModelPiConnectionFields | ExtraModelPiSettings | undefined
 ): boolean {
     return hasConfiguredPiConnectionSnapshot(pi) && resolvePiConnectionApiKeyScope(pi) !== '';
 }
 
+/** 规范单个方案的名称、后端和连接快照，并清除不属于当前认证方式的密钥。 */
 function normalizeExtraModelApiProfile(profile: ExtraModelApiProfile): ExtraModelApiProfile {
     const cloned = klona(profile);
     delete cloned.customApiKey;
@@ -222,6 +237,7 @@ function normalizeExtraModelApiProfile(profile: ExtraModelApiProfile): ExtraMode
     return cloned;
 }
 
+/** 规范方案列表，剔除空名称和重复名称，同名方案只保留首次出现的条目。 */
 function normalizeExtraModelApiProfileList(
     profiles: ExtraModelApiProfile[]
 ): ExtraModelApiProfile[] {
@@ -238,6 +254,7 @@ function normalizeExtraModelApiProfileList(
     return normalized_profiles;
 }
 
+/** 将方案连接合并到运行设置，同时保留当前凭证仓库和目标密钥缓存。 */
 function mergePiConnectionFields(
     current: ExtraModelPiSettings | undefined,
     profile: ExtraModelPiConnectionFields
@@ -252,6 +269,7 @@ function mergePiConnectionFields(
     } as ExtraModelPiSettings;
 }
 
+/** 清空可发送的连接字段，保留共享凭证和密钥缓存，等待用户重新配置。 */
 function clearPiConnectionFields(pi: ExtraModelPiSettings): ExtraModelPiSettings {
     const cloned = klona(pi);
     return {
@@ -271,6 +289,7 @@ function clearPiConnectionFields(pi: ExtraModelPiSettings): ExtraModelPiSettings
     };
 }
 
+/** 从当前设置提取可保存的连接和请求选项；Pi 方案必须先通过完整性校验。 */
 export function extractExtraModelApiProfileFields(
     config: ExtraModelApiProfileFields
 ): ExtraModelApiProfile {
@@ -292,6 +311,10 @@ export function extractExtraModelApiProfileFields(
     };
 }
 
+/**
+ * 应用方案的连接及请求选项，并切换到相应模型来源。
+ * 无效 Pi 快照会清空活动连接，不能借用其他来源的密钥继续发送。
+ */
 export function applyExtraModelApiProfile(
     config: ExtraModelApiProfileFields,
     profile: ExtraModelApiProfile
@@ -326,6 +349,7 @@ export function applyExtraModelApiProfile(
     return result;
 }
 
+/** 按规范化名称新增或更新方案，更新时保留已有条目的其他字段。 */
 export function upsertExtraModelApiProfile(
     profiles: ExtraModelApiProfile[],
     profile: ExtraModelApiProfile
@@ -353,6 +377,7 @@ export function upsertExtraModelApiProfile(
     return next_profiles;
 }
 
+/** 返回删除指定方案后的规范化列表，不直接修改原列表。 */
 export function removeExtraModelApiProfile(
     profiles: ExtraModelApiProfile[],
     profile_name: string
@@ -363,6 +388,7 @@ export function removeExtraModelApiProfile(
     );
 }
 
+/** 按规范化名称检查方案是否存在，供保存和删除操作校验。 */
 export function hasExtraModelApiProfile(
     profiles: ExtraModelApiProfile[],
     profile_name: string
@@ -373,6 +399,7 @@ export function hasExtraModelApiProfile(
     );
 }
 
+/** 比较活动方案与当前连接、密钥及请求选项，判断是否存在未保存修改。 */
 export function isActiveExtraModelApiProfileDirty(config: ExtraModelApiProfileFields): boolean {
     const active_name = normalizeExtraModelApiProfileName(config.当前api方案);
     if (!active_name) {
@@ -415,6 +442,7 @@ export function isActiveExtraModelApiProfileDirty(config: ExtraModelApiProfileFi
     );
 }
 
+/** 解除方案绑定并清空活动连接；使用 Pi 时保留隐藏的自定义连接字段。 */
 export function clearUnboundExtraModelApiProfileFields(
     config: ExtraModelApiProfileFields
 ): ExtraModelApiProfileFields {
@@ -431,6 +459,7 @@ export function clearUnboundExtraModelApiProfileFields(
     };
 }
 
+/** 校正活动方案引用，使列表、当前名称和连接状态保持一致。 */
 export function reconcileExtraModelApiProfileSelection<T extends ExtraModelApiProfileFields>(
     config: T
 ): T {
@@ -464,6 +493,7 @@ export function reconcileExtraModelApiProfileSelection<T extends ExtraModelApiPr
     ) as T;
 }
 
+/** 删除指定的活动方案，并同步清理方案选择及相关连接字段。 */
 export function deleteActiveExtraModelApiProfile(
     config: ExtraModelApiProfileFields,
     profile_name: string
@@ -496,6 +526,10 @@ export function deleteActiveExtraModelApiProfile(
 
 export type ExtraModelApiProfileDeletionConfirmation = 'discard_unsaved_changes' | 'delete_profile';
 
+/**
+ * 有未保存修改时先确认丢弃，再确认删除，任一步取消都返回 null。
+ * 删除前再次核对活动方案，避免等待弹窗期间误删用户新选中的方案。
+ */
 export async function deleteActiveExtraModelApiProfileWithConfirmation(
     config: ExtraModelApiProfileFields,
     profile_name: string,
@@ -521,6 +555,10 @@ export async function deleteActiveExtraModelApiProfileWithConfirmation(
     return deleteActiveExtraModelApiProfile(config, profile_name);
 }
 
+/**
+ * 补全方案中缺失的请求选项，并校正方案选择与密钥归属。
+ * 不完整的 Pi 快照保持不可发送，不能从遗留自定义字段推导出 Pi 连接。
+ */
 export function migrateExtraModelApiProfiles<T extends ExtraModelApiProfileFields>(config: T): T {
     let migrated = {
         ...config,
@@ -588,6 +626,7 @@ export function migrateExtraModelApiProfiles<T extends ExtraModelApiProfileField
     return reconcileExtraModelApiProfileSelection(migrated);
 }
 
+/** 按名称查找并应用方案；不存在时抛出可展示的配置错误。 */
 export function selectExtraModelApiProfile(
     config: ExtraModelApiProfileFields,
     profile_name: string
@@ -611,6 +650,7 @@ export function selectExtraModelApiProfile(
     );
 }
 
+/** 保存当前连接和请求选项，支持更新活动方案或指定名称，并防止覆盖其他同名方案。 */
 export function saveCurrentExtraModelApiProfile(
     config: ExtraModelApiProfileFields,
     profile_name?: string
@@ -654,6 +694,7 @@ export function saveCurrentExtraModelApiProfile(
     );
 }
 
+/** 校验新名称不为空且未占用，再将当前配置另存为独立方案。 */
 export function saveAsNewExtraModelApiProfile(
     config: ExtraModelApiProfileFields,
     profile_name: string

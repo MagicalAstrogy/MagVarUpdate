@@ -7,6 +7,10 @@ export type MvuToolChoice =
     | 'any'
     | { type: 'function'; function: { name: string } };
 
+/**
+ * 把 MVU 工具选择转换为当前协议接受的形式。
+ * 保留 auto/none，转换 required/any 与具名调用；不支持具名选择的协议提前拒绝。
+ */
 export function resolvePiToolChoice(api: Api, choice: MvuToolChoice | undefined): unknown {
     const normalized = choice ?? 'auto';
     if (normalized === 'auto' || normalized === 'none') {

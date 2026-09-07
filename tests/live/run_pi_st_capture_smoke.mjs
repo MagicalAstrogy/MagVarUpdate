@@ -1,3 +1,7 @@
+/**
+ * 测试场景：在临时酒馆实例和 Firefox 配置中加载 MVU 产物，验证最终提示词捕获及监听未命中的失败路径。
+ * 同一启动器也承载功能、OAuth 和服务端取消测试，结束后关闭进程并清理临时数据。
+ */
 import { spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import fs from 'node:fs';
@@ -62,12 +66,14 @@ class SmokeError extends Error {
     }
 }
 
+/** 冒烟断言：用明确的场景码标记未满足的前置条件或观测结果。 */
 function assertSmoke(value, code) {
     if (!value) {
         throw new SmokeError(code);
     }
 }
 
+/** 环境检查：确认所需文件或路径存在，供测试依赖定位使用。 */
 function exists(filePath) {
     try {
         return fs.statSync(filePath).isFile();
@@ -76,6 +82,7 @@ function exists(filePath) {
     }
 }
 
+/** 环境定位：查找可用于临时测试实例的酒馆安装目录。 */
 function resolveSillyTavernRoot() {
     const candidates = [
         process.env.MVU_ST_ROOT,
@@ -90,6 +97,7 @@ function resolveSillyTavernRoot() {
     );
 }
 
+/** 驱动定位：选择可用的 geckodriver 可执行文件，支持环境配置及平台路径。 */
 function resolveGeckodriverExecutable() {
     const candidates = [
         process.env.MVU_GECKODRIVER,
@@ -98,10 +106,12 @@ function resolveGeckodriverExecutable() {
     return candidates.find(candidate => exists(candidate)) ?? 'geckodriver';
 }
 
+/** 完整性证据：计算文件摘要，检查联调前后使用的产物是否一致。 */
 function sha256(bytes) {
     return createHash('sha256').update(bytes).digest('hex');
 }
 
+/** 端口准备：在本地回环地址申请可用端口，避免测试进程端口冲突。 */
 async function getUnusedLoopbackPort() {
     const server = net.createServer();
     await new Promise((resolve, reject) => {
@@ -115,6 +125,7 @@ async function getUnusedLoopbackPort() {
     return port;
 }
 
+/** 子进程环境：构造测试服务所需环境，避免继承无关的宿主配置。 */
 function makeChildEnvironment(runRoot) {
     const environment = {
         LANG: 'C.UTF-8',
@@ -134,6 +145,7 @@ function makeChildEnvironment(runRoot) {
     return environment;
 }
 
+/** 浏览器隔离：创建本次测试专用配置目录，兼容沙箱安装的 Firefox。 */
 async function createFirefoxProfileRoot(geckodriverExecutable, runRoot) {
     const snapCommon = path.join(os.homedir(), 'snap', 'firefox', 'common');
     const usesSnapFirefox =
@@ -150,6 +162,7 @@ async function createFirefoxProfileRoot(geckodriverExecutable, runRoot) {
     return { profileRoot, separateCleanup: false, allowedParent: runRoot };
 }
 
+/** 进程准备：启动受测试管理的服务或驱动，并保留后续停止所需句柄。 */
 function startManagedProcess(command, args, options) {
     const child = spawn(command, args, {
         ...options,
@@ -163,6 +176,7 @@ function startManagedProcess(command, args, options) {
     return child;
 }
 
+/** 进程清理：终止测试启动的进程并等待退出，必要时执行后备终止。 */
 async function stopManagedProcess(child) {
     if (!child || child.exitCode !== null || child.signalCode !== null) {
         return true;
@@ -191,6 +205,7 @@ async function stopManagedProcess(child) {
     return Promise.race([child.exitResult.then(() => true), delay(5_000).then(() => false)]);
 }
 
+/** 服务就绪：轮询本地 HTTP 入口，达到可用状态后再驱动浏览器。 */
 async function waitForHttp(url, child, timeoutMs, validator = response => response.ok) {
     const deadline = Date.now() + timeoutMs;
     while (Date.now() < deadline) {
@@ -210,6 +225,7 @@ async function waitForHttp(url, child, timeoutMs, validator = response => respon
     throw new SmokeError('http-readiness-timeout');
 }
 
+/** 产物服务：从本地提供测试使用的 MVU 产物，并记录加载次数。 */
 function startArtifactServer(artifactBytes) {
     let bundleRequests = 0;
     const server = http.createServer((request, response) => {
@@ -252,6 +268,7 @@ function startArtifactServer(artifactBytes) {
     };
 }
 
+/** 服务绑定：仅在本地回环接口启动测试服务器并返回实际地址信息。 */
 async function listenLoopback(server) {
     await new Promise((resolve, reject) => {
         server.once('error', reject);
@@ -262,6 +279,7 @@ async function listenLoopback(server) {
     return address.port;
 }
 
+/** 服务清理：关闭本地测试服务器并等待关闭完成。 */
 async function closeServer(server) {
     if (!server?.listening) {
         return true;
@@ -272,6 +290,7 @@ async function closeServer(server) {
     });
 }
 
+/** 驱动封装：提供会话、导航、脚本执行和元素访问等浏览器测试操作。 */
 function createWebDriver(driverBaseUrl, getSessionId) {
     async function request(method, commandPath, body, timeoutMs = 30_000) {
         const response = await fetch(`${driverBaseUrl}${commandPath}`, {
@@ -357,6 +376,7 @@ function createWebDriver(driverBaseUrl, getSessionId) {
     };
 }
 
+/** 浏览器同步：轮询目标状态直到满足条件，超时后报告对应场景失败。 */
 async function waitForBrowser(webDriver, script, args = [], timeoutMs = 40_000) {
     const deadline = Date.now() + timeoutMs;
     while (Date.now() < deadline) {
@@ -372,6 +392,7 @@ async function waitForBrowser(webDriver, script, args = [], timeoutMs = 40_000) 
     throw new SmokeError('browser-readiness-timeout');
 }
 
+/** 弹窗操作：定位当前可见确认框并点击目标按钮。 */
 async function clickVisiblePopup(webDriver, mode = 'auto') {
     return webDriver.execute(
         `
@@ -403,6 +424,7 @@ async function clickVisiblePopup(webDriver, mode = 'auto') {
     );
 }
 
+/** 初始界面整理：处理欢迎或确认弹窗，避免遮挡后续场景操作。 */
 async function settlePopups(webDriver, timeoutMs = 25_000) {
     const deadline = Date.now() + timeoutMs;
     let stableRounds = 0;
@@ -426,10 +448,12 @@ async function settlePopups(webDriver, timeoutMs = 25_000) {
     throw new SmokeError('popup-settle-timeout');
 }
 
+/** 元素兼容：从 WebDriver 返回值中读取可用于后续命令的元素标识。 */
 function extractElementId(element) {
     return element?.['element-6066-11e4-a52e-4f735466cecf'] ?? element?.ELEMENT;
 }
 
+/** 实例隔离：为临时酒馆生成测试配置，避免改写用户日常实例。 */
 async function prepareTemporaryConfig(stRoot, configPath, dataRoot) {
     const defaultConfigPath = path.join(stRoot, 'default', 'config.yaml');
     assertSmoke(exists(defaultConfigPath), 'st-default-config-missing');
@@ -455,6 +479,7 @@ async function prepareTemporaryConfig(stRoot, configPath, dataRoot) {
     await chmod(configPath, 0o600);
 }
 
+/** 目录清理：核对临时测试目录归属后移除本次运行数据。 */
 async function removeRunRoot(runRoot) {
     if (!runRoot) {
         return true;
@@ -470,6 +495,7 @@ async function removeRunRoot(runRoot) {
     return !fs.existsSync(resolved);
 }
 
+/** 配置清理：移除本次创建的临时 Firefox 配置目录。 */
 async function removeFirefoxProfileRoot(profile) {
     if (!profile?.separateCleanup) {
         return true;
@@ -484,6 +510,7 @@ async function removeFirefoxProfileRoot(profile) {
     return !fs.existsSync(resolved);
 }
 
+/** 场景编排：准备依赖环境、执行本文件测试流程，并统一收集结果与清理资源。 */
 async function main() {
     let phase = 'preflight';
     let runRoot;
@@ -541,6 +568,7 @@ async function main() {
         artifactServer = artifact.server;
         const artifactPort = await listenLoopback(artifactServer);
 
+        // 环境启动：使用隔离配置启动本地酒馆并等待服务就绪。
         phase = 'start-sillytavern';
         stProcess = startManagedProcess(
             process.execPath,
@@ -574,6 +602,7 @@ async function main() {
         const stUrl = `http://127.0.0.1:${stPort}`;
         await waitForHttp(stUrl, stProcess, 45_000);
 
+        // 浏览器启动：建立本次测试专用 Firefox 与 WebDriver 会话。
         phase = 'start-webdriver';
         geckoProcess = startManagedProcess(
             geckodriverExecutable,
@@ -612,6 +641,7 @@ async function main() {
         assertSmoke(profileTemporary, 'firefox-profile-not-temporary');
         await webDriver.setTimeouts();
 
+        // 宿主初始化：完成酒馆初始界面和酒馆助手的就绪检查。
         phase = 'initialize-sillytavern';
         await webDriver.navigate(stUrl);
         await waitForBrowser(
@@ -646,6 +676,7 @@ async function main() {
             45_000
         );
 
+        // 测试角色：导入并选择固定角色，后续操作限定在该测试聊天内。
         phase = 'import-character';
         const fileInput = await webDriver.findElement('#character_import_file');
         const fileInputId = extractElementId(fileInput);
@@ -688,6 +719,7 @@ async function main() {
             35_000
         );
 
+        // 世界书准备：设置固定标记条目，供最终提示词捕获核对。
         phase = 'prepare-worldbook';
         const worldbook = await webDriver.executeAsync(
             `
@@ -728,6 +760,7 @@ async function main() {
         // selected character and session intact: this smoke validates the request/cancel boundary,
         // while the broader prompt-fixture suite owns worldbook parity as a separate concern.
 
+        // 产物加载：安装本地 MVU 产物，确认脚本入口与界面已可用。
         phase = 'load-artifact';
         const artifactUrl = `http://127.0.0.1:${artifactPort}/bundle.js?sha=${artifactHashBefore.slice(0, 12)}`;
         // This endpoint is valid enough to pass Pi's static transport preflight, but the capture
@@ -826,6 +859,7 @@ async function main() {
         assertSmoke(artifact.getBundleRequests() >= 1, 'artifact-not-requested');
 
         if (OAUTH_SMOKE_MODE) {
+            // OAuth 界面场景：由共享环境执行授权、持久化与清理矩阵。
             phase = 'oauth-ui-smoke';
             const { runPiStOAuthSmoke } = await import('./pi_st_oauth_smoke.mjs');
             result = await runPiStOAuthSmoke({
@@ -837,6 +871,7 @@ async function main() {
                 embeddedScriptsRejected: popupCounts.rejectedScripts,
             });
         } else if (SERVER_CANCEL_SMOKE_MODE) {
+            // 服务端取消场景：同时核对浏览器信号与本地服务器连接关闭。
             phase = 'server-cancel-smoke';
             const { runPiStServerCancelSmoke } = await import('./pi_st_server_cancel_smoke.mjs');
             result = await runPiStServerCancelSmoke({
@@ -848,6 +883,7 @@ async function main() {
                 embeddedScriptsRejected: popupCounts.rejectedScripts,
             });
         } else if (FEATURE_SMOKE_MODE) {
+            // 功能协议场景：运行多协议能力、并发及发送按钮生命周期测试。
             phase = 'feature-protocol-smoke';
             const { runPiStFeatureSmoke } = await import('./pi_st_feature_smoke.mjs');
             result = await runPiStFeatureSmoke({
@@ -859,6 +895,7 @@ async function main() {
                 embeddedScriptsRejected: popupCounts.rejectedScripts,
             });
         } else {
+            // 正常捕获：观察最终提示词及定向停止，确认占位请求不会进入模型后端。
             phase = 'observe-capture';
             const observerSetup = await webDriver.execute(
                 `
@@ -1131,6 +1168,7 @@ async function main() {
                 assertSmoke(passed, `assertion-${name}`);
             }
 
+            // 监听未命中：制造捕获标记不匹配，验证有界失败和诊断清理。
             phase = 'observe-capture-listener-miss';
             const listenerMissSetup = await webDriver.execute(
                 `
@@ -1460,6 +1498,7 @@ async function main() {
         runError = error;
         failurePhase = phase;
     } finally {
+        // 统一清理：撤销浏览器会话、子进程和临时目录，并报告清理结果。
         phase = 'cleanup';
         if (sessionId && webDriver) {
             try {

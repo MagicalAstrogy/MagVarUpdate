@@ -81,6 +81,7 @@ const { locale, t } = useMvuI18n();
 const sandas_message_help = computed(() =>
     locale.value === 'zh-CN' ? sandas_message_help_zh_cn : sandas_message_help_en
 );
+// 许可证表来自统一清单；说明随界面语言更新，包名和许可证标识保持可核查的原值。
 const license_help = computed(
     () => `${t('panel.compatibility.licenseIntro')}\n\n${t('panel.compatibility.licenseDetails')}`
 );

@@ -27,6 +27,7 @@ function getFilterRegexLabel(label: '白名单正则' | '黑名单正则'): stri
     );
 }
 
+/** 按变量更新方式筛选世界书条目；“更多”来源的工具能力交给 Pi 预检判断。 */
 export async function filterEntries(lores: {
     globalLore: Record<string, any>[];
     characterLore: Record<string, any>[];

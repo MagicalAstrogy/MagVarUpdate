@@ -572,6 +572,7 @@ const model_source_options = computed(() => {
 
 type ExtraModelSource = '与插头相同' | '自定义' | '更多';
 
+/** 捕获活动来源的认证方式和密钥归属，作为切换前后缓存转移的依据。 */
 function getApiKeyContext() {
     const config = store.settings.额外模型解析配置;
     const definition = getPiProviderDefinition(config.pi.provider);
@@ -587,6 +588,10 @@ function getApiKeyContext() {
     };
 }
 
+/**
+ * 在修改连接前保存旧密钥归属，修改后恢复新目标的缓存密钥。
+ * 共享输入框中的值不能直接流入另一个端点或 OAuth 来源。
+ */
 function applyApiKeyTransition(mutator: () => void): void {
     const config = store.settings.额外模型解析配置;
     const previous = getApiKeyContext();
@@ -601,6 +606,7 @@ function applyApiKeyTransition(mutator: () => void): void {
     config.密钥 = transitioned.activeApiKey;
 }
 
+/** 取得活动 Pi 请求目标的规范化标识，用于判断请求覆盖是否仍适用。 */
 function getPiRequestTargetIdentity(): string {
     const pi = store.settings.额外模型解析配置.pi;
     return resolvePiRequestTargetIdentity(
@@ -612,6 +618,7 @@ function getPiRequestTargetIdentity(): string {
     );
 }
 
+/** 统一切换密钥缓存与请求覆盖；实际目标变化时清除原目标的自定义请求头和正文配置。 */
 function applyPiConnectionTransition(mutator: () => void): void {
     const previous_target = getPiRequestTargetIdentity();
     const pi = store.settings.额外模型解析配置.pi;
@@ -631,6 +638,7 @@ function applyPiConnectionTransition(mutator: () => void): void {
     );
 }
 
+/** 把当前输入框密钥同步到其所属连接缓存，并清理没有合法归属的活动密钥。 */
 function cacheCurrentApiKey(): void {
     const config = store.settings.额外模型解析配置;
     const context = getApiKeyContext();
@@ -643,6 +651,7 @@ function cacheCurrentApiKey(): void {
     config.密钥 = transitioned.activeApiKey;
 }
 
+/** 初始化来源各自的密钥缓存，遗留自定义密钥只进入能确认归属的位置。 */
 function initializeApiKeyCache(): void {
     const config = store.settings.额外模型解析配置;
     const context = getApiKeyContext();
@@ -682,6 +691,7 @@ function initializeApiKeyCache(): void {
     }
 }
 
+/** 校验来源选项并通过统一密钥转移流程切换，避免跨来源沿用活动密钥。 */
 function selectModelSource(source: string): void {
     if (!['与插头相同', '自定义', '更多'].includes(source)) {
         return;
@@ -851,6 +861,7 @@ const temperature_disabled = computed(
 const pi_temperature_max = computed(() =>
     is_pi_source.value ? (selected_pi_capabilities.value?.temperatureRange[1] ?? 2) : 2
 );
+/** 结合高级选项总开关和当前模型能力，判断单个采样输入是否可编辑。 */
 function samplingFieldDisabled(
     field: keyof NonNullable<typeof selected_pi_capabilities.value>['sampling']
 ): boolean {
@@ -878,6 +889,7 @@ const pi_capability_summary = computed(() => {
         : '';
 });
 
+/** 将服务商、协议和认证方式规范为支持的组合，并清理不允许的自定义端点。 */
 function applyPiSourceSelection(definition: PiProviderDefinition, api: string, auth: string): void {
     const resolved = resolvePiSourceSelection(definition, api, auth);
     const pi = store.settings.额外模型解析配置.pi;
@@ -887,6 +899,7 @@ function applyPiSourceSelection(definition: PiProviderDefinition, api: string, a
     pi.endpoint = resolvePiEndpointSelection(definition, resolved.authType, pi.endpoint);
 }
 
+/** 将界面组合选项解析为 Pi 连接，并同步处理密钥归属和请求覆盖。 */
 function selectPiProvider(value: string): void {
     const choice = pi_source_choices.find(choice => getPiSourceChoiceValue(choice) === value);
     const definition = choice && getPiProviderDefinition(choice.provider);
@@ -898,6 +911,7 @@ function selectPiProvider(value: string): void {
     });
 }
 
+/** 应用用户输入的端点，同时使密钥和请求覆盖跟随实际目标变化。 */
 function selectPiEndpoint(event: Event): void {
     const input = event.target as HTMLInputElement | null;
     if (!input) {
@@ -908,6 +922,7 @@ function selectPiEndpoint(event: Event): void {
     });
 }
 
+/** 在输入结束后规范端点和操作路径；无效输入保留给校验提示处理。 */
 function normalizePiEndpointInput(event: Event): void {
     const input = event.target as HTMLInputElement | null;
     const definition = selected_pi_provider.value;
@@ -1004,10 +1019,12 @@ watch(
     { immediate: true }
 );
 
+/** 为需要酒馆代理的来源标签追加统一的代理标记。 */
 function withPiProxySuffix(label: string, use_proxy: boolean): string {
     return use_proxy ? `${label} (Proxy)` : label;
 }
 
+/** 生成服务商、认证与协议组合的显示名称，并标明所需代理。 */
 function getPiProviderOptionLabel(choice: PiSourceChoice): string {
     const definition = getPiProviderDefinition(choice.provider)!;
     const pi = store.settings.额外模型解析配置.pi;
@@ -1038,6 +1055,7 @@ function getPiProviderOptionLabel(choice: PiSourceChoice): string {
     return withPiProxySuffix(label, uses_proxy);
 }
 
+/** 将底层协议标识转换为界面标签，未知值保留原标识便于排查。 */
 function getPiApiLabel(api: string): string {
     let label: string;
     switch (api) {
@@ -1066,10 +1084,12 @@ function getPiApiLabel(api: string): string {
     return label;
 }
 
+/** 同时显示模型名称与标识；两者相同时避免重复展示。 */
 function getPiModelLabel(model: Model<Api>): string {
     return model.name && model.name !== model.id ? `${model.name} (${model.id})` : model.id;
 }
 
+/** 使用自定义来源的连接信息通过酒馆兼容接口发现模型，并保留取消信号。 */
 async function loadCustomModels(signal: AbortSignal): Promise<readonly string[]> {
     const config = store.settings.额外模型解析配置;
     return fetchOpenAICompatibleModelList(config.api地址, config.密钥, signal, {
@@ -1077,6 +1097,7 @@ async function loadCustomModels(signal: AbortSignal): Promise<readonly string[]>
     });
 }
 
+/** 先捕获连接快照，再按需刷新 OAuth 凭证并查询模型，防止等待期间切换目标影响请求。 */
 async function loadPiModels(signal: AbortSignal): Promise<readonly string[]> {
     const config = store.settings.额外模型解析配置;
     const pi = config.pi;
@@ -1119,6 +1140,7 @@ async function loadPiModels(signal: AbortSignal): Promise<readonly string[]> {
     }
 }
 
+/** 将数字输入的原始值和浏览器 badInput 状态交给统一解析，保留无效配置以供提示。 */
 function updatePiContextWindow(event: Event): void {
     const input = event.target as HTMLInputElement | null;
     store.settings.额外模型解析配置.pi.contextWindow = parsePiContextWindowInput(
@@ -1140,12 +1162,14 @@ const canDeleteCurrentProfile = computed(
         store.settings.额外模型解析配置.api方案列表.length >= 2
 );
 
+/** 根据方案后端显示自定义或 Pi 标签，兼容没有显式后端的旧自定义方案。 */
 function getProfileBackendLabel(backend?: ExtraModelApiProfileBackend): string {
     return t(
         backend === 'pi' ? 'panel.source.profile.backendPi' : 'panel.source.profile.backendCustom'
     );
 }
 
+/** 先应用完整方案快照，再将方案密钥写入新目标的缓存，避免污染旧目标。 */
 function assignProfileConfig(next_config: ExtraModelApiProfileFields): void {
     Object.assign(store.settings.额外模型解析配置, next_config);
     // The profile root key is authoritative only for its exact Custom/API-key endpoint. Install it
@@ -1216,6 +1240,7 @@ watch(selectedProfileName, async (value, old_value) => {
     }
 });
 
+/** 保存活动方案并同步选择状态，抑制应用期间的重复切换监听。 */
 function saveCurrentProfile() {
     try {
         const saved = saveCurrentExtraModelApiProfile(
@@ -1236,6 +1261,7 @@ function saveCurrentProfile() {
     }
 }
 
+/** 校验新名称并另存当前连接及请求选项，成功后切换到新方案。 */
 function saveAsNewProfile() {
     const profile_name = newProfileName.value.trim();
     if (!profile_name) {
@@ -1260,6 +1286,7 @@ function saveAsNewProfile() {
     }
 }
 
+/** 按界面规则保留至少一个方案，经必要确认后删除活动方案并同步连接状态。 */
 async function deleteCurrentProfile() {
     const profile_name = selectedProfileName.value.trim();
     if (!profile_name) {
@@ -1329,6 +1356,7 @@ let oauthUiGeneration = 0;
 let oauthStatusGeneration = 0;
 let oauthComponentMounted = true;
 
+/** 记录操作发起时的界面代次、服务商和方案，供异步完成后核对归属。 */
 function captureOAuthUiContext(provider: PiProviderDefinition): PiOAuthUiContext {
     return {
         generation: oauthUiGeneration,
@@ -1337,6 +1365,7 @@ function captureOAuthUiContext(provider: PiProviderDefinition): PiOAuthUiContext
     };
 }
 
+/** 确认异步操作仍属于当前挂载且活动的 OAuth 界面。 */
 function isOAuthUiContextCurrent(context: PiOAuthUiContext): boolean {
     return isPiOAuthUiContextCurrent(context, {
         generation: oauthUiGeneration,
@@ -1394,6 +1423,7 @@ watch(
     }
 );
 
+/** 结束当前界面尝试并递增代次，取消进行中的操作，阻止迟到回调回写状态。 */
 function closeOAuthAttempt(options: { cancel: boolean; keepProgress?: boolean }): void {
     oauthUiGeneration += 1;
     oauthOperationController?.abort();
@@ -1410,6 +1440,7 @@ function closeOAuthAttempt(options: { cancel: boolean; keepProgress?: boolean })
     }
 }
 
+/** 取消登录尝试，并根据是否由用户主动触发决定是否显示取消进度。 */
 function cancelOAuthLogin(show_progress = false): void {
     const had_attempt = oauthAttempt.value !== null || oauthBusy.value;
     closeOAuthAttempt({ cancel: true });
@@ -1418,6 +1449,7 @@ function cancelOAuthLogin(show_progress = false): void {
     }
 }
 
+/** 读取活动服务商的登录状态，通过控制器和代次过滤过时结果。 */
 async function refreshOAuthStatus(): Promise<void> {
     oauthStatusController?.abort();
     const provider = selected_pi_provider.value;
@@ -1471,6 +1503,7 @@ watch(
     { immediate: true }
 );
 
+/** 建立与当前界面绑定的登录尝试，显示授权地址，并处理浏览器打开及取消状态。 */
 async function beginOAuthLogin(): Promise<void> {
     const provider = selected_pi_provider.value;
     if (
@@ -1528,6 +1561,7 @@ async function beginOAuthLogin(): Promise<void> {
     }
 }
 
+/** 消费用户粘贴的回调地址；只有操作仍属于当前界面时才展示登录结果。 */
 async function completeOAuthLogin(): Promise<void> {
     const attempt = oauthAttempt.value;
     const provider = selected_pi_provider.value;
@@ -1579,6 +1613,7 @@ async function completeOAuthLogin(): Promise<void> {
     }
 }
 
+/** 手动刷新活动服务商凭证，复用共享刷新逻辑，并防止来源切换后的旧结果回写。 */
 async function refreshOAuthCredentials(): Promise<void> {
     const provider = selected_pi_provider.value;
     if (
@@ -1621,6 +1656,7 @@ async function refreshOAuthCredentials(): Promise<void> {
     }
 }
 
+/** 确认后再次核对服务商和方案归属，再取消尝试并删除相应凭证。 */
 async function logoutOAuth(): Promise<void> {
     const provider = selected_pi_provider.value;
     if (
@@ -1673,6 +1709,7 @@ async function logoutOAuth(): Promise<void> {
     }
 }
 
+/** 复制当前尝试的授权地址，并使用本地化文案反馈剪贴板结果。 */
 async function copyOAuthAuthorizationUrl(): Promise<void> {
     const url = oauthAttempt.value?.authorizationUrl;
     if (!url) {
@@ -1689,24 +1726,29 @@ async function copyOAuthAuthorizationUrl(): Promise<void> {
     }
 }
 
+/** 选中输入框内容，便于复制完整授权地址。 */
 function selectInputText(event: FocusEvent): void {
     (event.target as HTMLInputElement | null)?.select();
 }
 
+/** 提取普通界面错误的文本，供后续转义或固定文案处理使用。 */
 function getErrorMessage(error: unknown): string {
     return error instanceof Error ? error.message : String(error);
 }
 
+/** 将 OAuth 错误转换为可展示的本地化文案，不回显令牌接口的原始响应。 */
 function getOAuthErrorMessage(error: unknown): string {
     return getLocalizedPiErrorMessage(error);
 }
 
+/** 对普通错误文本做 HTML 转义，供 toast 安全展示。 */
 function format_error(error: unknown): string {
     return t('runtime.common.errorCause', {
         cause: _.escape(getErrorMessage(error)),
     });
 }
 
+/** 对已归类的 OAuth 错误文案做 HTML 转义后展示。 */
 function format_oauth_error(error: unknown): string {
     return t('runtime.common.errorCause', {
         cause: _.escape(getOAuthErrorMessage(error)),

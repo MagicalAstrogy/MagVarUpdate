@@ -1,3 +1,6 @@
+/**
+ * 测试场景：使用模拟 Google SDK 流和注入 fetch，验证代理桥接的协议事件、客户端隔离、取消与兼容性检查。
+ */
 import { TextDecoder as NodeTextDecoder, TextEncoder as NodeTextEncoder } from 'node:util';
 
 jest.mock('@/function/update/pi/pi_gateway', () => {
@@ -360,6 +363,7 @@ function createUpstream(): {
     return { api: { stream, streamSimple }, stream, streamSimple };
 }
 
+// Google 传输桥接：普通请求交给上游，自定义传输保留最终 URL、载荷和流语义。
 describe('Google proxy-aware adapter', () => {
     const original_fetch = globalThis.fetch;
     const original_headers = globalThis.Headers;
@@ -432,6 +436,7 @@ describe('Google proxy-aware adapter', () => {
         });
     });
 
+    // 传输选择与事件：全局 fetch 使用上游实现，独立 fetch 支持文本、思考、工具及用量。
     test('delegates direct and global-fetch requests to the upstream adapter', () => {
         const upstream = createUpstream();
         const api = createGoogleProxyAwareApi(upstream.api);
@@ -611,6 +616,7 @@ describe('Google proxy-aware adapter', () => {
         expect(result.usage.cost.total).toBeGreaterThan(0);
     });
 
+    // 代理组合与隔离：完整 SSE 地址正确编码，并发客户端互不覆盖传输实现。
     test('encodes the complete Google SSE URL when composed with the SillyTavern proxy', async () => {
         const upstream = createUpstream();
         const api = createGoogleProxyAwareApi(upstream.api);
@@ -673,6 +679,7 @@ describe('Google proxy-aware adapter', () => {
         expect(globalThis.fetch).not.toHaveBeenCalled();
     });
 
+    // 结束与失败：取消信号穿过 SDK，残缺流和服务商错误有终态，SDK 注入点变化时明确失败。
     test('propagates AbortSignal through the SDK and reports an aborted event', async () => {
         const upstream = createUpstream();
         const api = createGoogleProxyAwareApi(upstream.api);

@@ -1,5 +1,9 @@
+/**
+ * 测试场景：模拟缺少 AbortSignal.any 或 timeout 的旧浏览器，验证组合取消、首个原因及超时补齐。
+ */
 import { installPiAbortSignalPolyfills } from '@/function/update/pi/abort_signal';
 
+// 浏览器补齐：组合信号传播取消，已取消输入立即生效，超时信号可用于 OAuth 刷新。
 describe('Pi AbortSignal compatibility', () => {
     const original_descriptor = Object.getOwnPropertyDescriptor(AbortSignal, 'any');
     const original_timeout_descriptor = Object.getOwnPropertyDescriptor(AbortSignal, 'timeout');

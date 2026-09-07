@@ -1,3 +1,6 @@
+/**
+ * 测试场景：模拟原生停止事件与延迟设置就绪事件，验证 Pi 请求贯穿酒馆生成生命周期且取消后不会重试或迟发。
+ */
 jest.mock('@/function/update/pi/runtime', () => ({
     assertPiRuntimeConfiguration: jest.fn(),
     isNonRetryablePiRuntimeError: jest.fn().mockReturnValue(false),
@@ -85,6 +88,7 @@ function configurePiSource(): void {
     store.settings.通知.额外模型解析中 = false;
 }
 
+// 取消竞态：内部清理停止与用户停止分别处理，迟到的捕获事件不能重新启动服务商请求。
 describe('Pi generation lifecycle and cancellation', () => {
     beforeEach(() => {
         jest.clearAllMocks();

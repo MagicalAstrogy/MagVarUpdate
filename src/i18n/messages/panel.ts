@@ -499,6 +499,7 @@ export const panelMessages = defineMessages({
         'zh-CN': '模型名称',
         en: 'Model name',
     },
+    // “更多”来源的连接、协议能力和认证界面文案；底层 Pi 标识不作为产品名称展示。
     'panel.source.pi.provider': {
         'zh-CN': '来源',
         en: 'Provider',

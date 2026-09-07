@@ -1,3 +1,6 @@
+/**
+ * 测试场景：验证工具定义与助手结果在 MVU 和 Pi 之间转换，保留 Schema 和签名，拒绝截断、空响应及不合法工具调用。
+ */
 import type { AssistantMessage, StopReason } from '@earendil-works/pi-ai';
 
 import {
@@ -38,6 +41,7 @@ function makeAssistantMessage(
     };
 }
 
+// 工具定义：去除 OpenAI 外层包装，复制对象 Schema，并支持显式约束采样。
 describe('toPiToolDefinition', () => {
     test('removes the OpenAI wrapper and preserves the JSON schema without mutating input', () => {
         const slashTool: ToolDefinition = {
@@ -138,6 +142,7 @@ describe('toPiToolDefinition', () => {
     });
 });
 
+// 助手结果：按顺序提取文本和工具调用，区分仅思考、空结果、截断与服务商错误。
 describe('fromPiAssistantMessage', () => {
     test('joins text blocks in order and excludes thinking blocks', () => {
         const message = makeAssistantMessage([
@@ -232,6 +237,7 @@ describe('fromPiAssistantMessage', () => {
         });
     });
 
+    // 失败结果：已有文本也不能掩盖截断；服务商错误只保留类别，空响应给出明确原因。
     test('rejects a length-truncated response even when it contains text', () => {
         const message = makeAssistantMessage(
             [{ type: 'text', text: 'incomplete response' }],

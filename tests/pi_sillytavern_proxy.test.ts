@@ -1,3 +1,6 @@
+/**
+ * 测试场景：通过模拟请求验证酒馆 CORS 代理探测、共享缓存、调用方取消，以及目标和 JSON 载荷约束。
+ */
 import {
     assertSillyTavernProxyAvailable,
     createSillyTavernProxyFetch,
@@ -33,11 +36,13 @@ function deferred<T>() {
     return { promise, resolve };
 }
 
+// 代理传输契约：探测结果准确，凭证只转发到配置目标，取消不会污染其他调用方。
 describe('SillyTavern CORS proxy transport', () => {
     beforeEach(() => {
         resetSillyTavernProxyStatusForTests();
     });
 
+    // 探测与缓存：兼容 srcdoc 基础地址，使用本地探测载荷并合并并发检查。
     it('resolves the proxy from the inherited document base in a srcdoc iframe', async () => {
         const { readFileSync } = jest.requireActual('node:fs') as typeof import('node:fs');
         const { runInNewContext } = jest.requireActual('node:vm') as typeof import('node:vm');
@@ -109,6 +114,7 @@ describe('SillyTavern CORS proxy transport', () => {
         await expect(Promise.all([first, second])).resolves.toEqual(['enabled', 'enabled']);
     });
 
+    // 探测终态：精确区分关闭与暂时不可用，可强制复查或单独取消等待。
     it('recognizes the exact disabled response and assert throws a non-retryable error', async () => {
         const fetchMock: FetchMock = jest
             .fn()
@@ -170,6 +176,7 @@ describe('SillyTavern CORS proxy transport', () => {
         expect(fetchMock).toHaveBeenCalledTimes(1);
     });
 
+    // 请求转发边界：保留完整地址与请求数据，拒绝目标越界和非 JSON 正文。
     it('encodes the complete target and preserves request data', async () => {
         const providerResponse = textResponse('provider stream', 200);
         const fetchMock: FetchMock = jest
@@ -252,6 +259,7 @@ describe('SillyTavern CORS proxy transport', () => {
         expect(fetchMock).not.toHaveBeenCalled();
     });
 
+    // 响应及取消：只将酒馆精确关闭提示归类为代理错误，普通上游 404 保持原样。
     it('turns only the exact disabled fallback into PiProxyUnavailableError', async () => {
         const fetchMock: FetchMock = jest
             .fn()

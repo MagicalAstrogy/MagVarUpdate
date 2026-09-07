@@ -42,6 +42,7 @@ type GenerateRunner<TConfig extends GenerateConfig> = (config: TConfig) => Promi
 
 const pending_prompt_captures = new Map<string, MutablePromptCaptureState>();
 
+/** 将非空生成编号编码为专用模型标记，用于从设置就绪事件中识别本次捕获。 */
 export function encodePromptCaptureMarker(generation_id: string): string {
     if (generation_id.length === 0) {
         throw new Error('Prompt capture generation_id cannot be empty');
@@ -56,6 +57,7 @@ export function encodePromptCaptureMarker(generation_id: string): string {
     }
 }
 
+/** 只接受可规范往返编码的捕获标记，普通模型名或畸形标记返回 null。 */
 export function decodePromptCaptureMarker(model: unknown): string | null {
     if (typeof model !== 'string' || !model.startsWith(PI_PROMPT_CAPTURE_MODEL_PREFIX)) {
         return null;
@@ -80,6 +82,10 @@ export function decodePromptCaptureMarker(model: unknown): string | null {
     }
 }
 
+/**
+ * 将生成配置转换为专用捕获请求，移除业务工具、Schema、凭证和自定义覆盖。
+ * 请求指向固定无效地址，并应在最终提示词捕获后被停止，避免误发到主模型。
+ */
 export function buildPromptCaptureConfig<TConfig extends GenerateConfig>(
     config: TConfig,
     generation_id: string
@@ -106,6 +112,7 @@ export function buildPromptCaptureConfig<TConfig extends GenerateConfig>(
     } as TConfig;
 }
 
+/** 返回进行中捕获的诊断快照，不暴露完整提示词内容。 */
 export function getPendingPromptCaptureDiagnostics(): PromptCaptureDiagnostics[] {
     return Array.from(pending_prompt_captures.values(), state => ({
         generationId: state.generationId,
@@ -117,14 +124,20 @@ export function getPendingPromptCaptureDiagnostics(): PromptCaptureDiagnostics[]
     }));
 }
 
+/** 只有标记匹配、提示词复制成功且生成已停止，才认定捕获完整成功。 */
 function hasCompletedCapture(state: MutablePromptCaptureState): boolean {
     return state.markerMatched && state.captured && state.stopSucceeded;
 }
 
+/** 只记录首次捕获失败原因，避免清理阶段覆盖最有用的错误。 */
 function recordCaptureError(state: MutablePromptCaptureState, message: string): void {
     state.captureError ??= message;
 }
 
+/**
+ * 在酒馆设置就绪事件的最后阶段复制最终提示词，并以生成编号隔离并发捕获。
+ * 可等待 Pi 回调结束以维持原生停止按钮；随后停止占位请求，最终释放全部监听和登记。
+ */
 export async function capturePrompt<TConfig extends GenerateConfig, T = undefined>(
     run: GenerateRunner<TConfig>,
     config: TConfig,
@@ -150,11 +163,13 @@ export async function capturePrompt<TConfig extends GenerateConfig, T = undefine
     let callback_error: unknown;
     let callback_started = false;
     let listening_for_stop = options !== undefined;
+    /** 仅将当前生成编号的用户停止事件传给 Pi 回调，不影响其他并发请求。 */
     const stop_listener = (stopped_id?: string) => {
         if (listening_for_stop && stopped_id === generation_id) {
             options?.onStopped(generation_id);
         }
     };
+    /** 关闭并移除停止监听，防止内部终止占位请求被误判为用户取消。 */
     const remove_stop_listener = () => {
         listening_for_stop = false;
         if (options) {
@@ -162,6 +177,7 @@ export async function capturePrompt<TConfig extends GenerateConfig, T = undefine
         }
     };
 
+    /** 匹配当前捕获标记后复制最终提示词，等待接管回调，再阻止占位请求进入酒馆后端。 */
     const listener = async (generate_data: SettingsReadyData) => {
         const event_generation_id = decodePromptCaptureMarker(generate_data?.model);
         if (
@@ -277,6 +293,7 @@ export async function capturePrompt<TConfig extends GenerateConfig, T = undefine
     }
 }
 
+/** 使用当前预设的 generate 流程构造并捕获最终提示词。 */
 export function captureGeneratePrompt<T = undefined>(
     config: GenerateConfig,
     options?: PromptCaptureOptions<T>
@@ -284,6 +301,7 @@ export function captureGeneratePrompt<T = undefined>(
     return capturePrompt(generate, config, options);
 }
 
+/** 使用显式顺序的 generateRaw 流程构造并捕获最终提示词。 */
 export function captureGenerateRawPrompt<T = undefined>(
     config: GenerateRawConfig,
     options?: PromptCaptureOptions<T>

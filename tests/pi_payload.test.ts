@@ -1,3 +1,6 @@
+/**
+ * 测试场景：验证统一应答格式、采样和自定义覆盖映射到各协议载荷时结构正确、输入不被修改且取消对象被保留。
+ */
 import { transformPiPayload } from '@/function/update/pi/payload';
 
 const schema = {
@@ -11,7 +14,9 @@ const schema = {
     strict: true,
 };
 
+// 请求体转换：按协议写入原生字段，并禁止用户覆盖由运行时管理的关键配置。
 describe('Pi payload transform', () => {
+    // OpenAI 系列：Responses、Codex 和 Chat Completions 的两种结构化模式使用各自字段布局。
     test('maps OpenAI Responses native json schema without mutating input', () => {
         const input = { model: 'gpt', input: [], stream: true, text: { verbosity: 'low' } };
         const result = transformPiPayload(input, {
@@ -146,6 +151,7 @@ describe('Pi payload transform', () => {
         expect(input).toEqual(snapshot);
     });
 
+    // Google 配置：结构化输出和自定义参数进入 config，AbortSignal 等运行状态保持原对象。
     test('maps Google structured output inside config', () => {
         expect(
             transformPiPayload(
@@ -291,6 +297,7 @@ describe('Pi payload transform', () => {
         ).toThrow("must use a direct 'config.<field>' path");
     });
 
+    // Anthropic 与 Mistral：保留协议已有配置，使用正确字段名，拒绝不存在的应答模式。
     test('maps Anthropic JSON Schema output without replacing output_config effort', () => {
         const input = {
             model: 'claude',
@@ -367,6 +374,7 @@ describe('Pi payload transform', () => {
         });
     });
 
+    // 覆盖与采样约束：允许扩展字段，保护核心请求字段，并仅发送协议支持的采样参数。
     test('applies custom fields but protects protocol fields', () => {
         expect(
             transformPiPayload(

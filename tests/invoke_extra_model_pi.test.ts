@@ -1,3 +1,6 @@
+/**
+ * 测试场景：在模拟捕获和 Pi 运行时的条件下，验证额外模型策略的路由、设置快照、重试、并发与错误脱敏。
+ */
 jest.mock('@/function/update/pi/prompt_capture', () => ({
     captureGeneratePrompt: jest.fn(),
     captureGenerateRawPrompt: jest.fn(),
@@ -104,6 +107,7 @@ function configurePiSource() {
     return store;
 }
 
+// Pi 策略编排：三种提示词方案接入 Pi，同时保留旧来源路径和全局请求配置边界。
 describe('invoke extra model through Pi', () => {
     beforeEach(() => {
         jest.clearAllMocks();
@@ -138,6 +142,7 @@ describe('invoke extra model through Pi', () => {
         delete (globalThis as any).SillyTavern.getChatCompletionModel;
     });
 
+    // 请求快照与批次锁：面板编辑不改变重试配置，并发未结束时保持批次占用。
     test('keeps retries bound to the original Pi configuration after panel edits', async () => {
         const store = configurePiSource();
         store.versions.tavernhelper = '4.9.3';
@@ -208,6 +213,7 @@ describe('invoke extra model through Pi', () => {
         expect(store.runtimes.is_during_extra_analysis).toBe(false);
     });
 
+    // 提示词路由：内置破限、当前预设、其他预设分别走正确捕获入口，旧来源不进入 Pi。
     test.each([
         ['使用当前预设', 'generate'],
         ['使用其他预设', 'generateRaw'],
@@ -294,6 +300,7 @@ describe('invoke extra model through Pi', () => {
         expect(mockRunPiRequest).not.toHaveBeenCalled();
     });
 
+    // 预检和失败传播：静态错误只检查一次，重试使用独立编号，服务商错误先脱敏。
     test('runs static Pi preflight once before retries and propagates its failure', async () => {
         const store = configurePiSource();
         store.settings.额外模型解析配置.请求次数 = 4;
@@ -410,6 +417,7 @@ describe('invoke extra model through Pi', () => {
         console_error.mockRestore();
     });
 
+    // 并发终止：取消、无效更新块或胜出结果都会按策略停止其他请求。
     test('treats a mixed concurrent failure as cancellation when one attempt was aborted', async () => {
         const store = configurePiSource();
         store.settings.额外模型解析配置.请求方式 = '同时请求多次';
@@ -515,6 +523,7 @@ describe('invoke extra model through Pi', () => {
         expect(console_error).toHaveBeenCalledTimes(2);
     });
 
+    // 不可重试边界：配置、协议和主动停止错误不继续尝试，也不修改酒馆全局请求体。
     test('propagates a non-retryable Pi runtime error without another attempt', async () => {
         const store = configurePiSource();
         store.settings.额外模型解析配置.请求次数 = 4;

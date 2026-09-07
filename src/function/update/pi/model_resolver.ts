@@ -50,6 +50,7 @@ export type PiModelResolutionErrorCode =
     | 'max_tokens_exceed_context';
 
 export class PiModelResolutionError extends Error {
+    /** 保留模型配置错误码，供预检和界面给出稳定的错误分类。 */
     constructor(
         public readonly code: PiModelResolutionErrorCode,
         message: string
@@ -84,10 +85,12 @@ export interface ResolvedPiModel {
     apiKey?: string;
 }
 
+/** 判断输入是否为可读取配置字段的非空、非数组对象。 */
 function isRecord(value: unknown): value is Record<string, unknown> {
     return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
+/** 读取并规范必填字符串，缺失时抛出指定的模型配置错误。 */
 function requiredString(
     source: Record<string, unknown>,
     field: string,
@@ -101,7 +104,7 @@ function requiredString(
     return value.trim();
 }
 
-/** Canonicalize and enforce the browser-safe transport policy for a custom Pi endpoint. */
+/** 规范自定义端点并执行浏览器传输限制，将端点错误转换为模型配置错误。 */
 export function normalizePiEndpoint(endpoint: string): string {
     try {
         return normalizePiTargetEndpoint(endpoint);
@@ -113,7 +116,7 @@ export function normalizePiEndpoint(endpoint: string): string {
     }
 }
 
-/** Empty and explicitly configured canonical default endpoints are equivalent. */
+/** 判断端点是否等同服务商的协议默认地址，空值与显式填写默认地址视为相同。 */
 export function isPiDefaultProviderEndpoint(
     definition: PiProviderDefinition,
     endpoint: string,
@@ -133,6 +136,7 @@ export function isPiDefaultProviderEndpoint(
     }
 }
 
+/** 校验允许 0 哨兵值的配置整数，拒绝无效值隐式回退。 */
 function validateNonNegativeInteger(value: unknown, field: string): number {
     if (value === undefined) {
         return 0;
@@ -146,6 +150,7 @@ function validateNonNegativeInteger(value: unknown, field: string): number {
     return value;
 }
 
+/** 校验必须大于 0 的配置整数，供回复 token 等硬性预算使用。 */
 function validatePositiveInteger(value: unknown, field: string): number {
     if (typeof value !== 'number' || !Number.isInteger(value) || value <= 0) {
         throw new PiModelResolutionError(
@@ -156,6 +161,7 @@ function validatePositiveInteger(value: unknown, field: string): number {
     return value;
 }
 
+/** 从所选服务商目录中查找模型，并检查目录项与当前协议是否兼容。 */
 function findCatalogModel(
     definition: PiProviderDefinition,
     modelId: string
@@ -163,7 +169,10 @@ function findCatalogModel(
     return getPiCatalogModels(definition.key).find(model => model.id === modelId);
 }
 
-/** Validate the source/API/auth/model metadata combination without mutating settings or catalogs. */
+/**
+ * 校验服务商、协议、认证、端点、模型和 token 参数的组合。
+ * 只使用适用于当前端点的目录元数据，不修改设置或共享目录对象。
+ */
 export function validatePiConfiguration(input: ResolvePiModelInput): ValidatedPiConfiguration {
     if (!isRecord(input.piConfig)) {
         throw new PiModelResolutionError(
@@ -330,6 +339,7 @@ export function validatePiConfiguration(input: ResolvePiModelInput): ValidatedPi
     };
 }
 
+/** 为目录外或自定义端点模型构造独立元数据，使用显式窗口与保守能力默认值。 */
 function createDynamicModel(configuration: ValidatedPiConfiguration): Model<Api> {
     return {
         id: configuration.modelId,
@@ -345,6 +355,7 @@ function createDynamicModel(configuration: ValidatedPiConfiguration): Model<Api>
     };
 }
 
+/** 复制目录模型后应用本次端点和预算，防止请求修改共享目录元数据。 */
 function cloneCatalogModel(configuration: ValidatedPiConfiguration): Model<Api> {
     const original = configuration.catalogModel!;
     const model = structuredClone(original) as Model<Api>;
@@ -362,6 +373,7 @@ function cloneCatalogModel(configuration: ValidatedPiConfiguration): Model<Api> 
     return model;
 }
 
+/** 在配置校验后选择目录模型或动态模型，并返回本次请求的有效预算及认证信息。 */
 export function resolvePiModel(input: ResolvePiModelInput): ResolvedPiModel {
     const configuration = validatePiConfiguration(input);
     const catalogHit = configuration.catalogModel !== undefined;
@@ -376,7 +388,7 @@ export function resolvePiModel(input: ResolvePiModelInput): ResolvedPiModel {
     };
 }
 
-/** Convenience adapter for the persisted Chinese-keyed extra-model settings object. */
+/** 从中文字段的额外模型设置中提取 Pi 连接和回复预算，再调用统一模型解析。 */
 export function resolvePiModelFromExtraModelSettings(settings: unknown): ResolvedPiModel {
     if (!isRecord(settings)) {
         throw new PiModelResolutionError(

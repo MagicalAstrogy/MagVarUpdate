@@ -61,6 +61,7 @@ export class GoogleProxyAdapterCompatibilityError extends Error {
     readonly code = 'google_proxy_adapter_incompatible';
     readonly retryable = false;
 
+    /** 将 SDK 传输注入点不兼容标记为不可重试错误，避免被包装成普通服务商失败。 */
     constructor() {
         super(
             'The installed Google Generative AI SDK no longer exposes the audited per-client HTTP transport required by the SillyTavern proxy.'
@@ -79,7 +80,10 @@ export interface GoogleProxyOptions extends StreamOptions {
     };
 }
 
-/** Install one fetch implementation on one client instance. Never mutates globals/prototypes. */
+/**
+ * 仅替换单个 Google 客户端的 HTTP 调用实现，保留取消和超时信号。
+ * 先验证当前 SDK 注入点；不修改全局 fetch 或客户端原型。
+ */
 export function installGoogleClientFetch(client: unknown, fetch_impl: FetchFunction): void {
     const api_client = (client as InjectableGoogleClient | null)?.apiClient;
     if (
@@ -93,6 +97,7 @@ export function installGoogleClientFetch(client: unknown, fetch_impl: FetchFunct
     installPiAbortSignalPolyfills();
     // GenAI 2.x moved abort/timeout out of RequestInit into apiCall arguments. Pi owns retries,
     // but the injected transport must preserve those signals through response-body consumption.
+    /** 合并 RequestInit、SDK 参数和超时产生的信号，再交给本次请求的传输实现。 */
     const injected = (
         url: string,
         init: RequestInit,
@@ -124,8 +129,8 @@ export function installGoogleClientFetch(client: unknown, fetch_impl: FetchFunct
 }
 
 /**
- * Verify the pinned SDK seam before Pi's Models.lazyStream boundary can turn a setup failure into
- * an opaque assistant error. GoogleGenAI construction is local and performs no network request.
+ * 在 Pi 懒加载流边界之前验证 SDK 注入点，保留明确的兼容错误。
+ * 构造客户端与校验过程不发送网络请求。
  */
 export function assertGoogleProxyAdapterCompatible(): void {
     const client = new GoogleGenAI({ apiKey: GOOGLE_TRANSPORT_PROBE_KEY });
@@ -134,12 +139,14 @@ export function assertGoogleProxyAdapterCompatible(): void {
     });
 }
 
+/** 仅在请求指定了不同于全局 fetch 的传输实现时启用本地桥接。 */
 function shouldUseInjectedFetch(
     fetch_impl: FetchFunction | undefined
 ): fetch_impl is FetchFunction {
     return fetch_impl !== undefined && fetch_impl !== globalThis.fetch;
 }
 
+/** 移除表示删除操作的 null 请求头，转换为 Google SDK 接受的字符串映射。 */
 function providerHeadersToRecord(
     headers: ProviderHeaders | undefined
 ): Record<string, string> | undefined {
@@ -155,6 +162,7 @@ function providerHeadersToRecord(
     return Object.keys(result).length === 0 ? undefined : result;
 }
 
+/** 删除孤立的 UTF-16 代理码元，避免系统提示词编码失败。 */
 function sanitizeSurrogates(text: string): string {
     return text.replace(
         /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g,
@@ -162,6 +170,7 @@ function sanitizeSurrogates(text: string): string {
     );
 }
 
+/** 限制 Google 内部错误文本长度，供 Pi 流错误处理使用；界面仍需经过错误脱敏。 */
 function formatGoogleError(error: unknown): string {
     const message = error instanceof Error ? error.message : String(error);
     const limit = 4000;
@@ -170,6 +179,7 @@ function formatGoogleError(error: unknown): string {
         : `${message.slice(0, limit)}... [truncated ${message.length - limit} chars]`;
 }
 
+/** 初始化 Pi 助手消息及用量，供后续 Google 流事件逐步填充。 */
 function createOutput(model: Model<'google-generative-ai'>): AssistantMessage {
     return {
         role: 'assistant',
@@ -190,6 +200,7 @@ function createOutput(model: Model<'google-generative-ai'>): AssistantMessage {
     };
 }
 
+/** 按本次模型端点和请求头创建 Google 客户端，并安装仅作用于该实例的 fetch。 */
 function createClient(
     model: Model<'google-generative-ai'>,
     api_key: string,
@@ -223,6 +234,7 @@ function createClient(
     return client;
 }
 
+/** 将 Pi 上下文、工具、采样和思考配置转换为 Google 生成参数，并保留取消信号。 */
 function buildParams(
     model: Model<'google-generative-ai'>,
     context: Context,
@@ -283,6 +295,10 @@ function buildParams(
 
 let tool_call_counter = 0;
 
+/**
+ * 通过注入的传输执行 Google 生成，并转换为 Pi 的文本、思考、工具和用量事件。
+ * 客户端兼容性同步校验，避免初始化失败被吞为普通模型响应。
+ */
 function streamWithInjectedFetch(
     model: Model<'google-generative-ai'>,
     context: Context,
@@ -316,6 +332,7 @@ function streamWithInjectedFetch(
             stream.push({ type: 'start', partial: output });
             let current_block: TextContent | ThinkingContent | null = null;
             const blocks = output.content;
+            /** 取得当前输出块下标，使增量事件始终指向最新内容块。 */
             const block_index = () => blocks.length - 1;
 
             for await (const chunk of google_stream) {
@@ -543,14 +560,17 @@ function streamWithInjectedFetch(
     return stream;
 }
 
+/** 识别使用思考等级配置的 Gemma 4 模型名称。 */
 function isGemma4Model(model: Model<'google-generative-ai'>): boolean {
     return /gemma-?4/.test(model.id.toLowerCase());
 }
 
+/** 识别 Gemini 3 Pro 系列，以使用其支持的思考等级范围。 */
 function isGemini3ProModel(model: Model<'google-generative-ai'>): boolean {
     return /gemini-3(?:\.\d+)?-pro/.test(model.id.toLowerCase());
 }
 
+/** 识别 Gemini 3 Flash 系列及对应 latest 别名。 */
 function isGemini3FlashModel(model: Model<'google-generative-ai'>): boolean {
     const id = model.id.toLowerCase();
     return (
@@ -560,6 +580,7 @@ function isGemini3FlashModel(model: Model<'google-generative-ai'>): boolean {
     );
 }
 
+/** 为不同 Google 模型选择关闭或最低允许思考配置，避免发送不支持的零预算。 */
 function getDisabledThinkingConfig(model: Model<'google-generative-ai'>): ThinkingConfig {
     if (isGemini3ProModel(model)) {
         return { thinkingLevel: 'LOW' as ThinkingConfig['thinkingLevel'] };
@@ -570,6 +591,7 @@ function getDisabledThinkingConfig(model: Model<'google-generative-ai'>): Thinki
     return { thinkingBudget: 0 };
 }
 
+/** 把 Pi 思考等级映射到当前 Google 模型实际支持的等级。 */
 function getThinkingLevel(
     effort: ResolvedGoogleThinkingLevel,
     model: Model<'google-generative-ai'>
@@ -592,6 +614,7 @@ function getThinkingLevel(
     }
 }
 
+/** 优先使用自定义思考预算，否则采用相应模型的预算映射；未知模型交由服务端动态分配。 */
 function getGoogleBudget(
     model: Model<'google-generative-ai'>,
     level: ResolvedGoogleThinkingLevel,
@@ -612,6 +635,7 @@ function getGoogleBudget(
     return -1;
 }
 
+/** 将 Pi 简化选项解析为模型适用的思考等级或预算，再复用注入传输的流实现。 */
 function streamSimpleWithInjectedFetch(
     model: Model<'google-generative-ai'>,
     context: Context,
@@ -662,12 +686,10 @@ function streamSimpleWithInjectedFetch(
     );
 }
 
-/**
- * Use Pi's upstream Google implementation for ordinary browser requests. Only requests carrying
- * a distinct fetch implementation (Proxy or non-streaming transport) use the local bridge.
- */
+/** 普通浏览器请求沿用 Pi 上游实现；具有独立 fetch 的代理或非流式请求走本地桥接。 */
 export function createGoogleProxyAwareApi(upstream: ProviderStreams): ProviderStreams {
     return {
+        /** 为完整流选项选择上游实现或带请求级传输的 Google 桥接。 */
         stream(model, context, options) {
             if (!shouldUseInjectedFetch(options?.fetch)) {
                 return upstream.stream(model, context, options);
@@ -679,6 +701,7 @@ export function createGoogleProxyAwareApi(upstream: ProviderStreams): ProviderSt
                 options.fetch
             );
         },
+        /** 为简化流选项选择上游实现或带请求级传输的 Google 桥接。 */
         streamSimple(model, context, options) {
             if (!shouldUseInjectedFetch(options?.fetch)) {
                 return upstream.streamSimple(model, context, options);

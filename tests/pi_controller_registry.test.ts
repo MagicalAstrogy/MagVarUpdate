@@ -1,3 +1,6 @@
+/**
+ * 测试场景：验证生成编号与取消控制器的登记、释放和多阶段停止，特别是捕获到运行时之间的取消间隙。
+ */
 import {
     beginPiRequestAttempt,
     clearPiRequestControllers,
@@ -10,6 +13,7 @@ import {
 } from '@/function/update/pi/controller_registry';
 import { capturePrompt } from '@/function/update/pi/prompt_capture';
 
+// 请求登记与取消：重复编号被拒绝，停止标记保留到完整尝试结束，统一停止覆盖 Slash 和 Pi。
 describe('Pi request controller registry', () => {
     beforeEach(() => {
         clearPiRequestControllers();
@@ -37,6 +41,7 @@ describe('Pi request controller registry', () => {
         registration.release();
     });
 
+    // 取消间隙：停止或卸载后的尝试保留标记，直到捕获所属调用释放。
     test('keeps a stopped attempt tombstone until the complete attempt releases it', () => {
         const attempt = beginPiRequestAttempt('capture-runtime-gap');
 
@@ -73,6 +78,7 @@ describe('Pi request controller registry', () => {
         expect(getActivePiRequestIds()).toEqual([]);
     });
 
+    // 清理与跨层停止：任务结束总会释放登记，按编号停止不会影响无关请求。
     test('withPiRequestController always cleans up', async () => {
         await expect(
             withPiRequestController('failed', async signal => {

@@ -75,6 +75,7 @@ export type PiRuntimeErrorCode =
     | 'protocol';
 
 export class PiRuntimeError extends Error {
+    /** 为运行时错误保存稳定类别和重试标记，供额外模型策略统一决策。 */
     constructor(
         readonly code: PiRuntimeErrorCode,
         message: string,
@@ -85,7 +86,7 @@ export class PiRuntimeError extends Error {
     }
 }
 
-/** Stable retry boundary used by the serial/concurrent extra-model strategies. */
+/** 为串行和并发策略提供统一的不可重试错误判断。 */
 export function isNonRetryablePiRuntimeError(error: unknown): boolean {
     return (
         (error instanceof PiRuntimeError && !error.retryable) ||
@@ -168,10 +169,12 @@ const BROWSER_AUTH_CONTEXT: AuthContext = Object.freeze({
     fileExists: async () => false,
 });
 
+/** 确认设置是非空、非数组对象，再读取请求字段。 */
 function isPlainObject(value: unknown): value is Record<string, unknown> {
     return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
+/** 校验额外模型设置的根结构，结构错误在构造请求前失败。 */
 function requireSettings(value: unknown): ExtraModelSettingsRecord {
     if (!isPlainObject(value)) {
         throw new PiRuntimeError(
@@ -182,6 +185,7 @@ function requireSettings(value: unknown): ExtraModelSettingsRecord {
     return value;
 }
 
+/** 优先采用本次显式应答格式，否则读取设置，并拒绝未知格式。 */
 function resolveResponseFormat(
     settings: ExtraModelSettingsRecord,
     override: unknown
@@ -199,6 +203,7 @@ function resolveResponseFormat(
     return value as PiRuntimeResponseFormat;
 }
 
+/** 读取可选字符串配置；缺失返回空字符串，类型错误不能隐式转换。 */
 function optionalStringField(source: Record<string, unknown>, name: string): string {
     const value = source[name];
     if (value === undefined) {
@@ -210,6 +215,7 @@ function optionalStringField(source: Record<string, unknown>, name: string): str
     return value;
 }
 
+/** 校验可选数值的范围、有限性及整数要求，缺失字段保持未设置。 */
 function optionalNumberField(
     source: Record<string, unknown>,
     name: string,
@@ -237,6 +243,7 @@ function optionalNumberField(
     return value;
 }
 
+/** 仅解析当前模型支持的采样字段，并处理协议或模型特有的组合限制。 */
 function resolveSampling(
     settings: ExtraModelSettingsRecord,
     capabilities: Readonly<PiApiCapabilities>,
@@ -296,10 +303,12 @@ function resolveSampling(
     };
 }
 
+/** 复制本次结构化输出 Schema，避免执行时修改调用方定义。 */
 function cloneJsonSchema(schema: PiJsonSchema | undefined): PiJsonSchema | undefined {
     return schema === undefined ? undefined : structuredClone(schema);
 }
 
+/** 解析当前模型的可信协议能力，注册信息缺失时终止配置预检。 */
 function capabilityFor(resolution: ResolvedPiModel): Readonly<PiApiCapabilities> {
     const capability = resolvePiCapabilities(
         resolution.definition,
@@ -318,6 +327,7 @@ function capabilityFor(resolution: ResolvedPiModel): Readonly<PiApiCapabilities>
     return capability;
 }
 
+/** 在捕获提示词前确认所选应答格式受到支持，避免重复发送必然失败的请求。 */
 function assertResponseCapability(
     responseFormat: PiRuntimeResponseFormat,
     capabilities: Readonly<PiApiCapabilities>,
@@ -341,6 +351,7 @@ function assertResponseCapability(
     }
 }
 
+/** 仅在工具调用模式校验并复制工具定义，其他模式不携带业务工具。 */
 function prepareTools(
     responseFormat: PiRuntimeResponseFormat,
     definitions: readonly ToolDefinition[] | undefined
@@ -363,6 +374,7 @@ function prepareTools(
     );
 }
 
+/** JSON Schema 模式要求显式结构定义，其他应答格式不继承残留 Schema。 */
 function prepareJsonSchema(
     responseFormat: PiRuntimeResponseFormat,
     schema: PiJsonSchema | undefined
@@ -376,6 +388,7 @@ function prepareJsonSchema(
     return responseFormat === '格式化输出' ? cloneJsonSchema(schema) : undefined;
 }
 
+/** 用空载荷预演请求转换，提前发现受保护字段覆盖及格式配置错误。 */
 function validatePayloadConfiguration(preflight: {
     resolution: ResolvedPiModel;
     responseFormat: PiRuntimeResponseFormat;
@@ -407,6 +420,7 @@ function validatePayloadConfiguration(preflight: {
     }
 }
 
+/** 确认 OAuth 来源已有可用类型的凭证；到期刷新由后续 Pi 认证流程处理。 */
 async function assertOAuthCredential(
     resolution: ResolvedPiModel,
     credentialStore: CredentialStore,
@@ -427,8 +441,8 @@ async function assertOAuthCredential(
 }
 
 /**
- * Validate everything that does not depend on a captured prompt. Call this once before entering
- * serial/concurrent retry logic so unsupported combinations are never retried as provider errors.
+ * 一次性校验不依赖提示词的连接、认证、能力、预算参数和请求覆盖，并冻结本轮快照。
+ * 应在串行或并发重试前调用，避免把固定配置错误误判为可重试的服务商失败。
  */
 export async function assertPiRuntimeConfiguration(
     input: AssertPiRuntimeConfigurationInput
@@ -527,6 +541,7 @@ export async function assertPiRuntimeConfiguration(
     return preflight;
 }
 
+/** 只为本次解析出的模型和协议创建 Pi 服务商，并接入浏览器 OAuth 或请求密钥。 */
 function createRuntimeProvider(preflight: PiRuntimePreflight) {
     const { resolution } = preflight;
     let auth: ProviderAuth;
@@ -540,6 +555,7 @@ function createRuntimeProvider(preflight: PiRuntimePreflight) {
         auth = {
             apiKey: {
                 name: `${resolution.definition.displayName.en} API key`,
+                /** 将本次设置提供的 API Key 转为 Pi 认证结果，解析前检查请求是否取消。 */
                 async resolve({ credential, signal }) {
                     signal.throwIfAborted();
                     if (!credential?.key) {
@@ -564,6 +580,7 @@ function createRuntimeProvider(preflight: PiRuntimePreflight) {
     });
 }
 
+/** 检查用户消息和工具返回值是否包含图片，供能力预检使用。 */
 function contextHasImages(context: ReturnType<typeof toPiContext>['context']): boolean {
     return context.messages.some(message => {
         if (message.role === 'user') {
@@ -579,6 +596,7 @@ function contextHasImages(context: ReturnType<typeof toPiContext>['context']): b
     });
 }
 
+/** 提示词含图片时同时核对协议能力和模型输入类型，发送前拒绝不支持的组合。 */
 function assertImageCapability(
     preflight: PiRuntimePreflight,
     context: ReturnType<typeof toPiContext>['context']
@@ -594,6 +612,7 @@ function assertImageCapability(
     }
 }
 
+/** 仅保留需要写入原生载荷的两种格式化输出模式。 */
 function nativeStructuredFormat(
     responseFormat: PiRuntimeResponseFormat
 ): '格式化输出' | '格式化输出(v4兼容)' | undefined {
@@ -602,6 +621,10 @@ function nativeStructuredFormat(
         : undefined;
 }
 
+/**
+ * 按本轮快照组合认证、采样、代理、非流式传输及载荷转换回调。
+ * Codex 经代理时强制使用 SSE，所有请求层共享同一取消信号。
+ */
 function createStreamOptions(
     preflight: PiRuntimePreflight,
     signal: AbortSignal
@@ -639,6 +662,7 @@ function createStreamOptions(
     };
 }
 
+/** 识别常见浏览器 fetch、网络和 CORS 失败，供运行时选择网络错误类别。 */
 function isNetworkFailure(error: unknown): boolean {
     const message = error instanceof Error ? error.message : typeof error === 'string' ? error : '';
     return /failed to fetch|fetch failed|network\s*error|networkerror|load failed|cors/i.test(
@@ -646,6 +670,7 @@ function isNetworkFailure(error: unknown): boolean {
     );
 }
 
+/** 通过稳定错误码识别 Google 注入点不兼容，避免直接导入适配器产生循环依赖。 */
 function isGoogleProxyAdapterCompatibilityFailure(error: unknown): boolean {
     // Keep the runtime boundary independent from the Google adapter module: provider registration
     // imports the runtime-facing gateway, so importing the adapter here would create a cycle.
@@ -655,6 +680,10 @@ function isGoogleProxyAdapterCompatibilityFailure(error: unknown): boolean {
     );
 }
 
+/**
+ * 将已知底层失败归类为运行时错误并保留重试语义。
+ * 未知错误可能附带请求头或正文，只返回固定提示，不保留原始 cause。
+ */
 function normalizeRuntimeFailure(error: unknown): Error {
     if (error instanceof PiRuntimeError) {
         return error;
@@ -724,6 +753,7 @@ function normalizeRuntimeFailure(error: unknown): Error {
     return new PiRuntimeError('provider', 'More source request failed.', true);
 }
 
+/** 要求非空生成编号，使取消登记与提示词捕获可以准确关联。 */
 function assertGenerationId(generationId: string): void {
     if (!generationId.trim()) {
         throw new PiRuntimeError(
@@ -734,8 +764,8 @@ function assertGenerationId(generationId: string): void {
 }
 
 /**
- * Convert a captured SillyTavern prompt and execute it through the selected pi provider.
- * This function never appends the returned assistant message to either context or ST chat.
+ * 将捕获的酒馆提示词转换为 Pi 上下文，检查图片及 token 预算后执行所选服务商请求。
+ * 统一处理代理检查、取消登记、错误分类和结果转换；返回值不自动追加到聊天或上下文。
  */
 export async function runPiRequest(
     input: RunPiRequestInput

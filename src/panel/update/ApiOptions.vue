@@ -121,6 +121,7 @@ const response_format_options = computed(() =>
     }))
 );
 
+/** 使用其他预设时保持名称有效；目录为空则清空，原选择失效则选取首项。 */
 function ensureValidPresetSelection() {
     if (store.settings.额外模型解析配置.破限方案 !== '使用其他预设') {
         return;

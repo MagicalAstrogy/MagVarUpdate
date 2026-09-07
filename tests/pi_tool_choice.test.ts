@@ -1,5 +1,9 @@
+/**
+ * 测试场景：验证 MVU 的自动、禁用、强制及具名工具选择映射到各 Pi 协议，并拒绝协议不支持的组合。
+ */
 import { resolvePiToolChoice } from '@/function/update/pi/tool_choice';
 
+// 工具选择映射：各协议使用正确枚举和对象形状，不支持的具名或强制选择明确报错。
 describe('Pi capability-aware tool choice', () => {
     test.each([
         ['openai-responses', 'auto', 'auto'],

@@ -1,10 +1,9 @@
 /**
- * The only runtime import boundary for pi-ai.
+ * Pi SDK 唯一的运行时导入入口。
  *
- * Keep this module limited to the adapters and catalogs that MVU supports. In particular, do
- * not import built-in provider factories or the aggregate provider entry point: the application
- * owns provider registration and OAuth orchestration so the browser bundle cannot pull in pi's
- * Node callback flows. Production resolves these entry points through versioned browser ESM.
+ * 只导出 MVU 支持的协议适配器和模型目录，不导入内置服务商工厂或聚合入口。
+ * 服务商注册与 OAuth 由应用管理，避免浏览器引入 Pi 的 Node 回调流程。
+ * 生产环境通过带固定版本的浏览器 ESM 加载这些入口。
  */
 export {
     Type,
@@ -106,7 +105,7 @@ export {
     convertMessages as convertGoogleMessages,
     convertTools as convertGoogleTools,
     isThinkingPart as isGoogleThinkingPart,
-    // The local Google SDK can add enum values before Pi updates its own pinned SDK.
+    // 本地 Google SDK 可能先于 Pi 固定的 SDK 版本增加枚举值，停止原因仍沿用 Pi 的映射。
     mapStopReasonString as mapGoogleStopReason,
     resolveGoogleFunctionCallingMode,
     resolveGoogleThinkingLevel,

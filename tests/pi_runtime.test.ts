@@ -1,4 +1,8 @@
-/** @jest-environment-options {"url":"http://localhost/"} */
+/**
+ * 测试场景：使用模拟 Pi 服务商验证运行时预检、配置快照、代理与传输选择、原生协议载荷、取消及错误归类。
+ *
+ * @jest-environment-options {"url":"http://localhost/"}
+ */
 
 jest.mock('@/function/update/pi/pi_gateway', () => {
     const api = (name: string) => ({
@@ -261,6 +265,7 @@ const JSON_SCHEMA = {
     },
 };
 
+// 静态预检：不依赖提示词即可验证连接、认证、应答格式、采样和工具定义，并保存独立快照。
 describe('pi runtime preflight', () => {
     beforeEach(() => {
         jest.clearAllMocks();
@@ -269,6 +274,7 @@ describe('pi runtime preflight', () => {
 
     afterEach(() => clearPiRequestControllers());
 
+    // 连接和认证：冻结 API Key 配置，按目标选择代理，校验 Google 配置与 OAuth 凭证。
     test('resolves and snapshots API-key request configuration without messages', async () => {
         const credentialStore = makeCredentialStore();
         const preflight = await assertPiRuntimeConfiguration({
@@ -400,6 +406,7 @@ describe('pi runtime preflight', () => {
         });
     });
 
+    // 协议和采样能力：格式化输出、未知模型与原生 Anthropic 采样遵循注册约束。
     test('allows Anthropic JSON Schema output but still rejects its missing JSON-object mode', async () => {
         const credentialStore = makeCredentialStore();
         const preflight = await assertPiRuntimeConfiguration({
@@ -535,6 +542,7 @@ describe('pi runtime preflight', () => {
         expect(custom.sampling.topP).toBe(0.8);
     });
 
+    // 采样与工具预备：只校验实际会发送的字段，并构造受约束的 MVU 工具选择。
     test('filters sampling fields and temperature using API/model metadata', async () => {
         const preflight = await assertPiRuntimeConfiguration({
             settings: makeSettings({
@@ -620,6 +628,7 @@ describe('pi runtime preflight', () => {
     });
 });
 
+// 请求执行：在预算、代理和取消检查之后发送，转换返回值并始终释放请求登记。
 describe('pi runtime execution', () => {
     const setProvider = jest.fn();
     const stream = jest.fn();
@@ -632,6 +641,7 @@ describe('pi runtime execution', () => {
 
     afterEach(() => clearPiRequestControllers());
 
+    // 传输与发送前检查：流式设置随快照冻结，代理关闭或 Google SDK 不兼容时不进入服务商请求。
     test.each([undefined, false, true])(
         'uses pseudo-streaming=%s to choose the request transport and freezes it across retries',
         async enabled => {
@@ -809,6 +819,7 @@ describe('pi runtime execution', () => {
         expect(stream).not.toHaveBeenCalled();
     });
 
+    // 生成生命周期：构造浏览器服务商并发送进度，捕获到运行时之间的停止或卸载都能阻止迟发。
     test('creates a browser-safe provider, streams progress, and maps request payload fields', async () => {
         const final = assistant([{ type: 'text', text: 'done' }]);
         const events: AssistantMessageEvent[] = [
@@ -969,6 +980,7 @@ describe('pi runtime execution', () => {
         expect(getActivePiRequestIds()).toEqual([]);
     });
 
+    // 结构化输出：原生格式保持原协议形状，不改造成工具调用。
     test('uses native structured output without converting it to a tool', async () => {
         const final = assistant([{ type: 'text', text: '{"result":"ok"}' }]);
         stream.mockReturnValue(fakeStream(final));
@@ -1115,6 +1127,7 @@ describe('pi runtime execution', () => {
         });
     });
 
+    // 认证和结果桥接：共用 OAuth 仓库，工具调用转换为 MVU 已有返回结构。
     test('wires browser OAuth and the shared credential store into pi Models', async () => {
         const final = assistant([{ type: 'text', text: 'oauth response' }]);
         stream.mockReturnValue(fakeStream(final));
@@ -1224,6 +1237,7 @@ describe('pi runtime execution', () => {
         expect(stream.mock.calls[0][2].toolChoice).toBe('required');
     });
 
+    // 失败终态：图片和预算错误不可重试，网络和服务商失败先脱敏，取消保留编号并清理登记。
     test('rejects unsupported images and token overflow as stable non-retryable errors', async () => {
         const dynamicPreflight = await assertPiRuntimeConfiguration({
             settings: makeSettings({

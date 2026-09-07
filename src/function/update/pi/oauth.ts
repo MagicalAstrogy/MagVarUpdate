@@ -30,6 +30,7 @@ export type PiOAuthErrorCode =
 export class PiOAuthError extends Error {
     readonly code: PiOAuthErrorCode;
 
+    /** 为浏览器 OAuth 失败保留稳定错误码，供界面和取消逻辑分类处理。 */
     constructor(code: PiOAuthErrorCode, message: string) {
         super(message);
         this.name = 'PiOAuthError';
@@ -107,24 +108,29 @@ type ClosedAttemptReason = 'used' | 'expired' | 'cancelled';
 const pendingAttempts = new Map<string, PendingAttempt>();
 const closedAttempts = new Map<string, { reason: ClosedAttemptReason; removeAfter: number }>();
 
+/** 构造带稳定错误码的 OAuth 错误。 */
 function oauthError(code: PiOAuthErrorCode, message: string): PiOAuthError {
     return new PiOAuthError(code, message);
 }
 
+/** 创建统一的登录取消错误，供各异步阶段使用。 */
 function cancellationError(): PiOAuthError {
     return oauthError('cancelled', 'More source OAuth login was cancelled.');
 }
 
+/** 将已取消信号转换为 OAuth 取消错误，阻止继续交换或写入令牌。 */
 function throwIfAborted(signal?: AbortSignal): void {
     if (signal?.aborted) {
         throw cancellationError();
     }
 }
 
+/** 解析可注入的时钟，使登录有效期和刷新测试可以精确控制时间。 */
 function getNow(options?: Pick<PiOAuthDependencies, 'now'>): () => number {
     return options?.now ?? Date.now;
 }
 
+/** 解析浏览器令牌请求使用的 fetch，缺少能力时返回明确的环境错误。 */
 function getFetch(options?: Pick<PiOAuthDependencies, 'fetch'>): FetchLike {
     const fetchImpl = options?.fetch ?? globalThis.fetch;
     if (typeof fetchImpl !== 'function') {
@@ -136,6 +142,7 @@ function getFetch(options?: Pick<PiOAuthDependencies, 'fetch'>): FetchLike {
     return fetchImpl.bind(globalThis) as FetchLike;
 }
 
+/** 确认 Web Crypto 提供随机数和 SHA-256，满足 OAuth state 与 PKCE 的生成要求。 */
 function getCrypto(options?: Pick<PiOAuthDependencies, 'crypto'>): CryptoLike {
     const cryptoImpl = options?.crypto ?? (globalThis.crypto as CryptoLike | undefined);
     if (
@@ -151,12 +158,14 @@ function getCrypto(options?: Pick<PiOAuthDependencies, 'crypto'>): CryptoLike {
     return cryptoImpl;
 }
 
+/** 优先使用注入的凭证仓库，否则复用运行时的共享仓库。 */
 function getCredentialStore(
     options?: Pick<PiOAuthDependencies, 'credentialStore'>
 ): CredentialStore {
     return options?.credentialStore ?? getPiCredentialStore();
 }
 
+/** 只解析已注册且支持浏览器登录的 OAuth 服务商，拒绝其他授权流程。 */
 function getOAuthMetadata(providerId: string): OAuthMetadata {
     const registration = getPiProviderRegistration(providerId);
     const metadata = registration?.oauth;
@@ -175,6 +184,7 @@ function getOAuthMetadata(providerId: string): OAuthMetadata {
     return metadata;
 }
 
+/** 将随机字节或摘要编码为无填充的 Base64URL，供 PKCE 和 state 使用。 */
 function bytesToBase64Url(bytes: Uint8Array): string {
     let binary = '';
     for (const byte of bytes) {
@@ -183,10 +193,12 @@ function bytesToBase64Url(bytes: Uint8Array): string {
     return globalThis.btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
 }
 
+/** 用密码学随机数生成指定字节长度的 Base64URL 标识。 */
 function randomBase64Url(cryptoImpl: CryptoLike, length: number): string {
     return bytesToBase64Url(cryptoImpl.getRandomValues(new Uint8Array(length)));
 }
 
+/** 生成仅保留在内存中的 verifier，并计算 S256 challenge。 */
 async function createPkce(cryptoImpl: CryptoLike): Promise<{
     verifier: string;
     challenge: string;
@@ -200,6 +212,7 @@ async function createPkce(cryptoImpl: CryptoLike): Promise<{
     };
 }
 
+/** 按服务商元数据组装授权地址，附带回调地址、scope、PKCE 和 state。 */
 function createAuthorizationUrl(metadata: OAuthMetadata, challenge: string, state: string): string {
     const url = new URL(metadata.authorizeUrl);
     for (const [name, value] of Object.entries(metadata.authorizeParams)) {
@@ -215,6 +228,7 @@ function createAuthorizationUrl(metadata: OAuthMetadata, challenge: string, stat
     return url.toString();
 }
 
+/** 短期记录已关闭尝试的原因，并限制记录数量，使重复回调可得到准确错误。 */
 function rememberClosedAttempt(id: string, reason: ClosedAttemptReason): void {
     const now = Date.now();
     for (const [closedId, closed] of closedAttempts) {
@@ -232,6 +246,7 @@ function rememberClosedAttempt(id: string, reason: ClosedAttemptReason): void {
     closedAttempts.set(id, { reason, removeAfter: now + CLOSED_ATTEMPT_TTL_MS });
 }
 
+/** 关闭当前登录尝试，释放计时器和监听，清除 verifier 与 state，并记录关闭原因。 */
 function closeAttempt(attempt: PendingAttempt, reason: ClosedAttemptReason, abort: boolean): void {
     if (pendingAttempts.get(attempt.id) !== attempt) {
         return;
@@ -247,14 +262,17 @@ function closeAttempt(attempt: PendingAttempt, reason: ClosedAttemptReason, abor
     rememberClosedAttempt(attempt.id, reason);
 }
 
+/** 使超时尝试失效并取消进行中的令牌交换。 */
 function expireAttempt(attempt: PendingAttempt): void {
     closeAttempt(attempt, 'expired', true);
 }
 
+/** 将调用方取消传递给内部控制器，并返回解绑函数。 */
 function linkAbortSignal(signal: AbortSignal | undefined, controller: AbortController): () => void {
     if (!signal) {
         return () => undefined;
     }
+    /** 将外部取消转发给当前令牌操作。 */
     const onAbort = () => controller.abort();
     if (signal.aborted) {
         onAbort();
@@ -264,6 +282,7 @@ function linkAbortSignal(signal: AbortSignal | undefined, controller: AbortContr
     return () => signal.removeEventListener('abort', onAbort);
 }
 
+/** 根据已关闭原因区分过期、取消和回调重复使用。 */
 function errorForClosedAttempt(reason: ClosedAttemptReason): PiOAuthError {
     if (reason === 'expired') {
         return oauthError('attempt_expired', 'This More source OAuth login attempt has expired.');
@@ -274,6 +293,7 @@ function errorForClosedAttempt(reason: ClosedAttemptReason): PiOAuthError {
     return oauthError('attempt_used', 'This More source OAuth callback has already been used.');
 }
 
+/** 取得仍处于待回调阶段的有效尝试，拒绝过期、已消费或已取消的记录。 */
 function getPendingAttempt(attemptId: string, now: number): PendingAttempt {
     const attempt = pendingAttempts.get(attemptId);
     if (!attempt) {
@@ -302,6 +322,7 @@ function getPendingAttempt(attemptId: string, now: number): PendingAttempt {
 
 type ParsedCallback = { code: string; state: string };
 
+/** 补齐 URL 的默认端口，使回调地址校验不受显式端口写法影响。 */
 function normalizePort(url: URL): string {
     if (url.port) {
         return url.port;
@@ -309,6 +330,10 @@ function normalizePort(url: URL): string {
     return url.protocol === 'http:' ? '80' : url.protocol === 'https:' ? '443' : '';
 }
 
+/**
+ * 校验完整回环回调地址的协议、主机、端口、路径和 state，再提取授权码。
+ * 回调必须属于当前尝试；服务商返回的授权错误也在此转换为固定错误。
+ */
 function parseAndValidateCallback(callbackUrl: string, attempt: PendingAttempt): ParsedCallback {
     let callback: URL;
     let redirect: URL;
@@ -358,10 +383,12 @@ function parseAndValidateCallback(callbackUrl: string, attempt: PendingAttempt):
     return { code, state };
 }
 
+/** 综合信号和 OAuth 错误码识别取消，避免误报为网络或存储故障。 */
 function isCancellation(error: unknown, signal: AbortSignal): boolean {
     return signal.aborted || (error instanceof PiOAuthError && error.code === 'cancelled');
 }
 
+/** 区分主动取消与浏览器网络失败，不透传可能含敏感请求数据的底层错误。 */
 function normalizeFetchFailure(error: unknown, signal: AbortSignal): never {
     if (isCancellation(error, signal)) {
         throw cancellationError();
@@ -388,6 +415,7 @@ type TokenData = {
     expiresInSeconds: number;
 };
 
+/** 按授权码或刷新令牌两种 grant 生成令牌请求字段，并遵循服务商的 state 约定。 */
 function createTokenFields(metadata: OAuthMetadata, grant: TokenGrant): Record<string, string> {
     const fields: Record<string, string> = { ...metadata.tokenParams };
     fields.client_id = metadata.clientId;
@@ -406,6 +434,7 @@ function createTokenFields(metadata: OAuthMetadata, grant: TokenGrant): Record<s
     return fields;
 }
 
+/** 校验令牌接口状态和必需字段；刷新响应未返回 refresh_token 时保留原刷新令牌。 */
 async function readTokenResponse(
     response: Response,
     fallbackRefreshToken?: string
@@ -453,6 +482,7 @@ async function readTokenResponse(
     return { access, refresh, expiresInSeconds: expiresIn };
 }
 
+/** 按服务商要求用 JSON 或表单交换令牌，并在请求前后检查取消。 */
 async function requestTokens(
     metadata: OAuthMetadata,
     grant: TokenGrant,
@@ -489,6 +519,7 @@ async function requestTokens(
     );
 }
 
+/** 解码 JWT 中的 Base64URL JSON 数据，兼容缺少 TextDecoder 的浏览器。 */
 function decodeBase64UrlJson(value: string): unknown {
     const normalized = value.replace(/-/g, '+').replace(/_/g, '/');
     const padded = normalized.padEnd(Math.ceil(normalized.length / 4) * 4, '=');
@@ -503,6 +534,7 @@ function decodeBase64UrlJson(value: string): unknown {
     return JSON.parse(json);
 }
 
+/** 从访问令牌的账号声明中读取 Codex 所需账号标识；缺失时拒绝建立凭证。 */
 function extractOpenAIAccountId(accessToken: string): string {
     try {
         const parts = accessToken.split('.');
@@ -530,6 +562,7 @@ function extractOpenAIAccountId(accessToken: string): string {
     }
 }
 
+/** 将令牌响应转换为 Pi OAuth 凭证，预留过期时间偏差，并补齐 Codex 账号标识。 */
 function credentialFromTokens(
     metadata: OAuthMetadata,
     token: TokenData,
@@ -547,6 +580,7 @@ function credentialFromTokens(
     return credential;
 }
 
+/** 通过共享凭证队列保存登录结果，分别处理取消与存储失败。 */
 async function persistCredential(
     providerId: string,
     credential: OAuthCredential,
@@ -567,6 +601,10 @@ async function persistCredential(
     }
 }
 
+/**
+ * 创建带有效期的浏览器登录尝试，生成 PKCE 和 state，返回供界面打开的授权地址。
+ * 秘密校验信息留在内存中，调用方取消或超时会关闭该尝试。
+ */
 export async function beginPiOAuth(
     providerId: string,
     options: BeginPiOAuthOptions = {}
@@ -599,6 +637,7 @@ export async function beginPiOAuth(
     attempt.timeout = setTimeout(() => expireAttempt(attempt), ttl);
     pendingAttempts.set(id, attempt);
     if (options.signal) {
+        /** 关闭已取消的登录尝试，阻止随后到达的回调继续交换令牌。 */
         const onAbort = () => closeAttempt(attempt, 'cancelled', true);
         options.signal.addEventListener('abort', onAbort, { once: true });
         attempt.detachCallerAbort = () => options.signal?.removeEventListener('abort', onAbort);
@@ -616,6 +655,10 @@ export async function beginPiOAuth(
     };
 }
 
+/**
+ * 校验并一次性消费回调，交换授权码后保存凭证，最终清理尝试状态。
+ * 重复回调或交换期间取消都不能产生第二次有效登录。
+ */
 export async function completePiOAuth(
     attemptId: string,
     callbackUrl: string,
@@ -665,6 +708,7 @@ export async function completePiOAuth(
     }
 }
 
+/** 按尝试编号取消登录，清除回调校验状态并中止未完成的交换。 */
 export function cancelPiOAuth(attemptId: string): boolean {
     const attempt = pendingAttempts.get(attemptId);
     if (!attempt) {
@@ -674,12 +718,14 @@ export function cancelPiOAuth(attemptId: string): boolean {
     return true;
 }
 
+/** 取消全部待完成的登录尝试，供界面卸载和脚本清理使用。 */
 export function cancelAllPiOAuth(): void {
     for (const attempt of [...pendingAttempts.values()]) {
         closeAttempt(attempt, 'cancelled', true);
     }
 }
 
+/** 先取消该服务商未完成的登录，再通过串行凭证仓库删除登录状态。 */
 export async function logoutPiOAuth(
     providerId: string,
     options: PiOAuthOperationOptions = {}
@@ -699,6 +745,7 @@ export async function logoutPiOAuth(
     }
 }
 
+/** 返回是否已登录及过期时间等界面状态，不暴露访问令牌和刷新令牌。 */
 export async function getPiOAuthCredentialStatus(
     providerId: string,
     options: PiOAuthOperationOptions = {}
@@ -727,7 +774,10 @@ export async function getPiOAuthCredentialStatus(
     };
 }
 
-/** Force a refresh from the UI, sharing the same credential lock as Pi's automatic refresh. */
+/**
+ * 由界面强制刷新现有 OAuth 凭证，与 Pi 自动刷新共用同一服务商修改锁。
+ * 操作使用捕获的凭证仓库和取消信号，刷新完成后再提交新凭证。
+ */
 export async function refreshPiOAuth(
     providerId: string,
     options: RefreshPiOAuthOptions = {}
@@ -740,6 +790,7 @@ export async function refreshPiOAuth(
         ...(options.signal ? [options.signal] : []),
         AbortSignal.timeout(REFRESH_TIMEOUT_MS),
     ]);
+    /** 生成缺少可刷新 OAuth 凭证的错误，供刷新入口统一报告。 */
     const missingCredential = () =>
         oauthError('missing_credential', 'Sign in before refreshing OAuth credentials.');
     try {
@@ -785,6 +836,10 @@ export async function refreshPiOAuth(
     }
 }
 
+/**
+ * 将浏览器授权、刷新和凭证转换接入 Pi 的 OAuthAuth 契约。
+ * 登录通过授权地址与手动回调交互完成，不启动 Node 回环服务器。
+ */
 function createBrowserOAuthAuth(
     metadata: OAuthMetadata,
     options: BrowserOAuthAuthOptions
@@ -796,6 +851,7 @@ function createBrowserOAuthAuth(
     return {
         name: providerName,
         isSubscription: true,
+        /** 通过 Pi 认证交互展示授权地址、接收回调，并在结束时释放登录尝试。 */
         async login(interaction) {
             const attempt = await beginPiOAuth(metadata.providerId, {
                 ...options,
@@ -834,6 +890,7 @@ function createBrowserOAuthAuth(
                 throw error;
             }
         },
+        /** 为 Pi 自动续期交换 refresh_token，保留请求的取消信号并更新过期时间。 */
         async refresh(credential, signal) {
             const token = await requestTokens(
                 metadata,
@@ -843,6 +900,7 @@ function createBrowserOAuthAuth(
             );
             return credentialFromTokens(metadata, token, getNow(options)());
         },
+        /** 把持久化 OAuth 凭证转换为 Pi 请求认证信息，保留服务商需要的账号字段。 */
         async toAuth(credential): Promise<ModelAuth> {
             if (metadata.providerId === OPENAI_CODEX_PROVIDER_ID) {
                 extractOpenAIAccountId(credential.access);
@@ -852,6 +910,7 @@ function createBrowserOAuthAuth(
     };
 }
 
+/** 按服务商解析浏览器 OAuth 实现，并传入可替换的请求和时钟依赖。 */
 export function getBrowserOAuthAuth(
     providerId: string,
     options: BrowserOAuthAuthOptions = {}

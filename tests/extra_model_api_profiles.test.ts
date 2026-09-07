@@ -1,3 +1,6 @@
+/**
+ * 测试场景：验证额外模型 API 方案的保存、切换、迁移、删除确认，以及 Pi 连接快照与凭证缓存的隔离。
+ */
 import {
     applyExtraModelApiProfile,
     clearUnboundExtraModelApiProfileFields,
@@ -52,6 +55,7 @@ const base_pi_settings = {
     futurePiField: { nested: true },
 };
 
+// 方案生命周期：自定义与 Pi 后端共用方案操作，但各自保持连接、密钥和请求选项的归属。
 describe('extra model api profiles', () => {
     beforeEach(() => {
         (globalThis as any).SillyTavern.extensionSettings = {};
@@ -70,6 +74,7 @@ describe('extra model api profiles', () => {
         兼容假流式: true,
     };
 
+    // 请求选项与旧方案：补全缺失选项，保存后保持独立，并检测未保存修改。
     test('migrates current request options into every old profile and preserves them on reload', () => {
         (globalThis as any).SillyTavern.extensionSettings = {
             mvu_settings: {
@@ -133,6 +138,7 @@ describe('extra model api profiles', () => {
         expect(selectExtraModelApiProfile(saved, 'B')[field]).toBe(value);
     });
 
+    // 自定义方案基础操作：迁移单连接配置，按名称切换、更新并保留未知字段。
     test('migrates legacy single api fields into a default profile', () => {
         const migrated = migrateExtraModelApiProfiles(base_config);
 
@@ -273,6 +279,7 @@ describe('extra model api profiles', () => {
         });
     });
 
+    // Pi 方案与秘密隔离：深拷贝连接，排除 OAuth 凭证及密钥缓存，不覆盖隐藏自定义连接。
     test('saves a deep pi connection snapshot without OAuth credentials', () => {
         const config = {
             ...base_config,
@@ -438,6 +445,7 @@ describe('extra model api profiles', () => {
         }
     );
 
+    // 窗口与响应式对象：规范导入的窗口值，并支持 Pinia 代理对象的保存和应用。
     test('normalizes a numeric profile contextWindow string before save and apply', () => {
         const saved = saveCurrentExtraModelApiProfile(
             {
@@ -539,6 +547,7 @@ describe('extra model api profiles', () => {
         expect(selected.pi?.credentials).toEqual(base_pi_settings.credentials);
     });
 
+    // 凭证归属和无效快照：刷新不影响脏检查，残缺连接不能借用活动字段继续发送。
     test('applies pi profiles, preserves provider credentials, and does not share nested state', () => {
         const profile = saveCurrentExtraModelApiProfile(
             {
@@ -764,6 +773,7 @@ describe('extra model api profiles', () => {
         expect(migrated.pi?.model).toBe('');
     });
 
+    // 名称与删除后选择：去重、拒绝重名，并在删除后正确切换剩余后端。
     test('removes a saved profile', () => {
         const profiles = removeExtraModelApiProfile(
             [
@@ -998,6 +1008,7 @@ describe('extra model api profiles', () => {
         expect(next_config.pi?.apiKeys).not.toBe(config.pi.apiKeys);
     });
 
+    // 删除确认流程：有未保存修改时先确认丢弃，再确认删除；任一步取消都保留方案。
     test('asks to discard dirty edits before asking to delete a profile', async () => {
         const config = {
             ...base_config,
@@ -1140,6 +1151,7 @@ describe('extra model api profiles', () => {
         expect(next_config?.api方案列表.map(profile => profile.名称)).toEqual(['变量']);
     });
 
+    // 解除绑定与导入校正：清理活动字段但保留共享凭证，修复失效的方案引用。
     test('detects dirty active profile fields', () => {
         const config = {
             ...base_config,

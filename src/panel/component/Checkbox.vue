@@ -8,6 +8,7 @@
 <script setup lang="ts">
 defineProps<{
     id?: string;
+    /** 将能力限制传给原生控件，禁用时保留已有配置值。 */
     disabled?: boolean;
 }>();
 

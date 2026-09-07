@@ -1,3 +1,6 @@
+/**
+ * 测试场景：以模拟 fetch 验证不同服务商的模型发现接口、分页、认证、代理、目录过滤和错误脱敏。
+ */
 jest.mock('@/function/update/pi/pi_gateway', () => {
     const streams = () => ({ stream: jest.fn(), streamSimple: jest.fn() });
     const catalogModel = (provider: string, api: string, id: string, baseUrl: string) => ({
@@ -136,11 +139,13 @@ function requestInit(call: unknown[]): RequestInit {
     return (call[1] ?? {}) as RequestInit;
 }
 
+// 模型发现契约：使用当前连接的协议、端点与凭证，并把远程结果规范为可选模型标识。
 describe('extra-model model-list discovery', () => {
     beforeEach(() => {
         jest.clearAllMocks();
     });
 
+    // 目录与旧接口：仅过滤已知协议冲突，沿用自定义来源的酒馆发现契约。
     test.each([
         ['', ['new-model']],
         ['https://api.openai.com/v1/chat/completions/', ['new-model']],
@@ -250,6 +255,7 @@ describe('extra-model model-list discovery', () => {
         }
     );
 
+    // 兼容服务商路由：检查附加请求头和各预置来源对应的模型目录地址。
     test('uses the ST Custom status path when More-source request headers are configured', async () => {
         const fetchMock: FetchMock = jest
             .fn()
@@ -444,6 +450,7 @@ describe('extra-model model-list discovery', () => {
         });
     });
 
+    // 原生模型接口：验证 Mistral、Anthropic 分页、代理开关与 OAuth 请求头。
     test('fetches Mistral models directly with bearer authentication', async () => {
         const signal = new AbortController().signal;
         const fetchMock: FetchMock = jest.fn().mockResolvedValue(
@@ -633,6 +640,7 @@ describe('extra-model model-list discovery', () => {
         expect(requestInit(fetchMock.mock.calls[0]).headers).not.toHaveProperty('x-api-key');
     });
 
+    // 协议差异：OpenRouter 路径规范化，Google 方法筛选和 Codex 账号可见模型。
     test('maps a full OpenRouter Anthropic messages URL to the ST OpenAI-compatible model base', async () => {
         const request_headers = { 'X-CSRF-Token': 'csrf-token' };
         const fetchMock: FetchMock = jest
@@ -790,6 +798,7 @@ describe('extra-model model-list discovery', () => {
         });
     });
 
+    // 失败边界：缺少凭证、异常响应、网络错误和重复分页游标都不能泄漏请求数据。
     test('rejects Codex discovery without both OAuth token and account id before fetching', async () => {
         const fetchMock: FetchMock = jest.fn();
         await expect(
@@ -901,6 +910,7 @@ describe('extra-model model-list discovery', () => {
         );
     });
 
+    // 发现前续期：旧浏览器补齐 AbortSignal 能力，刷新令牌和账号标识来自同一凭证快照。
     test('refreshes saved credentials without prior generation when AbortSignal statics are missing', async () => {
         const descriptors = Object.getOwnPropertyDescriptors(AbortSignal);
         jest.useFakeTimers();

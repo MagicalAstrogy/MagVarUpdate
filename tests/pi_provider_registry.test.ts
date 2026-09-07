@@ -1,3 +1,6 @@
+/**
+ * 测试场景：验证服务商注册、协议能力、OAuth 元数据与模型解析规则，覆盖目录模型、自定义端点和无效配置。
+ */
 jest.mock('@/function/update/pi/pi_gateway', () => {
     const streams = () => ({
         stream: jest.fn(),
@@ -568,7 +571,9 @@ function expectResolutionError(
     }
 }
 
+// 注册表与能力矩阵：来源顺序、代理策略、模型限制及 OAuth 定义保持可核查的一致性。
 describe('pi provider registry', () => {
+    // 来源及协议策略：核对全部预置来源、强制代理路径和高级能力矩阵。
     test('exposes the exact Pi preset sources and their UI/runtime constraints', () => {
         const definitions = listPiProviderDefinitions();
         expect(definitions.map(definition => definition.key)).toEqual(
@@ -735,6 +740,7 @@ describe('pi provider registry', () => {
         }
     );
 
+    // 模型能力收窄：重新验证目录来源，应用模型特有的采样、流式和图片限制。
     test('derives model-aware capability gates from the shared registry', () => {
         const anthropic = getPiProviderDefinition('anthropic')!;
         const known = getPiCatalogModels('anthropic')[0];
@@ -925,6 +931,7 @@ describe('pi provider registry', () => {
         ).toMatchObject({ temperature: false, sampling: { topP: false, topK: false } });
     });
 
+    // 协议级能力：Google 和 Codex 的动态模型不误继承目录媒体能力，过期目录项被过滤。
     test('keeps Google tools and structured output at the wire API capability level', () => {
         const google = getPiProviderDefinition('google')!;
         const models = Object.fromEntries(
@@ -1033,6 +1040,7 @@ describe('pi provider registry', () => {
         });
     });
 
+    // 认证与依赖边界：OAuth 元数据不含请求秘密，目录和懒加载 API 只属于所选来源。
     test('publishes exact OAuth registrations without request-scoped secrets', () => {
         expect(getPiProviderDefinition('anthropic')!.oauth).toEqual({
             providerId: 'anthropic',
@@ -1129,7 +1137,9 @@ describe('pi provider registry', () => {
     });
 });
 
+// 模型解析：规范端点，选择可信目录元数据或显式动态模型，并在发送前拒绝不合法组合。
 describe('pi model resolver', () => {
+    // 地址与目录：HTTPS、回环 HTTP、等价默认地址和目录克隆使用统一规则。
     test('canonicalizes HTTPS and permits HTTP only for loopback endpoints', () => {
         expect(normalizePiEndpoint(' https://Compatible.Example:443/v1/// ')).toBe(
             'https://compatible.example/v1'
@@ -1202,6 +1212,7 @@ describe('pi model resolver', () => {
         expect(catalogModel.maxTokens).toBe(8192);
     });
 
+    // 自定义端点：手动窗口优先，只裁剪一次操作路径，并要求独立模型元数据。
     test('lets a manual window, selected API, and normalized custom endpoint override a catalog hit', () => {
         const resolved = resolvePiModel({
             piConfig: {
@@ -1386,6 +1397,7 @@ describe('pi model resolver', () => {
         });
     });
 
+    // 模型与协议一致性：目录中明确兼容的协议可复用窗口，未知模型使用显式动态定义。
     test('rejects a catalog model on a different API at the provider default endpoint', () => {
         expectResolutionError(
             {
@@ -1473,6 +1485,7 @@ describe('pi model resolver', () => {
         });
     });
 
+    // 认证与配置拒绝：OAuth 只使用注册协议，无效窗口、预算或固定端点替换在发送前失败。
     test('allows only the registered OAuth API and never requires an API key for it', () => {
         const resolved = resolvePiModel({
             piConfig: {

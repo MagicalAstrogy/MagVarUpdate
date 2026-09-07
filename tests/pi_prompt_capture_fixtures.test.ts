@@ -1,3 +1,7 @@
+/**
+ * 测试场景：读取真实酒馆浏览器采集的三组 JSON 提示词 fixture，检查内置破限、当前预设和其他预设的内容一致性。
+ * 测试只校验已保存的 fixture，不重新生成提示词或访问模型服务。
+ */
 import fs from 'node:fs';
 import path from 'node:path';
 
@@ -56,7 +60,9 @@ function countOccurrences(text: string, marker: string): number {
     return text.split(marker).length - 1;
 }
 
+// 真实提示词基线：fixture 具有采集来源、逐项一致性和各自路线特征，且不泄漏捕获控制字段。
 describe('real SillyTavern Pi prompt capture fixtures', () => {
+    // fixture 来源：恰好覆盖三种方案，并保留真实浏览器采集与一致性证据。
     test('contains exactly the three supported jailbreak routes', () => {
         expect(
             fs
@@ -88,6 +94,7 @@ describe('real SillyTavern Pi prompt capture fixtures', () => {
         }
     );
 
+    // 内容语义：预设、世界书及过滤行为符合记录，方案身份互相可区分。
     test.each(fixtureCases)('%s covers prompt construction and filtering semantics', name => {
         const fixture = readFixture(name);
         const messages = fixture.legacy;

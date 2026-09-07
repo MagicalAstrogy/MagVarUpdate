@@ -1,3 +1,7 @@
+/**
+ * 测试场景：在 Firefox 中验证固定版本浏览器 ESM 可加载，真实 Pi 适配器可完成协议及 OAuth 请求构造。
+ * 只有依赖模块从网络加载，模型传输及凭证均在本地模拟，并额外检查 Google 取消传播。
+ */
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
@@ -28,8 +32,7 @@ const profile_parent = gecko_binary.startsWith('/snap/firefox/')
 await mkdir(profile_parent, { recursive: true });
 const profile_root = await mkdtemp(path.join(profile_parent, 'mvu-pi-esm-'));
 
-// This function runs inside Firefox. Only ESM modules come from the network; every provider
-// request uses a local fake transport and synthetic credentials, including both OAuth routes.
+/** 浏览器 ESM 场景：加载真实固定版本模块，用合成认证和本地响应验证各协议及 Google 取消。 */
 async function browserSmoke() {
     const check = (condition, message) => {
         if (!condition) throw new Error(message);
@@ -70,6 +73,7 @@ async function browserSmoke() {
             usage: { input_tokens: 1, output_tokens: 1, total_tokens: 2 },
         };
         const observed = [];
+        // 协议与认证矩阵：核对各适配器的请求结构，并验证 Anthropic 与 Codex OAuth 所需请求头。
         for (const [api, adapter] of Object.entries(apis)) {
             state.phase = api;
             const codex = api === 'openai-codex-responses';
@@ -241,6 +245,7 @@ async function browserSmoke() {
             );
             check(dispatches === 1, `${api}: expected one request`);
         }
+        // Google 取消矩阵：流式和非流式两种传输都必须接收到用户取消。
         state.phase = 'Google cancellation';
         for (const streaming of [false, true]) {
             const controller = new AbortController();
@@ -360,6 +365,7 @@ driver.on('error', error => {
     spawn_error = error;
 });
 let session_id;
+/** 驱动通信：向 WebDriver 发送命令并解析结果，供 ESM 浏览器场景控制使用。 */
 async function command(method, route, body) {
     const response = await fetch(`http://127.0.0.1:${driver_port}${route}`, {
         method,

@@ -1,3 +1,6 @@
+/**
+ * 测试场景：模拟 Pi 助手更新仍未保存时出现下一条用户消息，验证变量快照等待前序写入且失败后能释放。
+ */
 jest.mock('@/function/is_extra_model_supported', () => ({
     isExtraModelSupported: jest.fn().mockResolvedValue(true),
 }));
@@ -21,6 +24,7 @@ function deferred<T>() {
     return { promise, resolve, reject };
 }
 
+// 跨消息顺序：新用户消息拿到已保存的前序变量，服务商失败也不会永久阻塞快照。
 describe('variable snapshots after a pending Pi response update', () => {
     let chat: any[];
 

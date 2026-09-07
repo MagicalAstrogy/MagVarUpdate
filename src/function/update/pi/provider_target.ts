@@ -46,7 +46,7 @@ export const PI_WIRE_APIS = [
 ] as const;
 export type PiWireApi = (typeof PI_WIRE_APIS)[number];
 
-/** The ChatGPT account endpoint requires stream:true and has no JSON-response mode. */
+/** 标记必须使用流式传输的 Codex 账号接口，该接口没有 JSON 非流式模式。 */
 export function isPiStreamingRequired(api: string): boolean {
     return api === 'openai-codex-responses';
 }
@@ -74,6 +74,7 @@ type PiProviderTargetDefinitionInput = Omit<PiProviderTargetDefinition, 'corsPro
 
 const NO_CORS_PROXY_REQUIRED_APIS: readonly PiWireApi[] = Object.freeze([]);
 
+/** 补齐并冻结目标的代理策略，使共享注册信息不能被请求修改。 */
 function definePiProviderTarget(
     input: PiProviderTargetDefinitionInput
 ): Readonly<PiProviderTargetDefinition> {
@@ -482,6 +483,7 @@ export const PI_PROVIDER_TARGET_REGISTRY: Readonly<
     }),
 });
 
+/** 读取轻量目标注册信息，供配置和密钥归属校验使用，无需加载 SDK 目录。 */
 export function getPiProviderTargetDefinition(
     key: string
 ): Readonly<PiProviderTargetDefinition> | undefined {
@@ -490,7 +492,7 @@ export function getPiProviderTargetDefinition(
         : undefined;
 }
 
-/** Return whether this built-in provider/API route must use SillyTavern's CORS proxy. */
+/** 判断指定服务商的内置协议端点是否必须经酒馆 CORS 代理访问。 */
 export function isPiCorsProxyRequired(
     definition: Readonly<PiProviderTargetDefinition> | undefined,
     api: string
@@ -499,8 +501,8 @@ export function isPiCorsProxyRequired(
 }
 
 /**
- * Resolve the browser transport for the active target. Registered endpoints use the audited
- * provider/API policy; an explicitly entered endpoint is user-owned and follows its checkbox.
+ * 内置端点遵循注册的代理策略，自定义端点遵循用户勾选状态。
+ * 等价写法先规范化，避免把显式填写的默认地址误认作自定义目标。
  */
 export function shouldUsePiCorsProxy(
     definition: Readonly<PiProviderTargetDefinition> | undefined,
@@ -533,6 +535,7 @@ export function shouldUsePiCorsProxy(
     return customEndpointUseProxy === true;
 }
 
+/** 优先读取协议专用基础地址，否则使用服务商默认地址。 */
 export function getPiProviderApiBaseUrl(
     definition: Readonly<PiProviderTargetDefinition>,
     api: PiWireApi
@@ -541,6 +544,7 @@ export function getPiProviderApiBaseUrl(
 }
 
 export class PiEndpointValidationError extends Error {
+    /** 将端点格式或传输限制失败标记为独立的端点校验错误。 */
     constructor(message: string) {
         super(message);
         this.name = 'PiEndpointValidationError';
@@ -549,7 +553,7 @@ export class PiEndpointValidationError extends Error {
 
 const HTTP_LOOPBACK_HOSTNAMES: ReadonlySet<string> = new Set(['localhost', '127.0.0.1', '[::1]']);
 
-/** Canonicalize and enforce the browser-safe transport policy for a Pi endpoint. */
+/** 规范端点地址，要求 HTTPS 或回环 HTTP，并拒绝内嵌凭证、查询参数和片段。 */
 export function normalizePiTargetEndpoint(endpoint: string): string {
     let parsed: URL;
     try {
@@ -586,8 +590,8 @@ const PI_API_OPERATION_PATH_SUFFIXES: Partial<Record<PiWireApi, readonly string[
 };
 
 /**
- * Normalize a safe endpoint to the API base expected by provider SDKs, removing at most one
- * operation-route suffix that the selected SDK appends itself.
+ * 将安全端点转换为 SDK 需要的 API 基础地址。
+ * 最多移除一次当前协议会自行追加的操作路径，避免重复拼接或过度裁剪。
  */
 export function normalizePiApiBaseEndpoint(api: PiWireApi, endpoint: string): string {
     const normalized_endpoint = normalizePiTargetEndpoint(endpoint);
@@ -604,7 +608,10 @@ export function normalizePiApiBaseEndpoint(api: PiWireApi, endpoint: string): st
     return normalizePiTargetEndpoint(`${parsed.origin}${base_path}`);
 }
 
-/** Resolve a credential-cache slot only for a complete, valid API-key wire target. */
+/**
+ * 仅为完整、合法的 API Key 目标生成服务商与端点对应的缓存键。
+ * 未知协议、OAuth、无效地址或不允许自定义端点时返回空值。
+ */
 export function resolvePiApiKeyScope(
     definition: Readonly<PiProviderTargetDefinition> | undefined,
     api: string,

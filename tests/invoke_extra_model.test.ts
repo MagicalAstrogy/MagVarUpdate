@@ -1,3 +1,6 @@
+/**
+ * 测试场景：验证额外模型的工具调用和格式化输出能提取为统一变量更新块，并正确拒绝无效结果。
+ */
 import {
     extractFromFormattedOutput,
     extractFromGenerateToolCallResult,
@@ -29,7 +32,9 @@ const makeToolCalls = (argumentsValue: string, name = MVU_FUNCTION_NAME): ToolCa
     ],
 ];
 
+// 工具调用提取：从匹配工具的参数中读取 delta，处理包装标签、无效参数和 Slash 返回结构。
 describe('extractFromToolCall', () => {
+    // 无效工具结果：缺少调用、工具名或有效 delta 时返回空结果。
     test('returns null when tool_calls is missing or empty', () => {
         expect(extractFromToolCall(undefined)).toBeNull();
         expect(extractFromToolCall([] as ToolCallBatches)).toBeNull();
@@ -65,6 +70,7 @@ describe('extractFromToolCall', () => {
         expect(extractFromToolCall(toolCalls)).toBeNull();
     });
 
+    // 有效结果与标签边界：选择正确调用，保留补丁值中的字面标签。
     test('extracts from the last matching call in the first batch', () => {
         const firstArgs = JSON.stringify({
             delta: '[{"op":"replace","path":"/first","value":1}]',
@@ -267,6 +273,7 @@ describe('extractFromToolCall', () => {
         expect(extractFromToolCall(outer as any)).not.toBeNull();
     });
 
+    // 解析与调用方兼容：参数解析失败可控，支持 Slash 的标准工具结果结构。
     test('returns null when argument parsing throws', () => {
         jest.isolateModules(() => {
             jest.doMock('@util/common', () => {
@@ -339,6 +346,7 @@ describe('extractFromToolCall', () => {
     });
 });
 
+// 格式化输出提取：支持对象、根数组和服务商文本返回，统一包装为变量更新块。
 describe('extractFromFormattedOutput', () => {
     test('extracts json_patch object response into UpdateVariable block', () => {
         const content = JSON.stringify({

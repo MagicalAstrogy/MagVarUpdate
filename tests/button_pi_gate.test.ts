@@ -1,3 +1,6 @@
+/**
+ * 测试场景：验证“重试额外模型解析”按钮按来源检查功能开关和工具能力，Pi 可独立于旧工具管理器工作。
+ */
 import { buttons } from '@/button';
 import { isExtraModelSupported } from '@/function/is_extra_model_supported';
 import { onMessageReceived } from '@/function/update/on_message_received';
@@ -14,6 +17,7 @@ const mockIsExtraModelSupported = jest.mocked(isExtraModelSupported);
 const mockOnMessageReceived = jest.mocked(onMessageReceived);
 const retryExtraModel = buttons.find(button => button.name === '重试额外模型解析')!.function;
 
+// 入口分流：Pi 正常重试、发布开关关闭，以及旧来源的工具能力提示。
 describe('retry extra model button Pi source gate', () => {
     beforeEach(() => {
         jest.clearAllMocks();

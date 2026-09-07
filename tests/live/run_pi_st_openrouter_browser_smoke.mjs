@@ -1,3 +1,7 @@
+/**
+ * 测试场景：在真实酒馆和 Firefox 中运行 OpenRouter 多协议、应答格式与取消测试，并记录经过筛选的网络证据。
+ * 脚本读取本地测试凭证，可单独检查安装或连通性；结束时清理浏览器秘密和临时数据。
+ */
 import { spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import fs from 'node:fs';
@@ -105,10 +109,12 @@ class SmokeError extends Error {
     }
 }
 
+/** 冒烟断言：用明确的场景码标记未满足的前置条件或观测结果。 */
 function assertSmoke(value, code) {
     if (!value) throw new SmokeError(code);
 }
 
+/** 文件检查：确认依赖路径指向文件，避免把目录当作可读取产物。 */
 function isFile(filePath) {
     try {
         return fs.statSync(filePath).isFile();
@@ -117,6 +123,7 @@ function isFile(filePath) {
     }
 }
 
+/** 环境定位：查找可用于临时测试实例的酒馆安装目录。 */
 function resolveSillyTavernRoot() {
     return [
         process.env.MVU_ST_ROOT,
@@ -131,6 +138,7 @@ function resolveSillyTavernRoot() {
         );
 }
 
+/** 驱动定位：解析当前环境可执行的 Firefox WebDriver。 */
 function resolveGeckodriver() {
     return (
         [process.env.MVU_GECKODRIVER, '/snap/firefox/current/usr/lib/firefox/geckodriver']
@@ -139,6 +147,7 @@ function resolveGeckodriver() {
     );
 }
 
+/** 真实服务准备：读取并校验唯一的本地测试凭证，不将其加入测试报告。 */
 function readCredential() {
     const source = fs.readFileSync(tokenPath, 'utf8');
     const credentials = [...source.matchAll(/sk-[A-Za-z0-9_-]{12,}/g)].map(match => match[0]);
@@ -150,10 +159,12 @@ function readCredential() {
     return credential;
 }
 
+/** 完整性证据：计算文件摘要，检查联调前后使用的产物是否一致。 */
 function sha256(bytes) {
     return createHash('sha256').update(bytes).digest('hex');
 }
 
+/** 端口准备：分配当前可用的本地回环端口。 */
 async function allocatePort() {
     const server = net.createServer();
     await new Promise((resolve, reject) => {
@@ -167,6 +178,7 @@ async function allocatePort() {
     return port;
 }
 
+/** 环境隔离：为临时测试进程选择必要环境变量，避免沿用无关服务配置。 */
 function isolatedEnvironment(root) {
     const environment = {
         LANG: 'C.UTF-8',
@@ -184,6 +196,7 @@ function isolatedEnvironment(root) {
     return environment;
 }
 
+/** 浏览器隔离：创建本次测试专用配置目录，兼容沙箱安装的 Firefox。 */
 async function createFirefoxProfileRoot(geckodriver, runRoot) {
     const snapCommon = path.join(os.homedir(), 'snap', 'firefox', 'common');
     if (
@@ -200,6 +213,7 @@ async function createFirefoxProfileRoot(geckodriver, runRoot) {
     return { profileRoot, separate: false, allowedParent: runRoot };
 }
 
+/** 启动服务：保留子进程和输出观测，供就绪检查及最终清理使用。 */
 function startProcess(command, args, options) {
     const child = spawn(command, args, {
         ...options,
@@ -213,6 +227,7 @@ function startProcess(command, args, options) {
     return child;
 }
 
+/** 停止服务：关闭测试子进程，必要时升级终止方式以完成清理。 */
 async function stopProcess(child) {
     if (!child || child.exitCode !== null || child.signalCode !== null) return true;
     const send = signal => {
@@ -234,6 +249,7 @@ async function stopProcess(child) {
     return Promise.race([child.exitResult.then(() => true), delay(5_000).then(() => false)]);
 }
 
+/** 服务就绪：轮询本地 HTTP 入口，达到可用状态后再驱动浏览器。 */
 async function waitForHttp(url, child, timeoutMs, validator = response => response.ok) {
     const deadline = Date.now() + timeoutMs;
     while (Date.now() < deadline) {
@@ -251,6 +267,7 @@ async function waitForHttp(url, child, timeoutMs, validator = response => respon
     throw new SmokeError('http-readiness-timeout');
 }
 
+/** 产物服务：从本地提供测试使用的 MVU 产物，并记录加载次数。 */
 function startArtifactServer(bytes) {
     let requestCount = 0;
     let rejectedCount = 0;
@@ -290,6 +307,7 @@ function startArtifactServer(bytes) {
     };
 }
 
+/** 服务绑定：仅在本地回环接口启动测试服务器并返回实际地址信息。 */
 async function listenLoopback(server) {
     await new Promise((resolve, reject) => {
         server.once('error', reject);
@@ -300,6 +318,7 @@ async function listenLoopback(server) {
     return address.port;
 }
 
+/** 服务清理：关闭本地测试服务器并等待关闭完成。 */
 async function closeServer(server) {
     if (!server?.listening) return true;
     return new Promise(resolve => {
@@ -308,6 +327,7 @@ async function closeServer(server) {
     });
 }
 
+/** 临时配置：将测试所需端口和数据目录写入隔离酒馆实例。 */
 async function prepareConfig(stRoot, configPath, dataRoot) {
     const defaultConfig = path.join(stRoot, 'default', 'config.yaml');
     assertSmoke(isFile(defaultConfig), 'st-default-config-missing');
@@ -333,6 +353,7 @@ async function prepareConfig(stRoot, configPath, dataRoot) {
     await chmod(configPath, 0o600);
 }
 
+/** 观测降级：浏览器不支持 BiDi 时提供明确的不可用状态及兼容接口。 */
 function unavailableBidiNetworkRecorder(reason) {
     return {
         mark: () => 0,
@@ -341,6 +362,7 @@ function unavailableBidiNetworkRecorder(reason) {
     };
 }
 
+/** 网络证据筛选：只保留请求头名称，不记录认证等请求头值。 */
 function sanitizeBidiHeaderNames(headers) {
     if (!Array.isArray(headers)) return [];
     return [
@@ -352,6 +374,7 @@ function sanitizeBidiHeaderNames(headers) {
     ].sort();
 }
 
+/** 网络证据筛选：把 HTTP 方法规范为可报告值。 */
 function sanitizeBidiMethod(method) {
     const normalized = typeof method === 'string' ? method.toUpperCase() : '';
     return ['DELETE', 'GET', 'HEAD', 'OPTIONS', 'PATCH', 'POST', 'PUT'].includes(normalized)
@@ -359,6 +382,7 @@ function sanitizeBidiMethod(method) {
         : null;
 }
 
+/** 网络失败归类：将浏览器错误映射为有限类别，避免直接输出敏感原文。 */
 function classifyBidiFetchError(errorText) {
     if (typeof errorText !== 'string') return 'other';
     const normalized = errorText.toLowerCase();
@@ -382,6 +406,7 @@ function classifyBidiFetchError(errorText) {
     return 'other';
 }
 
+/** 网络证据筛选：仅保留定位请求阶段所需字段，去除正文及秘密信息。 */
 function sanitizeBidiNetworkEvent(method, params) {
     const request = params?.request;
     const response = params?.response;
@@ -427,6 +452,7 @@ function sanitizeBidiNetworkEvent(method, params) {
     };
 }
 
+/** 观测连接：等待 BiDi WebSocket 建立，并处理失败和超时。 */
 function waitForBidiSocketOpen(socket, timeoutMs = 5_000) {
     if (socket.readyState === WebSocket.OPEN) return Promise.resolve(true);
     return new Promise(resolve => {
@@ -449,6 +475,7 @@ function waitForBidiSocketOpen(socket, timeoutMs = 5_000) {
     });
 }
 
+/** 观测清理：关闭 BiDi WebSocket，避免测试结束后继续接收事件。 */
 function closeBidiSocket(socket, timeoutMs = 2_000) {
     if (socket.readyState === WebSocket.CLOSED) return Promise.resolve();
     return new Promise(resolve => {
@@ -470,6 +497,7 @@ function closeBidiSocket(socket, timeoutMs = 2_000) {
     });
 }
 
+/** 网络记录：订阅 BiDi 请求与失败事件，以受限缓存保存已筛选的观测证据。 */
 async function createBidiNetworkRecorder(webSocketUrl) {
     if (!BIDI_NETWORK_ENABLED) return unavailableBidiNetworkRecorder('disabled');
 
@@ -605,6 +633,7 @@ async function createBidiNetworkRecorder(webSocketUrl) {
     };
 }
 
+/** 证据汇总：将当前网络观测快照附加到场景结果。 */
 function attachBidiNetworkSnapshot(summary, recorder, mark) {
     if (!summary) return;
     summary.transport = {
@@ -613,6 +642,7 @@ function attachBidiNetworkSnapshot(summary, recorder, mark) {
     };
 }
 
+/** 驱动封装：建立本次浏览器会话使用的命令访问接口。 */
 function webdriver(baseUrl, getSessionId) {
     async function request(method, commandPath, body, timeoutMs = 30_000) {
         let response;
@@ -690,6 +720,7 @@ function webdriver(baseUrl, getSessionId) {
     };
 }
 
+/** 浏览器同步：轮询目标状态直到满足条件，超时后报告对应场景失败。 */
 async function waitForBrowser(driver, browserFunction, args = [], timeoutMs = 45_000) {
     const deadline = Date.now() + timeoutMs;
     const script = 'return (' + browserFunction.toString() + ').apply(null, arguments);';
@@ -704,6 +735,7 @@ async function waitForBrowser(driver, browserFunction, args = [], timeoutMs = 45
     throw new SmokeError('browser-readiness-timeout');
 }
 
+/** 取消前置：先确认 Pi 请求已实际发出，再执行停止验证。 */
 async function waitForPiAbortDispatch(driver, recorder, mark, expectedPath, timeoutMs = 30_000) {
     const deadline = Date.now() + timeoutMs;
     let browserState = { exists: false };
@@ -735,6 +767,7 @@ async function waitForPiAbortDispatch(driver, recorder, mark, expectedPath, time
     return { reached: false, browserState, bidiNetwork };
 }
 
+/** 取消证据：等待 BiDi 记录目标请求的网络中断，而非只检查界面 Promise。 */
 async function waitForBidiAbort(recorder, mark, expectedPath, timeoutMs = 10_000) {
     const deadline = Date.now() + timeoutMs;
     let snapshot = recorder.snapshot(mark);
@@ -755,6 +788,7 @@ async function waitForBidiAbort(recorder, mark, expectedPath, timeoutMs = 10_000
     return { seen: false, snapshot };
 }
 
+/** 异步脚本包装：让浏览器场景以统一的完成或失败结果回传给驱动。 */
 function safeAsyncBrowserScript(browserFunction) {
     return (
         'const done = arguments[arguments.length - 1];' +
@@ -771,10 +805,12 @@ function safeAsyncBrowserScript(browserFunction) {
     );
 }
 
+/** 元素标识：兼容 WebDriver 返回的元素引用形状。 */
 function elementId(element) {
     return element?.['element-6066-11e4-a52e-4f735466cecf'] ?? element?.ELEMENT;
 }
 
+/** 确认操作：通过真实弹窗按钮完成场景中的确认或取消。 */
 async function clickPopup(driver, mode = 'auto') {
     return driver.execute(
         `
@@ -805,6 +841,7 @@ async function clickPopup(driver, mode = 'auto') {
     );
 }
 
+/** 初始界面整理：处理欢迎或确认弹窗，避免遮挡后续场景操作。 */
 async function settlePopups(driver, timeoutMs = 30_000) {
     const deadline = Date.now() + timeoutMs;
     let stable = 0;
@@ -824,6 +861,7 @@ async function settlePopups(driver, timeoutMs = 30_000) {
     throw new SmokeError('popup-settle-timeout');
 }
 
+/** 宿主就绪：检查酒馆助手入口可用后再安装或操作 MVU。 */
 function browserReadyForTavernHelper() {
     return Boolean(
         window.SillyTavern &&
@@ -832,16 +870,19 @@ function browserReadyForTavernHelper() {
     );
 }
 
+/** 角色导入检查：确认测试角色已经出现在酒馆角色列表。 */
 function browserHasImportedCharacter() {
     const characters = window.SillyTavern?.getContext?.().characters ?? [];
     return characters.some(character => String(character?.name ?? '').includes('青空'));
 }
 
+/** 角色选择检查：确认当前聊天属于测试角色，避免操作其他会话。 */
 function browserHasSelectedCharacter() {
     const context = window.SillyTavern?.getContext?.();
     return Boolean(context && context.characterId !== undefined && context.characterId !== null);
 }
 
+/** 产物就绪：等待测试脚本及 Mvu 接口完成加载。 */
 function browserArtifactReady(scriptName) {
     const iframe = [...document.querySelectorAll('iframe')].find(frame =>
         frame.id.startsWith('TH-script--' + scriptName)
@@ -853,6 +894,7 @@ function browserArtifactReady(scriptName) {
     );
 }
 
+/** 产物安装：把指定 MVU 产物加载到临时酒馆测试环境。 */
 async function installArtifact(setup) {
     const context = window.SillyTavern.getContext();
     const helper = window.TavernHelper;
@@ -987,12 +1029,14 @@ async function installArtifact(setup) {
     };
 }
 
+/** 表单操作：设置输入值并触发界面需要的事件，模拟真实用户编辑。 */
 function setInputValue(input, value, eventName = 'input') {
     input.value = value;
     const EventConstructor = input.ownerDocument.defaultView.Event;
     input.dispatchEvent(new EventConstructor(eventName, { bubbles: true }));
 }
 
+/** 场景配置：按当前矩阵项选择服务商、协议、应答格式和测试凭证。 */
 async function configurePiCase(configuration) {
     const iframe = [...document.querySelectorAll('iframe')].find(frame =>
         frame.id.startsWith('TH-script--' + configuration.scriptName)
@@ -1052,6 +1096,7 @@ async function configurePiCase(configuration) {
     };
 }
 
+/** 连通性预检：从实际浏览器验证 OpenRouter 可达性，区分网络限制与业务失败。 */
 async function probeOpenRouterBrowserConnectivity(scriptName) {
     const iframe = [...document.querySelectorAll('iframe')].find(frame =>
         frame.id.startsWith('TH-script--' + scriptName)
@@ -1121,6 +1166,7 @@ async function probeOpenRouterBrowserConnectivity(scriptName) {
     return result;
 }
 
+/** 协议预检：检查浏览器 Responses 传输路径，定位 CORS 或接口层问题。 */
 async function probeOpenRouterResponsesBrowserTransport(scriptName) {
     const iframe = [...document.querySelectorAll('iframe')].find(frame =>
         frame.id.startsWith('TH-script--' + scriptName)
@@ -1206,6 +1252,7 @@ async function probeOpenRouterResponsesBrowserTransport(scriptName) {
     return result;
 }
 
+/** 真实请求场景：触发 Pi 更新并收集载荷、返回内容和聊天写入证据。 */
 async function invokePiCase(configuration) {
     const context = window.SillyTavern.getContext();
     const iframe = [...document.querySelectorAll('iframe')].find(frame =>
@@ -1729,6 +1776,7 @@ async function invokePiCase(configuration) {
     };
 }
 
+/** 取消场景准备：启动可观测的 Pi 请求并保存后续停止所需状态。 */
 async function startPiAbortCase(configuration) {
     const context = window.SillyTavern.getContext();
     const iframe = [...document.querySelectorAll('iframe')].find(frame =>
@@ -1952,6 +2000,7 @@ async function startPiAbortCase(configuration) {
     };
 }
 
+/** 取消状态读取：收集请求派发、信号、结果及相关日志的安全摘要。 */
 function readPiAbortCase() {
     const state = window.__mvuPiLiveAbortState;
     if (!state) return { exists: false };
@@ -1966,6 +2015,7 @@ function readPiAbortCase() {
     };
 }
 
+/** 执行停止：通过场景约定的入口取消当前 Pi 请求。 */
 async function stopPiAbortCase() {
     const state = window.__mvuPiLiveAbortState;
     if (!state) throw new Error('abort-state-missing');
@@ -1977,6 +2027,7 @@ async function stopPiAbortCase() {
     };
 }
 
+/** 取消收尾：等待请求结束并恢复本场景替换的浏览器入口。 */
 async function finishPiAbortCase(configuration) {
     const state = window.__mvuPiLiveAbortState;
     if (!state) throw new Error('abort-state-missing');
@@ -2026,6 +2077,7 @@ async function finishPiAbortCase(configuration) {
     return evidence;
 }
 
+/** 秘密清理：移除浏览器中的测试凭证并卸载测试脚本。 */
 async function scrubCredentialAndUnload(setup) {
     const context = window.SillyTavern.getContext();
     const helper = window.TavernHelper;
@@ -2093,6 +2145,7 @@ async function scrubCredentialAndUnload(setup) {
     };
 }
 
+/** 清理核对：检查临时持久化数据是否仍含测试凭证或相关秘密。 */
 async function findPersistenceMatches(root, rootKind, needles) {
     if (!root || !fs.existsSync(root)) return [];
     const matches = [];
@@ -2139,6 +2192,7 @@ async function findPersistenceMatches(root, rootKind, needles) {
     return matches;
 }
 
+/** 目录清理：核对临时测试目录归属后移除本次运行数据。 */
 async function removeRunRoot(runRoot) {
     if (!runRoot) return true;
     const resolved = path.resolve(runRoot);
@@ -2151,6 +2205,7 @@ async function removeRunRoot(runRoot) {
     return !fs.existsSync(resolved);
 }
 
+/** 浏览器配置清理：核对路径后删除本次临时 Firefox 目录。 */
 async function removeProfileRoot(profile) {
     if (!profile?.separate) return true;
     const resolved = path.resolve(profile.profileRoot);
@@ -2163,6 +2218,7 @@ async function removeProfileRoot(profile) {
     return !fs.existsSync(resolved);
 }
 
+/** 场景编排：准备依赖环境、执行本文件测试流程，并统一收集结果与清理资源。 */
 async function main() {
     let phase = 'preflight';
     let runRoot;
@@ -2234,6 +2290,7 @@ async function main() {
         artifactServer = artifact.server;
         const artifactPort = await listenLoopback(artifactServer);
 
+        // 环境启动：使用隔离配置启动本地酒馆并等待服务就绪。
         phase = 'start-sillytavern';
         stProcess = startProcess(
             process.execPath,
@@ -2267,6 +2324,7 @@ async function main() {
         const stUrl = 'http://127.0.0.1:' + stPort;
         await waitForHttp(stUrl, stProcess, 45_000);
 
+        // 浏览器启动：建立本次测试专用 Firefox 与 WebDriver 会话。
         phase = 'start-webdriver';
         geckoProcess = startProcess(
             geckodriver,
@@ -2315,6 +2373,7 @@ async function main() {
         ).catch(() => unavailableBidiNetworkRecorder('initialization-failed'));
         await driver.setTimeouts();
 
+        // 宿主初始化：完成酒馆初始界面和酒馆助手的就绪检查。
         phase = 'initialize-sillytavern';
         await driver.navigate(stUrl);
         await waitForBrowser(driver, () => document.readyState === 'complete', [], 30_000);
@@ -2343,6 +2402,7 @@ async function main() {
         const sillyTavernVersion = String(version?.pkgVersion ?? '');
         assertSmoke(sillyTavernVersion === '1.18.0', 'unexpected-sillytavern-version');
 
+        // 测试角色：导入并选择固定角色，后续操作限定在该测试聊天内。
         phase = 'import-character';
         const input = await driver.findElement('#character_import_file');
         const inputId = elementId(input);
@@ -2362,6 +2422,7 @@ async function main() {
         const popupEvidence = await settlePopups(driver, 35_000);
         await waitForBrowser(driver, browserHasSelectedCharacter, [], 35_000);
 
+        // 产物安装：在临时酒馆加载指定 MVU 版本，记录后续测试使用的产物证据。
         phase = 'install-artifact';
         const artifactUrl =
             'http://127.0.0.1:' + artifactPort + '/bundle.js?sha=' + artifactHash.slice(0, 12);
@@ -2421,6 +2482,7 @@ async function main() {
         assertSmoke(tavernHelperVersion === '4.9.3', 'unexpected-tavernhelper-version');
 
         if (!INSTALL_ONLY) {
+            // 浏览器连通性：先验证真实服务可达性，避免把环境网络问题归因于协议实现。
             phase = 'browser-connectivity-preflight';
             const connectivityMark = bidiNetworkRecorder.mark();
             const connectivity = await driver.executeAsync(
@@ -2470,6 +2532,7 @@ async function main() {
                 'browser-connectivity-preflight-failed'
             );
 
+            // 浏览器协议预检：检查 Responses 请求路径和传输条件后再运行完整矩阵。
             phase = 'browser-wire-preflight';
             const wirePreflightMark = bidiNetworkRecorder.mark();
             const wirePreflight = await driver.executeAsync(
@@ -2523,6 +2586,7 @@ async function main() {
             failureDiagnostics = undefined;
         }
 
+        // 真实服务矩阵：逐项验证协议、应答格式、结果写入和取消行为。
         phase = 'live-matrix';
         for (const [caseIndex, testCase] of (INSTALL_ONLY || CONNECTIVITY_ONLY
             ? []
@@ -3024,6 +3088,7 @@ async function main() {
             activeCaseBidiMark = 0;
         }
 
+        // 秘密清理：先清除浏览器凭证和测试脚本，再检查临时持久化数据。
         phase = 'scrub-browser-memory';
         const scrubbed = await driver.executeAsync(
             safeAsyncBrowserScript(scrubCredentialAndUnload),

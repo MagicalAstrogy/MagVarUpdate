@@ -178,6 +178,7 @@ function getReasonLabel(reason: string): string {
           : reason;
 }
 
+/** 将过滤条目的来源转换为本地化标签，并为缺失或无效来源显示占位符。 */
 function getFilterSources(entry: unknown): string {
     const sources = _.get(entry, 'sources');
     if (!Array.isArray(sources)) {

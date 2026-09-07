@@ -1,3 +1,6 @@
+/**
+ * 测试场景：静态核对当前 Slash-Runner 的控制器登记、按编号停止和非流式 fetch 信号传播，作为捕获方案的宿主契约。
+ */
 import fs from 'node:fs';
 import path from 'node:path';
 
@@ -5,6 +8,7 @@ function source(relative_path: string): string {
     return fs.readFileSync(path.join(process.cwd(), 'slash-runner', relative_path), 'utf8');
 }
 
+// 宿主契约：提示词构造前已有可停止控制器，设置就绪事件结束后仍使用同一取消信号。
 describe('Slash-Runner prompt capture baseline contract', () => {
     test('registers the request controller before prompt construction and stops it by id', () => {
         const generate_source = source('src/function/generate/index.ts');

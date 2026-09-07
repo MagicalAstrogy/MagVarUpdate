@@ -1,3 +1,6 @@
+/**
+ * 测试场景：验证来源表单的组合选项、密钥和请求覆盖隔离、OAuth 界面代次，以及目录能力和 token 输入解析。
+ */
 jest.mock('@/function/update/pi/pi_gateway', () => {
     const streams = () => ({ stream: jest.fn(), streamSimple: jest.fn() });
     const model = (id: string, api: string, contextWindow: number) => {
@@ -78,7 +81,9 @@ import {
     resolvePiCapabilities,
 } from '@/function/update/pi/provider_registry';
 
+// 表单纯逻辑：来源切换只恢复目标自己的状态，并与运行时共享端点、能力和预算规则。
 describe('Pi source form helpers', () => {
+    // 密钥归属：自定义、Pi 服务商、端点和 OAuth 之间切换时不得串用秘密。
     test('isolates the visible API key across custom, Pi providers, and OAuth', () => {
         const custom = { source: '自定义', authType: 'api_key', keyScope: '' };
         const openai = {
@@ -266,6 +271,7 @@ describe('Pi source form helpers', () => {
         });
     });
 
+    // 异步与覆盖归属：目标变化清除请求覆盖，界面生命周期变化使旧 OAuth 确认失效。
     test('uses a normalized target identity to decide when request overrides must clear', () => {
         const openai = getPiProviderDefinition('openai')!;
         const official = resolvePiRequestTargetIdentity(
@@ -371,6 +377,7 @@ describe('Pi source form helpers', () => {
         expect(isPiOAuthUiContextCurrent(captured, { ...current, mounted: false })).toBe(false);
     });
 
+    // 来源组合：协议和认证选项明确分开，固定来源及 OAuth 使用规定接口。
     test('offers distinct source choices for OpenAI protocols and Anthropic login methods', () => {
         const openai = listPiSourceChoices(getPiProviderDefinition('openai')!);
         expect(openai).toEqual([
@@ -425,6 +432,7 @@ describe('Pi source form helpers', () => {
         expect(resolvePiEndpointSelection(anthropic, 'oauth', 'https://stale.example')).toBe('');
     });
 
+    // 能力规则：自定义端点保留协议级能力，但不能借用官方模型的媒体元数据。
     test('uses API capabilities on custom endpoints without inheriting catalog media metadata', () => {
         const openai = getPiProviderDefinition('openai')!;
         const anthropic = getPiProviderDefinition('anthropic')!;
@@ -505,6 +513,7 @@ describe('Pi source form helpers', () => {
         });
     });
 
+    // 窗口与预算：显式窗口优先，空输入与无效输入可区分，回复上限不能超过上下文。
     test('uses a positive user context-window override before the catalog value', () => {
         expect(resolvePiContextWindow(32_000, 128_000)).toBe(32_000);
         expect(resolvePiContextWindow(0, 128_000)).toBe(128_000);

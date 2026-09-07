@@ -1,4 +1,7 @@
-// Jest's jsdom environment does not provide a browser module loader, so fetch the raw bundle in Node.
+/**
+ * 测试场景：为 mvu_zod 兼容测试下载并加载远程模块，在 jsdom 中提供其依赖和 Schema 注册环境。
+ * 该辅助模块使用真实网络读取远程产物，并通过缓存、重试及用例级清理保持测试可重复。
+ */
 import https from 'https';
 import { beforeAll, beforeEach } from '@jest/globals';
 import { klona } from 'klona';
@@ -13,6 +16,7 @@ const mvuZodUrl =
     'https://raw.githubusercontent.com/StageDog/tavern_resource/main/dist/util/mvu_zod.js';
 const mvuZodSourceCacheKey = '__magVarUpdateLatestMvuZodSource';
 
+/** 远程依赖准备：带超时和重定向上限读取模块文本。 */
 function fetchText(url: string, redirectCount = 0): Promise<string> {
     return new Promise((resolve, reject) => {
         const request = https.get(
@@ -69,6 +73,7 @@ function fetchText(url: string, redirectCount = 0): Promise<string> {
     });
 }
 
+/** 网络重试：下载暂时失败时退避重试，达到上限后保留失败。 */
 async function fetchTextWithRetry(url: string, maxAttempts = 5): Promise<string> {
     for (let attempt = 1; ; attempt++) {
         try {
@@ -82,6 +87,7 @@ async function fetchTextWithRetry(url: string, maxAttempts = 5): Promise<string>
     }
 }
 
+/** 共享缓存：同一 Jest worker 复用模块下载，失败时清除缓存以允许下次重试。 */
 async function fetchLatestMvuZodSource(): Promise<string> {
     // 同一个 Jest worker 中的多个测试文件共用一次下载，避免并发请求放大 GitHub Raw 的网络抖动。
     const sharedProcess = process as typeof process & {
@@ -97,6 +103,7 @@ async function fetchLatestMvuZodSource(): Promise<string> {
     }
 }
 
+/** 模块装载：替换远程模块的环境依赖，执行后取得 Schema 注册接口。 */
 export async function loadLatestMvuZod(): Promise<RegisterMvuSchema> {
     const source = await fetchLatestMvuZodSource();
     let runnableSource = source.replace(/\bimport\s*['"][^'"]+['"]\s*;?/g, '');
@@ -155,6 +162,7 @@ export async function loadLatestMvuZod(): Promise<RegisterMvuSchema> {
     return registerMvuSchema;
 }
 
+/** 用例环境：注册远程模块的加载钩子，并在每个用例前重置其所需状态。 */
 export function setupLatestMvuZod(): void {
     let registerMvuSchema: RegisterMvuSchema;
 

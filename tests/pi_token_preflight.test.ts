@@ -1,3 +1,6 @@
+/**
+ * 测试场景：验证保守输入 token 估算及预算拒绝，覆盖中文、图片字节和尺寸，以及绕过上下文转换时的总量限制。
+ */
 import { toPiContext } from '@/function/update/pi/context_adapter';
 import { assertPiTokenBudget, estimatePiContextTokens } from '@/function/update/pi/token_preflight';
 import type { Context } from '@earendil-works/pi-ai';
@@ -9,7 +12,9 @@ function context(text: string): Context {
     };
 }
 
+// 输入预算：文本与图片按保守规则计数，扣除回复和安全余量后再决定能否发送。
 describe('Pi token preflight', () => {
+    // 估算规则：有效文本留有余量，UTF-8 内容及更大图片应产生更高预算。
     test('estimates text and accepts a request with headroom', () => {
         const input = context('A short prompt');
         expect(estimatePiContextTokens(input)).toBeGreaterThan(1);
@@ -66,6 +71,7 @@ describe('Pi token preflight', () => {
         }
     });
 
+    // 图片和超限边界：像素面积、累计载荷及无效元数据都参与发送前拒绝。
     test('uses image dimensions when a compact PNG represents many pixels', () => {
         const pngHeader = String.fromCharCode(
             0x89,

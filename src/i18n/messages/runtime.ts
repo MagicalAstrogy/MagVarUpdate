@@ -541,6 +541,7 @@ export const runtimeMessages = defineMessages({
         en: '[MVU extra-model parsing] Variable update failed',
     },
 
+    // Pi 运行时统一错误文案：只插入经过分类的参数，不拼接服务商原始响应或认证信息。
     'runtime.pi.invalidConfig': {
         'zh-CN': '“更多”配置无效，请检查其中的来源、API 和认证设置。',
         en: 'The More-source configuration is invalid. Check its provider, API, and authentication settings.',
