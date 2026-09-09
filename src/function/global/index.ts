@@ -1,12 +1,29 @@
 import { loadInitVarData } from '@/function/initvar/variable_init';
 import { updateVariable, updateVariables } from '@/function/update_variables';
 import { isValueWithDescription, MvuData, variable_events } from '@/variable_def';
+import { getLastValidVariable } from '@/util';
 import { watch } from 'vue';
 import { useDataStore } from '../../store';
+
+/**
+ * 将 stat_data 中的指定路径输出为 YAML；空路径输出整个变量表。
+ * 默认读取最近有效楼层，也可传入 EJS 的 getvar('stat_data') 使用模板上下文。
+ */
+export function mvuYaml(
+    path: string = '',
+    stat_data: unknown = getLastValidVariable(getLastMessageId() + 1)?.stat_data ?? {}
+): string {
+    const data = stat_data ?? {};
+    const value = path ? _.get(data, path) : data;
+    return value !== undefined && value !== null ? YAML.stringify(value).trim() : '';
+}
 
 function createMvu() {
     const mvu = {
         events: variable_events,
+
+        /** 输出 YAML 变量；例如 Mvu.mvuYaml('世界.时间') 或 Mvu.mvuYaml()。 */
+        mvuYaml,
 
         /**
          * 获取变量表, 并将其视为包含 mvu 数据的 MvuData
@@ -170,13 +187,19 @@ export function initGlobals() {
         should_enabled => {
             if (should_enabled) {
                 _.set(window.parent, 'Mvu', mvu);
+                _.set(window.parent, 'mvuYaml', mvu.mvuYaml);
                 eventEmit('global_Mvu_initialized');
+            } else if (_.get(window.parent, 'mvuYaml') === mvu.mvuYaml) {
+                _.unset(window.parent, 'mvuYaml');
             }
         },
         { immediate: true }
     );
 
     return () => {
+        if (_.get(window.parent, 'mvuYaml') === mvu.mvuYaml) {
+            _.unset(window.parent, 'mvuYaml');
+        }
         if (store.should_enable && _.get(window.parent, 'Mvu') === mvu) {
             deleteVariable('extra_analysis', { type: 'global' });
             _.unset(window.parent, 'Mvu');

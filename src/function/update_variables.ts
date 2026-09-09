@@ -301,18 +301,21 @@ export function extractCommands(inputText: string): Command[] {
                 string: match[2].trim(),
             }))
             .flatMap(({ index, string }): (Command & { $index: number })[] => {
+                let patch: any;
                 try {
-                    const patch = parseString(string);
-                    {
-                        if (isJsonPatch(patch)) {
-                            return extractJsonPatch(patch).map(command => ({
-                                $index: index,
-                                ...command,
-                            }));
-                        }
-                    }
+                    patch = parseString(string);
                 } catch {
-                    /* ignore */
+                    try {
+                        patch = YAML.parse(string);
+                    } catch {
+                        return [];
+                    }
+                }
+                if (isJsonPatch(patch)) {
+                    return extractJsonPatch(patch).map(command => ({
+                        $index: index,
+                        ...command,
+                    }));
                 }
                 return [];
             })
