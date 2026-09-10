@@ -12,18 +12,22 @@ import { useDataStore } from '@/store';
 interface PendingAnalysisTask {
     chat_id: string;
     message_id: number;
-    /** 是否已被请求取消（手动重试接手）。取消后在计时器触发时跳过执行。 */
+    /** 是否已被请求取消（手动重试接手）。执行中的任务取消后跳过执行与写回。 */
     canceled: boolean;
+    /** 是否已进入串行队列执行中。未执行的任务可被彻底移除（允许重新调度）。 */
+    processing: boolean;
 }
 
-/** 已登记待执行的自动解析任务（按触发顺序）。任务在完成（或取消）前始终保留在表中，以便手动重试取消。 */
+/** 已登记待执行的自动解析任务（按触发顺序）。任务在完成/明确取消前保留在表中，以便手动重试取消。 */
 const pending_analysis: PendingAnalysisTask[] = [];
 
 /** 串行队列尾部：保证同一时刻至多一个解析在执行，后续任务排队等待。 */
 let queue_tail: Promise<void> = Promise.resolve();
 
 /** 获取指定消息所在聊天的最新消息。 */
-function getLatestMessage(message_id: number): { message: string; role: string; name?: string } | undefined {
+function getLatestMessage(
+    message_id: number
+): { message: string; role: string; name?: string } | undefined {
     return getChatMessages(message_id).at(-1);
 }
 
@@ -35,7 +39,7 @@ async function applyExtraModelResultToMessage(
     result: string | null
 ): Promise<void> {
     // 结果应用前再次校验：await 解析期间用户可能已切换聊天，不得把结果写进错误聊天/同号楼层。
-    if (SillyTavern.getCurrentChatId() !== task.chat_id) {
+    if (task.canceled || SillyTavern.getCurrentChatId() !== task.chat_id) {
         return;
     }
 
@@ -66,6 +70,18 @@ async function applyExtraModelResultToMessage(
     await handleVariablesInMessage(task.message_id);
 }
 
+/** 从跟踪表移除任务，返回是否删除。 */
+function removePendingTask(chat_id: string, message_id: number): boolean {
+    const index = pending_analysis.findIndex(
+        queued => queued.chat_id === chat_id && queued.message_id === message_id
+    );
+    if (index !== -1) {
+        pending_analysis.splice(index, 1);
+        return true;
+    }
+    return false;
+}
+
 /** 执行单个自动解析任务（串行队列中的一环）。 */
 async function runAnalysisTask(task: PendingAnalysisTask): Promise<void> {
     try {
@@ -86,12 +102,7 @@ async function runAnalysisTask(task: PendingAnalysisTask): Promise<void> {
         );
     } finally {
         // 任务完成/取消后从跟踪表移除，允许后续同消息任务重新调度。
-        const index = pending_analysis.findIndex(
-            queued => queued.chat_id === task.chat_id && queued.message_id === task.message_id
-        );
-        if (index !== -1) {
-            pending_analysis.splice(index, 1);
-        }
+        removePendingTask(task.chat_id, task.message_id);
     }
 }
 
@@ -111,24 +122,40 @@ export function scheduleDeferredAutoAnalysis(message_id: number, delay_ms: numbe
     const chat_id = SillyTavern.getCurrentChatId();
     if (pending_analysis.some(task => task.chat_id === chat_id && task.message_id === message_id)) {
         // 同一消息已有延后任务在排队/执行，不重复调度（防止与手动重试重复）。
+        // 已取消的残留任务不会出现：取消时未执行的任务会被移除，执行中的任务取消后随即在 finally 移除。
         return;
     }
 
-    const task: PendingAnalysisTask = { chat_id, message_id, canceled: false };
+    const task: PendingAnalysisTask = { chat_id, message_id, canceled: false, processing: false };
     pending_analysis.push(task);
 
     // 计时器回调在事件链之外的新宏任务中运行，ST 的事件派发早已继续并完成正文渲染。
     setTimeout(() => {
+        // 若任务已在等待期间被手动重试取消并移除，则跳过执行（审查 #13）。
+        if (!pending_analysis.includes(task) || task.canceled) {
+            return;
+        }
+        task.processing = true;
         void enqueueAnalysisTask(task);
     }, delay_ms);
 }
 
-/** 取消同一消息的待执行/排队中自动解析任务（手动重试接管时调用），返回是否取消了某个任务。 */
+/**
+ * 取消同一消息的待执行/排队中自动解析任务（手动重试接管时调用）。
+ * - 未开始执行的任务直接移除，使同消息新版本可再次调度（审查 #13）；
+ * - 执行中的任务置 canceled，执行完成时在 finally 移除，期间不再写回（审查 #12）。
+ */
 function cancelPendingAnalysis(chat_id: string, message_id: number): boolean {
     let canceled = false;
     for (const task of pending_analysis) {
         if (task.chat_id === chat_id && task.message_id === message_id) {
-            task.canceled = true;
+            if (task.processing) {
+                // 正在执行：标记取消，交由运行中的任务在 finally 清理。
+                task.canceled = true;
+            } else {
+                // 尚未执行：彻底移除，允许同消息新版本重新调度。
+                removePendingTask(chat_id, message_id);
+            }
             canceled = true;
         }
     }
@@ -196,5 +223,8 @@ export async function onMessageReceived(
     cancelPendingAnalysis(retry_chat_id, message_id);
 
     const result = await invokeExtraModelWithStrategy();
-    await applyExtraModelResultToMessage({ chat_id: retry_chat_id, message_id, canceled: false }, result);
+    await applyExtraModelResultToMessage(
+        { chat_id: retry_chat_id, message_id, canceled: false, processing: false },
+        result
+    );
 }
