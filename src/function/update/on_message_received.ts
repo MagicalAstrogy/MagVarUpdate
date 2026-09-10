@@ -12,22 +12,34 @@ import { useDataStore } from '@/store';
 interface PendingAnalysisTask {
     chat_id: string;
     message_id: number;
+    /** 是否已被请求取消（手动重试接手）。取消后在计时器触发时跳过执行。 */
+    canceled: boolean;
 }
 
-/** 已登记待执行的自动解析任务（按触发顺序）。 */
+/** 已登记待执行的自动解析任务（按触发顺序）。任务在完成（或取消）前始终保留在表中，以便手动重试取消。 */
 const pending_analysis: PendingAnalysisTask[] = [];
 
 /** 串行队列尾部：保证同一时刻至多一个解析在执行，后续任务排队等待。 */
 let queue_tail: Promise<void> = Promise.resolve();
 
+/** 获取指定消息所在聊天的最新消息。 */
+function getLatestMessage(message_id: number): { message: string; role: string; name?: string } | undefined {
+    return getChatMessages(message_id).at(-1);
+}
+
 /**
  * 将额外模型解析的结果回写到目标楼层，并执行楼层变量更新。
  */
 async function applyExtraModelResultToMessage(
-    message_id: number,
+    task: PendingAnalysisTask,
     result: string | null
 ): Promise<void> {
-    const chat_message = getChatMessages(message_id).at(-1);
+    // 结果应用前再次校验：await 解析期间用户可能已切换聊天，不得把结果写进错误聊天/同号楼层。
+    if (SillyTavern.getCurrentChatId() !== task.chat_id) {
+        return;
+    }
+
+    const chat_message = getLatestMessage(task.message_id);
     if (!chat_message) {
         // 楼层已被删除/切换，静默放弃。
         return;
@@ -37,7 +49,7 @@ async function applyExtraModelResultToMessage(
         await setChatMessages(
             [
                 {
-                    message_id,
+                    message_id: task.message_id,
                     message: chat_message.message.trimEnd() + '\n\n' + result,
                 },
             ],
@@ -51,24 +63,35 @@ async function applyExtraModelResultToMessage(
             tr('runtime.extraModel.updateFailedTitle')
         );
     }
-    await handleVariablesInMessage(message_id);
+    await handleVariablesInMessage(task.message_id);
 }
 
 /** 执行单个自动解析任务（串行队列中的一环）。 */
 async function runAnalysisTask(task: PendingAnalysisTask): Promise<void> {
     try {
+        if (task.canceled) {
+            return;
+        }
         // 等待期间用户切换了聊天：放弃解析与回写，避免把结果写进错误的聊天/楼层。
         if (SillyTavern.getCurrentChatId() !== task.chat_id) {
             return;
         }
         const result = await invokeExtraModelWithStrategy();
-        await applyExtraModelResultToMessage(task.message_id, result);
+        await applyExtraModelResultToMessage(task, result);
     } catch (error) {
         console.error('[MVU] deferred extra-model analysis failed:', error);
         toastr.error(
             tr('runtime.extraModel.updateFailed'),
             tr('runtime.extraModel.updateFailedTitle')
         );
+    } finally {
+        // 任务完成/取消后从跟踪表移除，允许后续同消息任务重新调度。
+        const index = pending_analysis.findIndex(
+            queued => queued.chat_id === task.chat_id && queued.message_id === task.message_id
+        );
+        if (index !== -1) {
+            pending_analysis.splice(index, 1);
+        }
     }
 }
 
@@ -91,28 +114,32 @@ export function scheduleDeferredAutoAnalysis(message_id: number, delay_ms: numbe
         return;
     }
 
-    const task: PendingAnalysisTask = { chat_id, message_id };
+    const task: PendingAnalysisTask = { chat_id, message_id, canceled: false };
     pending_analysis.push(task);
 
     // 计时器回调在事件链之外的新宏任务中运行，ST 的事件派发早已继续并完成正文渲染。
     setTimeout(() => {
-        const index = pending_analysis.findIndex(
-            queued => queued.chat_id === chat_id && queued.message_id === message_id
-        );
-        if (index === -1) {
-            // 任务已因去重/取消被移除。
-            return;
-        }
-        pending_analysis.splice(index, 1);
         void enqueueAnalysisTask(task);
     }, delay_ms);
+}
+
+/** 取消同一消息的待执行/排队中自动解析任务（手动重试接管时调用），返回是否取消了某个任务。 */
+function cancelPendingAnalysis(chat_id: string, message_id: number): boolean {
+    let canceled = false;
+    for (const task of pending_analysis) {
+        if (task.chat_id === chat_id && task.message_id === message_id) {
+            task.canceled = true;
+            canceled = true;
+        }
+    }
+    return canceled;
 }
 
 export async function onMessageReceived(
     message_id: number,
     { force = false }: { force?: boolean } = {}
 ) {
-    const current_chatmsg = getChatMessages(message_id).at(-1);
+    const current_chatmsg = getLatestMessage(message_id);
     if (!current_chatmsg) {
         return;
     }
@@ -166,13 +193,8 @@ export async function onMessageReceived(
     // 手动重试保持同步执行，便于即时确认解析结果。
     // 先取消同消息的待执行自动延后任务，避免延时触发时重复解析（非幂等命令会执行两次）。
     const retry_chat_id = SillyTavern.getCurrentChatId();
-    const pending_index = pending_analysis.findIndex(
-        queued => queued.chat_id === retry_chat_id && queued.message_id === message_id
-    );
-    if (pending_index !== -1) {
-        pending_analysis.splice(pending_index, 1);
-    }
+    cancelPendingAnalysis(retry_chat_id, message_id);
 
     const result = await invokeExtraModelWithStrategy();
-    await applyExtraModelResultToMessage(message_id, result);
+    await applyExtraModelResultToMessage({ chat_id: retry_chat_id, message_id, canceled: false }, result);
 }

@@ -221,6 +221,57 @@ describe('onMessageReceived 自动触发的延后解析', () => {
         expect((globalThis as any).setChatMessages).toHaveBeenCalledTimes(1);
     });
 
+    test('解析完成前用户切聊天，结果不写回（二次校验，审查 #11）', async () => {
+        setupAutoTriggerEnvironment('回复正文内容');
+        // 模拟解析在 await 期间完成，且等待期间用户切到别的聊天：
+        // 捕获 chat_id 发生在 await 前（仍是 test-chat），解析返回时已切到 other-chat。
+        mockInvoke.mockImplementation(async () => {
+            (globalThis as any).SillyTavern.getCurrentChatId.mockReturnValue('other-chat');
+            return UPDATE_RESULT;
+        });
+
+        const received_promise = onMessageReceived(2, { force: true });
+        await received_promise;
+
+        // apply 内复查 chat_id（test-chat !== other-chat）→ 跳过写回，也不调用 handleVariablesInMessage。
+        expect((globalThis as any).setChatMessages).not.toHaveBeenCalled();
+        expect(mockHandleVariables).not.toHaveBeenCalled();
+    });
+
+    test('排队中的自动任务可被手动重试取消（#12）', async () => {
+        setupAutoTriggerEnvironment('回复正文内容');
+
+        // 第一个任务占住队列（长时间运行）。
+        const gate = Promise.withResolvers<void>();
+        mockInvoke.mockImplementationOnce(async () => {
+            await gate.promise;
+            return UPDATE_RESULT;
+        });
+
+        const first = onMessageReceived(2);
+        await first;
+        await flushTimers();
+
+        // 第二条消息排队（不同消息 id，会进入队列等待）。
+        const second = onMessageReceived(3);
+        await second;
+        await flushTimers();
+
+        // 第一个运行中，第二个排队中。
+        expect(mockInvoke).toHaveBeenCalledTimes(1);
+
+        // 用户对第二消息手动重试：应取消其排队任务，不重复执行。
+        const retry = onMessageReceived(3, { force: true });
+        await retry;
+        // force 路径新增一次调用（第二消息的解析）。
+        expect(mockInvoke).toHaveBeenCalledTimes(2);
+
+        // 释放第一个任务，队列推进；但第二消息的排队任务已被取消，不执行第三次。
+        gate.resolve();
+        await flushTimers();
+        expect(mockInvoke).toHaveBeenCalledTimes(2);
+    });
+
     test('解析结果为空时提示错误而非回写', async () => {
         setupAutoTriggerEnvironment('回复正文内容');
         mockInvoke.mockResolvedValue(null);
