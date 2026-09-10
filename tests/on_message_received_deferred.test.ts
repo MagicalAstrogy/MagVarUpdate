@@ -1,9 +1,6 @@
 import { isExtraModelSupported } from '@/function/is_extra_model_supported';
 import { isFunctionCallingSupported } from '@/function/is_function_calling_supported';
-import {
-    isExtraModelAnalysisInProgress,
-    invokeExtraModelWithStrategy,
-} from '@/function/update/invoke_extra_model';
+import { invokeExtraModelWithStrategy } from '@/function/update/invoke_extra_model';
 import { onMessageReceived } from '@/function/update/on_message_received';
 import { handleVariablesInMessage } from '@/function/update_variables';
 import { useDataStore } from '@/store';
@@ -16,7 +13,6 @@ jest.mock('@/function/is_function_calling_supported', () => ({
 }));
 jest.mock('@/function/update/invoke_extra_model', () => ({
     invokeExtraModelWithStrategy: jest.fn(),
-    isExtraModelAnalysisInProgress: jest.fn(),
 }));
 jest.mock('@/function/update_variables', () => ({
     handleVariablesInMessage: jest.fn(),
@@ -29,7 +25,6 @@ const mockIsFunctionCallingSupported = isFunctionCallingSupported as unknown as 
 const mockInvoke = invokeExtraModelWithStrategy as jest.MockedFunction<
     typeof invokeExtraModelWithStrategy
 >;
-const mockAnalysisInProgress = isExtraModelAnalysisInProgress as unknown as jest.Mock<boolean>;
 const mockHandleVariables = handleVariablesInMessage as jest.MockedFunction<
     typeof handleVariablesInMessage
 >;
@@ -41,7 +36,6 @@ function setupAutoTriggerEnvironment(message_text: string) {
     mockIsExtraModelSupported.mockResolvedValue(true);
     mockIsFunctionCallingSupported.mockResolvedValue(true);
     mockHandleVariables.mockResolvedValue(undefined);
-    mockAnalysisInProgress.mockReturnValue(false);
     mockInvoke.mockResolvedValue(UPDATE_RESULT);
     (globalThis as any).setChatMessages = jest.fn().mockResolvedValue(undefined);
     (globalThis as any).getChatMessages = jest.fn().mockReturnValue([
@@ -51,6 +45,7 @@ function setupAutoTriggerEnvironment(message_text: string) {
         ...(globalThis as any).SillyTavern,
         name2: 'Assistant',
         chat: [{}, {}, {}],
+        getCurrentChatId: jest.fn().mockReturnValue('test-chat'),
     };
 
     const store = useDataStore();
@@ -58,6 +53,10 @@ function setupAutoTriggerEnvironment(message_text: string) {
     store.settings.额外模型解析配置.启用自动请求 = true;
     store.settings.额外模型解析配置.自动解析延时 = 0;
     store.settings.额外模型解析配置.应答格式 = '聊天消息';
+}
+
+async function flushTimers(ms = 30): Promise<void> {
+    await jest.advanceTimersByTimeAsync(ms);
 }
 
 describe('onMessageReceived 自动触发的延后解析', () => {
@@ -73,17 +72,14 @@ describe('onMessageReceived 自动触发的延后解析', () => {
     test('自动触发不等待解析完成即返回，解析在延时结束后才执行并回写', async () => {
         setupAutoTriggerEnvironment('回复正文内容');
 
-        // 关键语义：await onMessageReceived 时，额外解析尚未开始（不阻塞事件链）。
         const received_promise = onMessageReceived(2);
         await Promise.resolve();
         expect(mockInvoke).not.toHaveBeenCalled();
 
         await received_promise;
-        // 即使 onMessageReceived 已 resolve，解析仍未执行 —— 被延后到计时器之后。
         expect(mockInvoke).not.toHaveBeenCalled();
 
-        await jest.advanceTimersByTimeAsync(0);
-
+        await flushTimers();
         expect(mockInvoke).toHaveBeenCalledTimes(1);
         expect((globalThis as any).setChatMessages).toHaveBeenCalledWith(
             [
@@ -104,7 +100,6 @@ describe('onMessageReceived 自动触发的延后解析', () => {
         const received_promise = onMessageReceived(2);
         await received_promise;
 
-        // 3 秒前不执行
         await jest.advanceTimersByTimeAsync(2999);
         expect(mockInvoke).not.toHaveBeenCalled();
 
@@ -112,25 +107,71 @@ describe('onMessageReceived 自动触发的延后解析', () => {
         expect(mockInvoke).toHaveBeenCalledTimes(1);
     });
 
-    test('若已有解析在进行（如手动触发），自动延后任务会跳过避免重复', async () => {
+    test('不同消息的解析排队执行，后续消息不被丢弃', async () => {
         setupAutoTriggerEnvironment('回复正文内容');
-        mockAnalysisInProgress.mockReturnValue(true);
+
+        // 模拟第一个解析长时间运行，期间第二条消息到来。
+        const gate = Promise.withResolvers<void>();
+        mockInvoke.mockImplementationOnce(async () => {
+            await gate.promise;
+            return UPDATE_RESULT;
+        });
+
+        const first = onMessageReceived(2);
+        await first;
+        await flushTimers();
+
+        // 第一条解析在执行中。
+        expect(mockInvoke).toHaveBeenCalledTimes(1);
+
+        // 第二条消息到来，调度其解析。
+        const second = onMessageReceived(3);
+        await second;
+        await flushTimers();
+        // 第二条排队中，尚未开始（避免并发踩全局状态）。
+        expect(mockInvoke).toHaveBeenCalledTimes(1);
+
+        // 释放第一条，第二条随即执行。
+        gate.resolve();
+        await flushTimers();
+        expect(mockInvoke).toHaveBeenCalledTimes(2);
+    });
+
+    test('同一消息延后任务去重：重复调度不会执行两次', async () => {
+        setupAutoTriggerEnvironment('回复正文内容');
+
+        // 同一条消息连续触发两次自动调度。
+        const first = onMessageReceived(2);
+        await first;
+        const second = onMessageReceived(2);
+        await second;
+        await flushTimers();
+
+        // 只执行一次。
+        expect(mockInvoke).toHaveBeenCalledTimes(1);
+    });
+
+    test('切换聊天后延后任务放弃解析与回写', async () => {
+        setupAutoTriggerEnvironment('回复正文内容');
 
         const received_promise = onMessageReceived(2);
         await received_promise;
-        await jest.advanceTimersByTimeAsync(0);
 
+        // 延时期间用户切换到别的聊天。
+        (globalThis as any).SillyTavern.getCurrentChatId.mockReturnValue('other-chat');
+        await flushTimers();
+
+        // 不调用解析，也不回写。
         expect(mockInvoke).not.toHaveBeenCalled();
-        expect(mockHandleVariables).not.toHaveBeenCalled();
+        expect((globalThis as any).setChatMessages).not.toHaveBeenCalled();
     });
 
     test('手动 force 触发保持同步：解析完成前 onMessageReceived 不 resolve', async () => {
         setupAutoTriggerEnvironment('回复正文内容');
 
-        // 模拟解析需要一段时间才返回。
-        const { promise: gate_promise, resolve: gate_resolve } = Promise.withResolvers<void>();
+        const gate = Promise.withResolvers<void>();
         mockInvoke.mockImplementation(async () => {
-            await gate_promise;
+            await gate.promise;
             return UPDATE_RESULT;
         });
 
@@ -140,11 +181,10 @@ describe('onMessageReceived 自动触发的延后解析', () => {
             resolved = true;
         });
 
-        // 解析挂起时，手动路径确实在等待（阻塞语义保留）。
         await Promise.resolve();
         expect(resolved).toBe(false);
 
-        gate_resolve();
+        gate.resolve();
         await received_promise;
         expect(resolved).toBe(true);
         expect((globalThis as any).setChatMessages).toHaveBeenCalledWith(
@@ -158,6 +198,29 @@ describe('onMessageReceived 自动触发的延后解析', () => {
         );
     });
 
+    test('手动重试后，同消息待执行的自动延后任务不再执行（避免非幂等命令重复）', async () => {
+        setupAutoTriggerEnvironment('回复正文内容');
+        useDataStore().settings.额外模型解析配置.自动解析延时 = 5;
+
+        // 先调度自动延后任务（尚未到延时）。
+        const auto_promise = onMessageReceived(2);
+        await auto_promise;
+        expect(mockInvoke).not.toHaveBeenCalled();
+
+        // 延时内用户手动重试（force 同步执行）。
+        mockInvoke.mockResolvedValueOnce(UPDATE_RESULT);
+        const retry_promise = onMessageReceived(2, { force: true });
+        await retry_promise;
+        expect(mockInvoke).toHaveBeenCalledTimes(1);
+
+        // 时间推进到自动延后触发：因同消息已处理，不再重复执行。
+        await jest.advanceTimersByTimeAsync(5000);
+        expect(mockInvoke).toHaveBeenCalledTimes(1);
+
+        // 结果只回写一次。
+        expect((globalThis as any).setChatMessages).toHaveBeenCalledTimes(1);
+    });
+
     test('解析结果为空时提示错误而非回写', async () => {
         setupAutoTriggerEnvironment('回复正文内容');
         mockInvoke.mockResolvedValue(null);
@@ -168,20 +231,18 @@ describe('onMessageReceived 自动触发的延后解析', () => {
 
         const received_promise = onMessageReceived(2);
         await received_promise;
-        await jest.advanceTimersByTimeAsync(0);
+        await flushTimers();
 
         expect((globalThis as any).setChatMessages).not.toHaveBeenCalled();
         expect((globalThis as any).toastr.error).toHaveBeenCalled();
     });
 
     test('自动解析延时默认 1 秒，并钳制到 0-10 秒范围', () => {
-        // 清空可能残留的设置，验证全新初始默认值
+        // 清空可能残留的设置，验证全新初始默认值。
         (globalThis as any).SillyTavern.extensionSettings = {};
         useDataStore()._reload_settings();
-        // 默认值
         expect(useDataStore().settings.额外模型解析配置.自动解析延时).toBe(1);
 
-        // 超上限钳到 10
         (globalThis as any).SillyTavern.extensionSettings = {
             mvu_settings: {
                 额外模型解析配置: {
@@ -193,7 +254,6 @@ describe('onMessageReceived 自动触发的延后解析', () => {
         store._reload_settings();
         expect(store.settings.额外模型解析配置.自动解析延时).toBe(10);
 
-        // 低于下限钳到 0
         (globalThis as any).SillyTavern.extensionSettings = {
             mvu_settings: {
                 额外模型解析配置: {
