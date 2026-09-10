@@ -18,6 +18,10 @@ import {
     clearExtraModelRequestOverrides,
     setExtraModelRequestOverrides,
 } from '@/function/request/extra_model_request_override';
+import {
+    registerWorldinfoRequest,
+    withWorldinfoRequestMarker,
+} from '@/function/request/worldinfo_request';
 import { tr } from '@/i18n';
 import { useDataStore } from '@/store';
 import { normalizeBaseURL } from '@/util';
@@ -347,9 +351,22 @@ export async function generateExtraModel(): Promise<string | null> {
     }
 }
 
-// 在点击停止按钮时，会触发异常 `Clicked stop button`: string ,需要专门处理。
-//仅内部使用，因为一部分状态的初始化是在外面执行的。
+/**
+ * 执行一次内部额外分析，登记请求级世界书策略并提取有效的变量更新块。
+ *
+ * 全局额外分析状态由上层维护；本函数只负责本次登记，在成功、失败或取消后统一释放。
+ * 酒馆停止操作可能抛出字符串 `Clicked stop button`，由上层重试策略识别。
+ *
+ * @param generation_id 本次生成编号；未指定时创建，与世界书识别和助手调用共用。
+ * @param batch_id 同批请求共享的随机提示词头部。
+ * @returns 包含有效更新命令的 UpdateVariable 文本块。
+ */
 async function invokeExtraModel(generation_id?: string, batch_id?: string): Promise<string> {
+    generation_id ??= uuidv4();
+    const release_worldinfo_request = await registerWorldinfoRequest(
+        generation_id,
+        useDataStore().settings.额外模型解析配置
+    );
     try {
         const result = await requestReply(generation_id, batch_id);
 
@@ -384,7 +401,7 @@ async function invokeExtraModel(generation_id?: string, batch_id?: string): Prom
             })
         );
     } finally {
-        /* empty */
+        release_worldinfo_request();
     }
 }
 
@@ -431,6 +448,15 @@ function normalizeGenerateResultByResponseFormat(
     return normalizeGenerateResult(result);
 }
 
+/**
+ * 组装额外模型的单次生成配置，并按当前预设、其他预设或内置提示词方案发送。
+ *
+ * 请求标记在公共配置阶段附加，使 generate 和 generateRaw 两条路径使用相同的识别机制。
+ *
+ * @param generation_id 已由调用方分配并按需登记的本次生成编号。
+ * @param batch_id 可选的同批随机头部，供内置 Gemini 提示词方案使用。
+ * @returns 按所选应答格式转换后的生成文本。
+ */
 async function requestReply(generation_id?: string, batch_id?: string): Promise<string> {
     const store = useDataStore();
     const response_format = store.settings.额外模型解析配置.应答格式;
@@ -439,12 +465,12 @@ async function requestReply(generation_id?: string, batch_id?: string): Promise<
 
     assertV4CompatibleFormattedOutputUsable();
 
-    const config: GenerateRawConfig = {
+    const config: GenerateRawConfig = withWorldinfoRequestMarker({
         user_input: '遵循<must>指令',
         max_chat_history: store.settings.额外模型解析配置.max_chat_history,
         should_stream: store.settings.额外模型解析配置.兼容假流式,
         generation_id,
-    };
+    });
     if (supports_request_scoped_tools) {
         config.tools = response_format === '工具调用' ? [MVU_TOOL_DEFINITION] : [];
     }
