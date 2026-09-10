@@ -205,6 +205,11 @@ async function unsetExtraAnalysisStates() {
 
 let is_analysis_in_progress = false;
 
+/** 当前是否有额外模型解析正在执行(同步或延后),供编排层避免重复调度/误报。 */
+export function isExtraModelAnalysisInProgress(): boolean {
+    return is_analysis_in_progress;
+}
+
 export async function invokeExtraModelWithStrategy(): Promise<string | null> {
     const batch_id = generateRandomHeader();
     if (is_analysis_in_progress) {

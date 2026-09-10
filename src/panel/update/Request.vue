@@ -35,6 +35,18 @@
                 <span>{{ t('common.enabled') }}</span>
             </Checkbox>
         </Field>
+
+        <Field :label="t('panel.request.deferredDelay')">
+            <template #label-suffix>
+                <HelpIcon :help="t('panel.request.deferredDelayHelp')" />
+            </template>
+            <RangeNumber
+                v-model="store.settings.额外模型解析配置.自动解析延时"
+                :min="0"
+                :max="10"
+                :step="1"
+            />
+        </Field>
     </Detail>
 </template>
 

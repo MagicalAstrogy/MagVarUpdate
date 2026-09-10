@@ -392,6 +392,15 @@ export const panelMessages = defineMessages({
         'zh-CN': '[MVU]批量请求可能有问题',
         en: '[MVU] Batch requests may not work correctly',
     },
+    'panel.request.deferredDelay': {
+        'zh-CN': '自动解析延时（秒）',
+        en: 'Auto-parse delay (s)',
+    },
+    'panel.request.deferredDelayHelp': {
+        'zh-CN':
+            'AI 回复完成后，额外模型解析会在后台等待指定秒数再执行，避免阻塞主回复的渲染。设为 0 表示回复一渲染完就立即解析。',
+        en: 'After the AI reply finishes, extra-model parsing waits this many seconds before running in the background, so it no longer blocks the main reply from rendering. Set to 0 to parse immediately after rendering.',
+    },
     'panel.source.section': {
         'zh-CN': '模型来源',
         en: 'Model source',

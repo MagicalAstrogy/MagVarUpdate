@@ -153,6 +153,10 @@ const NewSettings = z
                     ])
                     .default('依次请求，失败后重试'),
                 请求次数: z.number().default(3),
+                自动解析延时: z.coerce
+                    .number()
+                    .default(1)
+                    .transform(value => _.clamp(Math.round(value), 0, 10)),
                 世界书条目白名单正则: z.string().default(''),
                 世界书条目黑名单正则: z.string().default(''),
 
