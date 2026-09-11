@@ -1,9 +1,10 @@
 import {
     buildIncrementalRepairTask,
-    buildIncrementalRepairUserInput,
+    buildIncrementalRepairPromptTail,
     collectIncrementalStateChanges,
     extractLatestUpdateVariableBlock,
     mergeIncrementalRepairBlock,
+    normalizeIncrementalRepairBlock,
     validateIncrementalRepairBlock,
     validateIncrementalRepairCommands,
 } from '@/function/update/incremental_repair';
@@ -31,14 +32,14 @@ describe('incremental extra-model repair', () => {
         expect(task).toContain('没有需要修正的内容时输出空 JSONPatch 数组');
     });
 
-    test('includes an optional user direction without requiring one', () => {
-        expect(buildIncrementalRepairUserInput('核对生命值归零后的即时后果')).toContain(
-            '<user_incremental_repair_direction>'
+    test('places an optional user direction in a final prompt reminder', () => {
+        expect(buildIncrementalRepairPromptTail('核对生命值归零后的即时后果')).toContain(
+            '<incremental_repair_final_check>'
         );
-        expect(buildIncrementalRepairUserInput('核对生命值归零后的即时后果')).toContain(
+        expect(buildIncrementalRepairPromptTail('核对生命值归零后的即时后果')).toContain(
             '核对生命值归零后的即时后果'
         );
-        expect(buildIncrementalRepairUserInput()).toBe('遵循<must>指令');
+        expect(buildIncrementalRepairPromptTail()).toContain('用户未补充方向');
     });
 
     test('merges repair content into the last existing update block', () => {
@@ -70,6 +71,26 @@ describe('incremental extra-model repair', () => {
         expect(merged).toBe(
             '剧情正文\n\n<UpdateVariable>\n<JSONPatch>[]</JSONPatch>\n</UpdateVariable>'
         );
+    });
+
+    test('normalizes fenced and aliased patch output before persistence', () => {
+        expect(
+            normalizeIncrementalRepairBlock(
+                '<VariableUpdate><json_patch>```json\n[{"op":"replace","path":"/hp","value":72}]\n```</json_patch></VariableUpdate>'
+            )
+        ).toBe(
+            '<UpdateVariable>\n<JSONPatch>\n[\n  {\n    "op": "replace",\n    "path": "/hp",\n    "value": 72\n  }\n]\n</JSONPatch>\n</UpdateVariable>'
+        );
+    });
+
+    test('canonicalizes a compatible existing update wrapper while merging', () => {
+        const merged = mergeIncrementalRepairBlock(
+            '<VariableUpdate>\n<JSONPatch>[]</JSONPatch>\n</VariableUpdate>',
+            '<UpdateVariable><JSONPatch>[{"op":"replace","path":"/hp","value":72}]</JSONPatch></UpdateVariable>'
+        );
+        expect(merged.match(/<UpdateVariable>/g)).toHaveLength(1);
+        expect(merged).not.toContain('<VariableUpdate>');
+        expect(merged).toContain('"path":"/hp"');
     });
 
     test('extracts the last complete update block', () => {

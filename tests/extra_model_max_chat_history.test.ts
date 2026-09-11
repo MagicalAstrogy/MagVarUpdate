@@ -67,6 +67,40 @@ describe('extra model max chat history', () => {
         expect(task_prompt).toBeDefined();
     });
 
+    test('places a request-scoped reminder at the end of the default prompt', async () => {
+        await generateExtraModel({ prompt_tail: 'INCREMENTAL_USER_FOCUS' });
+
+        const prompts = (globalThis as any).generateRaw.mock.calls[0][0].ordered_prompts;
+        expect(prompts.at(-1)).toEqual({
+            role: 'system',
+            content: 'INCREMENTAL_USER_FOCUS',
+        });
+    });
+
+    test('accepts a bare JSONPatch for incremental repair requests', async () => {
+        (globalThis as any).generateRaw.mockResolvedValueOnce(
+            '<JSONPatch>[{"op":"replace","path":"/hp","value":72}]</JSONPatch>'
+        );
+
+        const result = await generateExtraModel({ allow_bare_json_patch: true });
+
+        expect(result).toBe(
+            '<UpdateVariable><JSONPatch>[{"op":"replace","path":"/hp","value":72}]</JSONPatch></UpdateVariable>'
+        );
+    });
+
+    test('normalizes a bare structured JSON response for incremental repair requests', async () => {
+        (globalThis as any).generateRaw.mockResolvedValueOnce(
+            '{"analysis":"checked","json_patch":[{"op":"replace","path":"/hp","value":72}]}'
+        );
+
+        const result = await generateExtraModel({ allow_bare_json_patch: true });
+
+        expect(result).toContain('<UpdateVariable>');
+        expect(result).toContain('<JSONPatch>');
+        expect(result).toContain('"path": "/hp"');
+    });
+
     test.each(['聊天消息', '格式化输出'] as const)(
         'passes an empty tools list for %s requests on supported TavernHelper versions',
         async response_format => {

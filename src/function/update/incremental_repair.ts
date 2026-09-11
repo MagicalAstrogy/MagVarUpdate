@@ -15,9 +15,9 @@ import { isMvuData, MvuData } from '@/variable_def';
 import { parseString } from '@util/common';
 import { klona } from 'klona';
 
-const UPDATE_BLOCK_RE = /<UpdateVariable\b[^>]*>[\s\S]*?<\/UpdateVariable\s*>/gi;
-const UPDATE_BLOCK_PART_RE = /<UpdateVariable\b[^>]*>[\s\S]*$/i;
-const UPDATE_CLOSE_RE = /<\/UpdateVariable\s*>/i;
+const UPDATE_BLOCK_RE =
+    /<(?:update(?:variable)?|variableupdate)\b[^>]*>[\s\S]*?<\/(?:update(?:variable)?|variableupdate)\s*>/gi;
+const UPDATE_BLOCK_PART_RE = /<(?:update(?:variable)?|variableupdate)\b[^>]*>[\s\S]*$/i;
 const EMPTY_JSON_PATCH_RE =
     /<json_?patch\b[^>]*>\s*(?:```[^\n]*\s*)?\[\s*\](?:\s*```)?\s*<\/json_?patch\s*>/i;
 const JSON_PATCH_BLOCK_RE =
@@ -98,14 +98,23 @@ function formatStateChanges(changes: IncrementalStateChange[]): string {
 
 export function buildIncrementalRepairTask(changes: IncrementalStateChange[]): string {
     return `<incremental_repair_directive>
-本次是增量变量校正，不是完整重试：
-  本次给出的变量状态已经是剧情之后、包含本楼原变量更新中成功落地部分的当前状态；通用任务中“剧情发生之前的变量状态”不适用于本次校正。
-  阅读 <past_observe> 中最新一轮剧情、已有变量更新命令、变量规则和当前变量状态，并参考下方“本楼已落地变化”。
-  只输出遗漏、错误或与剧情明确事实冲突的修正；已经正确的变化禁止重复输出。
-  修正必须落在当前状态之上，不得重算或覆盖整份变量。
-  对已有字段使用 replace 和绝对目标值；禁止 delta/add/move。数组需要修正时 replace 整个数组，避免重复插入。仅在规则允许新增字段时使用 insert；错误字段可用 remove。
-  不确定时保持当前值。没有需要修正的内容时输出空 JSONPatch 数组。
-  除一个 <UpdateVariable><JSONPatch>...</JSONPatch></UpdateVariable> 外不得输出任何内容。本段约束补充并收紧前面的通用变量更新任务，不改变世界书筛选和变量规则。
+本次是增量变量校正，不是完整重试。
+
+输入解释：
+- 当前变量状态是本轮剧情结束且原更新已执行后的结果，不是剧情发生前的状态。
+- <past_observe> 中包含最新剧情与原更新；下方清单只用于识别本楼已经落地的变化。
+- 变量规则与已注入世界书仍是最终依据；用户补充方向只指定优先核验处，不能创造剧情事实或覆盖规则。
+
+执行边界：
+- 仅补充遗漏，或纠正与最新剧情、变量规则明确冲突的错误；已经正确的变化禁止重复输出。
+- 所有修正都以当前状态为基准，不得从上一楼重新计算；不得重算或覆盖整份变量。
+- 已有字段使用 replace 与绝对最终值；禁止 delta、add、move。数组需要修正时 replace 整个数组。
+- 仅在规则允许新增字段时使用 insert；确认属于错误字段时才使用 remove；证据不足则保持不变。
+
+输出契约：
+- 严格服从本次请求随后给出的应答格式：普通文本模式只输出一个 <UpdateVariable><JSONPatch>...</JSONPatch></UpdateVariable>；格式化输出或工具调用模式则只填写其指定结构。
+- 不得附加剧情正文或结构外解释。
+- 没有需要修正的内容时输出空 JSONPatch 数组。
 </incremental_repair_directive>
 <incremental_repair_context>
 本楼已落地变化：
@@ -113,13 +122,13 @@ ${formatStateChanges(changes)}
 </incremental_repair_context>`;
 }
 
-export function buildIncrementalRepairUserInput(user_direction: string = ''): string {
+export function buildIncrementalRepairPromptTail(user_direction: string = ''): string {
     const direction = user_direction.trim().slice(0, 500);
-    if (!direction) return '遵循<must>指令';
-    return `遵循<must>指令
-<user_incremental_repair_direction>
-${direction}
-</user_incremental_repair_direction>`;
+    return `<incremental_repair_final_check>
+这是请求末尾的最终复核指令，优先核验用户明确指出的方向，但不得越过变量规则与最新剧情事实。
+<user_focus>${direction || '（用户未补充方向：自动审计遗漏与明确错误）'}</user_focus>
+最终只保留针对当前状态的必要增量操作；不重复已有正确更新，不整表重算，不输出结构外解释。严格服从本次应答格式，结果必须包含可由后处理规范化为标准 <UpdateVariable><JSONPatch> 的合法 JSONPatch 数组。
+</incremental_repair_final_check>`;
 }
 
 export function extractLatestUpdateVariableBlock(message: string): string {
@@ -130,9 +139,29 @@ export function extractLatestUpdateVariableBlock(message: string): string {
 
 function extractUpdateBlockInner(block: string): string {
     return block
-        .replace(/^<UpdateVariable\b[^>]*>/i, '')
-        .replace(/<\/UpdateVariable\s*>\s*$/i, '')
+        .replace(/^<(?:update(?:variable)?|variableupdate)\b[^>]*>/i, '')
+        .replace(/<\/(?:update(?:variable)?|variableupdate)\s*>\s*$/i, '')
         .trim();
+}
+
+function cleanJsonPatchInner(inner: string): string {
+    return inner
+        .trim()
+        .replace(/^```(?:json)?\s*/i, '')
+        .replace(/\s*```$/i, '')
+        .trim();
+}
+
+export function normalizeIncrementalRepairBlock(repair_block: string): string | null {
+    const matches = [...repair_block.matchAll(JSON_PATCH_BLOCK_RE)];
+    if (matches.length !== 1) return null;
+    try {
+        const patch = parseString(cleanJsonPatchInner(matches[0][1]));
+        if (!isJsonPatch(patch)) return null;
+        return `<UpdateVariable>\n<JSONPatch>\n${JSON.stringify(patch, null, 2)}\n</JSONPatch>\n</UpdateVariable>`;
+    } catch {
+        return null;
+    }
 }
 
 export function mergeIncrementalRepairBlock(message: string, repair_block: string): string {
@@ -142,10 +171,18 @@ export function mergeIncrementalRepairBlock(message: string, repair_block: strin
     const complete = [...message.matchAll(UPDATE_BLOCK_RE)];
     const target = complete.at(-1);
     if (target?.index !== undefined) {
-        const block = target[0];
-        const close = block.search(UPDATE_CLOSE_RE);
-        const merged = `${block.slice(0, close).trimEnd()}\n\n${repair_inner}\n${block.slice(close)}`;
-        return message.slice(0, target.index) + merged + message.slice(target.index + block.length);
+        const original_inner = extractUpdateBlockInner(target[0]);
+        const merged = `<UpdateVariable>\n${original_inner}\n\n${repair_inner}\n</UpdateVariable>`;
+        return (
+            message.slice(0, target.index) + merged + message.slice(target.index + target[0].length)
+        );
+    }
+
+    const partial = message.match(UPDATE_BLOCK_PART_RE);
+    if (partial?.index !== undefined) {
+        const original_inner = extractUpdateBlockInner(partial[0]);
+        const merged = `<UpdateVariable>\n${original_inner}\n\n${repair_inner}\n</UpdateVariable>`;
+        return message.slice(0, partial.index) + merged;
     }
 
     return `${message.trimEnd()}\n\n<UpdateVariable>\n${repair_inner}\n</UpdateVariable>`;
@@ -387,7 +424,8 @@ export async function runIncrementalExtraModelRepair() {
         const user_direction = String(direction_result).slice(0, 500);
         const repair_block = await invokeExtraModelWithStrategy({
             task_suffix: buildIncrementalRepairTask(changes),
-            user_input: buildIncrementalRepairUserInput(user_direction),
+            prompt_tail: buildIncrementalRepairPromptTail(user_direction),
+            allow_bare_json_patch: true,
         });
         if (repair_block === null) {
             toastr.error(
@@ -404,14 +442,22 @@ export async function runIncrementalExtraModelRepair() {
             return;
         }
 
-        const block_error = validateIncrementalRepairBlock(repair_block);
+        const normalized_repair_block = normalizeIncrementalRepairBlock(repair_block);
+        if (!normalized_repair_block) {
+            toastr.warning(
+                'JSONPatch 内容无法解析或数量不正确',
+                tr('runtime.incrementalRepair.title')
+            );
+            return;
+        }
+        const block_error = validateIncrementalRepairBlock(normalized_repair_block);
         if (block_error) {
             toastr.warning(_.escape(block_error), tr('runtime.incrementalRepair.title'));
             return;
         }
 
-        const commands = extractCommands(repair_block);
-        if (commands.length === 0 && EMPTY_JSON_PATCH_RE.test(repair_block)) {
+        const commands = extractCommands(normalized_repair_block);
+        if (commands.length === 0 && EMPTY_JSON_PATCH_RE.test(normalized_repair_block)) {
             toastr.info(
                 tr('runtime.incrementalRepair.noChanges'),
                 tr('runtime.incrementalRepair.title')
@@ -432,7 +478,7 @@ export async function runIncrementalExtraModelRepair() {
         }
 
         const confirmation = await SillyTavern.callGenericPopup(
-            buildPreviewHtml(commands, repair_block),
+            buildPreviewHtml(commands, normalized_repair_block),
             SillyTavern.POPUP_TYPE.CONFIRM,
             '',
             {
@@ -453,7 +499,7 @@ export async function runIncrementalExtraModelRepair() {
         }
 
         const applied_data = klona(original_data);
-        const is_modified = await updateVariables(repair_block, applied_data);
+        const is_modified = await updateVariables(normalized_repair_block, applied_data);
         if (!is_modified) {
             toastr.info(
                 tr('runtime.incrementalRepair.noEffectiveChanges'),
@@ -462,7 +508,10 @@ export async function runIncrementalExtraModelRepair() {
             return;
         }
 
-        const repaired_content = mergeIncrementalRepairBlock(anchor.message_content, repair_block);
+        const repaired_content = mergeIncrementalRepairBlock(
+            anchor.message_content,
+            normalized_repair_block
+        );
         const update_chat_variables = store.effective_settings.兼容性.更新到聊天变量;
         try {
             await persistMvuData(applied_data, message_id, update_chat_variables);

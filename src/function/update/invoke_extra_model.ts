@@ -212,6 +212,10 @@ export interface ExtraModelInvocationOptions {
     task_suffix?: string;
     /** Override the short user message sent to the extra model. */
     user_input?: string;
+    /** Add a final request-scoped system reminder after the normal prompt tail. */
+    prompt_tail?: string;
+    /** Accept a bare JSONPatch response and normalize it into an UpdateVariable block. */
+    allow_bare_json_patch?: boolean;
 }
 
 export async function invokeExtraModelWithStrategy(
@@ -370,21 +374,34 @@ async function invokeExtraModel(
     try {
         const result = await requestReply(generation_id, batch_id, options);
 
-        const tag = _([...result.matchAll(/<(update(?:variable)?|variableupdate)>/gi)]).last()?.[1];
-        if (!tag) {
+        const update_matches = [
+            ...result.matchAll(
+                /<(update(?:variable)?|variableupdate)\b[^>]*>([\s\S]*?)(?:<\/\1\s*>|$)/gi
+            ),
+        ];
+        let update_block = update_matches.at(-1)?.[2];
+        if (!update_block && options.allow_bare_json_patch) {
+            const patch_matches = [
+                ...result.matchAll(/<json_?patch\b[^>]*>([\s\S]*?)(?:<\/json_?patch\s*>|$)/gi),
+            ];
+            const patch_inner = patch_matches.at(-1)?.[1];
+            if (patch_inner !== undefined) {
+                update_block = `<JSONPatch>${patch_inner}</JSONPatch>`;
+            } else {
+                const formatted = extractFromFormattedOutput(result);
+                const formatted_match = formatted?.match(
+                    /^\s*<UpdateVariable\b[^>]*>([\s\S]*?)<\/UpdateVariable\s*>\s*$/i
+                );
+                update_block = formatted_match?.[1];
+            }
+        }
+        if (!update_block) {
             throw new Error(
                 literalYamlify({
                     [tr('runtime.extraModel.updateTagMissing')]: result,
                 })
             );
         }
-
-        const start_index = result.lastIndexOf(`<${tag}>`);
-        const end_index = result.indexOf(`</${tag}>`, start_index);
-        const update_block = result.slice(
-            start_index + 2 + tag.length,
-            end_index === -1 ? undefined : end_index
-        );
 
         const fn_call_match =
             /_\.(?:set|insert|assign|remove|unset|delete|add)\s*\([\s\S]*?\)\s*;/.test(
@@ -532,6 +549,7 @@ async function requestReply(
 
     if (store.settings.额外模型解析配置.破限方案 === '使用当前预设') {
         clearExtraModelRequestOverrides();
+        const task_prompt = [task, options.prompt_tail?.trim()].filter(Boolean).join('\n');
         const result = await generate({
             ...config,
             injects: [
@@ -540,7 +558,7 @@ async function requestReply(
                     depth: 0,
                     should_scan: false,
                     role: 'system',
-                    content: task,
+                    content: task_prompt,
                 },
                 {
                     position: 'in_chat',
@@ -563,10 +581,17 @@ async function requestReply(
 
     if (store.settings.额外模型解析配置.破限方案 === '使用其他预设') {
         const preset = getExtraModelPreset(store.settings.额外模型解析配置.其他预设名称);
-        const { ordered_prompts, injects, request_overrides } = buildOtherPresetGenerateConfig(
-            preset,
-            task
-        );
+        const {
+            ordered_prompts: preset_ordered_prompts,
+            injects,
+            request_overrides,
+        } = buildOtherPresetGenerateConfig(preset, task);
+        const ordered_prompts = options.prompt_tail?.trim()
+            ? [
+                  ...preset_ordered_prompts,
+                  { role: 'system' as const, content: options.prompt_tail.trim() },
+              ]
+            : preset_ordered_prompts;
 
         if (store.settings.额外模型解析配置.模型来源 === '与插头相同') {
             setExtraModelRequestOverrides(request_overrides);
@@ -612,6 +637,9 @@ async function requestReply(
             { role: 'system', content: task },
             'user_input',
             { role: 'system', content: is_gemini ? decoded_gemini_tail : decoded_claude_tail },
+            ...(options.prompt_tail?.trim()
+                ? [{ role: 'system' as const, content: options.prompt_tail.trim() }]
+                : []),
         ],
     });
     return normalizeGenerateResultByResponseFormat(result, response_format);
