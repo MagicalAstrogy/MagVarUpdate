@@ -123,6 +123,7 @@ export function buildIncrementalRepairTask(changes: IncrementalStateChange[]): s
 
 执行边界：
 - 仅补充遗漏，或纠正与最新剧情、变量规则明确冲突的错误；已经正确的变化禁止重复输出。
+- 增量校正不沿用完整更新中“第一项固定 replace /当前活动”的占位要求；只有本次要纠正的遗漏或错误确实涉及持续活动时，才输出 /当前活动。
 - 所有修正都以当前状态为基准，不得从上一楼重新计算；不得重算或覆盖整份变量。
 - 已有字段使用 replace 与绝对最终值；禁止 delta、add、move。数组需要修正时 replace 整个数组。
 - 仅在规则允许新增字段时使用 insert；确认属于错误字段时才使用 remove；证据不足则保持不变。
@@ -202,6 +203,10 @@ export function normalizeIncrementalRepairBlock(repair_block: string): string | 
     return patch
         ? `<UpdateVariable>\n<JSONPatch>\n${JSON.stringify(patch, null, 2)}\n</JSONPatch>\n</UpdateVariable>`
         : null;
+}
+
+function serializeIncrementalRepairPatch(patch: IncrementalRepairOperation[]): string {
+    return `<UpdateVariable>\n<JSONPatch>\n${JSON.stringify(patch, null, 2)}\n</JSONPatch>\n</UpdateVariable>`;
 }
 
 export function mergeIncrementalRepairBlock(message: string, repair_block: string): string {
@@ -876,20 +881,50 @@ export async function runIncrementalExtraModelRepair() {
             );
             return;
         }
-        const application_error = verifyIncrementalRepairApplied(
+        let effective_repair_block = normalized_repair_block;
+        let skipped_invalid_activity = false;
+        let application_error = verifyIncrementalRepairApplied(
             normalized_repair_block,
             original_data.stat_data,
             applied_data.stat_data
         );
         if (application_error) {
+            const patch = parseIncrementalRepairPatch(normalized_repair_block);
+            const activity_operation = patch?.find(operation => operation.path === '/当前活动');
+            const remaining_patch = patch?.filter(operation => operation.path !== '/当前活动');
+            if (activity_operation && remaining_patch && remaining_patch.length > 0) {
+                const activity_error = verifyIncrementalRepairApplied(
+                    serializeIncrementalRepairPatch([activity_operation]),
+                    original_data.stat_data,
+                    applied_data.stat_data
+                );
+                const remaining_block = serializeIncrementalRepairPatch(remaining_patch);
+                const remaining_error = verifyIncrementalRepairApplied(
+                    remaining_block,
+                    original_data.stat_data,
+                    applied_data.stat_data
+                );
+                if (activity_error && !remaining_error) {
+                    effective_repair_block = remaining_block;
+                    _.set(
+                        applied_data.stat_data,
+                        ['当前活动'],
+                        klona(_.get(original_data.stat_data, ['当前活动']))
+                    );
+                    skipped_invalid_activity = true;
+                    application_error = null;
+                }
+            }
+        }
+        if (application_error) {
             toastr.warning(_.escape(application_error), tr('runtime.incrementalRepair.title'));
             return;
         }
-        mergeIncrementalRepairMetadata(original_data, applied_data, normalized_repair_block);
+        mergeIncrementalRepairMetadata(original_data, applied_data, effective_repair_block);
 
         const repaired_content = mergeIncrementalRepairBlock(
             anchor.message_content,
-            normalized_repair_block
+            effective_repair_block
         );
         const applied_snapshot = snapshotPersistedMvuData(applied_data);
         try {
@@ -945,6 +980,13 @@ export async function runIncrementalExtraModelRepair() {
             }
             await SillyTavern.saveChat().catch(() => undefined);
             throw error;
+        }
+
+        if (skipped_invalid_activity) {
+            toastr.warning(
+                '已跳过不符合当前变量结构的“当前活动”修正，其余修正已写入',
+                tr('runtime.incrementalRepair.title')
+            );
         }
 
         await offerUndo(
