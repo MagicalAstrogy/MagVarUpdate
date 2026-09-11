@@ -74,10 +74,21 @@ function setupEnvironment() {
     store.settings.额外模型解析配置.应答格式 = '聊天消息';
 }
 
-describe('onMessageReceived 自动解析与渲染后写回', () => {
+/** 等待所有在途任务结束，避免模块级状态影响后续用例。 */
+async function drainTasks(): Promise<void> {
+    for (let i = 0; i < 40; i++) {
+        await Promise.resolve();
+    }
+}
+
+describe('onMessageReceived 自动解析的生命周期', () => {
     beforeEach(() => {
         jest.clearAllMocks();
         setupEnvironment();
+    });
+
+    afterEach(async () => {
+        await drainTasks();
     });
 
     test('自动解析在 MESSAGE_RECEIVED 启动但不阻塞返回，且不提前写回', async () => {
@@ -85,40 +96,101 @@ describe('onMessageReceived 自动解析与渲染后写回', () => {
         mockInvoke.mockReturnValue(promise);
 
         await onMessageReceived(2);
+        await flushMicrotasks();
 
-        // 解析已开始，但事件处理已返回（正文渲染不被拖住），且尚未写回。
+        // 解析已开始、事件已返回（正文渲染不被拖住），且尚未写回。
         expect(mockInvoke).toHaveBeenCalledTimes(1);
         expect(set_chat_messages).not.toHaveBeenCalled();
 
         resolve(UPDATE_RESULT);
-        await flushMicrotasks();
-        // 写回只在渲染事件中进行。
-        expect(set_chat_messages).not.toHaveBeenCalled();
+        await drainTasks();
     });
 
-    test('渲染事件等待在途解析完成并写回结果与变量', async () => {
+    test('渲染事件早于任务启动时（MESSAGE_RECEIVED 被节流推迟），结果仍会被应用', async () => {
+        // 模拟节流：渲染事件先发生，此时还没有任务。
+        await onCharacterMessageRendered(2);
+        expect(set_chat_messages).not.toHaveBeenCalled();
+
+        // 任务随后才启动，且不再有第二个渲染事件。
+        await onMessageReceived(2);
+        await flushMicrotasks();
+
+        expect(set_chat_messages).toHaveBeenCalledTimes(1);
+        expect(set_chat_messages).toHaveBeenCalledWith(
+            [{ message_id: 2, message: `${MESSAGE_TEXT}\n\n${UPDATE_RESULT}` }],
+            { refresh: 'none' }
+        );
+    });
+
+    test('渲染事件等待在途解析完成后再返回', async () => {
         const { promise, resolve } = Promise.withResolvers<string | null>();
         mockInvoke.mockReturnValue(promise);
 
         await onMessageReceived(2);
+        await flushMicrotasks();
 
         let rendered_settled = false;
         const rendered = onCharacterMessageRendered(2).then(() => {
             rendered_settled = true;
         });
         await flushMicrotasks();
-        // 解析未完成，渲染事件仍在等待。
         expect(rendered_settled).toBe(false);
 
         resolve(UPDATE_RESULT);
         await rendered;
 
         expect(rendered_settled).toBe(true);
-        expect(set_chat_messages).toHaveBeenCalledWith(
-            [{ message_id: 2, message: `${MESSAGE_TEXT}\n\n${UPDATE_RESULT}` }],
-            { refresh: 'none' }
-        );
-        expect(mockHandleVariables).toHaveBeenCalledWith(2);
+        expect(set_chat_messages).toHaveBeenCalledTimes(1);
+    });
+
+    test('并发任务串行启动，不撞解析函数的全局互斥', async () => {
+        const first = Promise.withResolvers<string | null>();
+        mockInvoke.mockReturnValueOnce(first.promise).mockResolvedValue(UPDATE_RESULT);
+
+        await onMessageReceived(2);
+        await onMessageReceived(3);
+        await flushMicrotasks();
+
+        // 第一个解析未结束时，第二个任务不得调用解析（否则互斥会返回 null 而误报失败）。
+        expect(mockInvoke).toHaveBeenCalledTimes(1);
+
+        first.resolve(UPDATE_RESULT);
+        await drainTasks();
+
+        expect(mockInvoke).toHaveBeenCalledTimes(2);
+    });
+
+    test('手动重试识别同楼层在途任务，不发出第二次请求', async () => {
+        const { promise, resolve } = Promise.withResolvers<string | null>();
+        mockInvoke.mockReturnValue(promise);
+
+        await onMessageReceived(2);
+        await flushMicrotasks();
+        expect(mockInvoke).toHaveBeenCalledTimes(1);
+
+        // 渲染事件进入等待（此时解析仍未完成）。
+        const rendered = onCharacterMessageRendered(2);
+        await flushMicrotasks();
+
+        // 在渲染事件等待期间手动重试：必须识别到在途任务，而不是另发请求。
+        let retry_settled = false;
+        const retry = onMessageReceived(2, { force: true }).then(() => {
+            retry_settled = true;
+        });
+        await flushMicrotasks();
+
+        expect(retry_settled).toBe(false);
+        expect(mockInvoke).toHaveBeenCalledTimes(1);
+
+        resolve(UPDATE_RESULT);
+        await rendered;
+        await retry;
+        await drainTasks();
+
+        expect(retry_settled).toBe(true);
+        // 全部任务结束后仍只有一次请求：重试没有另起一次解析（否则非幂等命令会执行两次）。
+        expect(mockInvoke).toHaveBeenCalledTimes(1);
+        expect(set_chat_messages).toHaveBeenCalledTimes(1);
     });
 
     test('写回触发的重入渲染事件不会死锁', async () => {
@@ -129,7 +201,6 @@ describe('onMessageReceived 自动解析与渲染后写回', () => {
 
         await onMessageReceived(2);
 
-        // 若写回未先摘除在途记录，这里会等待自身而永久挂起。
         await expect(
             Promise.race([
                 onCharacterMessageRendered(2),
@@ -151,46 +222,10 @@ describe('onMessageReceived 自动解析与渲染后写回', () => {
         get_current_chat_id.mockReturnValue('chat-2');
 
         resolve(UPDATE_RESULT);
-        await onCharacterMessageRendered(2);
+        await drainTasks();
 
         expect(set_chat_messages).not.toHaveBeenCalled();
         expect(mockHandleVariables).not.toHaveBeenCalled();
-    });
-
-    test('手动重试等待在途解析，且不重复解析同一楼层', async () => {
-        const { promise, resolve } = Promise.withResolvers<string | null>();
-        mockInvoke.mockReturnValue(promise);
-
-        await onMessageReceived(2);
-        expect(mockInvoke).toHaveBeenCalledTimes(1);
-
-        let retry_settled = false;
-        const retry = onMessageReceived(2, { force: true }).then(() => {
-            retry_settled = true;
-        });
-        await flushMicrotasks();
-        // 手动重试需等待在途解析，避免并发调用被全局互斥挡下而误报失败。
-        expect(retry_settled).toBe(false);
-
-        resolve(UPDATE_RESULT);
-        await retry;
-
-        // 该解析已处理本楼层，手动重试不应再发一次请求（避免非幂等命令执行两次）。
-        expect(mockInvoke).toHaveBeenCalledTimes(1);
-        expect(set_chat_messages).toHaveBeenCalledTimes(1);
-    });
-
-    test('解析失败时提示错误且不写回，但仍处理变量', async () => {
-        mockInvoke.mockResolvedValue(null);
-        const toast_error = jest.fn();
-        (globalThis as Record<string, unknown>).toastr = { error: toast_error };
-
-        await onMessageReceived(2);
-        await onCharacterMessageRendered(2);
-
-        expect(set_chat_messages).not.toHaveBeenCalled();
-        expect(toast_error).toHaveBeenCalled();
-        expect(mockHandleVariables).toHaveBeenCalledWith(2);
     });
 
     test('同楼层重新生成时，旧解析的结果不再写回', async () => {
@@ -199,14 +234,15 @@ describe('onMessageReceived 自动解析与渲染后写回', () => {
         mockInvoke.mockReturnValueOnce(first.promise).mockReturnValueOnce(second.promise);
 
         await onMessageReceived(2);
-        // 重新生成：同一楼层再次触发，取代旧解析。
+        // 重新生成：同一楼层再次触发，取代旧任务。
         await onMessageReceived(2);
 
         first.resolve('<UpdateVariable>_.set("health", 1);//旧</UpdateVariable>');
-        await flushMicrotasks();
+        await drainTasks();
+        expect(set_chat_messages).not.toHaveBeenCalled();
 
         second.resolve(UPDATE_RESULT);
-        await onCharacterMessageRendered(2);
+        await drainTasks();
 
         // 只有最新一次解析的结果被写回。
         expect(set_chat_messages).toHaveBeenCalledTimes(1);
@@ -214,5 +250,18 @@ describe('onMessageReceived 自动解析与渲染后写回', () => {
             [{ message_id: 2, message: `${MESSAGE_TEXT}\n\n${UPDATE_RESULT}` }],
             { refresh: 'none' }
         );
+    });
+
+    test('解析失败时提示错误且不写回，但仍处理变量', async () => {
+        mockInvoke.mockResolvedValue(null);
+        const toast_error = jest.fn();
+        (globalThis as Record<string, unknown>).toastr = { error: toast_error };
+
+        await onMessageReceived(2);
+        await drainTasks();
+
+        expect(set_chat_messages).not.toHaveBeenCalled();
+        expect(toast_error).toHaveBeenCalled();
+        expect(mockHandleVariables).toHaveBeenCalledWith(2);
     });
 });
