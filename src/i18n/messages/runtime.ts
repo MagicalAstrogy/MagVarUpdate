@@ -163,7 +163,8 @@ export const runtimeMessages = defineMessages({
         en: 'The latest or previous floor has no usable MVU state',
     },
     'runtime.incrementalRepair.directionPrompt': {
-        'zh-CN': '可选：补充本次增量校正方向；直接确认留空则自动审计。\n例如：核对生命值归零后的即时后果，或补齐本轮明确获得的物品。',
+        'zh-CN':
+            '可选：补充本次增量校正方向；直接确认留空则自动审计。\n例如：核对生命值归零后的即时后果，或补齐本轮明确获得的物品。',
         en: 'Optional: add a direction for this incremental repair. Confirm with an empty input for automatic audit.\nFor example: check the immediate zero-HP aftermath or add an item clearly obtained this floor.',
     },
     'runtime.incrementalRepair.requestFailed': {
@@ -192,8 +193,8 @@ export const runtimeMessages = defineMessages({
     },
     'runtime.incrementalRepair.previewDescription': {
         'zh-CN':
-            '模型提出 {count} 项修正。确认后仅在当前变量状态上应用这些修正，并写回本楼更新块。',
-        en: 'The model proposed {count} repairs. They will be applied to the current state and written back to this floor.',
+            '模型提出 {count} 项修正。确认后合并本楼更新块，并从上一楼变量完整重算本楼，统一保存正文与变量。',
+        en: 'The model proposed {count} repairs. The merged floor will be replayed from the preceding variables, then saved together with its resulting state.',
     },
     'runtime.incrementalRepair.showRawPatch': {
         'zh-CN': '查看原始补丁',

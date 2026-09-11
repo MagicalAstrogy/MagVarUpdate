@@ -212,7 +212,7 @@ export interface ExtraModelInvocationOptions {
     task_suffix?: string;
     /** Override the short user message sent to the extra model. */
     user_input?: string;
-    /** Add a final request-scoped system reminder after the normal prompt tail. */
+    /** Legacy reminder option, appended to user_input without moving the preset tail. */
     prompt_tail?: string;
     /** Accept a bare JSONPatch response and normalize it into an UpdateVariable block. */
     allow_bare_json_patch?: boolean;
@@ -539,7 +539,9 @@ async function requestReply(
     assertV4CompatibleFormattedOutputUsable();
 
     const config: GenerateRawConfig = {
-        user_input: options.user_input ?? '遵循<must>指令',
+        user_input: [options.user_input ?? '遵循<must>指令', options.prompt_tail?.trim()]
+            .filter(Boolean)
+            .join('\n'),
         max_chat_history: store.settings.额外模型解析配置.max_chat_history,
         should_stream: store.settings.额外模型解析配置.兼容假流式,
         generation_id,
@@ -610,7 +612,6 @@ async function requestReply(
 
     if (store.settings.额外模型解析配置.破限方案 === '使用当前预设') {
         clearExtraModelRequestOverrides();
-        const task_prompt = [task, options.prompt_tail?.trim()].filter(Boolean).join('\n');
         const result = await generate({
             ...config,
             injects: [
@@ -619,7 +620,7 @@ async function requestReply(
                     depth: 0,
                     should_scan: false,
                     role: 'system',
-                    content: task_prompt,
+                    content: task,
                 },
                 {
                     position: 'in_chat',
@@ -647,12 +648,7 @@ async function requestReply(
             injects,
             request_overrides,
         } = buildOtherPresetGenerateConfig(preset, task);
-        const ordered_prompts = options.prompt_tail?.trim()
-            ? [
-                  ...preset_ordered_prompts,
-                  { role: 'system' as const, content: options.prompt_tail.trim() },
-              ]
-            : preset_ordered_prompts;
+        const ordered_prompts = preset_ordered_prompts;
 
         if (store.settings.额外模型解析配置.模型来源 === '与插头相同') {
             setExtraModelRequestOverrides(request_overrides);
@@ -698,9 +694,6 @@ async function requestReply(
             { role: 'system', content: task },
             'user_input',
             { role: 'system', content: is_gemini ? decoded_gemini_tail : decoded_claude_tail },
-            ...(options.prompt_tail?.trim()
-                ? [{ role: 'system' as const, content: options.prompt_tail.trim() }]
-                : []),
         ],
     });
     return normalizeGenerateResultByResponseFormat(result, response_format);

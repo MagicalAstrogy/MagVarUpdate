@@ -143,16 +143,50 @@ ${formatStateChanges(changes)}
 export function buildIncrementalRepairPromptTail(user_direction: string = ''): string {
     const direction = user_direction.trim().slice(0, 500);
     return `<incremental_repair_final_check>
-这是请求末尾的最终复核指令，优先核验用户明确指出的方向，但不得越过变量规则与最新剧情事实。
+遵循增量校正任务，优先核验用户明确指出的方向，但不得越过变量规则与最新剧情事实。
 <user_focus>${direction || '（用户未补充方向：自动审计遗漏与明确错误）'}</user_focus>
 最终只保留针对当前状态的必要增量操作；不重复已有正确更新，不整表重算，不输出结构外解释。严格服从本次应答格式，结果必须包含可由后处理规范化为标准 <UpdateVariable><JSONPatch> 的合法 JSONPatch 数组。
 </incremental_repair_final_check>`;
 }
 
+/** Mask JSON string contents while retaining UTF-16 offsets for wrapper matching. */
+function structuralMessage(message: string): string {
+    const chars = message.split('');
+    let in_patch = false;
+    let quoted = false;
+    let escaped = false;
+    for (let i = 0; i < chars.length; i++) {
+        if (in_patch && quoted) {
+            const char = chars[i];
+            chars[i] = ' ';
+            if (escaped) escaped = false;
+            else if (char === '\\') escaped = true;
+            else if (char === '"') quoted = false;
+            continue;
+        }
+        if (in_patch && chars[i] === '"') {
+            quoted = true;
+            chars[i] = ' ';
+        } else if (chars[i] === '<') {
+            const tag = message.slice(i).match(/^<(\/?)json_?patch\s*>/i);
+            if (tag) in_patch = tag[1] !== '/';
+        }
+    }
+    return chars.join('');
+}
+
+function completeUpdateBlocks(message: string) {
+    return [...structuralMessage(message).matchAll(UPDATE_BLOCK_RE)].map(match => ({
+        index: match.index!,
+        text: message.slice(match.index!, match.index! + match[0].length),
+    }));
+}
+
 export function extractLatestUpdateVariableBlock(message: string): string {
-    const complete = [...message.matchAll(UPDATE_BLOCK_RE)];
-    if (complete.length > 0) return complete.at(-1)?.[0] ?? '';
-    return message.match(UPDATE_BLOCK_PART_RE)?.[0] ?? '';
+    const complete = completeUpdateBlocks(message);
+    if (complete.length > 0) return complete.at(-1)?.text ?? '';
+    const partial = structuralMessage(message).match(UPDATE_BLOCK_PART_RE);
+    return partial?.index === undefined ? '' : message.slice(partial.index);
 }
 
 function extractUpdateBlockInner(block: string): string {
@@ -205,27 +239,25 @@ export function normalizeIncrementalRepairBlock(repair_block: string): string | 
         : null;
 }
 
-function serializeIncrementalRepairPatch(patch: IncrementalRepairOperation[]): string {
-    return `<UpdateVariable>\n<JSONPatch>\n${JSON.stringify(patch, null, 2)}\n</JSONPatch>\n</UpdateVariable>`;
-}
-
 export function mergeIncrementalRepairBlock(message: string, repair_block: string): string {
     const repair_inner = extractUpdateBlockInner(repair_block);
     if (!repair_inner) return message;
 
-    const complete = [...message.matchAll(UPDATE_BLOCK_RE)];
+    const complete = completeUpdateBlocks(message);
     const target = complete.at(-1);
     if (target?.index !== undefined) {
-        const original_inner = extractUpdateBlockInner(target[0]);
+        const original_inner = extractUpdateBlockInner(target.text);
         const merged = `<UpdateVariable>\n${original_inner}\n\n${repair_inner}\n</UpdateVariable>`;
         return (
-            message.slice(0, target.index) + merged + message.slice(target.index + target[0].length)
+            message.slice(0, target.index) +
+            merged +
+            message.slice(target.index + target.text.length)
         );
     }
 
-    const partial = message.match(UPDATE_BLOCK_PART_RE);
+    const partial = structuralMessage(message).match(UPDATE_BLOCK_PART_RE);
     if (partial?.index !== undefined) {
-        const original_inner = extractUpdateBlockInner(partial[0]);
+        const original_inner = extractUpdateBlockInner(message.slice(partial.index));
         const merged = `<UpdateVariable>\n${original_inner}\n\n${repair_inner}\n</UpdateVariable>`;
         return message.slice(0, partial.index) + merged;
     }
@@ -525,47 +557,86 @@ function anchorStillMatches(anchor: RepairAnchor): boolean {
     return true;
 }
 
-async function persistMvuSnapshot(
-    source: PersistedMvuSnapshot,
-    target: { type: 'chat' } | { type: 'message'; message_id: number },
-    expected?: PersistedMvuSnapshot,
-    owns_target?: () => boolean
+/**
+ * Commit content and both variable stores synchronously, before any save/render await.
+ * Chat switching therefore cannot interrupt a half-applied in-memory transaction.
+ */
+function commitRepair(
+    anchor: RepairAnchor,
+    expected_content: string,
+    content: string,
+    expected_message: PersistedMvuSnapshot,
+    expected_chat: PersistedMvuSnapshot,
+    next_message: PersistedMvuSnapshot,
+    next_chat: PersistedMvuSnapshot
 ) {
-    const updater = (data: Record<string, any>) => {
-        if (owns_target && !owns_target()) throw new Error('增量校正目标已切换');
-        if (expected && !persistedSnapshotMatches(data, expected)) {
-            throw new Error('增量校正目标在写入期间发生变化');
-        }
+    if (!anchorIdentityStillMatches(anchor, expected_content))
+        throw new Error('增量校正目标已变化');
+    const message = SillyTavern.chat[anchor.message_id];
+    const metadata = SillyTavern.chatMetadata;
+    const message_variables = _.get(message, ['variables', anchor.swipe_id], {});
+    const chat_variables = _.get(metadata, 'variables', {});
+    if (
+        !persistedSnapshotMatches(message_variables, expected_message) ||
+        (anchor.update_chat_variables && !persistedSnapshotMatches(chat_variables, expected_chat))
+    ) {
+        throw new Error('增量校正目标在写入期间发生变化');
+    }
+    const mergeSnapshot = (data: Record<string, any>, snapshot: PersistedMvuSnapshot) => {
+        const result = klona(data);
         for (const key of PERSISTED_MVU_KEYS) {
-            if (_.has(source, key)) _.set(data, key, klona(_.get(source, key)));
-            else _.unset(data, key);
+            if (_.has(snapshot, key)) result[key] = klona(snapshot[key]);
+            else delete result[key];
         }
-        return data;
+        return result;
     };
-    await updateVariablesWith(updater, target);
+    const next_variables = klona(message.variables ?? []);
+    next_variables[anchor.swipe_id] = mergeSnapshot(message_variables, next_message);
+    const next_swipes = message.swipes ? [...message.swipes] : undefined;
+    if (next_swipes) next_swipes[anchor.swipe_id] = content;
+    const next_metadata = anchor.update_chat_variables
+        ? mergeSnapshot(chat_variables, next_chat)
+        : undefined;
+    // Retain exact field references for synchronous rollback if assignment itself fails.
+    const fields = ['mes', 'variables', 'swipes'] as const;
+    const before = fields.map(key => ({ key, exists: _.has(message, key), value: message[key] }));
+    const metadata_had_variables = _.has(metadata, 'variables');
+    const metadata_variables = metadata.variables;
+    try {
+        message.mes = content;
+        message.variables = next_variables;
+        if (next_swipes) message.swipes = next_swipes;
+        if (anchor.update_chat_variables) metadata.variables = next_metadata;
+    } catch (error) {
+        for (const field of before) {
+            if (field.exists) _.set(message, field.key, field.value);
+            else _.unset(message, field.key);
+        }
+        if (anchor.update_chat_variables) {
+            if (metadata_had_variables) metadata.variables = metadata_variables;
+            else delete metadata.variables;
+        }
+        throw error;
+    }
 }
 
-async function restoreMvuSnapshotIfOwned(
-    applied: PersistedMvuSnapshot,
-    original: PersistedMvuSnapshot,
-    target: { type: 'chat' } | { type: 'message'; message_id: number },
-    anchor: RepairAnchor
-) {
-    await updateVariablesWith((data: Record<string, any>) => {
+async function saveAndRefreshRepair(anchor: RepairAnchor) {
+    // A save/render failure must not undo a coherent transaction after a chat switch.
+    try {
+        await SillyTavern.saveChat();
         if (
-            SillyTavern.getCurrentChatId() !== anchor.chat_id ||
-            (target.type === 'message' && getSwipeId(anchor.message_id) !== anchor.swipe_id)
-        )
-            return data;
-        const current = snapshotPersistedMvuData(data);
-        if (_.isEqual(current, original)) return data;
-        if (!_.isEqual(current, applied)) return data;
-        for (const key of PERSISTED_MVU_KEYS) {
-            if (_.has(original, key)) _.set(data, key, klona(_.get(original, key)));
-            else _.unset(data, key);
+            SillyTavern.getCurrentChatId() === anchor.chat_id &&
+            getSwipeId(anchor.message_id) === anchor.swipe_id
+        ) {
+            await setChatMessages([{ message_id: anchor.message_id }], { refresh: 'affected' });
         }
-        return data;
-    }, target);
+    } catch (error) {
+        console.error('[MVU] repair committed but save/refresh failed', error);
+        toastr.warning(
+            '变量与正文已同步更新，但保存或刷新失败，请检查连接并保存聊天',
+            tr('runtime.incrementalRepair.title')
+        );
+    }
 }
 
 async function offerUndo(
@@ -582,87 +653,25 @@ async function offerUndo(
             timeOut: 12000,
             extendedTimeOut: 3000,
             onclick: async () => {
-                const current = getVariables({
-                    type: 'message',
-                    message_id: anchor.message_id,
-                });
-                const same_target =
-                    SillyTavern.getCurrentChatId() === anchor.chat_id &&
-                    getLastMessageId() === anchor.message_id &&
-                    getSwipeId(anchor.message_id) === anchor.swipe_id &&
-                    getChatMessages(anchor.message_id).at(-1)?.message === repaired_content &&
-                    isMvuData(current) &&
-                    persistedSnapshotMatches(current, applied_variables) &&
-                    (!anchor.update_chat_variables ||
-                        persistedSnapshotMatches(
-                            getVariables({ type: 'chat' }),
-                            applied_variables
-                        ));
-                if (!same_target) {
-                    toastr.warning(
-                        tr('runtime.incrementalRepair.undoStateChanged'),
-                        tr('runtime.incrementalRepair.title')
-                    );
-                    return;
-                }
                 try {
-                    await persistMvuSnapshot(
-                        original_message_variables,
-                        { type: 'message', message_id: anchor.message_id },
+                    commitRepair(
+                        anchor,
+                        repaired_content,
+                        anchor.message_content,
                         applied_variables,
-                        () => anchorIdentityStillMatches(anchor, repaired_content)
+                        applied_variables,
+                        original_message_variables,
+                        original_chat_variables
                     );
-                    if (anchor.update_chat_variables) {
-                        await persistMvuSnapshot(
-                            original_chat_variables,
-                            { type: 'chat' },
-                            applied_variables,
-                            () => anchorIdentityStillMatches(anchor, repaired_content)
-                        );
-                    }
-                    if (!anchorIdentityStillMatches(anchor, repaired_content))
-                        throw new Error('撤销目标已变化');
-                    await setChatMessages(
-                        [{ message_id: anchor.message_id, message: anchor.message_content }],
-                        { refresh: 'affected' }
-                    );
-                    await SillyTavern.saveChat();
+                    await saveAndRefreshRepair(anchor);
                     toastr.info(
                         tr('runtime.incrementalRepair.undone'),
                         tr('runtime.incrementalRepair.title')
                     );
                 } catch (error) {
-                    console.error('[MVU] incremental repair undo failed', error);
-                    await Promise.allSettled([
-                        restoreMvuSnapshotIfOwned(
-                            original_message_variables,
-                            applied_variables,
-                            {
-                                type: 'message',
-                                message_id: anchor.message_id,
-                            },
-                            anchor
-                        ),
-                        ...(anchor.update_chat_variables
-                            ? [
-                                  restoreMvuSnapshotIfOwned(
-                                      original_chat_variables,
-                                      applied_variables,
-                                      { type: 'chat' },
-                                      anchor
-                                  ),
-                              ]
-                            : []),
-                    ]);
-                    if (anchorIdentityStillMatches(anchor)) {
-                        await setChatMessages(
-                            [{ message_id: anchor.message_id, message: repaired_content }],
-                            { refresh: 'affected' }
-                        ).catch(() => undefined);
-                    }
-                    await SillyTavern.saveChat().catch(() => undefined);
-                    toastr.error(
-                        tr('runtime.incrementalRepair.requestFailed'),
+                    console.error('[MVU] incremental repair undo rejected', error);
+                    toastr.warning(
+                        tr('runtime.incrementalRepair.undoStateChanged'),
                         tr('runtime.incrementalRepair.title')
                     );
                 }
@@ -758,7 +767,7 @@ export async function runIncrementalExtraModelRepair() {
         const user_direction = direction_result.slice(0, 500);
         const repair_block = await invokeExtraModelWithStrategy({
             task: buildIncrementalRepairTask(changes),
-            prompt_tail: buildIncrementalRepairPromptTail(user_direction),
+            user_input: buildIncrementalRepairPromptTail(user_direction),
             allow_bare_json_patch: true,
             validate_result: result => {
                 const normalized = normalizeAndValidateIncrementalRepairResult(result);
@@ -864,136 +873,82 @@ export async function runIncrementalExtraModelRepair() {
         original_message_snapshot = snapshotPersistedMvuData(latest_message_variables);
         original_chat_snapshot = snapshotPersistedMvuData(latest_chat_variables);
 
-        let applied_data = klona(original_data);
-        let is_modified = await updateVariables(normalized_repair_block, applied_data);
-        // updateVariables awaits hooks; the player can switch floors while they run.
-        if (!anchorStillMatches(anchor)) {
+        if (!_.isEqual(getLastValidVariable(message_id), previous_variables)) {
             toastr.warning(
                 tr('runtime.incrementalRepair.sourceChanged'),
                 tr('runtime.incrementalRepair.title')
             );
             return;
         }
-        if (!is_modified) {
-            toastr.info(
-                tr('runtime.incrementalRepair.noEffectiveChanges'),
+        // Build the final floor first, then replay it once from the preceding floor.
+        // Never run lifecycle hooks on the already-settled current-floor snapshot.
+        const repaired_content = mergeIncrementalRepairBlock(
+            anchor.message_content,
+            normalized_repair_block
+        );
+        const applied_data = klona(previous_variables);
+        await updateVariables(repaired_content, applied_data);
+        if (
+            !anchorStillMatches(anchor) ||
+            !_.isEqual(getLastValidVariable(message_id), previous_variables)
+        ) {
+            toastr.warning(
+                tr('runtime.incrementalRepair.sourceChanged'),
                 tr('runtime.incrementalRepair.title')
             );
             return;
         }
-        let effective_repair_block = normalized_repair_block;
-        const patch = parseIncrementalRepairPatch(normalized_repair_block)!;
-        const failed_operations = patch.filter(operation =>
-            Boolean(
-                verifyIncrementalRepairApplied(
-                    serializeIncrementalRepairPatch([operation]),
-                    original_data.stat_data,
-                    applied_data.stat_data
-                )
-            )
-        );
-        let skipped_operation_paths: string[] = [];
-        if (failed_operations.length > 0 && failed_operations.length < patch.length) {
-            const failed_set = new Set(failed_operations);
-            const applicable_patch = patch.filter(operation => !failed_set.has(operation));
-            effective_repair_block = serializeIncrementalRepairPatch(applicable_patch);
-            applied_data = klona(original_data);
-            is_modified = await updateVariables(effective_repair_block, applied_data);
-            if (!anchorStillMatches(anchor)) {
-                toastr.warning(
-                    tr('runtime.incrementalRepair.sourceChanged'),
-                    tr('runtime.incrementalRepair.title')
-                );
-                return;
-            }
-            skipped_operation_paths = failed_operations.map(operation => operation.path);
-        }
         const application_error = verifyIncrementalRepairApplied(
-            effective_repair_block,
+            normalized_repair_block,
             original_data.stat_data,
             applied_data.stat_data
         );
         if (application_error) {
-            toastr.warning(_.escape(application_error), tr('runtime.incrementalRepair.title'));
-            return;
-        }
-        if (!is_modified) {
-            toastr.info(
-                tr('runtime.incrementalRepair.noEffectiveChanges'),
-                tr('runtime.incrementalRepair.title')
+            // Schema transformations and end-of-floor hooks can legitimately normalize values.
+            // Ask about the actual full-floor result; do not repeatedly run hooks or silently
+            // drop potentially dependent operations.
+            const actual_changes = collectIncrementalStateChanges(
+                original_data.stat_data,
+                applied_data.stat_data
             );
-            return;
-        }
-        mergeIncrementalRepairMetadata(original_data, applied_data, effective_repair_block);
-
-        const repaired_content = mergeIncrementalRepairBlock(
-            anchor.message_content,
-            effective_repair_block
-        );
-        const applied_snapshot = snapshotPersistedMvuData(applied_data);
-        try {
-            if (update_chat_variables) {
-                await persistMvuSnapshot(
-                    applied_snapshot,
-                    { type: 'chat' },
-                    original_chat_snapshot,
-                    () => anchorIdentityStillMatches(anchor)
-                );
-            }
-            await persistMvuSnapshot(
-                applied_snapshot,
-                { type: 'message', message_id },
-                original_message_snapshot,
-                () => anchorIdentityStillMatches(anchor)
+            const normalized_confirmation = await SillyTavern.callGenericPopup(
+                '<h3>确认整楼重算结果</h3><p>' +
+                    _.escape(application_error) +
+                    '</p><p>变量规则或结算事件改变了模型提出的值。以下是最终实际变化；确认后同时写回完整更新块与此状态。</p><pre style="white-space:pre-wrap;overflow-wrap:anywhere">' +
+                    _.escape(formatStateChanges(actual_changes)) +
+                    '</pre>',
+                SillyTavern.POPUP_TYPE.CONFIRM,
+                '',
+                {
+                    okButton: tr('runtime.incrementalRepair.applyButton'),
+                    cancelButton: tr('runtime.incrementalRepair.cancelButton'),
+                    allowVerticalScrolling: true,
+                    wide: true,
+                }
             );
-            if (!anchorIdentityStillMatches(anchor)) {
-                throw new Error('增量校正目标在正文写入前发生变化');
-            }
-            await setChatMessages([{ message_id, message: repaired_content }], {
-                refresh: 'affected',
-            });
-            await SillyTavern.saveChat();
-        } catch (error) {
-            await Promise.allSettled([
-                restoreMvuSnapshotIfOwned(
-                    applied_snapshot,
-                    original_message_snapshot,
-                    {
-                        type: 'message',
-                        message_id,
-                    },
-                    anchor
-                ),
-                ...(update_chat_variables
-                    ? [
-                          restoreMvuSnapshotIfOwned(
-                              applied_snapshot,
-                              original_chat_snapshot,
-                              {
-                                  type: 'chat',
-                              },
-                              anchor
-                          ),
-                      ]
-                    : []),
-            ]);
-            if (anchorIdentityStillMatches(anchor, repaired_content)) {
-                await setChatMessages([{ message_id, message: anchor.message_content }], {
-                    refresh: 'affected',
-                }).catch(() => undefined);
-            }
-            await SillyTavern.saveChat().catch(() => undefined);
-            throw error;
+            if (normalized_confirmation !== SillyTavern.POPUP_RESULT.AFFIRMATIVE) return;
         }
-
-        if (skipped_operation_paths.length > 0) {
+        if (
+            !anchorStillMatches(anchor) ||
+            !_.isEqual(getLastValidVariable(message_id), previous_variables)
+        ) {
             toastr.warning(
-                _.escape(
-                    `已跳过 ${skipped_operation_paths.length} 项未通过变量结构校验的修正：${skipped_operation_paths.join('、')}；其余修正已写入`
-                ),
+                tr('runtime.incrementalRepair.sourceChanged'),
                 tr('runtime.incrementalRepair.title')
             );
+            return;
         }
+        const applied_snapshot = snapshotPersistedMvuData(applied_data);
+        commitRepair(
+            anchor,
+            anchor.message_content,
+            repaired_content,
+            original_message_snapshot,
+            original_chat_snapshot,
+            applied_snapshot,
+            applied_snapshot
+        );
+        await saveAndRefreshRepair(anchor);
 
         await offerUndo(
             anchor,

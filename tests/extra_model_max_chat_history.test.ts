@@ -67,14 +67,13 @@ describe('extra model max chat history', () => {
         expect(task_prompt).toBeDefined();
     });
 
-    test('places a request-scoped reminder at the end of the default prompt', async () => {
+    test('keeps a request-scoped reminder before the preset tail', async () => {
         await generateExtraModel({ prompt_tail: 'INCREMENTAL_USER_FOCUS' });
 
-        const prompts = (globalThis as any).generateRaw.mock.calls[0][0].ordered_prompts;
-        expect(prompts.at(-1)).toEqual({
-            role: 'system',
-            content: 'INCREMENTAL_USER_FOCUS',
-        });
+        const config = (globalThis as any).generateRaw.mock.calls[0][0];
+        expect(config.user_input).toContain('INCREMENTAL_USER_FOCUS');
+        expect(config.ordered_prompts.at(-2)).toBe('user_input');
+        expect(config.ordered_prompts.at(-1).content).not.toBe('INCREMENTAL_USER_FOCUS');
     });
 
     test('accepts a bare JSONPatch for incremental repair requests', async () => {
