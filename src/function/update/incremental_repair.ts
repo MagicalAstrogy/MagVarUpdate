@@ -374,7 +374,9 @@ export function verifyIncrementalRepairApplied(
                 if (
                     !Array.isArray(after_parent) ||
                     after_parent.length !== before_parent.length + 1 ||
-                    !_.isEqual(after_parent[index], operation.value)
+                    !(_.isPlainObject(operation.value) && _.isPlainObject(after_parent[index])
+                        ? _.isMatch(after_parent[index], operation.value)
+                        : _.isEqual(after_parent[index], operation.value))
                 ) {
                     return `插入操作未完整生效：${operation.path}`;
                 }
@@ -394,7 +396,9 @@ export function verifyIncrementalRepairApplied(
                 : after_value;
         const expected_value = operation.value;
         const value_matches =
-            _.isPlainObject(expected_value) && _.isPlainObject(effective_after_value)
+            operation.op === 'insert' &&
+            _.isPlainObject(expected_value) &&
+            _.isPlainObject(effective_after_value)
                 ? _.isMatch(effective_after_value, expected_value)
                 : _.isEqual(effective_after_value, expected_value);
         if (!_.has(after_stat_data, segments) || !value_matches) {
@@ -511,9 +515,11 @@ function anchorStillMatches(anchor: RepairAnchor): boolean {
 async function persistMvuSnapshot(
     source: PersistedMvuSnapshot,
     target: { type: 'chat' } | { type: 'message'; message_id: number },
-    expected?: PersistedMvuSnapshot
+    expected?: PersistedMvuSnapshot,
+    owns_target?: () => boolean
 ) {
     const updater = (data: Record<string, any>) => {
+        if (owns_target && !owns_target()) throw new Error('增量校正目标已切换');
         if (expected && !persistedSnapshotMatches(data, expected)) {
             throw new Error('增量校正目标在写入期间发生变化');
         }
@@ -529,9 +535,15 @@ async function persistMvuSnapshot(
 async function restoreMvuSnapshotIfOwned(
     applied: PersistedMvuSnapshot,
     original: PersistedMvuSnapshot,
-    target: { type: 'chat' } | { type: 'message'; message_id: number }
+    target: { type: 'chat' } | { type: 'message'; message_id: number },
+    anchor: RepairAnchor
 ) {
     await updateVariablesWith((data: Record<string, any>) => {
+        if (
+            SillyTavern.getCurrentChatId() !== anchor.chat_id ||
+            (target.type === 'message' && getSwipeId(anchor.message_id) !== anchor.swipe_id)
+        )
+            return data;
         const current = snapshotPersistedMvuData(data);
         if (_.isEqual(current, original)) return data;
         if (!_.isEqual(current, applied)) return data;
@@ -584,15 +596,19 @@ async function offerUndo(
                     await persistMvuSnapshot(
                         original_message_variables,
                         { type: 'message', message_id: anchor.message_id },
-                        applied_variables
+                        applied_variables,
+                        () => anchorIdentityStillMatches(anchor, repaired_content)
                     );
                     if (anchor.update_chat_variables) {
                         await persistMvuSnapshot(
                             original_chat_variables,
                             { type: 'chat' },
-                            applied_variables
+                            applied_variables,
+                            () => anchorIdentityStillMatches(anchor, repaired_content)
                         );
                     }
+                    if (!anchorIdentityStillMatches(anchor, repaired_content))
+                        throw new Error('撤销目标已变化');
                     await setChatMessages(
                         [{ message_id: anchor.message_id, message: anchor.message_content }],
                         { refresh: 'affected' }
@@ -605,24 +621,27 @@ async function offerUndo(
                 } catch (error) {
                     console.error('[MVU] incremental repair undo failed', error);
                     await Promise.allSettled([
-                        restoreMvuSnapshotIfOwned(original_message_variables, applied_variables, {
-                            type: 'message',
-                            message_id: anchor.message_id,
-                        }),
+                        restoreMvuSnapshotIfOwned(
+                            original_message_variables,
+                            applied_variables,
+                            {
+                                type: 'message',
+                                message_id: anchor.message_id,
+                            },
+                            anchor
+                        ),
                         ...(anchor.update_chat_variables
                             ? [
                                   restoreMvuSnapshotIfOwned(
                                       original_chat_variables,
                                       applied_variables,
-                                      { type: 'chat' }
+                                      { type: 'chat' },
+                                      anchor
                                   ),
                               ]
                             : []),
                     ]);
-                    if (
-                        getChatMessages(anchor.message_id).at(-1)?.message ===
-                        anchor.message_content
-                    ) {
+                    if (anchorIdentityStillMatches(anchor)) {
                         await setChatMessages(
                             [{ message_id: anchor.message_id, message: repaired_content }],
                             { refresh: 'affected' }
@@ -870,13 +889,15 @@ export async function runIncrementalExtraModelRepair() {
                 await persistMvuSnapshot(
                     applied_snapshot,
                     { type: 'chat' },
-                    original_chat_snapshot
+                    original_chat_snapshot,
+                    () => anchorIdentityStillMatches(anchor)
                 );
             }
             await persistMvuSnapshot(
                 applied_snapshot,
                 { type: 'message', message_id },
-                original_message_snapshot
+                original_message_snapshot,
+                () => anchorIdentityStillMatches(anchor)
             );
             if (!anchorIdentityStillMatches(anchor)) {
                 throw new Error('增量校正目标在正文写入前发生变化');
@@ -887,20 +908,29 @@ export async function runIncrementalExtraModelRepair() {
             await SillyTavern.saveChat();
         } catch (error) {
             await Promise.allSettled([
-                restoreMvuSnapshotIfOwned(applied_snapshot, original_message_snapshot, {
-                    type: 'message',
-                    message_id,
-                }),
+                restoreMvuSnapshotIfOwned(
+                    applied_snapshot,
+                    original_message_snapshot,
+                    {
+                        type: 'message',
+                        message_id,
+                    },
+                    anchor
+                ),
                 ...(update_chat_variables
                     ? [
-                          restoreMvuSnapshotIfOwned(applied_snapshot, original_chat_snapshot, {
-                              type: 'chat',
-                          }),
+                          restoreMvuSnapshotIfOwned(
+                              applied_snapshot,
+                              original_chat_snapshot,
+                              {
+                                  type: 'chat',
+                              },
+                              anchor
+                          ),
                       ]
                     : []),
             ]);
-            const latest_content = getChatMessages(message_id).at(-1)?.message;
-            if (latest_content === repaired_content) {
+            if (anchorIdentityStillMatches(anchor, repaired_content)) {
                 await setChatMessages([{ message_id, message: anchor.message_content }], {
                     refresh: 'affected',
                 }).catch(() => undefined);
