@@ -204,12 +204,22 @@ function cleanJsonPatchInner(inner: string): string {
         .trim();
 }
 
+function isJsonSafe(value: unknown): boolean {
+    if (value === null || typeof value === 'string' || typeof value === 'boolean') return true;
+    if (typeof value === 'number') return Number.isFinite(value);
+    if (Array.isArray(value)) return value.every(isJsonSafe);
+    if (_.isPlainObject(value)) return Object.values(value as object).every(isJsonSafe);
+    return false;
+}
+
 function parseIncrementalRepairPatch(repair_block: string): IncrementalRepairOperation[] | null {
     const matches = [...repair_block.matchAll(JSON_PATCH_BLOCK_RE)];
     if (matches.length !== 1) return null;
     try {
         const patch = parseString(cleanJsonPatchInner(matches[0][1]));
-        return isJsonPatch(patch) ? (patch as IncrementalRepairOperation[]) : null;
+        return isJsonSafe(patch) && isJsonPatch(patch)
+            ? (patch as IncrementalRepairOperation[])
+            : null;
     } catch {
         return null;
     }
@@ -228,7 +238,9 @@ function forbiddenPointerPath(path: string): boolean {
     return (
         !segments ||
         FORBIDDEN_ROOT_PATHS.has(segments[0]) ||
-        segments.some(segment => segment === '$internal' || segment === '$meta')
+        segments.some(segment =>
+            ['$internal', '$meta', '__proto__', 'prototype', 'constructor'].includes(segment)
+        )
     );
 }
 
@@ -339,7 +351,8 @@ export function normalizeAndValidateIncrementalRepairResult(repair_block: string
 
 export function validateIncrementalRepairAgainstState(
     repair_block: string,
-    stat_data: Record<string, unknown>
+    stat_data: Record<string, unknown>,
+    strict_set = false
 ): string | null {
     const patch = parseIncrementalRepairPatch(repair_block);
     if (!patch) return 'JSONPatch 内容无法解析';
@@ -347,6 +360,8 @@ export function validateIncrementalRepairAgainstState(
     for (const operation of patch) {
         const segments = jsonPointerSegments(operation.path);
         if (!segments) return `无效路径：${operation.path}`;
+        if (forbiddenPointerPath(operation.path))
+            return `禁止修改内部或原型路径：${operation.path}`;
         if (
             targets.some(target => {
                 const length = Math.min(target.length, segments.length);
@@ -362,13 +377,23 @@ export function validateIncrementalRepairAgainstState(
         }
         if (operation.op === 'replace' || operation.op === 'remove') {
             if (!_.has(stat_data, segments)) return `目标路径不存在：${operation.path}`;
-            if (
-                operation.op === 'replace' &&
-                isValueWithDescription(_.get(stat_data, segments)) &&
-                !Array.isArray(_.get(stat_data, segments)[0]) &&
-                isValueWithDescription(operation.value)
-            ) {
-                return `带描述变量只能替换实际值，不能替换 [值, 描述] 包装：${operation.path}`;
+            if (operation.op === 'replace') {
+                const current_value = _.get(stat_data, segments);
+                const is_described =
+                    !strict_set &&
+                    isValueWithDescription(current_value) &&
+                    !Array.isArray(current_value[0]);
+                if (is_described && isValueWithDescription(operation.value)) {
+                    return `带描述变量只能替换实际值，不能替换 [值, 描述] 包装：${operation.path}`;
+                }
+                const effective_value = is_described ? current_value[0] : current_value;
+                const requested_value =
+                    typeof effective_value === 'number' && typeof operation.value === 'string'
+                        ? Number(operation.value)
+                        : operation.value;
+                if (_.isEqual(effective_value, requested_value)) {
+                    return `目标已经是请求值，请省略重复替换：${operation.path}`;
+                }
             }
             continue;
         }
@@ -393,7 +418,8 @@ export function validateIncrementalRepairAgainstState(
 export function verifyIncrementalRepairApplied(
     repair_block: string,
     before_stat_data: Record<string, unknown>,
-    after_stat_data: Record<string, unknown>
+    after_stat_data: Record<string, unknown>,
+    strict_set = false
 ): string | null {
     const patch = parseIncrementalRepairPatch(repair_block);
     if (!patch) return 'JSONPatch 内容无法解析';
@@ -431,8 +457,10 @@ export function verifyIncrementalRepairApplied(
         const before_value = _.get(before_stat_data, segments);
         const after_value = _.get(after_stat_data, segments);
         const effective_after_value =
+            !strict_set &&
             Array.isArray(before_value) &&
             before_value.length === 2 &&
+            !Array.isArray(before_value[0]) &&
             typeof before_value[1] === 'string' &&
             Array.isArray(after_value) &&
             after_value.length === 2 &&
@@ -482,7 +510,7 @@ export function mergeIncrementalRepairMetadata(
 }
 
 function commandPreview(command: Command): string {
-    const path = _.escape(commandPath(command));
+    const path = _.escape(commandJsonPointer(command) ?? commandPath(command));
     const action_labels: Partial<Record<Command['type'], string>> = {
         set: '改为',
         insert: '新增',
@@ -773,7 +801,8 @@ export async function runIncrementalExtraModelRepair() {
                 const normalized = normalizeAndValidateIncrementalRepairResult(result);
                 const state_error = validateIncrementalRepairAgainstState(
                     normalized,
-                    original_data.stat_data
+                    original_data.stat_data,
+                    original_data.schema?.strictSet ?? false
                 );
                 if (state_error) throw new Error(state_error);
                 return normalized;
@@ -830,7 +859,8 @@ export async function runIncrementalExtraModelRepair() {
         }
         const state_error = validateIncrementalRepairAgainstState(
             normalized_repair_block,
-            original_data.stat_data
+            original_data.stat_data,
+            original_data.schema?.strictSet ?? false
         );
         if (state_error) {
             toastr.warning(_.escape(state_error), tr('runtime.incrementalRepair.title'));
@@ -901,7 +931,8 @@ export async function runIncrementalExtraModelRepair() {
         const application_error = verifyIncrementalRepairApplied(
             normalized_repair_block,
             original_data.stat_data,
-            applied_data.stat_data
+            applied_data.stat_data,
+            previous_variables.schema?.strictSet ?? false
         );
         if (application_error) {
             // Schema transformations and end-of-floor hooks can legitimately normalize values.
