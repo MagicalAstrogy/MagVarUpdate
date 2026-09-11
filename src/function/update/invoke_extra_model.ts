@@ -20,8 +20,14 @@ import {
 } from '@/function/request/extra_model_request_override';
 import { tr } from '@/i18n';
 import { useDataStore } from '@/store';
-import { normalizeBaseURL } from '@/util';
-import { literalYamlify, uuidv4 } from '@util/common';
+import { normalizeBaseURL, isJsonPatch } from '@/util';
+import {
+    cleanStructuredUpdate,
+    findUpdateMarkupBlocks,
+    isJsonSafe,
+    scanUpdateMarkup,
+} from './structured_update';
+import { literalYamlify, parseString, uuidv4 } from '@util/common';
 import { compare } from 'compare-versions';
 import YAML from 'yaml';
 
@@ -214,8 +220,6 @@ export interface ExtraModelInvocationOptions {
     user_input?: string;
     /** Legacy reminder option, appended to user_input without moving the preset tail. */
     prompt_tail?: string;
-    /** Accept a bare JSONPatch response and normalize it into an UpdateVariable block. */
-    allow_bare_json_patch?: boolean;
     /** Validate and optionally normalize each attempt before the retry strategy accepts it. */
     validate_result?: (result: string) => string;
 }
@@ -376,107 +380,69 @@ async function invokeExtraModel(
 ): Promise<string> {
     try {
         const result = await requestReply(generation_id, batch_id, options);
-        // Tags inside serialized JSON strings are values rather than response structure. Mask
-        // quoted content without changing string length so structural match indexes remain valid.
-        const structural_result = (() => {
-            // split('') preserves UTF-16 code-unit indexes used by RegExp match.index, including
-            // when prose before the patch contains emoji or other surrogate pairs.
-            const chars = result.split('');
-            let in_string = false;
-            let escaped = false;
-            for (let index = 0; index < chars.length; index++) {
-                const char = chars[index];
-                if (!in_string) {
-                    if (char === '"') in_string = true;
-                    continue;
-                }
-                if (escaped) {
-                    chars[index] = ' ';
-                    escaped = false;
-                } else if (char === '\\') {
-                    chars[index] = ' ';
-                    escaped = true;
-                } else if (char === '"') {
-                    in_string = false;
-                } else {
-                    chars[index] = ' ';
-                }
+        // Fallbacks are shared by ordinary parsing and incremental repair. Reasoning examples
+        // are ignored only outside structured data, preserving literal tags in payload strings.
+        const updates = findUpdateMarkupBlocks(result, 'update');
+        const update = updates.filter(block => block.closed).at(-1) ?? updates.at(-1);
+        let body = update ? result.slice(update.contentStart, update.contentEnd) : result;
+        let hasUpdateBody = !!update;
+        let patches = findUpdateMarkupBlocks(body, 'patch');
+        if (!patches.some(block => block.closed) && update) {
+            // A valid patch can follow an empty or invalid update wrapper.
+            patches = findUpdateMarkupBlocks(result, 'patch');
+            if (patches.some(block => block.closed)) {
+                body = result;
+                hasUpdateBody = false;
             }
-            return chars.join('');
-        })();
-
-        if (
-            options.allow_bare_json_patch &&
-            [...structural_result.matchAll(/<json_?patch\b[^>]*>/gi)].length > 1
-        ) {
-            throw new Error('增量校正返回了多个 JSONPatch 块，拒绝只采用其中一部分');
         }
-
-        const update_openings = [
-            ...structural_result.matchAll(/<(update(?:variable)?|variableupdate)\b[^>]*>/gi),
-        ];
-        if (options.allow_bare_json_patch && update_openings.length > 1) {
-            throw new Error('增量校正返回了多个 UpdateVariable 块，拒绝只采用其中一部分');
-        }
-        const update_opening = update_openings.at(-1);
-        let update_block: string | undefined;
-        if (update_opening?.index !== undefined) {
-            const content_start = update_opening.index + update_opening[0].length;
-            const remaining = result.slice(content_start);
-            const structural_remaining = structural_result.slice(content_start);
-            const closing = structural_remaining.match(
-                new RegExp(`<\\/${update_opening[1]}\\s*>`, 'i')
-            );
-            if (!closing && options.allow_bare_json_patch) {
-                throw new Error('增量校正的 UpdateVariable 标签未闭合');
+        if (patches.length) {
+            if (patches.some(block => !block.closed)) throw new Error('JSONPatch 标签未闭合');
+            if (options.validate_result && (patches.length !== 1 || updates.length > 1)) {
+                throw new Error('增量校正返回了多个更新块');
             }
-            update_block =
-                closing?.index === undefined ? remaining : remaining.slice(0, closing.index);
-        }
-        if (!update_block && options.allow_bare_json_patch) {
-            const patch_openings = [...structural_result.matchAll(/<json_?patch\b[^>]*>/gi)];
-            if (patch_openings.length > 1) {
-                throw new Error('增量校正返回了多个 JSONPatch 块，拒绝只采用其中一部分');
-            }
-            const patch_opening = patch_openings.at(-1);
-            if (patch_opening?.index !== undefined) {
-                const content_start = patch_opening.index + patch_opening[0].length;
-                const remaining = result.slice(content_start);
-                const structural_remaining = structural_result.slice(content_start);
-                const closing = structural_remaining.match(/<\/json_?patch\s*>/i);
-                if (!closing || closing.index === undefined) {
-                    throw new Error('增量校正的 JSONPatch 标签未闭合');
-                }
-                update_block = `<JSONPatch>${remaining.slice(0, closing.index)}</JSONPatch>`;
-            } else {
-                const formatted = extractFromFormattedOutput(result);
-                const formatted_match = formatted?.match(
-                    /^\s*<UpdateVariable\b[^>]*>([\s\S]*?)<\/UpdateVariable\s*>\s*$/i
+            for (const block of patches) {
+                const value = parseString(
+                    cleanStructuredUpdate(body.slice(block.contentStart, block.contentEnd))
                 );
-                update_block = formatted_match?.[1];
+                if (!isJsonPatch(value) || !isJsonSafe(value))
+                    throw new Error('JSONPatch 内容不合法或包含非有限值');
             }
+            // Preserve analysis and mixed legacy commands inside a real update block. A fallback
+            // patch outside that block must not import surrounding story/reasoning as commands.
+            let patchText = '';
+            let cursor = 0;
+            for (const block of patches) {
+                if (hasUpdateBody) patchText += body.slice(cursor, block.start);
+                else if (patchText) patchText += '\n';
+                patchText += `<JSONPatch>${body.slice(block.contentStart, block.contentEnd)}</JSONPatch>`;
+                cursor = block.end;
+            }
+            if (hasUpdateBody) patchText += body.slice(cursor);
+            return `<UpdateVariable>${patchText}</UpdateVariable>`;
         }
-        if (!update_block) {
-            throw new Error(
-                literalYamlify({
-                    [tr('runtime.extraModel.updateTagMissing')]: result,
-                })
-            );
-        }
-
-        const fn_call_match =
+        const scanned = scanUpdateMarkup(body);
+        const visible = scanned.visible;
+        // Legacy script commands remain supported, but never use examples from Think/Analysis.
+        if (
             /_\.(?:set|insert|assign|remove|unset|delete|add)\s*\([\s\S]*?\)\s*;/.test(
-                update_block
-            );
-        const json_patch_match = /json_?patch/i.test(update_block);
-        if (fn_call_match || json_patch_match) {
-            return `<UpdateVariable>${update_block}</UpdateVariable>`;
+                scanned.structural
+            )
+        ) {
+            return `<UpdateVariable>${visible}</UpdateVariable>`;
         }
-
+        // No JSONPatch wrapper: parse the whole remaining structured block (JSON/JSON5/YAML).
+        let structured;
+        try {
+            structured = parseString(cleanStructuredUpdate(visible));
+        } catch {
+            /* handled below */
+        }
+        if (structured !== undefined && isJsonSafe(structured)) {
+            const formatted = extractFromFormattedOutput(visible);
+            if (formatted) return formatted;
+        }
         throw new Error(
-            literalYamlify({
-                [tr('runtime.extraModel.updateCommandsInvalid')]: result,
-            })
+            literalYamlify({ [tr('runtime.extraModel.updateCommandsInvalid')]: result })
         );
     } finally {
         /* empty */

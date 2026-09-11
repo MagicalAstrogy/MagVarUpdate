@@ -3,6 +3,7 @@ import { tr } from '@/i18n';
 import { useDataStore } from '@/store';
 import { getLastValidVariable, isJsonPatch } from '@/util';
 import { parseString } from '@util/common';
+import { cleanStructuredUpdate, isJsonSafe } from './update/structured_update';
 
 /**
  * 最终的变量更新机制实际上是专门generate 一个新的请求，那个请求会通过 tool_call 直接更新变量。
@@ -383,12 +384,12 @@ function stripLeadingTagBlock(input: string, tagPattern: string): string {
 }
 
 function cleanStructuredPayload(input: string): string {
-    return input.replaceAll(/```.*/gm, '').trim();
+    return cleanStructuredUpdate(input);
 }
 
 function normalizeJsonPatchPayload(input: unknown): string | null {
     if (isJsonPatch(input)) {
-        return JSON.stringify(input, null, 2);
+        return isJsonSafe(input) ? JSON.stringify(input, null, 2) : null;
     }
     if (typeof input !== 'string') {
         return null;
@@ -401,7 +402,7 @@ function normalizeJsonPatchPayload(input: unknown): string | null {
     input_str = stripOuterTagBlock(input_str, 'json_?patch');
 
     const parsed = parseString(input_str);
-    if (!isJsonPatch(parsed)) {
+    if (!isJsonPatch(parsed) || !isJsonSafe(parsed)) {
         return null;
     }
     return JSON.stringify(parsed, null, 2);

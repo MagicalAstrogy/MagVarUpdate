@@ -13,14 +13,11 @@ import { useDataStore } from '@/store';
 import { getLastValidVariable, isJsonPatch } from '@/util';
 import { isMvuData, isValueWithDescription } from '@/variable_def';
 import { parseString } from '@util/common';
+import { cleanStructuredUpdate, findUpdateMarkupBlocks, isJsonSafe } from './structured_update';
 import { klona } from 'klona';
 
-const UPDATE_BLOCK_RE =
-    /<(?:update(?:variable)?|variableupdate)\b[^>]*>[\s\S]*?<\/(?:update(?:variable)?|variableupdate)\s*>/gi;
-const UPDATE_BLOCK_PART_RE = /<(?:update(?:variable)?|variableupdate)\b[^>]*>[\s\S]*$/i;
 const EMPTY_JSON_PATCH_RE =
     /<json_?patch\b[^>]*>\s*(?:```[^\n]*\s*)?\[\s*\](?:\s*```)?\s*<\/json_?patch\s*>/i;
-const JSON_PATCH_BLOCK_RE = /<json_?patch\b[^>]*>([\s\S]*?)<\/json_?patch\s*>/gi;
 const FORBIDDEN_ROOT_PATHS = new Set([
     '$internal',
     '$meta',
@@ -111,6 +108,71 @@ function formatStateChanges(changes: IncrementalStateChange[]): string {
         .join('\n');
 }
 
+function boundedStateValue(value: unknown, limit = 1000): string {
+    let result = '';
+    let truncated = false;
+    const ancestors = new Set<object>();
+    const append = (part: string) => {
+        const remaining = limit - result.length;
+        if (part.length > remaining) truncated = true;
+        result += part.slice(0, remaining);
+    };
+    const visit = (node: unknown, depth: number) => {
+        if (result.length >= limit || depth > 12) {
+            truncated = true;
+            return;
+        }
+        if (typeof node === 'string') {
+            if (node.length > limit) truncated = true;
+            append(JSON.stringify(node.slice(0, limit)));
+        } else if (node === null || typeof node !== 'object') {
+            append(String(node));
+        } else if (ancestors.has(node)) {
+            append('[循环引用]');
+        } else {
+            ancestors.add(node);
+            const array = Array.isArray(node);
+            append(array ? '[' : '{');
+            let first = true;
+            for (const key in node) {
+                if (!Object.prototype.hasOwnProperty.call(node, key)) continue;
+                if (result.length >= limit) {
+                    truncated = true;
+                    break;
+                }
+                if (!first) append(',');
+                first = false;
+                if (!array) {
+                    if (key.length > limit) truncated = true;
+                    append(JSON.stringify(key.slice(0, limit)) + ':');
+                }
+                visit((node as Record<string, unknown>)[key], depth + 1);
+            }
+            append(array ? ']' : '}');
+            ancestors.delete(node);
+        }
+    };
+    visit(value, 0);
+    return truncated ? result.slice(0, limit - 12) + '…[摘要已截断]' : result;
+}
+
+function formatBoundedStateChanges(changes: IncrementalStateChange[]): string {
+    if (!changes.length) return '（本楼尚无已落地变化）';
+    const budget = 12000;
+    let result = '';
+    let count = 0;
+    for (const change of changes) {
+        const path =
+            change.path.length > 256 ? change.path.slice(0, 256) + '…[路径截断]' : change.path;
+        const line = `${path}: ${boundedStateValue(change.before)} -> ${boundedStateValue(change.after)}\n`;
+        if (result.length + line.length > budget - 100) break;
+        result += line;
+        count++;
+    }
+    if (count < changes.length) result += `（另有 ${changes.length - count} 项未展示）\n`;
+    return result + '（摘要可能截断；完整变量与规则仍是核验依据，不得据此删除未展示数据。）';
+}
+
 export function buildIncrementalRepairTask(changes: IncrementalStateChange[]): string {
     return `<must>
 <incremental_repair_directive>
@@ -135,7 +197,7 @@ export function buildIncrementalRepairTask(changes: IncrementalStateChange[]): s
 </incremental_repair_directive>
 <incremental_repair_context>
 本楼已落地变化：
-${formatStateChanges(changes)}
+${formatBoundedStateChanges(changes)}
 </incremental_repair_context>
 </must>`;
 }
@@ -149,44 +211,10 @@ export function buildIncrementalRepairPromptTail(user_direction: string = ''): s
 </incremental_repair_final_check>`;
 }
 
-/** Mask JSON string contents while retaining UTF-16 offsets for wrapper matching. */
-function structuralMessage(message: string): string {
-    const chars = message.split('');
-    let in_patch = false;
-    let quoted = false;
-    let escaped = false;
-    for (let i = 0; i < chars.length; i++) {
-        if (in_patch && quoted) {
-            const char = chars[i];
-            chars[i] = ' ';
-            if (escaped) escaped = false;
-            else if (char === '\\') escaped = true;
-            else if (char === '"') quoted = false;
-            continue;
-        }
-        if (in_patch && chars[i] === '"') {
-            quoted = true;
-            chars[i] = ' ';
-        } else if (chars[i] === '<') {
-            const tag = message.slice(i).match(/^<(\/?)json_?patch\s*>/i);
-            if (tag) in_patch = tag[1] !== '/';
-        }
-    }
-    return chars.join('');
-}
-
-function completeUpdateBlocks(message: string) {
-    return [...structuralMessage(message).matchAll(UPDATE_BLOCK_RE)].map(match => ({
-        index: match.index!,
-        text: message.slice(match.index!, match.index! + match[0].length),
-    }));
-}
-
 export function extractLatestUpdateVariableBlock(message: string): string {
-    const complete = completeUpdateBlocks(message);
-    if (complete.length > 0) return complete.at(-1)?.text ?? '';
-    const partial = structuralMessage(message).match(UPDATE_BLOCK_PART_RE);
-    return partial?.index === undefined ? '' : message.slice(partial.index);
+    const blocks = findUpdateMarkupBlocks(message, 'update');
+    const block = blocks.filter(block => block.closed).at(-1) ?? blocks.at(-1);
+    return block ? message.slice(block.start, block.end) : '';
 }
 
 function extractUpdateBlockInner(block: string): string {
@@ -196,27 +224,13 @@ function extractUpdateBlockInner(block: string): string {
         .trim();
 }
 
-function cleanJsonPatchInner(inner: string): string {
-    return inner
-        .trim()
-        .replace(/^```(?:json)?\s*/i, '')
-        .replace(/\s*```$/i, '')
-        .trim();
-}
-
-function isJsonSafe(value: unknown): boolean {
-    if (value === null || typeof value === 'string' || typeof value === 'boolean') return true;
-    if (typeof value === 'number') return Number.isFinite(value);
-    if (Array.isArray(value)) return value.every(isJsonSafe);
-    if (_.isPlainObject(value)) return Object.values(value as object).every(isJsonSafe);
-    return false;
-}
-
 function parseIncrementalRepairPatch(repair_block: string): IncrementalRepairOperation[] | null {
-    const matches = [...repair_block.matchAll(JSON_PATCH_BLOCK_RE)];
-    if (matches.length !== 1) return null;
+    const blocks = findUpdateMarkupBlocks(repair_block, 'patch');
+    if (blocks.length !== 1 || !blocks[0].closed) return null;
     try {
-        const patch = parseString(cleanJsonPatchInner(matches[0][1]));
+        const patch = parseString(
+            cleanStructuredUpdate(repair_block.slice(blocks[0].contentStart, blocks[0].contentEnd))
+        );
         return isJsonSafe(patch) && isJsonPatch(patch)
             ? (patch as IncrementalRepairOperation[])
             : null;
@@ -244,6 +258,16 @@ function forbiddenPointerPath(path: string): boolean {
     );
 }
 
+function containsProtectedPayloadKey(value: unknown): boolean {
+    if (Array.isArray(value)) return value.some(containsProtectedPayloadKey);
+    if (!_.isPlainObject(value)) return false;
+    return Object.entries(value as Record<string, unknown>).some(
+        ([key, child]) =>
+            ['$internal', '$meta', '__proto__', 'prototype', 'constructor'].includes(key) ||
+            containsProtectedPayloadKey(child)
+    );
+}
+
 export function normalizeIncrementalRepairBlock(repair_block: string): string | null {
     const patch = parseIncrementalRepairPatch(repair_block);
     return patch
@@ -255,23 +279,12 @@ export function mergeIncrementalRepairBlock(message: string, repair_block: strin
     const repair_inner = extractUpdateBlockInner(repair_block);
     if (!repair_inner) return message;
 
-    const complete = completeUpdateBlocks(message);
-    const target = complete.at(-1);
-    if (target?.index !== undefined) {
-        const original_inner = extractUpdateBlockInner(target.text);
+    const blocks = findUpdateMarkupBlocks(message, 'update');
+    const target = blocks.at(-1);
+    if (target) {
+        const original_inner = message.slice(target.contentStart, target.contentEnd).trim();
         const merged = `<UpdateVariable>\n${original_inner}\n\n${repair_inner}\n</UpdateVariable>`;
-        return (
-            message.slice(0, target.index) +
-            merged +
-            message.slice(target.index + target.text.length)
-        );
-    }
-
-    const partial = structuralMessage(message).match(UPDATE_BLOCK_PART_RE);
-    if (partial?.index !== undefined) {
-        const original_inner = extractUpdateBlockInner(message.slice(partial.index));
-        const merged = `<UpdateVariable>\n${original_inner}\n\n${repair_inner}\n</UpdateVariable>`;
-        return message.slice(0, partial.index) + merged;
+        return message.slice(0, target.start) + merged + message.slice(target.end);
     }
 
     return `${message.trimEnd()}\n\n<UpdateVariable>\n${repair_inner}\n</UpdateVariable>`;
@@ -309,7 +322,7 @@ export function validateIncrementalRepairCommands(commands: Command[]): string |
 }
 
 export function validateIncrementalRepairBlock(repair_block: string): string | null {
-    const matches = [...repair_block.matchAll(JSON_PATCH_BLOCK_RE)];
+    const matches = findUpdateMarkupBlocks(repair_block, 'patch');
     if (matches.length !== 1) return '必须且只能返回一个 JSONPatch 补丁块';
 
     const patch = parseIncrementalRepairPatch(repair_block);
@@ -325,6 +338,9 @@ export function validateIncrementalRepairBlock(repair_block: string): string | n
         }
         if (forbiddenPointerPath(operation.path)) {
             return `禁止修改 MVU 内部路径：${operation.path}`;
+        }
+        if (containsProtectedPayloadKey(operation.value)) {
+            return `补丁值包含内部或原型字段：${operation.path}`;
         }
         if (
             (operation_name === 'replace' || operation_name === 'insert') &&
@@ -356,6 +372,10 @@ export function validateIncrementalRepairAgainstState(
 ): string | null {
     const patch = parseIncrementalRepairPatch(repair_block);
     if (!patch) return 'JSONPatch 内容无法解析';
+    for (const operation of patch) {
+        if (containsProtectedPayloadKey(operation.value))
+            return `补丁值包含内部或原型字段：${operation.path}`;
+    }
     const targets: string[][] = [];
     for (const operation of patch) {
         const segments = jsonPointerSegments(operation.path);
@@ -388,9 +408,13 @@ export function validateIncrementalRepairAgainstState(
                 }
                 const effective_value = is_described ? current_value[0] : current_value;
                 const requested_value =
-                    typeof effective_value === 'number' && typeof operation.value === 'string'
+                    typeof effective_value === 'number' &&
+                    (is_described ? operation.value !== null : typeof operation.value === 'string')
                         ? Number(operation.value)
                         : operation.value;
+                if (typeof requested_value === 'number' && !Number.isFinite(requested_value)) {
+                    return `数值目标不能转换为有限数值：${operation.path}`;
+                }
                 if (_.isEqual(effective_value, requested_value)) {
                     return `目标已经是请求值，请省略重复替换：${operation.path}`;
                 }
@@ -446,7 +470,7 @@ export function verifyIncrementalRepairApplied(
                     !Array.isArray(after_parent) ||
                     after_parent.length !== before_parent.length + 1 ||
                     !(_.isPlainObject(operation.value) && _.isPlainObject(after_parent[index])
-                        ? _.isMatch(after_parent[index], operation.value)
+                        ? _.isMatch(after_parent[index], operation.value as Record<string, unknown>)
                         : _.isEqual(after_parent[index], operation.value))
                 ) {
                     return `插入操作未完整生效：${operation.path}`;
@@ -472,7 +496,10 @@ export function verifyIncrementalRepairApplied(
             operation.op === 'insert' &&
             _.isPlainObject(expected_value) &&
             _.isPlainObject(effective_after_value)
-                ? _.isMatch(effective_after_value, expected_value)
+                ? _.isMatch(
+                      effective_after_value as Record<string, unknown>,
+                      expected_value as Record<string, unknown>
+                  )
                 : _.isEqual(effective_after_value, expected_value);
         if (!_.has(after_stat_data, segments) || !value_matches) {
             return `${operation.op === 'replace' ? '替换' : '插入'}操作未完整生效：${operation.path}`;
@@ -547,6 +574,50 @@ function persistedSnapshotMatches(
     expected: PersistedMvuSnapshot
 ): boolean {
     return _.isEqual(snapshotPersistedMvuData(source), expected);
+}
+
+/** Overlay only metadata edits made after the request anchor was captured.
+ * Replayed display/delta records otherwise remain derived from the complete floor.
+ */
+function rebaseMetadataRefreshes(
+    baseline: PersistedMvuSnapshot,
+    latest: PersistedMvuSnapshot,
+    target: PersistedMvuSnapshot,
+    keys: (typeof PERSISTED_MVU_KEYS)[number][] = [
+        'schema',
+        'display_data',
+        'delta_data',
+        'initialized_lorebooks',
+    ]
+) {
+    const overlay = (before: unknown, after: unknown, replayed: unknown): unknown => {
+        if (_.isEqual(before, after)) return replayed;
+        if (!_.isPlainObject(before) || !_.isPlainObject(after) || !_.isPlainObject(replayed))
+            return klona(after);
+        const result = { ...(replayed as Record<string, unknown>) };
+        const old = before as Record<string, unknown>;
+        const current = after as Record<string, unknown>;
+        for (const key of new Set([...Object.keys(old), ...Object.keys(current)])) {
+            const had = Object.prototype.hasOwnProperty.call(old, key);
+            const has = Object.prototype.hasOwnProperty.call(current, key);
+            if (had === has && _.isEqual(old[key], current[key])) continue;
+            if (!has) delete result[key];
+            else
+                Object.defineProperty(result, key, {
+                    value: had ? overlay(old[key], current[key], result[key]) : klona(current[key]),
+                    writable: true,
+                    enumerable: true,
+                    configurable: true,
+                });
+        }
+        return result;
+    };
+    for (const key of keys) {
+        if (_.has(baseline, key) === _.has(latest, key) && _.isEqual(baseline[key], latest[key]))
+            continue;
+        if (!_.has(latest, key)) delete target[key];
+        else target[key] = overlay(baseline[key], latest[key], target[key]);
+    }
 }
 
 function statDataMatchesSnapshot(
@@ -672,6 +743,7 @@ async function offerUndo(
     original_message_variables: PersistedMvuSnapshot,
     original_chat_variables: PersistedMvuSnapshot,
     applied_variables: PersistedMvuSnapshot,
+    applied_chat_variables: PersistedMvuSnapshot,
     repaired_content: string
 ) {
     toastr.success(
@@ -687,7 +759,7 @@ async function offerUndo(
                         repaired_content,
                         anchor.message_content,
                         applied_variables,
-                        applied_variables,
+                        applied_chat_variables,
                         original_message_variables,
                         original_chat_variables
                     );
@@ -796,7 +868,6 @@ export async function runIncrementalExtraModelRepair() {
         const repair_block = await invokeExtraModelWithStrategy({
             task: buildIncrementalRepairTask(changes),
             user_input: buildIncrementalRepairPromptTail(user_direction),
-            allow_bare_json_patch: true,
             validate_result: result => {
                 const normalized = normalizeAndValidateIncrementalRepairResult(result);
                 const state_error = validateIncrementalRepairAgainstState(
@@ -889,7 +960,7 @@ export async function runIncrementalExtraModelRepair() {
         }
 
         // Rebase harmless derived-metadata refreshes that happened while waiting. The complete
-        // rebased snapshots are still compared atomically by persistMvuSnapshot before writing.
+        // rebased snapshots are still compared atomically by commitRepair before writing.
         const latest_message_variables = getVariables({ type: 'message', message_id });
         const latest_chat_variables = getVariables({ type: 'chat' });
         if (!isMvuData(latest_message_variables)) {
@@ -917,6 +988,14 @@ export async function runIncrementalExtraModelRepair() {
             normalized_repair_block
         );
         const applied_data = klona(previous_variables);
+        // Do not lose current-floor lorebook initialization that cannot be reconstructed from
+        // the preceding floor. External schema changes must also be present during replay.
+        if (_.has(original_data, 'initialized_lorebooks')) {
+            applied_data.initialized_lorebooks = klona(original_data.initialized_lorebooks);
+        } else _.unset(applied_data, 'initialized_lorebooks');
+        rebaseMetadataRefreshes(anchor.message_variables, original_message_snapshot, applied_data, [
+            'schema',
+        ]);
         await updateVariables(repaired_content, applied_data);
         if (
             !anchorStillMatches(anchor) ||
@@ -928,11 +1007,19 @@ export async function runIncrementalExtraModelRepair() {
             );
             return;
         }
+        rebaseMetadataRefreshes(anchor.message_variables, original_message_snapshot, applied_data, [
+            'schema',
+            'display_data',
+            'delta_data',
+        ]);
+        if (!isJsonSafe(applied_data.stat_data)) {
+            throw new Error('整楼重算产生了非 JSON 安全的变量值，已拒绝写入');
+        }
         const application_error = verifyIncrementalRepairApplied(
             normalized_repair_block,
             original_data.stat_data,
             applied_data.stat_data,
-            previous_variables.schema?.strictSet ?? false
+            applied_data.schema?.strictSet ?? false
         );
         if (application_error) {
             // Schema transformations and end-of-floor hooks can legitimately normalize values.
@@ -970,6 +1057,12 @@ export async function runIncrementalExtraModelRepair() {
             return;
         }
         const applied_snapshot = snapshotPersistedMvuData(applied_data);
+        const applied_chat_snapshot = klona(applied_snapshot);
+        rebaseMetadataRefreshes(
+            anchor.chat_variables,
+            original_chat_snapshot,
+            applied_chat_snapshot
+        );
         commitRepair(
             anchor,
             anchor.message_content,
@@ -977,7 +1070,7 @@ export async function runIncrementalExtraModelRepair() {
             original_message_snapshot,
             original_chat_snapshot,
             applied_snapshot,
-            applied_snapshot
+            applied_chat_snapshot
         );
         await saveAndRefreshRepair(anchor);
 
@@ -986,6 +1079,7 @@ export async function runIncrementalExtraModelRepair() {
             original_message_snapshot,
             original_chat_snapshot,
             applied_snapshot,
+            applied_chat_snapshot,
             repaired_content
         );
     } catch (error) {

@@ -76,24 +76,24 @@ describe('extra model max chat history', () => {
         expect(config.ordered_prompts.at(-1).content).not.toBe('INCREMENTAL_USER_FOCUS');
     });
 
-    test('accepts a bare JSONPatch for incremental repair requests', async () => {
+    test('accepts a bare JSONPatch for ordinary extra-model requests', async () => {
         (globalThis as any).generateRaw.mockResolvedValueOnce(
             '<JSONPatch>[{"op":"replace","path":"/hp","value":72}]</JSONPatch>'
         );
 
-        const result = await generateExtraModel({ allow_bare_json_patch: true });
+        const result = await generateExtraModel();
 
         expect(result).toBe(
             '<UpdateVariable><JSONPatch>[{"op":"replace","path":"/hp","value":72}]</JSONPatch></UpdateVariable>'
         );
     });
 
-    test('normalizes a bare structured JSON response for incremental repair requests', async () => {
+    test('normalizes a bare structured JSON response without a repair option', async () => {
         (globalThis as any).generateRaw.mockResolvedValueOnce(
             '{"analysis":"checked","json_patch":[{"op":"replace","path":"/hp","value":72}]}'
         );
 
-        const result = await generateExtraModel({ allow_bare_json_patch: true });
+        const result = await generateExtraModel();
 
         expect(result).toContain('<UpdateVariable>');
         expect(result).toContain('<JSONPatch>');
@@ -105,7 +105,7 @@ describe('extra model max chat history', () => {
             '<UpdateVariable><JSONPatch>[]</JSONPatch><UpdateVariable><JSONPatch>[]</JSONPatch></UpdateVariable>'
         );
 
-        await expect(generateExtraModel({ allow_bare_json_patch: true })).rejects.toThrow(
+        await expect(generateExtraModel({ validate_result: result => result })).rejects.toThrow(
             '返回了多个'
         );
     });
