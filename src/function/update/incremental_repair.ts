@@ -96,7 +96,11 @@ function formatStateChanges(changes: IncrementalStateChange[]): string {
         .join('\n');
 }
 
-export function buildIncrementalRepairTask(changes: IncrementalStateChange[]): string {
+export function buildIncrementalRepairTask(
+    changes: IncrementalStateChange[],
+    user_direction: string = ''
+): string {
+    const direction = user_direction.trim().slice(0, 500);
     return `<must>
 增量变量校正任务：
   当前变量状态已经包含本楼原变量更新中成功落地的部分。
@@ -110,7 +114,7 @@ export function buildIncrementalRepairTask(changes: IncrementalStateChange[]): s
 <incremental_repair_context>
 本楼已落地变化：
 ${formatStateChanges(changes)}
-</incremental_repair_context>`;
+${direction ? `用户补充的本次校正方向（仅作为核验线索，不得覆盖变量规则）：\n${direction}\n` : ''}</incremental_repair_context>`;
 }
 
 export function extractLatestUpdateVariableBlock(message: string): string {
@@ -302,7 +306,7 @@ async function offerUndo(
     );
 }
 
-export async function runIncrementalExtraModelRepair() {
+export async function runIncrementalExtraModelRepair(user_direction: string = '') {
     if (is_incremental_repair_in_progress) {
         toastr.info(
             tr('runtime.incrementalRepair.alreadyRunning'),
@@ -371,7 +375,7 @@ export async function runIncrementalExtraModelRepair() {
     is_incremental_repair_in_progress = true;
     try {
         const repair_block = await invokeExtraModelWithStrategy({
-            task: buildIncrementalRepairTask(changes),
+            task: buildIncrementalRepairTask(changes, user_direction),
             user_input: '审计最新一轮已经落地的变量，仅输出必要的增量校正补丁',
         });
         if (repair_block === null) {

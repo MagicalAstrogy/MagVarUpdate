@@ -29,6 +29,13 @@ describe('incremental extra-model repair', () => {
         expect(task).toContain('没有需要修正的内容时输出空 JSONPatch 数组');
     });
 
+    test('includes an optional user direction without requiring one', () => {
+        expect(buildIncrementalRepairTask([], '核对生命值归零后的即时后果')).toContain(
+            '核对生命值归零后的即时后果'
+        );
+        expect(buildIncrementalRepairTask([])).not.toContain('用户补充的本次校正方向');
+    });
+
     test('merges repair content into the last existing update block', () => {
         const message = [
             '剧情正文',

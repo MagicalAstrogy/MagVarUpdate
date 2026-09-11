@@ -106,6 +106,14 @@ export const panelMessages = defineMessages({
         'zh-CN': '增量校正额外模型解析',
         en: 'Incrementally repair extra-model parsing',
     },
+    'panel.button.incrementalRepairHintLabel': {
+        'zh-CN': '本次增量校正方向（可选）',
+        en: 'Repair direction for this run (optional)',
+    },
+    'panel.button.incrementalRepairHintPlaceholder': {
+        'zh-CN': '例如：核对生命值归零后的状态，或补齐本轮明确获得的物品；留空则自动审计',
+        en: 'For example: check the zero-HP aftermath or add an item clearly obtained this floor; leave empty for automatic audit',
+    },
     'panel.button.clearOldFloorVariables': {
         'zh-CN': '清除旧楼层变量',
         en: 'Clear variables from old floors',
