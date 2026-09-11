@@ -91,26 +91,37 @@ function isSuperseded(task: AnalysisTask): boolean {
  * 窗口内的调用会推迟执行，其渲染事件可能早于任务启动，此时若等待渲染事件将永远等不到。
  */
 async function runAnalysis(task: AnalysisTask): Promise<void> {
-    if (SillyTavern.getCurrentChatId() !== task.chat_id) {
-        return;
-    }
-
-    let result: string | null = null;
     try {
-        result = await invokeExtraModelWithStrategy();
-    } catch (error) {
-        console.error('[MVU]额外模型解析失败:', error);
-    }
+        if (SillyTavern.getCurrentChatId() !== task.chat_id) {
+            return;
+        }
 
-    if (isSuperseded(task)) {
-        return;
-    }
+        let result: string | null = null;
+        try {
+            result = await invokeExtraModelWithStrategy();
+        } catch (error) {
+            console.error('[MVU]额外模型解析失败:', error);
+        }
 
-    task.applying = true;
-    try {
-        await applyAnalysisResult(task.chat_id, task.message_id, result);
+        if (isSuperseded(task)) {
+            return;
+        }
+
+        task.applying = true;
+        try {
+            await applyAnalysisResult(task.chat_id, task.message_id, result);
+        } catch (error) {
+            console.error('[MVU]变量更新写回失败:', error);
+            toastr.error(
+                tr('runtime.extraModel.updateFailed'),
+                tr('runtime.extraModel.updateFailedTitle')
+            );
+        } finally {
+            task.applying = false;
+        }
     } finally {
-        task.applying = false;
+        // 集中清理：任何提前返回（如解析期间切换聊天）都不得遗留 current，
+        // 否则后续手动重试会误判为「已有在途解析」而不发起请求。
         if (current === task) {
             current = null;
         }

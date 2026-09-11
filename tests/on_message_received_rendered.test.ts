@@ -264,4 +264,41 @@ describe('onMessageReceived 自动解析的生命周期', () => {
         expect(toast_error).toHaveBeenCalled();
         expect(mockHandleVariables).toHaveBeenCalledWith(2);
     });
+
+    test('排队任务因切换聊天提前返回后，手动重试仍能发起解析', async () => {
+        // 任务 A 占用解析，任务 B 在后排队（current = B）。
+        const a = Promise.withResolvers<string | null>();
+        mockInvoke.mockReturnValueOnce(a.promise);
+        await onMessageReceived(2);
+        await flushMicrotasks();
+        await onMessageReceived(3);
+        expect(mockInvoke).toHaveBeenCalledTimes(1);
+
+        // B 仍在排队时切走聊天：B 出队后首个校验即返回，不得遗留 current。
+        get_current_chat_id.mockReturnValue('chat-2');
+        a.resolve(UPDATE_RESULT);
+        await drainTasks();
+
+        // 切回原聊天手动重试同一楼层：必须真正发起解析，而不是等待已结束的任务。
+        get_current_chat_id.mockReturnValue(CHAT_ID);
+        mockInvoke.mockResolvedValue(UPDATE_RESULT);
+        await onMessageReceived(3, { force: true });
+        await drainTasks();
+
+        expect(mockInvoke).toHaveBeenCalledTimes(2);
+    });
+
+    test('写回过程中抛错时记录并提示，而不是静默吞掉', async () => {
+        mockHandleVariables.mockRejectedValue(new Error('handleVariables failed'));
+        const toast_error = jest.fn();
+        (globalThis as Record<string, unknown>).toastr = { error: toast_error };
+        const console_error = jest.spyOn(console, 'error').mockImplementation(() => undefined);
+
+        await onMessageReceived(2);
+        await drainTasks();
+
+        expect(console_error).toHaveBeenCalled();
+        expect(toast_error).toHaveBeenCalled();
+        console_error.mockRestore();
+    });
 });
