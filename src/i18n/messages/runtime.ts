@@ -150,6 +150,76 @@ export const runtimeMessages = defineMessages({
         'zh-CN': '解析完成',
         en: 'Parsing completed',
     },
+    'runtime.incrementalRepair.title': {
+        'zh-CN': '[MVU]增量校正变量',
+        en: '[MVU] Incremental variable repair',
+    },
+    'runtime.incrementalRepair.alreadyRunning': {
+        'zh-CN': '已有一项增量校正正在运行',
+        en: 'An incremental repair is already running',
+    },
+    'runtime.incrementalRepair.noUsableFloor': {
+        'zh-CN': '最新楼层或上一楼没有可用的 MVU 状态，无法进行增量校正',
+        en: 'The latest or previous floor has no usable MVU state',
+    },
+    'runtime.incrementalRepair.directionPrompt': {
+        'zh-CN':
+            '可选：补充本次增量校正方向；直接确认留空则自动审计。\n例如：核对生命值归零后的即时后果，或补齐本轮明确获得的物品。',
+        en: 'Optional: add a direction for this incremental repair. Confirm with an empty input for automatic audit.\nFor example: check the immediate zero-HP aftermath or add an item clearly obtained this floor.',
+    },
+    'runtime.incrementalRepair.requestFailed': {
+        'zh-CN': '增量校正请求失败或已被中止，未修改变量',
+        en: 'The incremental repair failed or was cancelled; variables were not changed',
+    },
+    'runtime.incrementalRepair.sourceChanged': {
+        'zh-CN': '等待期间聊天、楼层、回复版本或变量已经变化，本次结果已作废',
+        en: 'The chat, floor, reply version, or variables changed while waiting; this result was discarded',
+    },
+    'runtime.incrementalRepair.noChanges': {
+        'zh-CN': '模型核验通过，没有需要补充或纠正的变量',
+        en: 'The model found no missing or incorrect variables',
+    },
+    'runtime.incrementalRepair.invalidPatch': {
+        'zh-CN': '模型没有返回可识别的增量校正命令，未修改变量',
+        en: 'The model returned no recognizable incremental repair commands',
+    },
+    'runtime.incrementalRepair.noEffectiveChanges': {
+        'zh-CN': '校正补丁没有产生实际变化，未写入正文或变量',
+        en: 'The repair patch made no effective changes and was not written',
+    },
+    'runtime.incrementalRepair.previewTitle': {
+        'zh-CN': '增量校正预览',
+        en: 'Incremental repair preview',
+    },
+    'runtime.incrementalRepair.previewDescription': {
+        'zh-CN':
+            '模型提出 {count} 项修正。确认后合并本楼更新块，并从上一楼变量完整重算本楼，统一保存正文与变量。',
+        en: 'The model proposed {count} repairs. The merged floor will be replayed from the preceding variables, then saved together with its resulting state.',
+    },
+    'runtime.incrementalRepair.showRawPatch': {
+        'zh-CN': '查看原始补丁',
+        en: 'Show raw patch',
+    },
+    'runtime.incrementalRepair.applyButton': {
+        'zh-CN': '应用修正',
+        en: 'Apply repairs',
+    },
+    'runtime.incrementalRepair.cancelButton': {
+        'zh-CN': '取消',
+        en: 'Cancel',
+    },
+    'runtime.incrementalRepair.appliedClickToUndo': {
+        'zh-CN': '增量校正已应用并写回正文；点击此通知可撤销',
+        en: 'Incremental repair applied and written back; click this notice to undo',
+    },
+    'runtime.incrementalRepair.undoStateChanged': {
+        'zh-CN': '变量或回复在校正后又发生了变化，为避免覆盖新进度，不能直接撤销',
+        en: 'Variables or the reply changed after repair; undo was blocked to protect newer progress',
+    },
+    'runtime.incrementalRepair.undone': {
+        'zh-CN': '已撤销此次增量校正',
+        en: 'The incremental repair was undone',
+    },
     'runtime.button.cleanupPrompt': {
         'zh-CN':
             '<h4>清除旧楼层变量信息以减小聊天文件大小，避免手机崩溃</h4>请填写要保留变量信息的楼层数（如 10 为保留最后 10 层，每 [{interval}] 层保留一层作为快照）<br><strong>注意：你需要通过重演才能回退游玩到未保留变量信息的楼层</strong>',

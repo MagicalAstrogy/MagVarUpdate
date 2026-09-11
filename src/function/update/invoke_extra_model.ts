@@ -20,8 +20,14 @@ import {
 } from '@/function/request/extra_model_request_override';
 import { tr } from '@/i18n';
 import { useDataStore } from '@/store';
-import { normalizeBaseURL } from '@/util';
-import { literalYamlify, uuidv4 } from '@util/common';
+import { normalizeBaseURL, isJsonPatch } from '@/util';
+import {
+    cleanStructuredUpdate,
+    findUpdateMarkupBlocks,
+    isJsonSafe,
+    scanUpdateMarkup,
+} from './structured_update';
+import { literalYamlify, parseString, uuidv4 } from '@util/common';
 import { compare } from 'compare-versions';
 import YAML from 'yaml';
 
@@ -205,7 +211,22 @@ async function unsetExtraAnalysisStates() {
 
 let is_analysis_in_progress = false;
 
-export async function invokeExtraModelWithStrategy(): Promise<string | null> {
+export interface ExtraModelInvocationOptions {
+    /** Override the built-in full variable-update task. Kept for existing callers. */
+    task?: string;
+    /** Append task-specific constraints while retaining the built-in update task. */
+    task_suffix?: string;
+    /** Override the short user message sent to the extra model. */
+    user_input?: string;
+    /** Legacy reminder option, appended to user_input without moving the preset tail. */
+    prompt_tail?: string;
+    /** Validate and optionally normalize each attempt before the retry strategy accepts it. */
+    validate_result?: (result: string) => string;
+}
+
+export async function invokeExtraModelWithStrategy(
+    options: ExtraModelInvocationOptions = {}
+): Promise<string | null> {
     const batch_id = generateRandomHeader();
     if (is_analysis_in_progress) {
         return null;
@@ -218,7 +239,8 @@ export async function invokeExtraModelWithStrategy(): Promise<string | null> {
 
         const recordedInvoke = async (generation_id?: string) => {
             try {
-                return await invokeExtraModel(generation_id, batch_id);
+                const result = await invokeExtraModel(generation_id, batch_id, options);
+                return options.validate_result ? options.validate_result(result) : result;
             } catch (e) {
                 console.error(e);
                 throw e;
@@ -296,7 +318,7 @@ export async function invokeExtraModelWithStrategy(): Promise<string | null> {
                         tr('runtime.extraModel.updateInProgressTitle')
                     );
                 }
-                return concurrentInvoke(store.settings.额外模型解析配置.请求次数);
+                return await concurrentInvoke(store.settings.额外模型解析配置.请求次数);
             case '先请求一次, 失败后再同时请求多次':
                 if (store.settings.通知.额外模型解析中) {
                     toastr.info(
@@ -322,7 +344,7 @@ export async function invokeExtraModelWithStrategy(): Promise<string | null> {
                         tr('runtime.extraModel.updateInProgressTitle')
                     );
                 }
-                return concurrentInvoke(store.settings.额外模型解析配置.请求次数 - 1);
+                return await concurrentInvoke(store.settings.额外模型解析配置.请求次数 - 1);
             default:
                 return null;
         }
@@ -334,12 +356,14 @@ export async function invokeExtraModelWithStrategy(): Promise<string | null> {
 /**
  * @brief 调用额外模型解析，可能会抛出异常。
  */
-export async function generateExtraModel(): Promise<string | null> {
+export async function generateExtraModel(
+    options: ExtraModelInvocationOptions = {}
+): Promise<string | null> {
     let did_set_extra_analysis_states = false;
     try {
         await setExtraAnalysisStates();
         did_set_extra_analysis_states = true;
-        return await invokeExtraModel();
+        return await invokeExtraModel(undefined, undefined, options);
     } finally {
         if (did_set_extra_analysis_states) {
             await unsetExtraAnalysisStates();
@@ -349,39 +373,76 @@ export async function generateExtraModel(): Promise<string | null> {
 
 // 在点击停止按钮时，会触发异常 `Clicked stop button`: string ,需要专门处理。
 //仅内部使用，因为一部分状态的初始化是在外面执行的。
-async function invokeExtraModel(generation_id?: string, batch_id?: string): Promise<string> {
+async function invokeExtraModel(
+    generation_id?: string,
+    batch_id?: string,
+    options: ExtraModelInvocationOptions = {}
+): Promise<string> {
     try {
-        const result = await requestReply(generation_id, batch_id);
-
-        const tag = _([...result.matchAll(/<(update(?:variable)?|variableupdate)>/gi)]).last()?.[1];
-        if (!tag) {
-            throw new Error(
-                literalYamlify({
-                    [tr('runtime.extraModel.updateTagMissing')]: result,
-                })
-            );
+        const result = await requestReply(generation_id, batch_id, options);
+        // Fallbacks are shared by ordinary parsing and incremental repair. Reasoning examples
+        // are ignored only outside structured data, preserving literal tags in payload strings.
+        const updates = findUpdateMarkupBlocks(result, 'update');
+        const update = updates.filter(block => block.closed).at(-1) ?? updates.at(-1);
+        let body = update ? result.slice(update.contentStart, update.contentEnd) : result;
+        let hasUpdateBody = !!update;
+        let patches = findUpdateMarkupBlocks(body, 'patch');
+        if (!patches.some(block => block.closed) && update) {
+            // A valid patch can follow an empty or invalid update wrapper.
+            patches = findUpdateMarkupBlocks(result, 'patch');
+            if (patches.some(block => block.closed)) {
+                body = result;
+                hasUpdateBody = false;
+            }
         }
-
-        const start_index = result.lastIndexOf(`<${tag}>`);
-        const end_index = result.indexOf(`</${tag}>`, start_index);
-        const update_block = result.slice(
-            start_index + 2 + tag.length,
-            end_index === -1 ? undefined : end_index
-        );
-
-        const fn_call_match =
+        if (patches.length) {
+            if (patches.some(block => !block.closed)) throw new Error('JSONPatch 标签未闭合');
+            if (options.validate_result && (patches.length !== 1 || updates.length > 1)) {
+                throw new Error('增量校正返回了多个更新块');
+            }
+            for (const block of patches) {
+                const value = parseString(
+                    cleanStructuredUpdate(body.slice(block.contentStart, block.contentEnd))
+                );
+                if (!isJsonPatch(value) || !isJsonSafe(value))
+                    throw new Error('JSONPatch 内容不合法或包含非有限值');
+            }
+            // Preserve analysis and mixed legacy commands inside a real update block. A fallback
+            // patch outside that block must not import surrounding story/reasoning as commands.
+            let patchText = '';
+            let cursor = 0;
+            for (const block of patches) {
+                if (hasUpdateBody) patchText += body.slice(cursor, block.start);
+                else if (patchText) patchText += '\n';
+                patchText += `<JSONPatch>${body.slice(block.contentStart, block.contentEnd)}</JSONPatch>`;
+                cursor = block.end;
+            }
+            if (hasUpdateBody) patchText += body.slice(cursor);
+            return `<UpdateVariable>${patchText}</UpdateVariable>`;
+        }
+        const scanned = scanUpdateMarkup(body);
+        const visible = scanned.visible;
+        // Legacy script commands remain supported, but never use examples from Think/Analysis.
+        if (
             /_\.(?:set|insert|assign|remove|unset|delete|add)\s*\([\s\S]*?\)\s*;/.test(
-                update_block
-            );
-        const json_patch_match = /json_?patch/i.test(update_block);
-        if (fn_call_match || json_patch_match) {
-            return `<UpdateVariable>${update_block}</UpdateVariable>`;
+                scanned.structural
+            )
+        ) {
+            return `<UpdateVariable>${visible}</UpdateVariable>`;
         }
-
+        // No JSONPatch wrapper: parse the whole remaining structured block (JSON/JSON5/YAML).
+        let structured;
+        try {
+            structured = parseString(cleanStructuredUpdate(visible));
+        } catch {
+            /* handled below */
+        }
+        if (structured !== undefined && isJsonSafe(structured)) {
+            const formatted = extractFromFormattedOutput(visible);
+            if (formatted) return formatted;
+        }
         throw new Error(
-            literalYamlify({
-                [tr('runtime.extraModel.updateCommandsInvalid')]: result,
-            })
+            literalYamlify({ [tr('runtime.extraModel.updateCommandsInvalid')]: result })
         );
     } finally {
         /* empty */
@@ -431,7 +492,11 @@ function normalizeGenerateResultByResponseFormat(
     return normalizeGenerateResult(result);
 }
 
-async function requestReply(generation_id?: string, batch_id?: string): Promise<string> {
+async function requestReply(
+    generation_id?: string,
+    batch_id?: string,
+    options: ExtraModelInvocationOptions = {}
+): Promise<string> {
     const store = useDataStore();
     const response_format = store.settings.额外模型解析配置.应答格式;
     const is_v4_compatible_formatted_output = response_format === V4_COMPATIBLE_FORMATTED_OUTPUT;
@@ -440,7 +505,9 @@ async function requestReply(generation_id?: string, batch_id?: string): Promise<
     assertV4CompatibleFormattedOutputUsable();
 
     const config: GenerateRawConfig = {
-        user_input: '遵循<must>指令',
+        user_input: [options.user_input ?? '遵循<must>指令', options.prompt_tail?.trim()]
+            .filter(Boolean)
+            .join('\n'),
         max_chat_history: store.settings.额外模型解析配置.max_chat_history,
         should_stream: store.settings.额外模型解析配置.兼容假流式,
         generation_id,
@@ -478,7 +545,10 @@ async function requestReply(generation_id?: string, batch_id?: string): Promise<
         }
     }
 
-    let task = decoded_extra_model_task;
+    let task = options.task ?? decoded_extra_model_task;
+    if (options.task_suffix) {
+        task += `\n${options.task_suffix}`;
+    }
     if (response_format === '工具调用') {
         task += `\n use \`${MVU_TOOL_DEFINITION.function.name}\` tool to update variables.`;
         store.runtimes.is_function_call_enabled = true;
@@ -539,10 +609,12 @@ async function requestReply(generation_id?: string, batch_id?: string): Promise<
 
     if (store.settings.额外模型解析配置.破限方案 === '使用其他预设') {
         const preset = getExtraModelPreset(store.settings.额外模型解析配置.其他预设名称);
-        const { ordered_prompts, injects, request_overrides } = buildOtherPresetGenerateConfig(
-            preset,
-            task
-        );
+        const {
+            ordered_prompts: preset_ordered_prompts,
+            injects,
+            request_overrides,
+        } = buildOtherPresetGenerateConfig(preset, task);
+        const ordered_prompts = preset_ordered_prompts;
 
         if (store.settings.额外模型解析配置.模型来源 === '与插头相同') {
             setExtraModelRequestOverrides(request_overrides);

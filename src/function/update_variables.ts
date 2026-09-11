@@ -18,6 +18,11 @@ import {
     variable_events,
 } from '@/variable_def';
 import { parseString } from '@util/common';
+import {
+    cleanStructuredUpdate,
+    findUpdateMarkupBlocks,
+    scanUpdateMarkup,
+} from './update/structured_update';
 import { klona } from 'klona';
 import * as math from 'mathjs';
 
@@ -194,7 +199,7 @@ type CommandNames = 'set' | 'insert' | 'assign' | 'remove' | 'unset' | 'delete' 
  */
 // 接口定义：用于统一不同命令的结构
 // 新增：Command 接口，比 SetCommand 更通用
-interface Command {
+export interface Command {
     type: CommandNames;
     full_match: string;
     args: string[];
@@ -291,14 +296,13 @@ function extractJsonPatch(patch: any): Command[] {
 export function extractCommands(inputText: string): Command[] {
     // TODO: 应该按照消息中更新命令出现的顺序来排列 json_patch 和自定义命令
     const results: (Command & { $index: number })[] = _.concat(
-        [
-            ...inputText.matchAll(
-                /<(json_?patch)>(?:\s*```.*)?((?:(?!<json_?patch>)[\s\S])*?)(?:```\s*)?<\/\1>/gim
-            ),
-        ]
-            .map(match => ({
-                index: match.index ?? 0,
-                string: match[2].trim(),
+        findUpdateMarkupBlocks(inputText, 'patch')
+            .filter(block => block.closed)
+            .map(block => ({
+                index: block.start,
+                string: cleanStructuredUpdate(
+                    inputText.slice(block.contentStart, block.contentEnd)
+                ),
             }))
             .flatMap(({ index, string }): (Command & { $index: number })[] => {
                 try {
@@ -318,11 +322,18 @@ export function extractCommands(inputText: string): Command[] {
             })
     );
 
+    // Hide structured blocks and reasoning from the legacy-command finder while keeping offsets.
+    // A script-looking string inside JSONPatch is data, not a second command to execute.
+    const legacy_chars = scanUpdateMarkup(inputText).visible.split('');
+    for (const block of findUpdateMarkupBlocks(inputText, 'patch')) {
+        legacy_chars.fill(' ', block.start, block.end);
+    }
+    const legacy_text = legacy_chars.join('');
     let i = 0;
     while (i < inputText.length) {
         // 循环处理整个输入文本，直到找不到更多命令
         // 使用正则匹配 _.set(、_.assign(、_.remove( 或 _.add(，重构后支持多种命令
-        const setMatch = inputText
+        const setMatch = legacy_text
             .substring(i)
             .match(/_\.(set|insert|assign|remove|unset|delete|add)\(/);
         if (!setMatch || setMatch.index === undefined) {

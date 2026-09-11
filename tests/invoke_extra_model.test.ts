@@ -65,6 +65,14 @@ describe('extractFromToolCall', () => {
         expect(extractFromToolCall(toolCalls)).toBeNull();
     });
 
+    test('accepts an empty JSONPatch array as a no-op', () => {
+        const args = JSON.stringify({ delta: '[]', analysis: 'no changes' });
+        const toolCalls = makeToolCalls(args);
+        const result = extractFromToolCall(toolCalls);
+        expect(result).toContain('<JSONPatch>');
+        expect(result).toContain('[]');
+    });
+
     test('extracts from the last matching call in the first batch', () => {
         const firstArgs = JSON.stringify({
             delta: '[{"op":"replace","path":"/first","value":1}]',

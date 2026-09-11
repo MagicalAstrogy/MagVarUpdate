@@ -102,6 +102,10 @@ export const panelMessages = defineMessages({
         'zh-CN': '重试额外模型解析',
         en: 'Retry extra-model parsing',
     },
+    'panel.button.incrementalRepairExtraModelParsing': {
+        'zh-CN': '增量校正额外模型解析',
+        en: 'Incrementally repair extra-model parsing',
+    },
     'panel.button.clearOldFloorVariables': {
         'zh-CN': '清除旧楼层变量',
         en: 'Clear variables from old floors',

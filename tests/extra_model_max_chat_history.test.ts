@@ -38,6 +38,100 @@ describe('extra model max chat history', () => {
         );
     });
 
+    test('allows a request-scoped task and user input override', async () => {
+        await generateExtraModel({
+            task: 'CUSTOM_INCREMENTAL_REPAIR_TASK',
+            user_input: 'CUSTOM_INCREMENTAL_REPAIR_INPUT',
+        });
+
+        const config = (globalThis as any).generateRaw.mock.calls[0][0];
+        expect(config.user_input).toBe('CUSTOM_INCREMENTAL_REPAIR_INPUT');
+        expect(config.ordered_prompts).toContainEqual({
+            role: 'system',
+            content: 'CUSTOM_INCREMENTAL_REPAIR_TASK',
+        });
+    });
+
+    test('appends a request-scoped suffix to the built-in task', async () => {
+        await generateExtraModel({ task_suffix: 'INCREMENTAL_ONLY_SUFFIX' });
+
+        const config = (globalThis as any).generateRaw.mock.calls[0][0];
+        const task_prompt = config.ordered_prompts.find(
+            (prompt: unknown) =>
+                typeof prompt === 'object' &&
+                prompt !== null &&
+                'content' in prompt &&
+                typeof prompt.content === 'string' &&
+                prompt.content.includes('INCREMENTAL_ONLY_SUFFIX')
+        );
+        expect(task_prompt).toBeDefined();
+    });
+
+    test('keeps a request-scoped reminder before the preset tail', async () => {
+        await generateExtraModel({ prompt_tail: 'INCREMENTAL_USER_FOCUS' });
+
+        const config = (globalThis as any).generateRaw.mock.calls[0][0];
+        expect(config.user_input).toContain('INCREMENTAL_USER_FOCUS');
+        expect(config.ordered_prompts.at(-2)).toBe('user_input');
+        expect(config.ordered_prompts.at(-1).content).not.toBe('INCREMENTAL_USER_FOCUS');
+    });
+
+    test('accepts a bare JSONPatch for ordinary extra-model requests', async () => {
+        (globalThis as any).generateRaw.mockResolvedValueOnce(
+            '<JSONPatch>[{"op":"replace","path":"/hp","value":72}]</JSONPatch>'
+        );
+
+        const result = await generateExtraModel();
+
+        expect(result).toBe(
+            '<UpdateVariable><JSONPatch>[{"op":"replace","path":"/hp","value":72}]</JSONPatch></UpdateVariable>'
+        );
+    });
+
+    test('normalizes a bare structured JSON response without a repair option', async () => {
+        (globalThis as any).generateRaw.mockResolvedValueOnce(
+            '{"analysis":"checked","json_patch":[{"op":"replace","path":"/hp","value":72}]}'
+        );
+
+        const result = await generateExtraModel();
+
+        expect(result).toContain('<UpdateVariable>');
+        expect(result).toContain('<JSONPatch>');
+        expect(result).toContain('"path": "/hp"');
+    });
+
+    test('rejects multiple or restarted update wrappers in incremental mode', async () => {
+        (globalThis as any).generateRaw.mockResolvedValueOnce(
+            '<UpdateVariable><JSONPatch>[]</JSONPatch><UpdateVariable><JSONPatch>[]</JSONPatch></UpdateVariable>'
+        );
+
+        await expect(generateExtraModel({ validate_result: result => result })).rejects.toThrow(
+            '返回了多个'
+        );
+    });
+
+    test('retries when request-scoped result validation rejects an attempt', async () => {
+        const store = useDataStore();
+        store.settings.额外模型解析配置.请求方式 = '依次请求，失败后重试';
+        store.settings.额外模型解析配置.请求次数 = 2;
+        store.settings.通知.额外模型解析中 = false;
+        (globalThis as any).generateRaw
+            .mockResolvedValueOnce('<UpdateVariable><JSONPatch>[]</JSONPatch></UpdateVariable>')
+            .mockResolvedValueOnce(
+                '<UpdateVariable><JSONPatch>[{"op":"replace","path":"/hp","value":72}]</JSONPatch></UpdateVariable>'
+            );
+        const validate_result = jest.fn((result: string) => {
+            if (result.includes('[]')) throw new Error('invalid attempt');
+            return result;
+        });
+
+        const result = await invokeExtraModelWithStrategy({ validate_result });
+
+        expect((globalThis as any).generateRaw).toHaveBeenCalledTimes(2);
+        expect(validate_result).toHaveBeenCalledTimes(2);
+        expect(result).toContain('"value":72');
+    });
+
     test.each(['聊天消息', '格式化输出'] as const)(
         'passes an empty tools list for %s requests on supported TavernHelper versions',
         async response_format => {
