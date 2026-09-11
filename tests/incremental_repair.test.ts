@@ -207,7 +207,8 @@ describe('incremental extra-model repair', () => {
                 display_data: { hp: '100->72 (json_patch)', infection: '0->30 (json_patch)' },
                 delta_data: { hp: '100->72 (json_patch)', infection: '0->30 (json_patch)' },
             },
-            applied
+            applied,
+            '<JSONPatch>[{"op":"replace","path":"/hp","value":64}]</JSONPatch>'
         );
         expect(applied).toEqual({
             display_data: { hp: '72->64 (json_patch)', infection: '0->30 (json_patch)' },

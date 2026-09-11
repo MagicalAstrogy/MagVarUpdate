@@ -392,10 +392,12 @@ export function verifyIncrementalRepairApplied(
             typeof after_value[1] === 'string'
                 ? after_value[0]
                 : after_value;
-        if (
-            !_.has(after_stat_data, segments) ||
-            !_.isEqual(effective_after_value, operation.value)
-        ) {
+        const expected_value = operation.value;
+        const value_matches =
+            _.isPlainObject(expected_value) && _.isPlainObject(effective_after_value)
+                ? _.isMatch(effective_after_value, expected_value)
+                : _.isEqual(effective_after_value, expected_value);
+        if (!_.has(after_stat_data, segments) || !value_matches) {
             return `${operation.op === 'replace' ? '替换' : '插入'}操作未完整生效：${operation.path}`;
         }
     }
@@ -404,27 +406,28 @@ export function verifyIncrementalRepairApplied(
 
 export function mergeIncrementalRepairMetadata(
     original_data: Record<string, any>,
-    applied_data: Record<string, any>
+    applied_data: Record<string, any>,
+    repair_block: string
 ) {
-    const repair_delta = applied_data.delta_data;
     const merged_delta = klona(original_data.delta_data ?? {});
     const merged_display = klona(original_data.display_data ?? applied_data.display_data ?? {});
-
-    const mergeLeaves = (node: unknown, path: string[]) => {
-        if (_.isPlainObject(node)) {
-            for (const [key, value] of Object.entries(node as Record<string, unknown>)) {
-                mergeLeaves(value, [...path, key]);
-            }
-            return;
-        }
-        if (path.length === 0) return;
-        _.set(merged_delta, path, klona(node));
-        if (_.has(applied_data.display_data, path)) {
-            _.set(merged_display, path, klona(_.get(applied_data.display_data, path)));
-        }
+    const patch = parseIncrementalRepairPatch(repair_block) ?? [];
+    const readMetadata = (source: unknown, path: string[]) => {
+        if (!_.isObject(source)) return undefined;
+        return path.length === 0 ? _.get(source, ['']) : _.get(source, path);
     };
 
-    if (repair_delta !== undefined) mergeLeaves(repair_delta, []);
+    for (const operation of patch) {
+        const target_path = jsonPointerSegments(operation.path);
+        if (!target_path) continue;
+        // Object inserts are recorded at the parent path by updateVariables. Relocate the
+        // generated scalar record to the inserted key so existing sibling records survive.
+        const generated_path = operation.op === 'insert' ? target_path.slice(0, -1) : target_path;
+        const delta_value = readMetadata(applied_data.delta_data, generated_path);
+        const display_value = readMetadata(applied_data.display_data, generated_path);
+        if (delta_value !== undefined) _.set(merged_delta, target_path, klona(delta_value));
+        if (display_value !== undefined) _.set(merged_display, target_path, klona(display_value));
+    }
     applied_data.delta_data = merged_delta;
     applied_data.display_data = merged_display;
 }
@@ -469,7 +472,17 @@ function persistedSnapshotMatches(
     return _.isEqual(snapshotPersistedMvuData(source), expected);
 }
 
-function anchorStillMatches(anchor: RepairAnchor): boolean {
+function statDataMatchesSnapshot(
+    source: Record<string, unknown>,
+    expected: PersistedMvuSnapshot
+): boolean {
+    return _.isEqual(_.get(source, 'stat_data'), expected.stat_data);
+}
+
+function anchorIdentityStillMatches(
+    anchor: RepairAnchor,
+    expected_content = anchor.message_content
+) {
     if (SillyTavern.getCurrentChatId() !== anchor.chat_id) return false;
     if (getLastMessageId() !== anchor.message_id) return false;
     if (getSwipeId(anchor.message_id) !== anchor.swipe_id) return false;
@@ -477,13 +490,20 @@ function anchorStillMatches(anchor: RepairAnchor): boolean {
         return false;
     }
     const current_message = getChatMessages(anchor.message_id).at(-1);
-    if (current_message?.message !== anchor.message_content) return false;
+    return current_message?.message === expected_content;
+}
+
+function anchorStillMatches(anchor: RepairAnchor): boolean {
+    if (!anchorIdentityStillMatches(anchor)) return false;
     const current_variables = getVariables({ type: 'message', message_id: anchor.message_id });
     if (!isMvuData(current_variables)) return false;
-    if (!persistedSnapshotMatches(current_variables, anchor.message_variables)) return false;
+    // schema/display_data/delta_data/initialized_lorebooks may be normalized by MVU or other
+    // extensions while the model request is pending. They are rebased immediately before apply;
+    // only actual state changes invalidate the pending result here.
+    if (!statDataMatchesSnapshot(current_variables, anchor.message_variables)) return false;
     if (anchor.update_chat_variables) {
         const current_chat_variables = getVariables({ type: 'chat' });
-        if (!persistedSnapshotMatches(current_chat_variables, anchor.chat_variables)) return false;
+        if (!statDataMatchesSnapshot(current_chat_variables, anchor.chat_variables)) return false;
     }
     return true;
 }
@@ -668,11 +688,11 @@ export async function runIncrementalExtraModelRepair() {
         return;
     }
 
-    const original_data = klona(current_variables);
+    let original_data = klona(current_variables);
     const original_chat_variables = getVariables({ type: 'chat' });
     const update_chat_variables = store.effective_settings.兼容性.更新到聊天变量;
-    const original_message_snapshot = snapshotPersistedMvuData(current_variables);
-    const original_chat_snapshot = snapshotPersistedMvuData(original_chat_variables);
+    let original_message_snapshot = snapshotPersistedMvuData(current_variables);
+    let original_chat_snapshot = snapshotPersistedMvuData(original_chat_variables);
     const anchor: RepairAnchor = {
         chat_id: SillyTavern.getCurrentChatId(),
         message_id,
@@ -797,6 +817,21 @@ export async function runIncrementalExtraModelRepair() {
             return;
         }
 
+        // Rebase harmless derived-metadata refreshes that happened while waiting. The complete
+        // rebased snapshots are still compared atomically by persistMvuSnapshot before writing.
+        const latest_message_variables = getVariables({ type: 'message', message_id });
+        const latest_chat_variables = getVariables({ type: 'chat' });
+        if (!isMvuData(latest_message_variables)) {
+            toastr.warning(
+                tr('runtime.incrementalRepair.sourceChanged'),
+                tr('runtime.incrementalRepair.title')
+            );
+            return;
+        }
+        original_data = klona(latest_message_variables);
+        original_message_snapshot = snapshotPersistedMvuData(latest_message_variables);
+        original_chat_snapshot = snapshotPersistedMvuData(latest_chat_variables);
+
         const applied_data = klona(original_data);
         const is_modified = await updateVariables(normalized_repair_block, applied_data);
         // updateVariables awaits hooks; the player can switch floors while they run.
@@ -823,7 +858,7 @@ export async function runIncrementalExtraModelRepair() {
             toastr.warning(_.escape(application_error), tr('runtime.incrementalRepair.title'));
             return;
         }
-        mergeIncrementalRepairMetadata(original_data, applied_data);
+        mergeIncrementalRepairMetadata(original_data, applied_data, normalized_repair_block);
 
         const repaired_content = mergeIncrementalRepairBlock(
             anchor.message_content,
@@ -843,26 +878,34 @@ export async function runIncrementalExtraModelRepair() {
                 { type: 'message', message_id },
                 original_message_snapshot
             );
+            if (!anchorIdentityStillMatches(anchor)) {
+                throw new Error('增量校正目标在正文写入前发生变化');
+            }
             await setChatMessages([{ message_id, message: repaired_content }], {
                 refresh: 'affected',
             });
             await SillyTavern.saveChat();
         } catch (error) {
-            await restoreMvuSnapshotIfOwned(applied_snapshot, original_message_snapshot, {
-                type: 'message',
-                message_id,
-            });
-            if (update_chat_variables) {
-                await restoreMvuSnapshotIfOwned(applied_snapshot, original_chat_snapshot, {
-                    type: 'chat',
-                });
-            }
+            await Promise.allSettled([
+                restoreMvuSnapshotIfOwned(applied_snapshot, original_message_snapshot, {
+                    type: 'message',
+                    message_id,
+                }),
+                ...(update_chat_variables
+                    ? [
+                          restoreMvuSnapshotIfOwned(applied_snapshot, original_chat_snapshot, {
+                              type: 'chat',
+                          }),
+                      ]
+                    : []),
+            ]);
             const latest_content = getChatMessages(message_id).at(-1)?.message;
             if (latest_content === repaired_content) {
                 await setChatMessages([{ message_id, message: anchor.message_content }], {
                     refresh: 'affected',
-                });
+                }).catch(() => undefined);
             }
+            await SillyTavern.saveChat().catch(() => undefined);
             throw error;
         }
 

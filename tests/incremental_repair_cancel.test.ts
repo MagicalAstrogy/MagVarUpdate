@@ -52,7 +52,7 @@ describe('incremental repair input cancellation', () => {
     });
 
     test.each(['schema', 'display_data', 'delta_data', 'initialized_lorebooks'])(
-        'rejects changed %s while the input popup is open',
+        'allows derived %s refreshes while the input popup is open',
         async key => {
             (SillyTavern.callGenericPopup as jest.Mock).mockImplementation(async () => {
                 const data = getVariables({ type: 'message', message_id: 1 });
@@ -60,10 +60,21 @@ describe('incremental repair input cancellation', () => {
                 return '';
             });
             await runIncrementalExtraModelRepair();
-            expect(invokeExtraModelWithStrategy).not.toHaveBeenCalled();
-            expect(toastr.warning).toHaveBeenCalled();
+            expect(invokeExtraModelWithStrategy).toHaveBeenCalledTimes(1);
+            expect(toastr.warning).not.toHaveBeenCalled();
         }
     );
+
+    test('rejects an actual stat_data change while the input popup is open', async () => {
+        (SillyTavern.callGenericPopup as jest.Mock).mockImplementation(async () => {
+            const data = getVariables({ type: 'message', message_id: 1 });
+            data.stat_data.hp = 71;
+            return '';
+        });
+        await runIncrementalExtraModelRepair();
+        expect(invokeExtraModelWithStrategy).not.toHaveBeenCalled();
+        expect(toastr.warning).toHaveBeenCalled();
+    });
 
     test('rejects a new latest floor while the input popup is open', async () => {
         (SillyTavern.callGenericPopup as jest.Mock).mockImplementation(async () => {

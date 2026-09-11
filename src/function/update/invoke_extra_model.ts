@@ -376,16 +376,44 @@ async function invokeExtraModel(
 ): Promise<string> {
     try {
         const result = await requestReply(generation_id, batch_id, options);
+        // Tags inside serialized JSON strings are values rather than response structure. Mask
+        // quoted content without changing string length so structural match indexes remain valid.
+        const structural_result = (() => {
+            // split('') preserves UTF-16 code-unit indexes used by RegExp match.index, including
+            // when prose before the patch contains emoji or other surrogate pairs.
+            const chars = result.split('');
+            let in_string = false;
+            let escaped = false;
+            for (let index = 0; index < chars.length; index++) {
+                const char = chars[index];
+                if (!in_string) {
+                    if (char === '"') in_string = true;
+                    continue;
+                }
+                if (escaped) {
+                    chars[index] = ' ';
+                    escaped = false;
+                } else if (char === '\\') {
+                    chars[index] = ' ';
+                    escaped = true;
+                } else if (char === '"') {
+                    in_string = false;
+                } else {
+                    chars[index] = ' ';
+                }
+            }
+            return chars.join('');
+        })();
 
         if (
             options.allow_bare_json_patch &&
-            [...result.matchAll(/<json_?patch\b[^>]*>/gi)].length > 1
+            [...structural_result.matchAll(/<json_?patch\b[^>]*>/gi)].length > 1
         ) {
             throw new Error('增量校正返回了多个 JSONPatch 块，拒绝只采用其中一部分');
         }
 
         const update_openings = [
-            ...result.matchAll(/<(update(?:variable)?|variableupdate)\b[^>]*>/gi),
+            ...structural_result.matchAll(/<(update(?:variable)?|variableupdate)\b[^>]*>/gi),
         ];
         if (options.allow_bare_json_patch && update_openings.length > 1) {
             throw new Error('增量校正返回了多个 UpdateVariable 块，拒绝只采用其中一部分');
@@ -395,7 +423,10 @@ async function invokeExtraModel(
         if (update_opening?.index !== undefined) {
             const content_start = update_opening.index + update_opening[0].length;
             const remaining = result.slice(content_start);
-            const closing = remaining.match(new RegExp(`<\\/${update_opening[1]}\\s*>`, 'i'));
+            const structural_remaining = structural_result.slice(content_start);
+            const closing = structural_remaining.match(
+                new RegExp(`<\\/${update_opening[1]}\\s*>`, 'i')
+            );
             if (!closing && options.allow_bare_json_patch) {
                 throw new Error('增量校正的 UpdateVariable 标签未闭合');
             }
@@ -403,7 +434,7 @@ async function invokeExtraModel(
                 closing?.index === undefined ? remaining : remaining.slice(0, closing.index);
         }
         if (!update_block && options.allow_bare_json_patch) {
-            const patch_openings = [...result.matchAll(/<json_?patch\b[^>]*>/gi)];
+            const patch_openings = [...structural_result.matchAll(/<json_?patch\b[^>]*>/gi)];
             if (patch_openings.length > 1) {
                 throw new Error('增量校正返回了多个 JSONPatch 块，拒绝只采用其中一部分');
             }
@@ -411,7 +442,8 @@ async function invokeExtraModel(
             if (patch_opening?.index !== undefined) {
                 const content_start = patch_opening.index + patch_opening[0].length;
                 const remaining = result.slice(content_start);
-                const closing = remaining.match(/<\/json_?patch\s*>/i);
+                const structural_remaining = structural_result.slice(content_start);
+                const closing = structural_remaining.match(/<\/json_?patch\s*>/i);
                 if (!closing || closing.index === undefined) {
                     throw new Error('增量校正的 JSONPatch 标签未闭合');
                 }
