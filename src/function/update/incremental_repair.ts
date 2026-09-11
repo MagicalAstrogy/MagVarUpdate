@@ -123,7 +123,7 @@ export function buildIncrementalRepairTask(changes: IncrementalStateChange[]): s
 
 执行边界：
 - 仅补充遗漏，或纠正与最新剧情、变量规则明确冲突的错误；已经正确的变化禁止重复输出。
-- 增量校正不沿用完整更新中“第一项固定 replace /当前活动”的占位要求；只有本次要纠正的遗漏或错误确实涉及持续活动时，才输出 /当前活动。
+- 不得为了满足完整更新中的固定首项或占位格式，输出与本次校正无关的操作。
 - 所有修正都以当前状态为基准，不得从上一楼重新计算；不得重算或覆盖整份变量。
 - 已有字段使用 replace 与绝对最终值；禁止 delta、add、move。数组需要修正时 replace 整个数组。
 - 仅在规则允许新增字段时使用 insert；确认属于错误字段时才使用 remove；证据不足则保持不变。
@@ -864,8 +864,8 @@ export async function runIncrementalExtraModelRepair() {
         original_message_snapshot = snapshotPersistedMvuData(latest_message_variables);
         original_chat_snapshot = snapshotPersistedMvuData(latest_chat_variables);
 
-        const applied_data = klona(original_data);
-        const is_modified = await updateVariables(normalized_repair_block, applied_data);
+        let applied_data = klona(original_data);
+        let is_modified = await updateVariables(normalized_repair_block, applied_data);
         // updateVariables awaits hooks; the player can switch floors while they run.
         if (!anchorStillMatches(anchor)) {
             toastr.warning(
@@ -882,42 +882,46 @@ export async function runIncrementalExtraModelRepair() {
             return;
         }
         let effective_repair_block = normalized_repair_block;
-        let skipped_invalid_activity = false;
-        let application_error = verifyIncrementalRepairApplied(
-            normalized_repair_block,
+        const patch = parseIncrementalRepairPatch(normalized_repair_block)!;
+        const failed_operations = patch.filter(operation =>
+            Boolean(
+                verifyIncrementalRepairApplied(
+                    serializeIncrementalRepairPatch([operation]),
+                    original_data.stat_data,
+                    applied_data.stat_data
+                )
+            )
+        );
+        let skipped_operation_paths: string[] = [];
+        if (failed_operations.length > 0 && failed_operations.length < patch.length) {
+            const failed_set = new Set(failed_operations);
+            const applicable_patch = patch.filter(operation => !failed_set.has(operation));
+            effective_repair_block = serializeIncrementalRepairPatch(applicable_patch);
+            applied_data = klona(original_data);
+            is_modified = await updateVariables(effective_repair_block, applied_data);
+            if (!anchorStillMatches(anchor)) {
+                toastr.warning(
+                    tr('runtime.incrementalRepair.sourceChanged'),
+                    tr('runtime.incrementalRepair.title')
+                );
+                return;
+            }
+            skipped_operation_paths = failed_operations.map(operation => operation.path);
+        }
+        const application_error = verifyIncrementalRepairApplied(
+            effective_repair_block,
             original_data.stat_data,
             applied_data.stat_data
         );
         if (application_error) {
-            const patch = parseIncrementalRepairPatch(normalized_repair_block);
-            const activity_operation = patch?.find(operation => operation.path === '/当前活动');
-            const remaining_patch = patch?.filter(operation => operation.path !== '/当前活动');
-            if (activity_operation && remaining_patch && remaining_patch.length > 0) {
-                const activity_error = verifyIncrementalRepairApplied(
-                    serializeIncrementalRepairPatch([activity_operation]),
-                    original_data.stat_data,
-                    applied_data.stat_data
-                );
-                const remaining_block = serializeIncrementalRepairPatch(remaining_patch);
-                const remaining_error = verifyIncrementalRepairApplied(
-                    remaining_block,
-                    original_data.stat_data,
-                    applied_data.stat_data
-                );
-                if (activity_error && !remaining_error) {
-                    effective_repair_block = remaining_block;
-                    _.set(
-                        applied_data.stat_data,
-                        ['当前活动'],
-                        klona(_.get(original_data.stat_data, ['当前活动']))
-                    );
-                    skipped_invalid_activity = true;
-                    application_error = null;
-                }
-            }
-        }
-        if (application_error) {
             toastr.warning(_.escape(application_error), tr('runtime.incrementalRepair.title'));
+            return;
+        }
+        if (!is_modified) {
+            toastr.info(
+                tr('runtime.incrementalRepair.noEffectiveChanges'),
+                tr('runtime.incrementalRepair.title')
+            );
             return;
         }
         mergeIncrementalRepairMetadata(original_data, applied_data, effective_repair_block);
@@ -982,9 +986,11 @@ export async function runIncrementalExtraModelRepair() {
             throw error;
         }
 
-        if (skipped_invalid_activity) {
+        if (skipped_operation_paths.length > 0) {
             toastr.warning(
-                '已跳过不符合当前变量结构的“当前活动”修正，其余修正已写入',
+                _.escape(
+                    `已跳过 ${skipped_operation_paths.length} 项未通过变量结构校验的修正：${skipped_operation_paths.join('、')}；其余修正已写入`
+                ),
                 tr('runtime.incrementalRepair.title')
             );
         }
