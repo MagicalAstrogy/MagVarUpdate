@@ -6,46 +6,40 @@ import { tr } from '@/i18n';
 import { useDataStore } from '@/store';
 
 /**
- * 自动解析任务。
- * key: `${chat_id}:${message_id}` —— 同一消息只允许一个延后任务，避免与手动重试重复。
+ * 自动触发的一次在途解析。
+ *
+ * 按维护者意见不引入独立任务队列：酒馆的生成流程本身串行，同一时刻至多一个在途解析。
+ * 解析在 MESSAGE_RECEIVED 启动，写回延后到 CHARACTER_MESSAGE_RENDERED，
+ * 既保证正文先渲染，又保证变量写回先于酒馆随后的保存流程。
  */
-interface PendingAnalysisTask {
+type InFlightAnalysis = {
     chat_id: string;
     message_id: number;
-    /** 是否已被请求取消（手动重试接手）。执行中的任务取消后跳过执行与写回。 */
-    canceled: boolean;
-    /** 是否已进入串行队列执行中。未执行的任务可被彻底移除（允许重新调度）。 */
-    processing: boolean;
-}
+    /** 解析结果；在渲染事件中等待，异常已在此处兜底为 null。 */
+    analysis: Promise<string | null>;
+};
 
-/** 已登记待执行的自动解析任务（按触发顺序）。任务在完成/明确取消前保留在表中，以便手动重试取消。 */
-const pending_analysis: PendingAnalysisTask[] = [];
-
-/** 串行队列尾部：保证同一时刻至多一个解析在执行，后续任务排队等待。 */
-let queue_tail: Promise<void> = Promise.resolve();
-
-/** 获取指定消息所在聊天的最新消息。 */
-function getLatestMessage(
-    message_id: number
-): { message: string; role: string; name?: string } | undefined {
-    return getChatMessages(message_id).at(-1);
-}
+/** 当前在途的自动解析；被后续调度取代时，旧解析的结果会被放弃。 */
+let in_flight: InFlightAnalysis | null = null;
 
 /**
- * 将额外模型解析的结果回写到目标楼层，并执行楼层变量更新。
+ * 把解析结果追加到目标楼层，并更新该楼层的变量。
+ *
+ * 等待期间用户可能切换聊天，因此每次写入前都复核聊天归属，
+ * 避免把结果写进错误的聊天或同号楼层。
  */
-async function applyExtraModelResultToMessage(
-    task: PendingAnalysisTask,
+async function applyAnalysisResult(
+    chat_id: string,
+    message_id: number,
     result: string | null
 ): Promise<void> {
-    // 结果应用前再次校验：await 解析期间用户可能已切换聊天，不得把结果写进错误聊天/同号楼层。
-    if (task.canceled || SillyTavern.getCurrentChatId() !== task.chat_id) {
+    if (SillyTavern.getCurrentChatId() !== chat_id) {
         return;
     }
 
-    const chat_message = getLatestMessage(task.message_id);
+    const chat_message = getChatMessages(message_id).at(-1);
     if (!chat_message) {
-        // 楼层已被删除/切换，静默放弃。
+        // 楼层已被删除，静默放弃。
         return;
     }
 
@@ -53,7 +47,7 @@ async function applyExtraModelResultToMessage(
         await setChatMessages(
             [
                 {
-                    message_id: task.message_id,
+                    message_id,
                     message: chat_message.message.trimEnd() + '\n\n' + result,
                 },
             ],
@@ -61,112 +55,69 @@ async function applyExtraModelResultToMessage(
                 refresh: 'none',
             }
         );
+        // setChatMessages 是异步的，写变量前再确认一次聊天归属。
+        if (SillyTavern.getCurrentChatId() !== chat_id) {
+            return;
+        }
     } else {
         toastr.error(
             tr('runtime.extraModel.updateFailed'),
             tr('runtime.extraModel.updateFailedTitle')
         );
     }
-    await handleVariablesInMessage(task.message_id);
-}
 
-/** 从跟踪表移除任务，返回是否删除。 */
-function removePendingTask(chat_id: string, message_id: number): boolean {
-    const index = pending_analysis.findIndex(
-        queued => queued.chat_id === chat_id && queued.message_id === message_id
-    );
-    if (index !== -1) {
-        pending_analysis.splice(index, 1);
-        return true;
-    }
-    return false;
-}
-
-/** 执行单个自动解析任务（串行队列中的一环）。 */
-async function runAnalysisTask(task: PendingAnalysisTask): Promise<void> {
-    try {
-        if (task.canceled) {
-            return;
-        }
-        // 等待期间用户切换了聊天：放弃解析与回写，避免把结果写进错误的聊天/楼层。
-        if (SillyTavern.getCurrentChatId() !== task.chat_id) {
-            return;
-        }
-        const result = await invokeExtraModelWithStrategy();
-        await applyExtraModelResultToMessage(task, result);
-    } catch (error) {
-        console.error('[MVU] deferred extra-model analysis failed:', error);
-        toastr.error(
-            tr('runtime.extraModel.updateFailed'),
-            tr('runtime.extraModel.updateFailedTitle')
-        );
-    } finally {
-        // 任务完成/取消后从跟踪表移除，允许后续同消息任务重新调度。
-        removePendingTask(task.chat_id, task.message_id);
-    }
-}
-
-/** 把任务追加到串行队列尾，返回其完成 promise。 */
-function enqueueAnalysisTask(task: PendingAnalysisTask): Promise<void> {
-    const run = queue_tail.then(() => runAnalysisTask(task));
-    // 即使某个任务抛错也要让队列继续推进。
-    queue_tail = run.catch(() => undefined);
-    return run;
+    await handleVariablesInMessage(message_id);
 }
 
 /**
- * 自动触发路径：立即返回以让 SillyTavern 的主回复先渲染，延时后在后台执行额外模型解析。
- * 不阻塞 MESSAGE_RECEIVED 事件链，因此主回复渲染不再被解析请求拖住。
+ * 启动一次在途解析并登记，返回该记录。
+ *
+ * 解析异常在此处兜底为 null，避免无人等待时产生未处理的 Promise 拒绝。
+ * 新的调度会直接取代旧记录，使旧结果不再写回。
  */
-export function scheduleDeferredAutoAnalysis(message_id: number, delay_ms: number): void {
-    const chat_id = SillyTavern.getCurrentChatId();
-    if (pending_analysis.some(task => task.chat_id === chat_id && task.message_id === message_id)) {
-        // 同一消息已有延后任务在排队/执行，不重复调度（防止与手动重试重复）。
-        // 已取消的残留任务不会出现：取消时未执行的任务会被移除，执行中的任务取消后随即在 finally 移除。
+function startAnalysis(chat_id: string, message_id: number): InFlightAnalysis {
+    const task: InFlightAnalysis = {
+        chat_id,
+        message_id,
+        analysis: invokeExtraModelWithStrategy().catch(error => {
+            console.error('[MVU]额外模型解析失败:', error);
+            return null;
+        }),
+    };
+    in_flight = task;
+    return task;
+}
+
+/**
+ * 渲染事件：等待本楼层的在途解析，然后写回结果与变量。
+ *
+ * CHARACTER_MESSAGE_RENDERED 在 addOneMessage 之后触发，此时正文已显示；
+ * 在这里等待解析不会拖慢渲染，同时让变量写回先于酒馆随后的保存流程。
+ *
+ * 必须先摘除在途记录再写回：写回中的 handleVariablesInMessage 会以
+ * `refresh: 'affected'` 再次触发本事件，摘除可避免重入等待自身而死锁。
+ */
+export async function onCharacterMessageRendered(message_id: number): Promise<void> {
+    const task = in_flight;
+    if (!task || task.message_id !== message_id) {
+        return;
+    }
+    if (task.chat_id !== SillyTavern.getCurrentChatId()) {
         return;
     }
 
-    const task: PendingAnalysisTask = { chat_id, message_id, canceled: false, processing: false };
-    pending_analysis.push(task);
-
-    // 计时器回调在事件链之外的新宏任务中运行，ST 的事件派发早已继续并完成正文渲染。
-    setTimeout(() => {
-        // 若任务已在等待期间被手动重试取消并移除，则跳过执行（审查 #13）。
-        if (!pending_analysis.includes(task) || task.canceled) {
-            return;
-        }
-        task.processing = true;
-        void enqueueAnalysisTask(task);
-    }, delay_ms);
-}
-
-/**
- * 取消同一消息的待执行/排队中自动解析任务（手动重试接管时调用）。
- * - 未开始执行的任务直接移除，使同消息新版本可再次调度（审查 #13）；
- * - 执行中的任务置 canceled，执行完成时在 finally 移除，期间不再写回（审查 #12）。
- */
-function cancelPendingAnalysis(chat_id: string, message_id: number): boolean {
-    let canceled = false;
-    for (const task of pending_analysis) {
-        if (task.chat_id === chat_id && task.message_id === message_id) {
-            if (task.processing) {
-                // 正在执行：标记取消，交由运行中的任务在 finally 清理。
-                task.canceled = true;
-            } else {
-                // 尚未执行：彻底移除，允许同消息新版本重新调度。
-                removePendingTask(chat_id, message_id);
-            }
-            canceled = true;
-        }
-    }
-    return canceled;
+    in_flight = null;
+    await applyAnalysisResult(task.chat_id, task.message_id, await task.analysis);
 }
 
 export async function onMessageReceived(
     message_id: number,
     { force = false }: { force?: boolean } = {}
 ) {
-    const current_chatmsg = getLatestMessage(message_id);
+    // 在首个 await 之前捕获聊天归属，避免异步等待期间切换聊天后绑定到目标聊天。
+    const chat_id = SillyTavern.getCurrentChatId();
+
+    const current_chatmsg = getChatMessages(message_id).at(-1);
     if (!current_chatmsg) {
         return;
     }
@@ -201,30 +152,24 @@ export async function onMessageReceived(
         return;
     }
 
-    if (!force && store.effective_settings.额外模型解析配置.启用自动请求 === false) {
-        console.log(tr('runtime.extraModel.autoRequestDisabledLog'));
-        return;
-    }
-
     if (!force) {
-        // 自动触发改为延后非阻塞：先让主回复渲染，再在后台解析并回写状态栏。
-        const delay_ms =
-            Math.max(
-                0,
-                Math.round(store.effective_settings.额外模型解析配置.自动解析延时)
-            ) * 1000;
-        scheduleDeferredAutoAnalysis(message_id, delay_ms);
+        if (store.effective_settings.额外模型解析配置.启用自动请求 === false) {
+            console.log(tr('runtime.extraModel.autoRequestDisabledLog'));
+            return;
+        }
+        // 自动触发：启动解析但不等待，让酒馆继续渲染正文；写回由渲染事件负责。
+        startAnalysis(chat_id, message_id);
         return;
     }
 
-    // 手动重试保持同步执行，便于即时确认解析结果。
-    // 先取消同消息的待执行自动延后任务，避免延时触发时重复解析（非幂等命令会执行两次）。
-    const retry_chat_id = SillyTavern.getCurrentChatId();
-    cancelPendingAnalysis(retry_chat_id, message_id);
+    // 手动重试保持同步，便于即时确认结果。
+    const previous = in_flight;
+    if (previous && previous.chat_id === chat_id && previous.message_id === message_id) {
+        // 同楼层已有在途解析：摘除后直接采用其结果，避免重复请求执行两次非幂等命令。
+        in_flight = null;
+        await applyAnalysisResult(chat_id, message_id, await previous.analysis);
+        return;
+    }
 
-    const result = await invokeExtraModelWithStrategy();
-    await applyExtraModelResultToMessage(
-        { chat_id: retry_chat_id, message_id, canceled: false, processing: false },
-        result
-    );
+    await applyAnalysisResult(chat_id, message_id, await invokeExtraModelWithStrategy());
 }

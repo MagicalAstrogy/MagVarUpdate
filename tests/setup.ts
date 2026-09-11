@@ -105,9 +105,15 @@ const __eventHandlers = new Map<string, Array<(...args: unknown[]) => unknown>>(
 (globalThis as any).tavern_events = {
     GENERATION_ENDED: 'GENERATION_ENDED',
     MESSAGE_SENT: 'MESSAGE_SENT',
+    MESSAGE_RECEIVED: 'message_received',
+    CHARACTER_MESSAGE_RENDERED: 'character_message_rendered',
     GENERATION_STARTED: 'GENERATION_STARTED',
     WORLDINFO_UPDATED: 'WORLDINFO_UPDATED',
     CHAT_CHANGED: 'CHAT_CHANGED',
+    CHAT_COMPLETION_SETTINGS_READY: 'chat_completion_settings_ready',
+    CHAT_COMPLETION_PROMPT_READY: 'chat_completion_prompt_ready',
+    WORLDINFO_ENTRIES_LOADED: 'worldinfo_entries_loaded',
+    WORLDINFO_SCAN_DONE: 'worldinfo_scan_done',
 };
 
 // Ensure each test runs with a fresh Pinia instance
@@ -142,6 +148,16 @@ beforeEach(() => {
         handler(TEST_SCRIPT_ID);
     }
 });
+(globalThis as any).eventMakeFirst = jest.fn(
+    (event: string, handler: (...args: unknown[]) => unknown) => {
+        const handlers = __eventHandlers.get(event) ?? [];
+        const existing_index = handlers.indexOf(handler);
+        if (existing_index !== -1) handlers.splice(existing_index, 1);
+        handlers.unshift(handler);
+        __eventHandlers.set(event, handlers);
+        return { stop: () => (globalThis as any).eventRemoveListener(event, handler) };
+    }
+);
 (globalThis as any).eventRemoveListener = jest.fn(
     (event: string, handler: (...args: unknown[]) => unknown) => {
         const handlers = __eventHandlers.get(event);
