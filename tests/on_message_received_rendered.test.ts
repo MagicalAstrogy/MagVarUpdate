@@ -46,6 +46,12 @@ async function flushMicrotasks(): Promise<void> {
     }
 }
 
+/** 设置聊天楼层数；写入前会校验目标楼层是否仍是最后一条。 */
+function setChatLength(length: number): void {
+    ((globalThis as Record<string, unknown>).SillyTavern as Record<string, unknown>).chat =
+        Array.from({ length }, () => ({}));
+}
+
 /** 自动触发路径能通过前置校验的最小环境。 */
 function setupEnvironment() {
     mockIsExtraModelSupported.mockResolvedValue(true);
@@ -144,6 +150,7 @@ describe('onMessageReceived 自动解析的生命周期', () => {
     });
 
     test('并发任务串行启动，不撞解析函数的全局互斥', async () => {
+        setChatLength(4);
         const first = Promise.withResolvers<string | null>();
         mockInvoke.mockReturnValueOnce(first.promise).mockResolvedValue(UPDATE_RESULT);
 
@@ -266,6 +273,7 @@ describe('onMessageReceived 自动解析的生命周期', () => {
     });
 
     test('排队任务因切换聊天提前返回后，手动重试仍能发起解析', async () => {
+        setChatLength(4);
         // 任务 A 占用解析，任务 B 在后排队（current = B）。
         const a = Promise.withResolvers<string | null>();
         mockInvoke.mockReturnValueOnce(a.promise);
@@ -300,5 +308,94 @@ describe('onMessageReceived 自动解析的生命周期', () => {
         expect(console_error).toHaveBeenCalled();
         expect(toast_error).toHaveBeenCalled();
         console_error.mockRestore();
+    });
+
+    test('目标楼层之后已出现新消息时，上下文已过期的结果不再写入', async () => {
+        setChatLength(6);
+        const { promise, resolve } = Promise.withResolvers<string | null>();
+        mockInvoke.mockReturnValue(promise);
+
+        await onMessageReceived(5);
+        await flushMicrotasks();
+
+        // 解析期间用户在目标楼层之后继续发言：解析读到的尾部与目标楼层已不一致。
+        setChatLength(8);
+        resolve(UPDATE_RESULT);
+        await drainTasks();
+
+        expect(set_chat_messages).not.toHaveBeenCalled();
+        expect(mockHandleVariables).not.toHaveBeenCalled();
+    });
+
+    test('楼层被取代且后续任务属于其他聊天时，过期结果仍不写入', async () => {
+        setChatLength(6);
+        const a = Promise.withResolvers<string | null>();
+        const b = Promise.withResolvers<string | null>();
+        const c = Promise.withResolvers<string | null>();
+        mockInvoke
+            .mockReturnValueOnce(a.promise)
+            .mockReturnValueOnce(b.promise)
+            .mockReturnValueOnce(c.promise);
+
+        await onMessageReceived(5); // A：chat-1 楼层 5
+        await onMessageReceived(5); // B：取代 A（同聊天同楼层）
+        get_current_chat_id.mockReturnValue('chat-2');
+        await onMessageReceived(5); // C：另一聊天的同号楼层
+        get_current_chat_id.mockReturnValue(CHAT_ID); // 切回 chat-1
+
+        a.resolve('<UpdateVariable>_.set("health", 1);//过期 A</UpdateVariable>');
+        await drainTasks();
+
+        // A 已被 B 取代：即使「最近任务」现指向其他聊天的楼层，A 的结果也不得写入。
+        expect(set_chat_messages).not.toHaveBeenCalled();
+
+        b.resolve(UPDATE_RESULT);
+        await drainTasks();
+        expect(set_chat_messages).toHaveBeenCalledTimes(1);
+
+        c.resolve(UPDATE_RESULT);
+        await drainTasks();
+    });
+
+    test('其他聊天渲染同号楼层时，不等待本聊天的在途解析', async () => {
+        const { promise, resolve } = Promise.withResolvers<string | null>();
+        mockInvoke.mockReturnValue(promise);
+
+        await onMessageReceived(2);
+        await flushMicrotasks();
+
+        get_current_chat_id.mockReturnValue('chat-2');
+        let rendered_settled = false;
+        const rendered = onCharacterMessageRendered(2).then(() => {
+            rendered_settled = true;
+        });
+        await flushMicrotasks();
+
+        // 该渲染属于别的聊天：等待只会拖住它的渲染监听器与保存流程。
+        expect(rendered_settled).toBe(true);
+
+        resolve(UPDATE_RESULT);
+        await rendered;
+    });
+
+    test('重试在前置检查期间错过已完成的在途任务时，不会重复解析', async () => {
+        const { promise, resolve } = Promise.withResolvers<string | null>();
+        mockInvoke.mockReturnValueOnce(promise);
+
+        await onMessageReceived(2);
+        await flushMicrotasks();
+
+        // 让前置检查（isExtraModelSupported）的 await 期间在途任务彻底完成。
+        mockIsExtraModelSupported.mockImplementationOnce(async () => {
+            resolve(UPDATE_RESULT);
+            await drainTasks();
+            return true;
+        });
+
+        await onMessageReceived(2, { force: true });
+        await drainTasks();
+
+        // 重试应复用进入时捕获的在途任务，而不是另发请求。
+        expect(mockInvoke).toHaveBeenCalledTimes(1);
     });
 });
