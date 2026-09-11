@@ -20,8 +20,7 @@ const UPDATE_BLOCK_RE =
 const UPDATE_BLOCK_PART_RE = /<(?:update(?:variable)?|variableupdate)\b[^>]*>[\s\S]*$/i;
 const EMPTY_JSON_PATCH_RE =
     /<json_?patch\b[^>]*>\s*(?:```[^\n]*\s*)?\[\s*\](?:\s*```)?\s*<\/json_?patch\s*>/i;
-const JSON_PATCH_BLOCK_RE =
-    /<json_?patch\b[^>]*>(?:\s*```.*)?([\s\S]*?)(?:```\s*)?<\/json_?patch\s*>/gi;
+const JSON_PATCH_BLOCK_RE = /<json_?patch\b[^>]*>([\s\S]*?)<\/json_?patch\s*>/gi;
 const FORBIDDEN_ROOT_PATHS = new Set([
     '$internal',
     '$meta',
@@ -219,7 +218,7 @@ export function validateIncrementalRepairBlock(repair_block: string): string | n
 
     let patch: unknown;
     try {
-        patch = parseString(matches[0][1].trim());
+        patch = parseString(cleanJsonPatchInner(matches[0][1]));
     } catch {
         return 'JSONPatch 内容无法解析';
     }
@@ -420,8 +419,17 @@ export async function runIncrementalExtraModelRepair() {
             SillyTavern.POPUP_TYPE.INPUT,
             ''
         );
-        if (direction_result === undefined) return;
-        const user_direction = String(direction_result).slice(0, 500);
+        // INPUT confirmation returns a string (including an intentionally empty one).
+        // Cancel returns false; closing/Escape returns null in SillyTavern.
+        if (typeof direction_result !== 'string') return;
+        if (!anchorStillMatches(anchor)) {
+            toastr.warning(
+                tr('runtime.incrementalRepair.sourceChanged'),
+                tr('runtime.incrementalRepair.title')
+            );
+            return;
+        }
+        const user_direction = direction_result.slice(0, 500);
         const repair_block = await invokeExtraModelWithStrategy({
             task_suffix: buildIncrementalRepairTask(changes),
             prompt_tail: buildIncrementalRepairPromptTail(user_direction),
@@ -500,6 +508,14 @@ export async function runIncrementalExtraModelRepair() {
 
         const applied_data = klona(original_data);
         const is_modified = await updateVariables(normalized_repair_block, applied_data);
+        // updateVariables awaits hooks; the player can switch floors while they run.
+        if (!anchorStillMatches(anchor)) {
+            toastr.warning(
+                tr('runtime.incrementalRepair.sourceChanged'),
+                tr('runtime.incrementalRepair.title')
+            );
+            return;
+        }
         if (!is_modified) {
             toastr.info(
                 tr('runtime.incrementalRepair.noEffectiveChanges'),

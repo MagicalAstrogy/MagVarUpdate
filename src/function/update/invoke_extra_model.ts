@@ -379,11 +379,17 @@ async function invokeExtraModel(
                 /<(update(?:variable)?|variableupdate)\b[^>]*>([\s\S]*?)(?:<\/\1\s*>|$)/gi
             ),
         ];
+        if (options.allow_bare_json_patch && update_matches.length > 1) {
+            throw new Error('增量校正返回了多个 UpdateVariable 块，拒绝只采用其中一部分');
+        }
         let update_block = update_matches.at(-1)?.[2];
         if (!update_block && options.allow_bare_json_patch) {
             const patch_matches = [
                 ...result.matchAll(/<json_?patch\b[^>]*>([\s\S]*?)(?:<\/json_?patch\s*>|$)/gi),
             ];
+            if (patch_matches.length > 1) {
+                throw new Error('增量校正返回了多个 JSONPatch 块，拒绝只采用其中一部分');
+            }
             const patch_inner = patch_matches.at(-1)?.[1];
             if (patch_inner !== undefined) {
                 update_block = `<JSONPatch>${patch_inner}</JSONPatch>`;
