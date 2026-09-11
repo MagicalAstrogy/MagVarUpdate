@@ -1,5 +1,6 @@
 import {
     buildIncrementalRepairTask,
+    buildIncrementalRepairUserInput,
     collectIncrementalStateChanges,
     extractLatestUpdateVariableBlock,
     mergeIncrementalRepairBlock,
@@ -23,6 +24,7 @@ describe('incremental extra-model repair', () => {
 
     test('prompt requires corrections instead of recalculating correct changes', () => {
         const task = buildIncrementalRepairTask([{ path: '/hp', before: 100, after: 72 }]);
+        expect(task).toContain('本次是增量变量校正，不是完整重试');
         expect(task).toContain('已经正确的变化禁止重复输出');
         expect(task).toContain('不得重算或覆盖整份变量');
         expect(task).toContain('/hp: 100 -> 72');
@@ -30,10 +32,13 @@ describe('incremental extra-model repair', () => {
     });
 
     test('includes an optional user direction without requiring one', () => {
-        expect(buildIncrementalRepairTask([], '核对生命值归零后的即时后果')).toContain(
+        expect(buildIncrementalRepairUserInput('核对生命值归零后的即时后果')).toContain(
+            '<user_incremental_repair_direction>'
+        );
+        expect(buildIncrementalRepairUserInput('核对生命值归零后的即时后果')).toContain(
             '核对生命值归零后的即时后果'
         );
-        expect(buildIncrementalRepairTask([])).not.toContain('用户补充的本次校正方向');
+        expect(buildIncrementalRepairUserInput()).toBe('遵循<must>指令');
     });
 
     test('merges repair content into the last existing update block', () => {

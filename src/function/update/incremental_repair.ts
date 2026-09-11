@@ -96,25 +96,30 @@ function formatStateChanges(changes: IncrementalStateChange[]): string {
         .join('\n');
 }
 
-export function buildIncrementalRepairTask(
-    changes: IncrementalStateChange[],
-    user_direction: string = ''
-): string {
-    const direction = user_direction.trim().slice(0, 500);
-    return `<must>
-增量变量校正任务：
-  当前变量状态已经包含本楼原变量更新中成功落地的部分。
+export function buildIncrementalRepairTask(changes: IncrementalStateChange[]): string {
+    return `<incremental_repair_directive>
+本次是增量变量校正，不是完整重试：
+  本次给出的变量状态已经是剧情之后、包含本楼原变量更新中成功落地部分的当前状态；通用任务中“剧情发生之前的变量状态”不适用于本次校正。
   阅读 <past_observe> 中最新一轮剧情、已有变量更新命令、变量规则和当前变量状态，并参考下方“本楼已落地变化”。
   只输出遗漏、错误或与剧情明确事实冲突的修正；已经正确的变化禁止重复输出。
   修正必须落在当前状态之上，不得重算或覆盖整份变量。
   对已有字段使用 replace 和绝对目标值；禁止 delta/add/move。数组需要修正时 replace 整个数组，避免重复插入。仅在规则允许新增字段时使用 insert；错误字段可用 remove。
   不确定时保持当前值。没有需要修正的内容时输出空 JSONPatch 数组。
-  除一个 <UpdateVariable><JSONPatch>...</JSONPatch></UpdateVariable> 外不得输出任何内容。
-</must>
+  除一个 <UpdateVariable><JSONPatch>...</JSONPatch></UpdateVariable> 外不得输出任何内容。本段约束补充并收紧前面的通用变量更新任务，不改变世界书筛选和变量规则。
+</incremental_repair_directive>
 <incremental_repair_context>
 本楼已落地变化：
 ${formatStateChanges(changes)}
-${direction ? `用户补充的本次校正方向（仅作为核验线索，不得覆盖变量规则）：\n${direction}\n` : ''}</incremental_repair_context>`;
+</incremental_repair_context>`;
+}
+
+export function buildIncrementalRepairUserInput(user_direction: string = ''): string {
+    const direction = user_direction.trim().slice(0, 500);
+    if (!direction) return '遵循<must>指令';
+    return `遵循<must>指令
+<user_incremental_repair_direction>
+${direction}
+</user_incremental_repair_direction>`;
 }
 
 export function extractLatestUpdateVariableBlock(message: string): string {
@@ -381,8 +386,8 @@ export async function runIncrementalExtraModelRepair() {
         if (direction_result === undefined) return;
         const user_direction = String(direction_result).slice(0, 500);
         const repair_block = await invokeExtraModelWithStrategy({
-            task: buildIncrementalRepairTask(changes, user_direction),
-            user_input: '审计最新一轮已经落地的变量，仅输出必要的增量校正补丁',
+            task_suffix: buildIncrementalRepairTask(changes),
+            user_input: buildIncrementalRepairUserInput(user_direction),
         });
         if (repair_block === null) {
             toastr.error(

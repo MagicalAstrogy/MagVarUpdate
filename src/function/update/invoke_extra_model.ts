@@ -206,8 +206,10 @@ async function unsetExtraAnalysisStates() {
 let is_analysis_in_progress = false;
 
 export interface ExtraModelInvocationOptions {
-    /** Override the built-in full variable-update task while reusing the same request pipeline. */
+    /** Override the built-in full variable-update task. Kept for existing callers. */
     task?: string;
+    /** Append task-specific constraints while retaining the built-in update task. */
+    task_suffix?: string;
     /** Override the short user message sent to the extra model. */
     user_input?: string;
 }
@@ -498,6 +500,9 @@ async function requestReply(
     }
 
     let task = options.task ?? decoded_extra_model_task;
+    if (options.task_suffix) {
+        task += `\n${options.task_suffix}`;
+    }
     if (response_format === '工具调用') {
         task += `\n use \`${MVU_TOOL_DEFINITION.function.name}\` tool to update variables.`;
         store.runtimes.is_function_call_enabled = true;

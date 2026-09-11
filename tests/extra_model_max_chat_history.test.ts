@@ -52,6 +52,21 @@ describe('extra model max chat history', () => {
         });
     });
 
+    test('appends a request-scoped suffix to the built-in task', async () => {
+        await generateExtraModel({ task_suffix: 'INCREMENTAL_ONLY_SUFFIX' });
+
+        const config = (globalThis as any).generateRaw.mock.calls[0][0];
+        const task_prompt = config.ordered_prompts.find(
+            (prompt: unknown) =>
+                typeof prompt === 'object' &&
+                prompt !== null &&
+                'content' in prompt &&
+                typeof prompt.content === 'string' &&
+                prompt.content.includes('INCREMENTAL_ONLY_SUFFIX')
+        );
+        expect(task_prompt).toBeDefined();
+    });
+
     test.each(['聊天消息', '格式化输出'] as const)(
         'passes an empty tools list for %s requests on supported TavernHelper versions',
         async response_format => {
