@@ -4,9 +4,12 @@ import {
     collectIncrementalStateChanges,
     extractLatestUpdateVariableBlock,
     mergeIncrementalRepairBlock,
+    normalizeAndValidateIncrementalRepairResult,
     normalizeIncrementalRepairBlock,
+    validateIncrementalRepairAgainstState,
     validateIncrementalRepairBlock,
     validateIncrementalRepairCommands,
+    verifyIncrementalRepairApplied,
 } from '@/function/update/incremental_repair';
 import { extractCommands } from '@/function/update_variables';
 
@@ -111,6 +114,13 @@ describe('incremental extra-model repair', () => {
             '<JSONPatch>[{"op":"replace","path":"/$internal/busy","value":true}]</JSONPatch>'
         );
         expect(validateIncrementalRepairCommands(internal)).toContain('禁止修改 MVU 内部路径');
+
+        const nestedInsert =
+            '<JSONPatch>[{"op":"insert","path":"/player/$internal","value":true}]</JSONPatch>';
+        expect(validateIncrementalRepairBlock(nestedInsert)).toContain('禁止修改 MVU 内部路径');
+        expect(validateIncrementalRepairCommands(extractCommands(nestedInsert))).toContain(
+            '禁止修改 MVU 内部路径'
+        );
     });
 
     test('requires exactly one conservative JSON patch block', () => {
@@ -135,5 +145,60 @@ describe('incremental extra-model repair', () => {
             '<JSONPatch>[{"op":"replace","path":"/hp","value":72},{"op":"remove","path":"/bad"}]</JSONPatch>'
         );
         expect(validateIncrementalRepairCommands(commands)).toBeNull();
+    });
+
+    test('normalizes and validates a response before request strategy acceptance', () => {
+        expect(() =>
+            normalizeAndValidateIncrementalRepairResult(
+                '<UpdateVariable><JSONPatch>[{"op":"delta","path":"/hp","value":-5}]</JSONPatch></UpdateVariable>'
+            )
+        ).toThrow('不接受 delta');
+        expect(
+            normalizeAndValidateIncrementalRepairResult(
+                '<UpdateVariable><JSONPatch>[]</JSONPatch></UpdateVariable>'
+            )
+        ).toContain('<JSONPatch>');
+    });
+
+    test('preflights targets and confirms every operation took effect', () => {
+        const patch =
+            '<UpdateVariable><JSONPatch>[{"op":"replace","path":"/hp","value":72},{"op":"replace","path":"/inventory","value":["key"]}]</JSONPatch></UpdateVariable>';
+        expect(validateIncrementalRepairAgainstState(patch, { hp: 100, inventory: [] })).toBeNull();
+        expect(validateIncrementalRepairAgainstState(patch, { inventory: [] })).toContain(
+            '目标路径不存在'
+        );
+        expect(
+            verifyIncrementalRepairApplied(
+                patch,
+                { hp: 100, inventory: [] },
+                { hp: 72, inventory: ['key'] }
+            )
+        ).toBeNull();
+        expect(
+            verifyIncrementalRepairApplied(
+                patch,
+                { hp: 100, inventory: [] },
+                { hp: 72, inventory: [] }
+            )
+        ).toContain('替换操作未完整生效');
+    });
+
+    test('allows independent top-level inserts and rejects overlapping or indexed array edits', () => {
+        const inserts =
+            '<JSONPatch>[{"op":"insert","path":"/a","value":1},{"op":"insert","path":"/b","value":2}]</JSONPatch>';
+        expect(validateIncrementalRepairCommands(extractCommands(inserts))).toBeNull();
+        expect(validateIncrementalRepairAgainstState(inserts, {})).toBeNull();
+        expect(
+            validateIncrementalRepairAgainstState(
+                '<JSONPatch>[{"op":"remove","path":"/items/0"}]</JSONPatch>',
+                { items: ['a', 'b'] }
+            )
+        ).toContain('整体校正');
+        expect(
+            validateIncrementalRepairAgainstState(
+                '<JSONPatch>[{"op":"replace","path":"/a","value":{}},{"op":"replace","path":"/a/b","value":2}]</JSONPatch>',
+                { a: { b: 1 } }
+            )
+        ).toContain('相互覆盖');
     });
 });

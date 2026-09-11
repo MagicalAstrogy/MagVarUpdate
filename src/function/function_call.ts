@@ -442,7 +442,7 @@ export function extractFromToolCall(tool_calls: ToolCallBatches | undefined): st
 
     try {
         const json = parseString(content);
-        if (json.delta && json.delta.length > 5) {
+        if (typeof json.delta === 'string' && json.delta.trim().length > 0) {
             let result = '';
             result += `<UpdateVariable>\n`;
             result += `<Analyze>\n${json.analysis}\n</Analyze>\n`;

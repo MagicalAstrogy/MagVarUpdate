@@ -11,7 +11,7 @@ import {
 import { tr } from '@/i18n';
 import { useDataStore } from '@/store';
 import { getLastValidVariable, isJsonPatch } from '@/util';
-import { isMvuData, MvuData } from '@/variable_def';
+import { isMvuData } from '@/variable_def';
 import { parseString } from '@util/common';
 import { klona } from 'klona';
 
@@ -29,6 +29,20 @@ const FORBIDDEN_ROOT_PATHS = new Set([
     'delta_data',
     'initialized_lorebooks',
 ]);
+const PERSISTED_MVU_KEYS = [
+    'initialized_lorebooks',
+    'stat_data',
+    'schema',
+    'display_data',
+    'delta_data',
+] as const;
+
+type PersistedMvuSnapshot = Partial<Record<(typeof PERSISTED_MVU_KEYS)[number], unknown>>;
+type IncrementalRepairOperation = {
+    op: 'replace' | 'insert' | 'remove';
+    path: string;
+    value?: unknown;
+};
 
 export interface IncrementalStateChange {
     path: string;
@@ -41,7 +55,9 @@ interface RepairAnchor {
     message_id: number;
     swipe_id: number;
     message_content: string;
-    stat_data: Record<string, unknown>;
+    message_variables: PersistedMvuSnapshot;
+    chat_variables: PersistedMvuSnapshot;
+    update_chat_variables: boolean;
 }
 
 let is_incremental_repair_in_progress = false;
@@ -96,7 +112,8 @@ function formatStateChanges(changes: IncrementalStateChange[]): string {
 }
 
 export function buildIncrementalRepairTask(changes: IncrementalStateChange[]): string {
-    return `<incremental_repair_directive>
+    return `<must>
+<incremental_repair_directive>
 本次是增量变量校正，不是完整重试。
 
 输入解释：
@@ -118,7 +135,8 @@ export function buildIncrementalRepairTask(changes: IncrementalStateChange[]): s
 <incremental_repair_context>
 本楼已落地变化：
 ${formatStateChanges(changes)}
-</incremental_repair_context>`;
+</incremental_repair_context>
+</must>`;
 }
 
 export function buildIncrementalRepairPromptTail(user_direction: string = ''): string {
@@ -151,16 +169,39 @@ function cleanJsonPatchInner(inner: string): string {
         .trim();
 }
 
-export function normalizeIncrementalRepairBlock(repair_block: string): string | null {
+function parseIncrementalRepairPatch(repair_block: string): IncrementalRepairOperation[] | null {
     const matches = [...repair_block.matchAll(JSON_PATCH_BLOCK_RE)];
     if (matches.length !== 1) return null;
     try {
         const patch = parseString(cleanJsonPatchInner(matches[0][1]));
-        if (!isJsonPatch(patch)) return null;
-        return `<UpdateVariable>\n<JSONPatch>\n${JSON.stringify(patch, null, 2)}\n</JSONPatch>\n</UpdateVariable>`;
+        return isJsonPatch(patch) ? (patch as IncrementalRepairOperation[]) : null;
     } catch {
         return null;
     }
+}
+
+function jsonPointerSegments(path: string): string[] | null {
+    if (!path.startsWith('/') || path === '/') return null;
+    return path
+        .slice(1)
+        .split('/')
+        .map(segment => segment.replace(/~1/g, '/').replace(/~0/g, '~'));
+}
+
+function forbiddenPointerPath(path: string): boolean {
+    const segments = jsonPointerSegments(path);
+    return (
+        !segments ||
+        FORBIDDEN_ROOT_PATHS.has(segments[0]) ||
+        segments.some(segment => segment === '$internal' || segment === '$meta')
+    );
+}
+
+export function normalizeIncrementalRepairBlock(repair_block: string): string | null {
+    const patch = parseIncrementalRepairPatch(repair_block);
+    return patch
+        ? `<UpdateVariable>\n<JSONPatch>\n${JSON.stringify(patch, null, 2)}\n</JSONPatch>\n</UpdateVariable>`
+        : null;
 }
 
 export function mergeIncrementalRepairBlock(message: string, repair_block: string): string {
@@ -191,6 +232,16 @@ function commandPath(command: Command): string {
     return trimQuotesAndBackslashes(command.args[0] ?? '').trim();
 }
 
+function commandJsonPointer(command: Command): string | null {
+    if (command.reason !== 'json_patch') return null;
+    try {
+        const operation = JSON.parse(command.full_match);
+        return typeof operation.path === 'string' ? operation.path : null;
+    } catch {
+        return null;
+    }
+}
+
 export function validateIncrementalRepairCommands(commands: Command[]): string | null {
     for (const command of commands) {
         if (command.reason !== 'json_patch') {
@@ -199,15 +250,11 @@ export function validateIncrementalRepairCommands(commands: Command[]): string |
         if (command.type === 'add' || command.type === 'move') {
             return `增量校正不接受 ${command.type} 操作，请改用绝对值 replace`;
         }
+        const pointer = commandJsonPointer(command);
+        if (!pointer) return 'JSONPatch 操作缺少原始目标路径';
+        if (forbiddenPointerPath(pointer)) return `禁止修改 MVU 内部路径：${pointer}`;
         const path = commandPath(command);
-        if (!path) return '存在空变量路径';
-        const segments = _.toPath(path);
-        if (
-            FORBIDDEN_ROOT_PATHS.has(segments[0]) ||
-            segments.some(segment => segment === '$internal' || segment === '$meta')
-        ) {
-            return `禁止修改 MVU 内部路径：${path}`;
-        }
+        if (!path && command.type !== 'insert') return '存在空变量路径';
     }
     return null;
 }
@@ -216,13 +263,8 @@ export function validateIncrementalRepairBlock(repair_block: string): string | n
     const matches = [...repair_block.matchAll(JSON_PATCH_BLOCK_RE)];
     if (matches.length !== 1) return '必须且只能返回一个 JSONPatch 补丁块';
 
-    let patch: unknown;
-    try {
-        patch = parseString(cleanJsonPatchInner(matches[0][1]));
-    } catch {
-        return 'JSONPatch 内容无法解析';
-    }
-    if (!isJsonPatch(patch)) return 'JSONPatch 必须是合法操作数组';
+    const patch = parseIncrementalRepairPatch(repair_block);
+    if (!patch) return 'JSONPatch 内容无法解析或不是合法操作数组';
 
     for (const operation of patch) {
         const operation_name = String(operation.op);
@@ -232,11 +274,118 @@ export function validateIncrementalRepairBlock(repair_block: string): string | n
         if (!operation.path || operation.path === '/' || !operation.path.startsWith('/')) {
             return `增量校正路径必须是具体的 JSON Pointer：${operation.path ?? ''}`;
         }
+        if (forbiddenPointerPath(operation.path)) {
+            return `禁止修改 MVU 内部路径：${operation.path}`;
+        }
         if (
             (operation_name === 'replace' || operation_name === 'insert') &&
             !Object.prototype.hasOwnProperty.call(operation, 'value')
         ) {
             return `${operation_name} 操作缺少 value`;
+        }
+    }
+    return null;
+}
+
+export function normalizeAndValidateIncrementalRepairResult(repair_block: string): string {
+    const normalized = normalizeIncrementalRepairBlock(repair_block);
+    if (!normalized) throw new Error('JSONPatch 内容无法解析或数量不正确');
+    const block_error = validateIncrementalRepairBlock(normalized);
+    if (block_error) throw new Error(block_error);
+    const commands = extractCommands(normalized);
+    if (commands.length === 0 && EMPTY_JSON_PATCH_RE.test(normalized)) return normalized;
+    if (commands.length === 0) throw new Error('JSONPatch 中没有可执行的增量操作');
+    const command_error = validateIncrementalRepairCommands(commands);
+    if (command_error) throw new Error(command_error);
+    return normalized;
+}
+
+export function validateIncrementalRepairAgainstState(
+    repair_block: string,
+    stat_data: Record<string, unknown>
+): string | null {
+    const patch = parseIncrementalRepairPatch(repair_block);
+    if (!patch) return 'JSONPatch 内容无法解析';
+    const targets: string[][] = [];
+    for (const operation of patch) {
+        const segments = jsonPointerSegments(operation.path);
+        if (!segments) return `无效路径：${operation.path}`;
+        if (
+            targets.some(target => {
+                const length = Math.min(target.length, segments.length);
+                return target.slice(0, length).every((part, index) => part === segments[index]);
+            })
+        )
+            return `补丁包含重复或相互覆盖的路径：${operation.path}`;
+        targets.push(segments);
+        for (let index = 1; index < segments.length; index++) {
+            if (Array.isArray(_.get(stat_data, segments.slice(0, index)))) {
+                return `数组需要使用 replace 整体校正：${operation.path}`;
+            }
+        }
+        if (operation.op === 'replace' || operation.op === 'remove') {
+            if (!_.has(stat_data, segments)) return `目标路径不存在：${operation.path}`;
+            continue;
+        }
+        const parent_segments = segments.slice(0, -1);
+        const key = segments.at(-1)!;
+        const parent = parent_segments.length === 0 ? stat_data : _.get(stat_data, parent_segments);
+        if (Array.isArray(parent)) {
+            if (key !== '-' && (!/^\d+$/.test(key) || Number(key) > parent.length)) {
+                return `数组插入位置无效：${operation.path}`;
+            }
+        } else if (_.isPlainObject(parent)) {
+            if (Object.prototype.hasOwnProperty.call(parent, key)) {
+                return `insert 目标已经存在，请使用 replace：${operation.path}`;
+            }
+        } else {
+            return `insert 的父级不是可写集合：${operation.path}`;
+        }
+    }
+    return null;
+}
+
+export function verifyIncrementalRepairApplied(
+    repair_block: string,
+    before_stat_data: Record<string, unknown>,
+    after_stat_data: Record<string, unknown>
+): string | null {
+    const patch = parseIncrementalRepairPatch(repair_block);
+    if (!patch) return 'JSONPatch 内容无法解析';
+    for (const operation of patch) {
+        const segments = jsonPointerSegments(operation.path)!;
+        if (operation.op === 'remove') {
+            if (_.has(after_stat_data, segments)) return `删除操作未生效：${operation.path}`;
+            continue;
+        }
+        if (operation.op === 'insert') {
+            const parent_segments = segments.slice(0, -1);
+            const before_parent =
+                parent_segments.length === 0
+                    ? before_stat_data
+                    : _.get(before_stat_data, parent_segments);
+            const after_parent =
+                parent_segments.length === 0
+                    ? after_stat_data
+                    : _.get(after_stat_data, parent_segments);
+            if (Array.isArray(before_parent)) {
+                const key = segments.at(-1)!;
+                const index = key === '-' ? before_parent.length : Number(key);
+                if (
+                    !Array.isArray(after_parent) ||
+                    after_parent.length !== before_parent.length + 1 ||
+                    !_.isEqual(after_parent[index], operation.value)
+                ) {
+                    return `插入操作未完整生效：${operation.path}`;
+                }
+                continue;
+            }
+        }
+        if (
+            !_.has(after_stat_data, segments) ||
+            !_.isEqual(_.get(after_stat_data, segments), operation.value)
+        ) {
+            return `${operation.op === 'replace' ? '替换' : '插入'}操作未完整生效：${operation.path}`;
         }
     }
     return null;
@@ -267,41 +416,81 @@ function getSwipeId(message_id: number): number {
     return Number(_.get(SillyTavern.chat, [message_id, 'swipe_id'], 0)) || 0;
 }
 
+function snapshotPersistedMvuData(source: Record<string, unknown>): PersistedMvuSnapshot {
+    const snapshot: PersistedMvuSnapshot = {};
+    for (const key of PERSISTED_MVU_KEYS) {
+        if (_.has(source, key)) snapshot[key] = klona(_.get(source, key));
+    }
+    return snapshot;
+}
+
+function persistedSnapshotMatches(
+    source: Record<string, unknown>,
+    expected: PersistedMvuSnapshot
+): boolean {
+    return _.isEqual(snapshotPersistedMvuData(source), expected);
+}
+
 function anchorStillMatches(anchor: RepairAnchor): boolean {
     if (SillyTavern.getCurrentChatId() !== anchor.chat_id) return false;
     if (getLastMessageId() !== anchor.message_id) return false;
     if (getSwipeId(anchor.message_id) !== anchor.swipe_id) return false;
+    if (useDataStore().effective_settings.兼容性.更新到聊天变量 !== anchor.update_chat_variables) {
+        return false;
+    }
     const current_message = getChatMessages(anchor.message_id).at(-1);
     if (current_message?.message !== anchor.message_content) return false;
     const current_variables = getVariables({ type: 'message', message_id: anchor.message_id });
-    return isMvuData(current_variables) && _.isEqual(current_variables.stat_data, anchor.stat_data);
+    if (!isMvuData(current_variables)) return false;
+    if (!persistedSnapshotMatches(current_variables, anchor.message_variables)) return false;
+    if (anchor.update_chat_variables) {
+        const current_chat_variables = getVariables({ type: 'chat' });
+        if (!persistedSnapshotMatches(current_chat_variables, anchor.chat_variables)) return false;
+    }
+    return true;
 }
 
-async function persistMvuData(source: MvuData, message_id: number, update_chat_variables: boolean) {
+async function persistMvuSnapshot(
+    source: PersistedMvuSnapshot,
+    target: { type: 'chat' } | { type: 'message'; message_id: number },
+    expected?: PersistedMvuSnapshot
+) {
     const updater = (data: Record<string, any>) => {
-        for (const key of [
-            'initialized_lorebooks',
-            'stat_data',
-            'schema',
-            'display_data',
-            'delta_data',
-        ] as const) {
+        if (expected && !persistedSnapshotMatches(data, expected)) {
+            throw new Error('增量校正目标在写入期间发生变化');
+        }
+        for (const key of PERSISTED_MVU_KEYS) {
             if (_.has(source, key)) _.set(data, key, klona(_.get(source, key)));
             else _.unset(data, key);
         }
         return data;
     };
-    if (update_chat_variables) await updateVariablesWith(updater, { type: 'chat' });
-    await updateVariablesWith(updater, { type: 'message', message_id });
+    await updateVariablesWith(updater, target);
+}
+
+async function restoreMvuSnapshotIfOwned(
+    applied: PersistedMvuSnapshot,
+    original: PersistedMvuSnapshot,
+    target: { type: 'chat' } | { type: 'message'; message_id: number }
+) {
+    await updateVariablesWith((data: Record<string, any>) => {
+        const current = snapshotPersistedMvuData(data);
+        if (_.isEqual(current, original)) return data;
+        if (!_.isEqual(current, applied)) return data;
+        for (const key of PERSISTED_MVU_KEYS) {
+            if (_.has(original, key)) _.set(data, key, klona(_.get(original, key)));
+            else _.unset(data, key);
+        }
+        return data;
+    }, target);
 }
 
 async function offerUndo(
     anchor: RepairAnchor,
-    original_data: MvuData,
-    applied_data: MvuData,
-    repaired_content: string,
-    original_chat_data: MvuData | undefined,
-    update_chat_variables: boolean
+    original_message_variables: PersistedMvuSnapshot,
+    original_chat_variables: PersistedMvuSnapshot,
+    applied_variables: PersistedMvuSnapshot,
+    repaired_content: string
 ) {
     toastr.success(
         tr('runtime.incrementalRepair.appliedClickToUndo'),
@@ -316,10 +505,16 @@ async function offerUndo(
                 });
                 const same_target =
                     SillyTavern.getCurrentChatId() === anchor.chat_id &&
+                    getLastMessageId() === anchor.message_id &&
                     getSwipeId(anchor.message_id) === anchor.swipe_id &&
                     getChatMessages(anchor.message_id).at(-1)?.message === repaired_content &&
                     isMvuData(current) &&
-                    _.isEqual(current.stat_data, applied_data.stat_data);
+                    persistedSnapshotMatches(current, applied_variables) &&
+                    (!anchor.update_chat_variables ||
+                        persistedSnapshotMatches(
+                            getVariables({ type: 'chat' }),
+                            applied_variables
+                        ));
                 if (!same_target) {
                     toastr.warning(
                         tr('runtime.incrementalRepair.undoStateChanged'),
@@ -327,11 +522,17 @@ async function offerUndo(
                     );
                     return;
                 }
-                await persistMvuData(original_data, anchor.message_id, false);
-                if (update_chat_variables && original_chat_data) {
-                    await persistMvuData(original_chat_data, anchor.message_id, true);
-                    // persistMvuData also writes the message floor; restore its dedicated snapshot.
-                    await persistMvuData(original_data, anchor.message_id, false);
+                await persistMvuSnapshot(
+                    original_message_variables,
+                    { type: 'message', message_id: anchor.message_id },
+                    applied_variables
+                );
+                if (anchor.update_chat_variables) {
+                    await persistMvuSnapshot(
+                        original_chat_variables,
+                        { type: 'chat' },
+                        applied_variables
+                    );
                 }
                 await setChatMessages(
                     [{ message_id: anchor.message_id, message: anchor.message_content }],
@@ -398,15 +599,17 @@ export async function runIncrementalExtraModelRepair() {
 
     const original_data = klona(current_variables);
     const original_chat_variables = getVariables({ type: 'chat' });
-    const original_chat_data = isMvuData(original_chat_variables)
-        ? klona(original_chat_variables)
-        : undefined;
+    const update_chat_variables = store.effective_settings.兼容性.更新到聊天变量;
+    const original_message_snapshot = snapshotPersistedMvuData(current_variables);
+    const original_chat_snapshot = snapshotPersistedMvuData(original_chat_variables);
     const anchor: RepairAnchor = {
         chat_id: SillyTavern.getCurrentChatId(),
         message_id,
         swipe_id: getSwipeId(message_id),
         message_content: current_message.message,
-        stat_data: klona(current_variables.stat_data),
+        message_variables: original_message_snapshot,
+        chat_variables: original_chat_snapshot,
+        update_chat_variables,
     };
     const changes = collectIncrementalStateChanges(
         previous_variables.stat_data,
@@ -431,9 +634,18 @@ export async function runIncrementalExtraModelRepair() {
         }
         const user_direction = direction_result.slice(0, 500);
         const repair_block = await invokeExtraModelWithStrategy({
-            task_suffix: buildIncrementalRepairTask(changes),
+            task: buildIncrementalRepairTask(changes),
             prompt_tail: buildIncrementalRepairPromptTail(user_direction),
             allow_bare_json_patch: true,
+            validate_result: result => {
+                const normalized = normalizeAndValidateIncrementalRepairResult(result);
+                const state_error = validateIncrementalRepairAgainstState(
+                    normalized,
+                    original_data.stat_data
+                );
+                if (state_error) throw new Error(state_error);
+                return normalized;
+            },
         });
         if (repair_block === null) {
             toastr.error(
@@ -484,6 +696,14 @@ export async function runIncrementalExtraModelRepair() {
             toastr.warning(_.escape(command_error), tr('runtime.incrementalRepair.title'));
             return;
         }
+        const state_error = validateIncrementalRepairAgainstState(
+            normalized_repair_block,
+            original_data.stat_data
+        );
+        if (state_error) {
+            toastr.warning(_.escape(state_error), tr('runtime.incrementalRepair.title'));
+            return;
+        }
 
         const confirmation = await SillyTavern.callGenericPopup(
             buildPreviewHtml(commands, normalized_repair_block),
@@ -523,37 +743,63 @@ export async function runIncrementalExtraModelRepair() {
             );
             return;
         }
+        const application_error = verifyIncrementalRepairApplied(
+            normalized_repair_block,
+            original_data.stat_data,
+            applied_data.stat_data
+        );
+        if (application_error) {
+            toastr.warning(_.escape(application_error), tr('runtime.incrementalRepair.title'));
+            return;
+        }
 
         const repaired_content = mergeIncrementalRepairBlock(
             anchor.message_content,
             normalized_repair_block
         );
-        const update_chat_variables = store.effective_settings.兼容性.更新到聊天变量;
+        const applied_snapshot = snapshotPersistedMvuData(applied_data);
         try {
-            await persistMvuData(applied_data, message_id, update_chat_variables);
+            if (update_chat_variables) {
+                await persistMvuSnapshot(
+                    applied_snapshot,
+                    { type: 'chat' },
+                    original_chat_snapshot
+                );
+            }
+            await persistMvuSnapshot(
+                applied_snapshot,
+                { type: 'message', message_id },
+                original_message_snapshot
+            );
             await setChatMessages([{ message_id, message: repaired_content }], {
                 refresh: 'affected',
             });
             await SillyTavern.saveChat();
         } catch (error) {
-            await persistMvuData(original_data, message_id, false);
-            if (update_chat_variables && original_chat_data) {
-                await persistMvuData(original_chat_data, message_id, true);
-                await persistMvuData(original_data, message_id, false);
-            }
-            await setChatMessages([{ message_id, message: anchor.message_content }], {
-                refresh: 'affected',
+            await restoreMvuSnapshotIfOwned(applied_snapshot, original_message_snapshot, {
+                type: 'message',
+                message_id,
             });
+            if (update_chat_variables) {
+                await restoreMvuSnapshotIfOwned(applied_snapshot, original_chat_snapshot, {
+                    type: 'chat',
+                });
+            }
+            const latest_content = getChatMessages(message_id).at(-1)?.message;
+            if (latest_content === repaired_content) {
+                await setChatMessages([{ message_id, message: anchor.message_content }], {
+                    refresh: 'affected',
+                });
+            }
             throw error;
         }
 
         await offerUndo(
             anchor,
-            original_data,
-            applied_data,
-            repaired_content,
-            original_chat_data,
-            update_chat_variables
+            original_message_snapshot,
+            original_chat_snapshot,
+            applied_snapshot,
+            repaired_content
         );
     } catch (error) {
         console.error('[MVU] incremental extra-model repair failed', error);

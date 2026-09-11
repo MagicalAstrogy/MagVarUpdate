@@ -216,6 +216,8 @@ export interface ExtraModelInvocationOptions {
     prompt_tail?: string;
     /** Accept a bare JSONPatch response and normalize it into an UpdateVariable block. */
     allow_bare_json_patch?: boolean;
+    /** Validate and optionally normalize each attempt before the retry strategy accepts it. */
+    validate_result?: (result: string) => string;
 }
 
 export async function invokeExtraModelWithStrategy(
@@ -233,7 +235,8 @@ export async function invokeExtraModelWithStrategy(
 
         const recordedInvoke = async (generation_id?: string) => {
             try {
-                return await invokeExtraModel(generation_id, batch_id, options);
+                const result = await invokeExtraModel(generation_id, batch_id, options);
+                return options.validate_result ? options.validate_result(result) : result;
             } catch (e) {
                 console.error(e);
                 throw e;
@@ -311,7 +314,7 @@ export async function invokeExtraModelWithStrategy(
                         tr('runtime.extraModel.updateInProgressTitle')
                     );
                 }
-                return concurrentInvoke(store.settings.额外模型解析配置.请求次数);
+                return await concurrentInvoke(store.settings.额外模型解析配置.请求次数);
             case '先请求一次, 失败后再同时请求多次':
                 if (store.settings.通知.额外模型解析中) {
                     toastr.info(
@@ -337,7 +340,7 @@ export async function invokeExtraModelWithStrategy(
                         tr('runtime.extraModel.updateInProgressTitle')
                     );
                 }
-                return concurrentInvoke(store.settings.额外模型解析配置.请求次数 - 1);
+                return await concurrentInvoke(store.settings.额外模型解析配置.请求次数 - 1);
             default:
                 return null;
         }
@@ -374,25 +377,45 @@ async function invokeExtraModel(
     try {
         const result = await requestReply(generation_id, batch_id, options);
 
-        const update_matches = [
-            ...result.matchAll(
-                /<(update(?:variable)?|variableupdate)\b[^>]*>([\s\S]*?)(?:<\/\1\s*>|$)/gi
-            ),
+        if (
+            options.allow_bare_json_patch &&
+            [...result.matchAll(/<json_?patch\b[^>]*>/gi)].length > 1
+        ) {
+            throw new Error('增量校正返回了多个 JSONPatch 块，拒绝只采用其中一部分');
+        }
+
+        const update_openings = [
+            ...result.matchAll(/<(update(?:variable)?|variableupdate)\b[^>]*>/gi),
         ];
-        if (options.allow_bare_json_patch && update_matches.length > 1) {
+        if (options.allow_bare_json_patch && update_openings.length > 1) {
             throw new Error('增量校正返回了多个 UpdateVariable 块，拒绝只采用其中一部分');
         }
-        let update_block = update_matches.at(-1)?.[2];
+        const update_opening = update_openings.at(-1);
+        let update_block: string | undefined;
+        if (update_opening?.index !== undefined) {
+            const content_start = update_opening.index + update_opening[0].length;
+            const remaining = result.slice(content_start);
+            const closing = remaining.match(new RegExp(`<\\/${update_opening[1]}\\s*>`, 'i'));
+            if (!closing && options.allow_bare_json_patch) {
+                throw new Error('增量校正的 UpdateVariable 标签未闭合');
+            }
+            update_block =
+                closing?.index === undefined ? remaining : remaining.slice(0, closing.index);
+        }
         if (!update_block && options.allow_bare_json_patch) {
-            const patch_matches = [
-                ...result.matchAll(/<json_?patch\b[^>]*>([\s\S]*?)(?:<\/json_?patch\s*>|$)/gi),
-            ];
-            if (patch_matches.length > 1) {
+            const patch_openings = [...result.matchAll(/<json_?patch\b[^>]*>/gi)];
+            if (patch_openings.length > 1) {
                 throw new Error('增量校正返回了多个 JSONPatch 块，拒绝只采用其中一部分');
             }
-            const patch_inner = patch_matches.at(-1)?.[1];
-            if (patch_inner !== undefined) {
-                update_block = `<JSONPatch>${patch_inner}</JSONPatch>`;
+            const patch_opening = patch_openings.at(-1);
+            if (patch_opening?.index !== undefined) {
+                const content_start = patch_opening.index + patch_opening[0].length;
+                const remaining = result.slice(content_start);
+                const closing = remaining.match(/<\/json_?patch\s*>/i);
+                if (!closing || closing.index === undefined) {
+                    throw new Error('增量校正的 JSONPatch 标签未闭合');
+                }
+                update_block = `<JSONPatch>${remaining.slice(0, closing.index)}</JSONPatch>`;
             } else {
                 const formatted = extractFromFormattedOutput(result);
                 const formatted_match = formatted?.match(

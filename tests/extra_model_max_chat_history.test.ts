@@ -101,6 +101,38 @@ describe('extra model max chat history', () => {
         expect(result).toContain('"path": "/hp"');
     });
 
+    test('rejects multiple or restarted update wrappers in incremental mode', async () => {
+        (globalThis as any).generateRaw.mockResolvedValueOnce(
+            '<UpdateVariable><JSONPatch>[]</JSONPatch><UpdateVariable><JSONPatch>[]</JSONPatch></UpdateVariable>'
+        );
+
+        await expect(generateExtraModel({ allow_bare_json_patch: true })).rejects.toThrow(
+            '返回了多个'
+        );
+    });
+
+    test('retries when request-scoped result validation rejects an attempt', async () => {
+        const store = useDataStore();
+        store.settings.额外模型解析配置.请求方式 = '依次请求，失败后重试';
+        store.settings.额外模型解析配置.请求次数 = 2;
+        store.settings.通知.额外模型解析中 = false;
+        (globalThis as any).generateRaw
+            .mockResolvedValueOnce('<UpdateVariable><JSONPatch>[]</JSONPatch></UpdateVariable>')
+            .mockResolvedValueOnce(
+                '<UpdateVariable><JSONPatch>[{"op":"replace","path":"/hp","value":72}]</JSONPatch></UpdateVariable>'
+            );
+        const validate_result = jest.fn((result: string) => {
+            if (result.includes('[]')) throw new Error('invalid attempt');
+            return result;
+        });
+
+        const result = await invokeExtraModelWithStrategy({ validate_result });
+
+        expect((globalThis as any).generateRaw).toHaveBeenCalledTimes(2);
+        expect(validate_result).toHaveBeenCalledTimes(2);
+        expect(result).toContain('"value":72');
+    });
+
     test.each(['聊天消息', '格式化输出'] as const)(
         'passes an empty tools list for %s requests on supported TavernHelper versions',
         async response_format => {

@@ -40,5 +40,37 @@ describe('incremental repair input cancellation', () => {
         (SillyTavern.callGenericPopup as jest.Mock).mockResolvedValue('');
         await runIncrementalExtraModelRepair();
         expect(invokeExtraModelWithStrategy).toHaveBeenCalledTimes(1);
+        expect(invokeExtraModelWithStrategy).toHaveBeenCalledWith(
+            expect.objectContaining({
+                task: expect.stringContaining('增量变量校正'),
+                validate_result: expect.any(Function),
+            })
+        );
+        expect(jest.mocked(invokeExtraModelWithStrategy).mock.calls[0][0]).not.toHaveProperty(
+            'task_suffix'
+        );
+    });
+
+    test.each(['schema', 'display_data', 'delta_data', 'initialized_lorebooks'])(
+        'rejects changed %s while the input popup is open',
+        async key => {
+            (SillyTavern.callGenericPopup as jest.Mock).mockImplementation(async () => {
+                const data = getVariables({ type: 'message', message_id: 1 });
+                data[key] = { changed: true };
+                return '';
+            });
+            await runIncrementalExtraModelRepair();
+            expect(invokeExtraModelWithStrategy).not.toHaveBeenCalled();
+            expect(toastr.warning).toHaveBeenCalled();
+        }
+    );
+
+    test('rejects a new latest floor while the input popup is open', async () => {
+        (SillyTavern.callGenericPopup as jest.Mock).mockImplementation(async () => {
+            (getLastMessageId as jest.Mock).mockReturnValue(2);
+            return '';
+        });
+        await runIncrementalExtraModelRepair();
+        expect(invokeExtraModelWithStrategy).not.toHaveBeenCalled();
     });
 });
