@@ -38,6 +38,20 @@ describe('extra model max chat history', () => {
         );
     });
 
+    test('allows a request-scoped task and user input override', async () => {
+        await generateExtraModel({
+            task: 'CUSTOM_INCREMENTAL_REPAIR_TASK',
+            user_input: 'CUSTOM_INCREMENTAL_REPAIR_INPUT',
+        });
+
+        const config = (globalThis as any).generateRaw.mock.calls[0][0];
+        expect(config.user_input).toBe('CUSTOM_INCREMENTAL_REPAIR_INPUT');
+        expect(config.ordered_prompts).toContainEqual({
+            role: 'system',
+            content: 'CUSTOM_INCREMENTAL_REPAIR_TASK',
+        });
+    });
+
     test.each(['聊天消息', '格式化输出'] as const)(
         'passes an empty tools list for %s requests on supported TavernHelper versions',
         async response_format => {

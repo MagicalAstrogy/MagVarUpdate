@@ -194,7 +194,7 @@ type CommandNames = 'set' | 'insert' | 'assign' | 'remove' | 'unset' | 'delete' 
  */
 // 接口定义：用于统一不同命令的结构
 // 新增：Command 接口，比 SetCommand 更通用
-interface Command {
+export interface Command {
     type: CommandNames;
     full_match: string;
     args: string[];

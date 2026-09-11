@@ -24,3 +24,15 @@ to support extra-model parsing.
 
 Cards made with the latest [MVU tutorial](https://stagedog.github.io/络络/教程/手写mvu变量卡/)
 support extra-model parsing directly. You can also use that tutorial to adapt older cards.
+
+### Manual retry and incremental repair
+
+- **Retry extra-model parsing** discards this floor's existing variable result and fully parses the
+  floor again from the preceding state.
+- **Incrementally repair extra-model parsing** preserves changes that were already applied correctly
+  and asks the extra model only for absolute corrections to missing or incorrect values. MVU
+  previews the patch before applying it, writes confirmed corrections back into this floor's
+  `<UpdateVariable>` block, and offers click-to-undo from the success notification.
+
+If the chat, floor, swipe, message text, or variables change while an incremental repair is pending,
+MVU discards that result instead of overwriting newer progress.

@@ -205,7 +205,16 @@ async function unsetExtraAnalysisStates() {
 
 let is_analysis_in_progress = false;
 
-export async function invokeExtraModelWithStrategy(): Promise<string | null> {
+export interface ExtraModelInvocationOptions {
+    /** Override the built-in full variable-update task while reusing the same request pipeline. */
+    task?: string;
+    /** Override the short user message sent to the extra model. */
+    user_input?: string;
+}
+
+export async function invokeExtraModelWithStrategy(
+    options: ExtraModelInvocationOptions = {}
+): Promise<string | null> {
     const batch_id = generateRandomHeader();
     if (is_analysis_in_progress) {
         return null;
@@ -218,7 +227,7 @@ export async function invokeExtraModelWithStrategy(): Promise<string | null> {
 
         const recordedInvoke = async (generation_id?: string) => {
             try {
-                return await invokeExtraModel(generation_id, batch_id);
+                return await invokeExtraModel(generation_id, batch_id, options);
             } catch (e) {
                 console.error(e);
                 throw e;
@@ -334,12 +343,14 @@ export async function invokeExtraModelWithStrategy(): Promise<string | null> {
 /**
  * @brief 调用额外模型解析，可能会抛出异常。
  */
-export async function generateExtraModel(): Promise<string | null> {
+export async function generateExtraModel(
+    options: ExtraModelInvocationOptions = {}
+): Promise<string | null> {
     let did_set_extra_analysis_states = false;
     try {
         await setExtraAnalysisStates();
         did_set_extra_analysis_states = true;
-        return await invokeExtraModel();
+        return await invokeExtraModel(undefined, undefined, options);
     } finally {
         if (did_set_extra_analysis_states) {
             await unsetExtraAnalysisStates();
@@ -349,9 +360,13 @@ export async function generateExtraModel(): Promise<string | null> {
 
 // 在点击停止按钮时，会触发异常 `Clicked stop button`: string ,需要专门处理。
 //仅内部使用，因为一部分状态的初始化是在外面执行的。
-async function invokeExtraModel(generation_id?: string, batch_id?: string): Promise<string> {
+async function invokeExtraModel(
+    generation_id?: string,
+    batch_id?: string,
+    options: ExtraModelInvocationOptions = {}
+): Promise<string> {
     try {
-        const result = await requestReply(generation_id, batch_id);
+        const result = await requestReply(generation_id, batch_id, options);
 
         const tag = _([...result.matchAll(/<(update(?:variable)?|variableupdate)>/gi)]).last()?.[1];
         if (!tag) {
@@ -431,7 +446,11 @@ function normalizeGenerateResultByResponseFormat(
     return normalizeGenerateResult(result);
 }
 
-async function requestReply(generation_id?: string, batch_id?: string): Promise<string> {
+async function requestReply(
+    generation_id?: string,
+    batch_id?: string,
+    options: ExtraModelInvocationOptions = {}
+): Promise<string> {
     const store = useDataStore();
     const response_format = store.settings.额外模型解析配置.应答格式;
     const is_v4_compatible_formatted_output = response_format === V4_COMPATIBLE_FORMATTED_OUTPUT;
@@ -440,7 +459,7 @@ async function requestReply(generation_id?: string, batch_id?: string): Promise<
     assertV4CompatibleFormattedOutputUsable();
 
     const config: GenerateRawConfig = {
-        user_input: '遵循<must>指令',
+        user_input: options.user_input ?? '遵循<must>指令',
         max_chat_history: store.settings.额外模型解析配置.max_chat_history,
         should_stream: store.settings.额外模型解析配置.兼容假流式,
         generation_id,
@@ -478,7 +497,7 @@ async function requestReply(generation_id?: string, batch_id?: string): Promise<
         }
     }
 
-    let task = decoded_extra_model_task;
+    let task = options.task ?? decoded_extra_model_task;
     if (response_format === '工具调用') {
         task += `\n use \`${MVU_TOOL_DEFINITION.function.name}\` tool to update variables.`;
         store.runtimes.is_function_call_enabled = true;
