@@ -11,7 +11,7 @@ import {
 import { tr } from '@/i18n';
 import { useDataStore } from '@/store';
 import { getLastValidVariable, isJsonPatch } from '@/util';
-import { isMvuData } from '@/variable_def';
+import { isMvuData, isValueWithDescription } from '@/variable_def';
 import { parseString } from '@util/common';
 import { klona } from 'klona';
 
@@ -325,6 +325,14 @@ export function validateIncrementalRepairAgainstState(
         }
         if (operation.op === 'replace' || operation.op === 'remove') {
             if (!_.has(stat_data, segments)) return `目标路径不存在：${operation.path}`;
+            if (
+                operation.op === 'replace' &&
+                isValueWithDescription(_.get(stat_data, segments)) &&
+                !Array.isArray(_.get(stat_data, segments)[0]) &&
+                isValueWithDescription(operation.value)
+            ) {
+                return `带描述变量只能替换实际值，不能替换 [值, 描述] 包装：${operation.path}`;
+            }
             continue;
         }
         const parent_segments = segments.slice(0, -1);
@@ -682,51 +690,51 @@ export async function runIncrementalExtraModelRepair() {
         );
         return;
     }
-    if (!(await isExtraModelSupported())) {
-        toastr.info(
-            tr('runtime.button.extraModelUnsupportedByCard'),
-            tr('runtime.incrementalRepair.title')
-        );
-        return;
-    }
-
-    const message_id = getLastMessageId();
-    const current_message = getChatMessages(message_id).at(-1);
-    const current_variables = getVariables({ type: 'message', message_id });
-    const previous_variables = getLastValidVariable(message_id);
-    if (
-        message_id < 1 ||
-        current_message?.role !== 'assistant' ||
-        !isMvuData(current_variables) ||
-        !previous_variables
-    ) {
-        toastr.warning(
-            tr('runtime.incrementalRepair.noUsableFloor'),
-            tr('runtime.incrementalRepair.title')
-        );
-        return;
-    }
-
-    let original_data = klona(current_variables);
-    const original_chat_variables = getVariables({ type: 'chat' });
-    const update_chat_variables = store.effective_settings.兼容性.更新到聊天变量;
-    let original_message_snapshot = snapshotPersistedMvuData(current_variables);
-    let original_chat_snapshot = snapshotPersistedMvuData(original_chat_variables);
-    const anchor: RepairAnchor = {
-        chat_id: SillyTavern.getCurrentChatId(),
-        message_id,
-        swipe_id: getSwipeId(message_id),
-        message_content: current_message.message,
-        message_variables: original_message_snapshot,
-        chat_variables: original_chat_snapshot,
-        update_chat_variables,
-    };
-    const changes = collectIncrementalStateChanges(
-        previous_variables.stat_data,
-        current_variables.stat_data
-    );
     is_incremental_repair_in_progress = true;
     try {
+        if (!(await isExtraModelSupported())) {
+            toastr.info(
+                tr('runtime.button.extraModelUnsupportedByCard'),
+                tr('runtime.incrementalRepair.title')
+            );
+            return;
+        }
+
+        const message_id = getLastMessageId();
+        const current_message = getChatMessages(message_id).at(-1);
+        const current_variables = getVariables({ type: 'message', message_id });
+        const previous_variables = getLastValidVariable(message_id);
+        if (
+            message_id < 1 ||
+            current_message?.role !== 'assistant' ||
+            !isMvuData(current_variables) ||
+            !previous_variables
+        ) {
+            toastr.warning(
+                tr('runtime.incrementalRepair.noUsableFloor'),
+                tr('runtime.incrementalRepair.title')
+            );
+            return;
+        }
+
+        let original_data = klona(current_variables);
+        const original_chat_variables = getVariables({ type: 'chat' });
+        const update_chat_variables = store.effective_settings.兼容性.更新到聊天变量;
+        let original_message_snapshot = snapshotPersistedMvuData(current_variables);
+        let original_chat_snapshot = snapshotPersistedMvuData(original_chat_variables);
+        const anchor: RepairAnchor = {
+            chat_id: SillyTavern.getCurrentChatId(),
+            message_id,
+            swipe_id: getSwipeId(message_id),
+            message_content: current_message.message,
+            message_variables: original_message_snapshot,
+            chat_variables: original_chat_snapshot,
+            update_chat_variables,
+        };
+        const changes = collectIncrementalStateChanges(
+            previous_variables.stat_data,
+            current_variables.stat_data
+        );
         const direction_result = await SillyTavern.callGenericPopup(
             tr('runtime.incrementalRepair.directionPrompt'),
             SillyTavern.POPUP_TYPE.INPUT,
