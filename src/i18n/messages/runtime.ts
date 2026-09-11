@@ -162,6 +162,10 @@ export const runtimeMessages = defineMessages({
         'zh-CN': '最新楼层或上一楼没有可用的 MVU 状态，无法进行增量校正',
         en: 'The latest or previous floor has no usable MVU state',
     },
+    'runtime.incrementalRepair.directionPrompt': {
+        'zh-CN': '可选：补充本次增量校正方向；直接确认留空则自动审计。\n例如：核对生命值归零后的即时后果，或补齐本轮明确获得的物品。',
+        en: 'Optional: add a direction for this incremental repair. Confirm with an empty input for automatic audit.\nFor example: check the immediate zero-HP aftermath or add an item clearly obtained this floor.',
+    },
     'runtime.incrementalRepair.requestFailed': {
         'zh-CN': '增量校正请求失败或已被中止，未修改变量',
         en: 'The incremental repair failed or was cancelled; variables were not changed',

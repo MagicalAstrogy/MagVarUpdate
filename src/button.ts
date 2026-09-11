@@ -138,9 +138,7 @@ export function updateDescriptions(
 interface Button {
     name: string;
     label_key: MessageKey;
-    function: (input?: string) => void | Promise<void>;
-    input_label_key?: MessageKey;
-    input_placeholder_key?: MessageKey;
+    function: (() => void) | (() => Promise<void>);
     is_legacy?: boolean;
 }
 
@@ -531,8 +529,6 @@ export const buttons: Button[] = [
     {
         name: '增量校正额外模型解析',
         label_key: 'panel.button.incrementalRepairExtraModelParsing',
-        input_label_key: 'panel.button.incrementalRepairHintLabel',
-        input_placeholder_key: 'panel.button.incrementalRepairHintPlaceholder',
         function: runIncrementalExtraModelRepair,
     },
     {

@@ -306,7 +306,7 @@ async function offerUndo(
     );
 }
 
-export async function runIncrementalExtraModelRepair(user_direction: string = '') {
+export async function runIncrementalExtraModelRepair() {
     if (is_incremental_repair_in_progress) {
         toastr.info(
             tr('runtime.incrementalRepair.alreadyRunning'),
@@ -371,9 +371,15 @@ export async function runIncrementalExtraModelRepair(user_direction: string = ''
         previous_variables.stat_data,
         current_variables.stat_data
     );
-
     is_incremental_repair_in_progress = true;
     try {
+        const direction_result = await SillyTavern.callGenericPopup(
+            tr('runtime.incrementalRepair.directionPrompt'),
+            SillyTavern.POPUP_TYPE.INPUT,
+            ''
+        );
+        if (direction_result === undefined) return;
+        const user_direction = String(direction_result).slice(0, 500);
         const repair_block = await invokeExtraModelWithStrategy({
             task: buildIncrementalRepairTask(changes, user_direction),
             user_input: '审计最新一轮已经落地的变量，仅输出必要的增量校正补丁',
