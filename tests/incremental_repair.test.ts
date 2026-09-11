@@ -4,6 +4,7 @@ import {
     collectIncrementalStateChanges,
     extractLatestUpdateVariableBlock,
     mergeIncrementalRepairBlock,
+    mergeIncrementalRepairMetadata,
     normalizeAndValidateIncrementalRepairResult,
     normalizeIncrementalRepairBlock,
     validateIncrementalRepairAgainstState,
@@ -181,6 +182,37 @@ describe('incremental extra-model repair', () => {
                 { hp: 72, inventory: [] }
             )
         ).toContain('替换操作未完整生效');
+    });
+
+    test('verifies the effective value while preserving a value description', () => {
+        const patch = '<JSONPatch>[{"op":"replace","path":"/hp","value":72}]</JSONPatch>';
+        expect(
+            verifyIncrementalRepairApplied(
+                patch,
+                { hp: [100, 'current HP'] },
+                {
+                    hp: [72, 'current HP'],
+                }
+            )
+        ).toBeNull();
+    });
+
+    test('merges repair metadata without dropping the original floor records', () => {
+        const applied = {
+            display_data: { hp: '72->64 (json_patch)', infection: 30 },
+            delta_data: { hp: '72->64 (json_patch)' },
+        };
+        mergeIncrementalRepairMetadata(
+            {
+                display_data: { hp: '100->72 (json_patch)', infection: '0->30 (json_patch)' },
+                delta_data: { hp: '100->72 (json_patch)', infection: '0->30 (json_patch)' },
+            },
+            applied
+        );
+        expect(applied).toEqual({
+            display_data: { hp: '72->64 (json_patch)', infection: '0->30 (json_patch)' },
+            delta_data: { hp: '72->64 (json_patch)', infection: '0->30 (json_patch)' },
+        });
     });
 
     test('allows independent top-level inserts and rejects overlapping or indexed array edits', () => {

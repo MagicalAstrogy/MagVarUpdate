@@ -381,14 +381,52 @@ export function verifyIncrementalRepairApplied(
                 continue;
             }
         }
+        const before_value = _.get(before_stat_data, segments);
+        const after_value = _.get(after_stat_data, segments);
+        const effective_after_value =
+            Array.isArray(before_value) &&
+            before_value.length === 2 &&
+            typeof before_value[1] === 'string' &&
+            Array.isArray(after_value) &&
+            after_value.length === 2 &&
+            typeof after_value[1] === 'string'
+                ? after_value[0]
+                : after_value;
         if (
             !_.has(after_stat_data, segments) ||
-            !_.isEqual(_.get(after_stat_data, segments), operation.value)
+            !_.isEqual(effective_after_value, operation.value)
         ) {
             return `${operation.op === 'replace' ? '替换' : '插入'}操作未完整生效：${operation.path}`;
         }
     }
     return null;
+}
+
+export function mergeIncrementalRepairMetadata(
+    original_data: Record<string, any>,
+    applied_data: Record<string, any>
+) {
+    const repair_delta = applied_data.delta_data;
+    const merged_delta = klona(original_data.delta_data ?? {});
+    const merged_display = klona(original_data.display_data ?? applied_data.display_data ?? {});
+
+    const mergeLeaves = (node: unknown, path: string[]) => {
+        if (_.isPlainObject(node)) {
+            for (const [key, value] of Object.entries(node as Record<string, unknown>)) {
+                mergeLeaves(value, [...path, key]);
+            }
+            return;
+        }
+        if (path.length === 0) return;
+        _.set(merged_delta, path, klona(node));
+        if (_.has(applied_data.display_data, path)) {
+            _.set(merged_display, path, klona(_.get(applied_data.display_data, path)));
+        }
+    };
+
+    if (repair_delta !== undefined) mergeLeaves(repair_delta, []);
+    applied_data.delta_data = merged_delta;
+    applied_data.display_data = merged_display;
 }
 
 function commandPreview(command: Command): string {
@@ -522,27 +560,60 @@ async function offerUndo(
                     );
                     return;
                 }
-                await persistMvuSnapshot(
-                    original_message_variables,
-                    { type: 'message', message_id: anchor.message_id },
-                    applied_variables
-                );
-                if (anchor.update_chat_variables) {
+                try {
                     await persistMvuSnapshot(
-                        original_chat_variables,
-                        { type: 'chat' },
+                        original_message_variables,
+                        { type: 'message', message_id: anchor.message_id },
                         applied_variables
                     );
+                    if (anchor.update_chat_variables) {
+                        await persistMvuSnapshot(
+                            original_chat_variables,
+                            { type: 'chat' },
+                            applied_variables
+                        );
+                    }
+                    await setChatMessages(
+                        [{ message_id: anchor.message_id, message: anchor.message_content }],
+                        { refresh: 'affected' }
+                    );
+                    await SillyTavern.saveChat();
+                    toastr.info(
+                        tr('runtime.incrementalRepair.undone'),
+                        tr('runtime.incrementalRepair.title')
+                    );
+                } catch (error) {
+                    console.error('[MVU] incremental repair undo failed', error);
+                    await Promise.allSettled([
+                        restoreMvuSnapshotIfOwned(original_message_variables, applied_variables, {
+                            type: 'message',
+                            message_id: anchor.message_id,
+                        }),
+                        ...(anchor.update_chat_variables
+                            ? [
+                                  restoreMvuSnapshotIfOwned(
+                                      original_chat_variables,
+                                      applied_variables,
+                                      { type: 'chat' }
+                                  ),
+                              ]
+                            : []),
+                    ]);
+                    if (
+                        getChatMessages(anchor.message_id).at(-1)?.message ===
+                        anchor.message_content
+                    ) {
+                        await setChatMessages(
+                            [{ message_id: anchor.message_id, message: repaired_content }],
+                            { refresh: 'affected' }
+                        ).catch(() => undefined);
+                    }
+                    await SillyTavern.saveChat().catch(() => undefined);
+                    toastr.error(
+                        tr('runtime.incrementalRepair.requestFailed'),
+                        tr('runtime.incrementalRepair.title')
+                    );
                 }
-                await setChatMessages(
-                    [{ message_id: anchor.message_id, message: anchor.message_content }],
-                    { refresh: 'affected' }
-                );
-                await SillyTavern.saveChat();
-                toastr.info(
-                    tr('runtime.incrementalRepair.undone'),
-                    tr('runtime.incrementalRepair.title')
-                );
             },
         }
     );
@@ -752,6 +823,7 @@ export async function runIncrementalExtraModelRepair() {
             toastr.warning(_.escape(application_error), tr('runtime.incrementalRepair.title'));
             return;
         }
+        mergeIncrementalRepairMetadata(original_data, applied_data);
 
         const repaired_content = mergeIncrementalRepairBlock(
             anchor.message_content,
