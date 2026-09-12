@@ -123,6 +123,35 @@ describe('request-scoped worldinfo filtering', () => {
         ]);
     });
 
+    test.each([0, 127, 128, 0x80000000, 0xffffffff])(
+        'preserves all 32 random bits in five rare characters: %i',
+        async random => {
+            await register('encoded-probe');
+            const getRandomValues = jest
+                .spyOn(crypto, 'getRandomValues')
+                .mockImplementation(array => {
+                    expect(array).toBeInstanceOf(Uint32Array);
+                    expect(array?.byteLength).toBe(4);
+                    (array as Uint32Array)[0] = random;
+                    return array;
+                });
+            const loaded = lores();
+            await onWorldinfoEntriesLoaded(loaded);
+            const worlds = loaded.characterLore
+                .filter(candidate => candidate.world !== 'character')
+                .map(candidate => candidate.world as string);
+            expect(worlds).toHaveLength(2);
+            expect(new Set(worlds).size).toBe(1);
+            expect(getRandomValues).toHaveBeenCalledTimes(1);
+            expect(worlds[0]).toMatch(/^龘靐齉[\u3400-\u347f]{5}$/u);
+            const decoded = Array.from(worlds[0].slice('龘靐齉'.length)).reduce(
+                (value, character) => value * 128 + character.charCodeAt(0) - 0x3400,
+                0
+            );
+            expect(decoded).toBe(random);
+        }
+    );
+
     test('keeps business entries untouched at loaded and snapshots all in-flight policies', async () => {
         const a = await register('A', '^A$');
         const b = await register('B', '^B$');

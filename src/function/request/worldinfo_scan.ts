@@ -9,11 +9,15 @@ import {
     type WorldinfoRequest,
 } from '@/function/request/worldinfo_request';
 import { useDataStore } from '@/store';
-import { uuidv4 } from '@util/common';
 
 type Entry = Record<string, any>;
 const LORE_SOURCES = ['globalLore', 'characterLore', 'chatLore', 'personaLore'] as const;
-const PROBE_WORLD_PREFIX = '__MVU_WI_PROBE_';
+// 使用生僻字序列，降低临时探针书名与用户世界书名称碰撞的概率。
+const PROBE_WORLD_PREFIX = '龘靐齉';
+// CJK 扩展 A 的前 128 个字（U+3400–U+347F），均为单个 UTF-16 码元。
+const PROBE_ID_ALPHABET = Array.from({ length: 128 }, (_, index) =>
+    String.fromCharCode(0x3400 + index)
+).join('');
 const SNAPSHOT_KEY = '__mvu_worldinfo_snapshot';
 const REQUEST_KEY = '__mvu_worldinfo_request';
 
@@ -45,6 +49,17 @@ const scan_filters = new WeakMap<Entry[], ScanFilter>();
  */
 function entryKey(entry: Entry): string {
     return JSON.stringify([entry.world, entry.uid]);
+}
+
+/** 每个生僻字编码 7 bit，以固定 5 位保留完整的 4B 无符号随机数。 */
+function createProbeWorld(): string {
+    let random = crypto.getRandomValues(new Uint32Array(1))[0];
+    let suffix = '';
+    for (let index = 0; index < 5; index++) {
+        suffix = PROBE_ID_ALPHABET[random & 0x7f] + suffix;
+        random >>>= 7;
+    }
+    return `${PROBE_WORLD_PREFIX}${suffix}`;
 }
 
 /** 判断条目是否使用本模块保留的临时世界书前缀，供识别和清理探针。 */
@@ -134,7 +149,7 @@ export async function onWorldinfoEntriesLoaded(lores: LoreEntries) {
         main_context,
         requests,
     };
-    const world = `${PROBE_WORLD_PREFIX}${uuidv4()}`;
+    const world = createProbeWorld();
     // 元数据只放在临时探针上。给业务条目增加字段会改变 ST 的哈希，破坏 timed effects。
     lores.characterLore.push({
         ...makeProbe(world, -1),
