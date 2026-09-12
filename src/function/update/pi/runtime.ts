@@ -462,7 +462,7 @@ export async function assertPiRuntimeConfiguration(
     const capabilities = capabilityFor(resolution);
     const streaming =
         settings['兼容假流式'] === true || isPiStreamingRequired(resolution.model.api);
-    if (!capabilities.streaming) {
+    if (streaming && !capabilities.streaming) {
         throw new PiRuntimeError(
             'unsupported_capability',
             `More source model '${resolution.model.id}' does not support streaming requests`

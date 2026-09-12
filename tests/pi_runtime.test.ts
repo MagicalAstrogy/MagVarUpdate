@@ -49,6 +49,12 @@ jest.mock('@/function/update/pi/pi_gateway', () => {
                 'text',
                 'image',
             ]),
+            ...Object.fromEntries(
+                ['gpt-5.5-pro', 'o3-pro', 'gpt-realtime-2.1'].map(id => [
+                    id,
+                    model(id, 'openai-responses', 'openai', 128_000, 8192),
+                ])
+            ),
         },
         OPENAI_CODEX_MODELS: {
             'codex-known': model(
@@ -727,6 +733,58 @@ describe('pi runtime execution', () => {
     });
 
     // 传输与发送前检查：流式设置随快照冻结，代理关闭或 Google SDK 不兼容时不进入服务商请求。
+    test.each(['gpt-5.5-pro', 'o3-pro', 'gpt-realtime-2.1'])(
+        'dispatches non-streaming-only catalog model %s when pseudo-streaming is disabled',
+        async model => {
+            const fetch = jest.fn();
+            const preflight = await assertPiRuntimeConfiguration({
+                settings: makeSettings({ 兼容假流式: false, pi: { model } }),
+                credentialStore: makeCredentialStore(),
+                fetch,
+            });
+            expect(preflight).toMatchObject({
+                resolution: { catalogHit: true, model: { id: model } },
+                capabilities: { streaming: false },
+                streaming: false,
+            });
+            stream.mockReturnValue(fakeStream(assistant([{ type: 'text', text: 'done' }])));
+
+            await runPiRequest({
+                preflight,
+                messages: [{ role: 'user', content: 'update' }],
+                generationId: `runtime-non-streaming-${model}`,
+            });
+
+            expect(stream).toHaveBeenCalledTimes(1);
+            expect(stream.mock.calls[0][0]).toMatchObject({ id: model });
+            const transport = stream.mock.calls[0][2].fetch;
+            expect(transport).toEqual(expect.any(Function));
+            expect(transport).not.toBe(fetch);
+            expect(getActivePiRequestIds()).toEqual([]);
+        }
+    );
+
+    test.each(['gpt-5.5-pro', 'o3-pro', 'gpt-realtime-2.1'])(
+        'rejects non-streaming-only catalog model %s before dispatch when pseudo-streaming is enabled',
+        async model => {
+            const fetch = jest.fn();
+            await expect(
+                runPiRequest({
+                    settings: makeSettings({ 兼容假流式: true, pi: { model } }),
+                    credentialStore: makeCredentialStore(),
+                    fetch,
+                    messages: [{ role: 'user', content: 'update' }],
+                    generationId: `runtime-unsupported-streaming-${model}`,
+                })
+            ).rejects.toMatchObject({ code: 'unsupported_capability', retryable: false });
+
+            expect(createProvider).not.toHaveBeenCalled();
+            expect(stream).not.toHaveBeenCalled();
+            expect(fetch).not.toHaveBeenCalled();
+            expect(getActivePiRequestIds()).toEqual([]);
+        }
+    );
+
     test.each([undefined, false, true])(
         'uses pseudo-streaming=%s to choose the request transport and freezes it across retries',
         async enabled => {
