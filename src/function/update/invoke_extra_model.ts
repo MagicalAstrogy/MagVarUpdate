@@ -220,11 +220,11 @@ export async function invokeExtraModelWithStrategy(): Promise<string | null> {
 
         debug_extra_request_counter = 0;
 
-        const recordedInvoke = async (generation_id?: string) => {
+        const recordedInvoke = async (generation_id?: string, signal?: AbortSignal) => {
             try {
-                return await invokeExtraModel(generation_id, batch_id);
+                return await invokeExtraModel(generation_id, batch_id, signal);
             } catch (e) {
-                console.error(e);
+                if (!signal?.aborted) console.error(e);
                 throw e;
             }
         };
@@ -250,15 +250,18 @@ export async function invokeExtraModelWithStrategy(): Promise<string | null> {
         };
         const concurrentInvoke = async (times: number) => {
             const uuids = _.times(times, uuidv4);
+            const controller = new AbortController();
             let did_set_extra_analysis_states = false;
             try {
                 await setExtraAnalysisStates();
                 did_set_extra_analysis_states = true;
                 //在函数调用的模式下，允许接受 **任意** 有效的函数结果，因此被允许被覆盖。
-                return await Promise.any(uuids.map(recordedInvoke));
+                return await Promise.any(uuids.map(id => recordedInvoke(id, controller.signal)));
             } catch (e) {
                 /** 已经记录, 忽略 */
             } finally {
+                // 先取消尚在登记世界书的调用，再停止已经交给助手的生成。
+                controller.abort();
                 uuids.forEach(stopGenerationById);
                 if (did_set_extra_analysis_states) {
                     await unsetExtraAnalysisStates();
@@ -359,15 +362,21 @@ export async function generateExtraModel(): Promise<string | null> {
  *
  * @param generation_id 本次生成编号；未指定时创建，与世界书识别和助手调用共用。
  * @param batch_id 同批请求共享的随机提示词头部。
+ * @param signal 并发批次的取消信号，阻止登记较慢的调用在批次结束后启动生成。
  * @returns 包含有效更新命令的 UpdateVariable 文本块。
  */
-async function invokeExtraModel(generation_id?: string, batch_id?: string): Promise<string> {
+async function invokeExtraModel(
+    generation_id?: string,
+    batch_id?: string,
+    signal?: AbortSignal
+): Promise<string> {
     generation_id ??= uuidv4();
     const release_worldinfo_request = await registerWorldinfoRequest(
         generation_id,
         useDataStore().settings.额外模型解析配置
     );
     try {
+        signal?.throwIfAborted();
         const result = await requestReply(generation_id, batch_id);
 
         const tag = _([...result.matchAll(/<(update(?:variable)?|variableupdate)>/gi)]).last()?.[1];

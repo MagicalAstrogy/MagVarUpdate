@@ -8,6 +8,9 @@
 `is_during_extra_analysis` 为真时，登记在途请求及过滤配置快照，在 `finally`
 中移除。成功、失败和取消都经过相同清理路径。
 
+并发批次结束时，先取消批次信号，再按编号停止助手中已启动的生成。仍在等待读取世界书的
+调用恢复后会检查该信号，释放登记并退出，不会在批次结束后启动新的生成。
+
 `generate()` / `generateRaw()` 的 `overrides.char_description`
 在保留原描述的基础上附加随机标记。助手会把这个覆盖值传给本次
 `globalScanData.characterDescription`。不修改角色卡、世界书本体、世界书缓存或共享注入提示词。
