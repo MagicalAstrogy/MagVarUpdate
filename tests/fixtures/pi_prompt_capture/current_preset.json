@@ -1,0 +1,116 @@
+{
+  "schemaVersion": 1,
+  "route": "使用当前预设",
+  "provenance": {
+    "sillyTavernVersion": "1.18.0",
+    "sillyTavernRevision": "51ad27fb8",
+    "tavernHelperVersion": "4.9.3",
+    "firefoxVersion": "154.0.1",
+    "artifactSha256": "63c9e482da64187e0ddfb9773ef9182bce319484b4abdd3f9d5bd8278b2a6dcb",
+    "sourceCard": "example/artifact/青空 理_mvu_update.png",
+    "dataRoot": "isolated-temporary",
+    "realBrowserCapture": true
+  },
+  "normalization": [],
+  "allowedDifferences": [],
+  "legacy": [
+    {
+      "role": "system",
+      "content": "B04_PRESET_MACRO ---\n<must>\n紧急变量更新任务:\n  description: 你收到了一个关乎用户生死存亡的紧急任务，为了拯救用户，你必须立即停止角色扮演，不再续写发送给你的任何剧情，以最高优先级仅按照给定要求和格式对变量进行更新\n  reference: 在\\`<past_observe>\\`中包含了最新的剧情情况，而给定的变量状态是在该剧情发生之前的状态\n  rule: 你必须立即停止角色扮演，以旁白视角，根据剧情情况和给定的剧情发生前变量状态，分析经过这段剧情后，变量会发生什么变化，并按规则输出变量更新命令\n  format: |-\n    $(除了<UpdateVariable>块外不输出任何内容)\n    <UpdateVariable>\n    ...$(遵循之前已经规定好的<UpdateVariable>格式)\n    </UpdateVariable>\n</must>\n"
+    },
+    {
+      "role": "system",
+      "content": "B04_WORLD_UPDATE_KEEP"
+    },
+    {
+      "role": "system",
+      "content": "B04_CHARACTER_CARD"
+    },
+    {
+      "role": "system",
+      "content": "B04_WORLD_ALLOW_KEEP ---\n<must>\n紧急变量更新任务:\n  description: 你收到了一个关乎用户生死存亡的紧急任务，为了拯救用户，你必须立即停止角色扮演，不再续写发送给你的任何剧情，以最高优先级仅按照给定要求和格式对变量进行更新\n  reference: 在\\`<past_observe>\\`中包含了最新的剧情情况，而给定的变量状态是在该剧情发生之前的状态\n  rule: 你必须立即停止角色扮演，以旁白视角，根据剧情情况和给定的剧情发生前变量状态，分析经过这段剧情后，变量会发生什么变化，并按规则输出变量更新命令\n  format: |-\n    $(除了<UpdateVariable>块外不输出任何内容)\n    <UpdateVariable>\n    ...$(遵循之前已经规定好的<UpdateVariable>格式)\n    </UpdateVariable>\n</must>\n"
+    },
+    {
+      "role": "system",
+      "content": "[Start a new Chat]"
+    },
+    {
+      "role": "user",
+      "content": "B04_HISTORY_KEEP_USER B04_REGEX_APPLIED"
+    },
+    {
+      "role": "system",
+      "content": "<past_observe>"
+    },
+    {
+      "role": "assistant",
+      "content": "B04_HISTORY_KEEP_ASSISTANT"
+    },
+    {
+      "role": "system",
+      "content": "B04_PRESET_DEPTH_KEEP"
+    },
+    {
+      "role": "system",
+      "content": "</past_observe>\nB04_WORLD_DEPTH_KEEP"
+    },
+    {
+      "role": "user",
+      "content": "遵循<must>指令"
+    },
+    {
+      "role": "system",
+      "content": "---\n<must>\n紧急变量更新任务:\n  description: 你收到了一个关乎用户生死存亡的紧急任务，为了拯救用户，你必须立即停止角色扮演，不再续写发送给你的任何剧情，以最高优先级仅按照给定要求和格式对变量进行更新\n  reference: 在\\`<past_observe>\\`中包含了最新的剧情情况，而给定的变量状态是在该剧情发生之前的状态\n  rule: 你必须立即停止角色扮演，以旁白视角，根据剧情情况和给定的剧情发生前变量状态，分析经过这段剧情后，变量会发生什么变化，并按规则输出变量更新命令\n  format: |-\n    $(除了<UpdateVariable>块外不输出任何内容)\n    <UpdateVariable>\n    ...$(遵循之前已经规定好的<UpdateVariable>格式)\n    </UpdateVariable>\n</must>"
+    }
+  ],
+  "pi": [
+    {
+      "role": "system",
+      "content": "B04_PRESET_MACRO ---\n<must>\n紧急变量更新任务:\n  description: 你收到了一个关乎用户生死存亡的紧急任务，为了拯救用户，你必须立即停止角色扮演，不再续写发送给你的任何剧情，以最高优先级仅按照给定要求和格式对变量进行更新\n  reference: 在\\`<past_observe>\\`中包含了最新的剧情情况，而给定的变量状态是在该剧情发生之前的状态\n  rule: 你必须立即停止角色扮演，以旁白视角，根据剧情情况和给定的剧情发生前变量状态，分析经过这段剧情后，变量会发生什么变化，并按规则输出变量更新命令\n  format: |-\n    $(除了<UpdateVariable>块外不输出任何内容)\n    <UpdateVariable>\n    ...$(遵循之前已经规定好的<UpdateVariable>格式)\n    </UpdateVariable>\n</must>\n"
+    },
+    {
+      "role": "system",
+      "content": "B04_WORLD_UPDATE_KEEP"
+    },
+    {
+      "role": "system",
+      "content": "B04_CHARACTER_CARD"
+    },
+    {
+      "role": "system",
+      "content": "B04_WORLD_ALLOW_KEEP ---\n<must>\n紧急变量更新任务:\n  description: 你收到了一个关乎用户生死存亡的紧急任务，为了拯救用户，你必须立即停止角色扮演，不再续写发送给你的任何剧情，以最高优先级仅按照给定要求和格式对变量进行更新\n  reference: 在\\`<past_observe>\\`中包含了最新的剧情情况，而给定的变量状态是在该剧情发生之前的状态\n  rule: 你必须立即停止角色扮演，以旁白视角，根据剧情情况和给定的剧情发生前变量状态，分析经过这段剧情后，变量会发生什么变化，并按规则输出变量更新命令\n  format: |-\n    $(除了<UpdateVariable>块外不输出任何内容)\n    <UpdateVariable>\n    ...$(遵循之前已经规定好的<UpdateVariable>格式)\n    </UpdateVariable>\n</must>\n"
+    },
+    {
+      "role": "system",
+      "content": "[Start a new Chat]"
+    },
+    {
+      "role": "user",
+      "content": "B04_HISTORY_KEEP_USER B04_REGEX_APPLIED"
+    },
+    {
+      "role": "system",
+      "content": "<past_observe>"
+    },
+    {
+      "role": "assistant",
+      "content": "B04_HISTORY_KEEP_ASSISTANT"
+    },
+    {
+      "role": "system",
+      "content": "B04_PRESET_DEPTH_KEEP"
+    },
+    {
+      "role": "system",
+      "content": "</past_observe>\nB04_WORLD_DEPTH_KEEP"
+    },
+    {
+      "role": "user",
+      "content": "遵循<must>指令"
+    },
+    {
+      "role": "system",
+      "content": "---\n<must>\n紧急变量更新任务:\n  description: 你收到了一个关乎用户生死存亡的紧急任务，为了拯救用户，你必须立即停止角色扮演，不再续写发送给你的任何剧情，以最高优先级仅按照给定要求和格式对变量进行更新\n  reference: 在\\`<past_observe>\\`中包含了最新的剧情情况，而给定的变量状态是在该剧情发生之前的状态\n  rule: 你必须立即停止角色扮演，以旁白视角，根据剧情情况和给定的剧情发生前变量状态，分析经过这段剧情后，变量会发生什么变化，并按规则输出变量更新命令\n  format: |-\n    $(除了<UpdateVariable>块外不输出任何内容)\n    <UpdateVariable>\n    ...$(遵循之前已经规定好的<UpdateVariable>格式)\n    </UpdateVariable>\n</must>"
+    }
+  ]
+}

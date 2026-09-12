@@ -35,3 +35,7 @@ declare namespace z {
 
 declare const __BUILD_DATE__: string | undefined;
 declare const __COMMIT_ID__: string | undefined;
+declare const __PI_MULTIPROVIDER_ENABLED__: boolean | undefined;
+
+// eslint-disable-next-line no-var -- ambient `var` is required to expose the release switch on globalThis
+declare var __MVU_PI_MULTIPROVIDER_ENABLED__: boolean | undefined;

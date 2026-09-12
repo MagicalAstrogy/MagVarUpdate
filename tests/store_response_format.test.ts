@@ -1,5 +1,9 @@
+/**
+ * 测试场景：验证额外模型应答格式及相关默认设置，覆盖旧工具调用标记迁移、显式选项优先和历史条数限制。
+ */
 import { useDataStore } from '@/store';
 
+// 设置默认与迁移：格式、思考、随机头部和世界书过滤保持约定，合法显式值不被迁移覆盖。
 describe('extra model response format settings', () => {
     beforeEach(() => {
         (globalThis as any).SillyTavern.extensionSettings = {};
@@ -13,6 +17,7 @@ describe('extra model response format settings', () => {
         const store = useDataStore();
 
         expect(store.settings.额外模型解析配置.应答格式).toBe('聊天消息');
+        expect(store.settings.额外模型解析配置.兼容假流式).toBe(false);
     });
 
     test('migrates legacy function calling flag to tool calling response format', () => {
@@ -58,6 +63,7 @@ describe('extra model response format settings', () => {
         expect(store.settings.额外模型解析配置.应答格式).toBe('格式化输出(v4兼容)');
     });
 
+    // 关联默认值：历史条数、世界书正则、思考和随机头部在加载后保持预期范围与开关状态。
     test('defaults max chat history to the previous hardcoded value', () => {
         const store = useDataStore();
 

@@ -1,4 +1,7 @@
-import { migrateExtraModelApiProfiles } from '@/function/update/extra_model_api_profiles';
+import {
+    migrateExtraModelApiProfiles,
+    normalizeExtraModelPiProfileContextWindow,
+} from '@/function/update/extra_model_api_profiles';
 import {
     CharacterSettingsOverride,
     CharacterSettingsOverridePath,
@@ -13,14 +16,77 @@ import { defineStore } from 'pinia';
 import { computed, ref, toRaw, watch } from 'vue';
 import * as z from 'zod';
 
-const ExtraModelApiProfile = z
+/**
+ * 保留导入或界面中的无效窗口值，使其与合法的“0 = 使用目录值”明确区分。
+ * 请求预检只接受 0 或正整数，避免错误配置静默回退到目录元数据。
+ */
+const ExtraModelPiContextWindow = z
+    .union([z.number(), z.string()])
+    .catch('__invalid_context_window__')
+    .default(0)
+    .transform((value): number | string => {
+        if (typeof value === 'number') {
+            return value;
+        }
+        const trimmed = value.trim();
+        if (trimmed === '') {
+            return 0;
+        }
+        const parsed = Number(trimmed);
+        return Number.isInteger(parsed) && parsed >= 0 ? parsed : value;
+    });
+
+// 方案快照使用规范化整数；无效值使整个连接快照失效，而不污染其余设置。
+const ExtraModelPiProfileContextWindow = z
+    .union([z.number(), z.string()])
+    .transform(value => normalizeExtraModelPiProfileContextWindow(value))
+    .pipe(z.number());
+
+// 方案只保存连接与请求覆盖，OAuth 凭证和按目标缓存的密钥由活动设置独立持有。
+const ExtraModelPiProfileSnapshot = z
     .object({
-        名称: z.string().min(1),
-        api地址: z.string().default(''),
-        密钥: z.string().default(''),
-        模型名称: z.string().default(''),
+        credentialIds: z.record(z.string(), z.string()).optional().catch({}),
+        provider: z.string().trim(),
+        api: z.string().trim(),
+        authType: z
+            .string()
+            .trim()
+            .pipe(z.enum(['api_key', 'oauth'])),
+        endpoint: z.string().trim(),
+        useProxy: z.boolean().catch(false).default(false),
+        model: z.string().trim(),
+        contextWindow: ExtraModelPiProfileContextWindow,
+        customHeaders: z.string(),
+        customIncludeBody: z.string(),
+        customExcludeBody: z.string(),
     })
-    .loose();
+    .loose()
+    .transform(({ credentials: _credentials, apiKeys: _apiKeys, ...connection }) => connection);
+
+// 导入的残缺 Pi 快照不能靠默认服务商或协议补成可发送连接。
+// 保留外层方案，只丢弃无效连接，应用时再要求用户补全。
+const ExtraModelPiProfile = z.union([ExtraModelPiProfileSnapshot, z.undefined()]).catch(undefined);
+
+// 活动连接容许保留未知字段，实际可发送性由统一预检决定。
+const ExtraModelPiSettings = z
+    .object({
+        provider: z.string().trim().default('openai'),
+        api: z.string().trim().default('openai-responses'),
+        // 保留未知认证标识供用户查看；请求和方案保存会拒绝它，迁移会清除无归属的活动密钥。
+        authType: z.string().trim().default('api_key'),
+        endpoint: z.string().trim().default(''),
+        useProxy: z.boolean().catch(false).default(false),
+        model: z.string().trim().default(''),
+        contextWindow: ExtraModelPiContextWindow,
+        credentialIds: z.record(z.string(), z.string()).optional().catch({}),
+        credentials: z.record(z.string(), z.unknown()).catch({}).default({}),
+        apiKeys: z.record(z.string(), z.string()).catch({}).default({}),
+        customHeaders: z.string().default(''),
+        customIncludeBody: z.string().default(''),
+        customExcludeBody: z.string().default(''),
+    })
+    .loose()
+    .prefault({});
 
 export const EXTRA_MODEL_RESPONSE_FORMATS = [
     '聊天消息',
@@ -30,6 +96,36 @@ export const EXTRA_MODEL_RESPONSE_FORMATS = [
 ] as const;
 
 const ExtraModelResponseFormat = z.enum(EXTRA_MODEL_RESPONSE_FORMATS);
+const ExtraModelJailbreakStrategy = z.enum(['使用内置破限', '使用当前预设', '使用其他预设']);
+
+const ExtraModelApiProfile = z
+    .object({
+        名称: z.string().trim().min(1),
+        backend: z.enum(['custom', 'pi']).default('custom'),
+        api地址: z.string().default(''),
+        密钥: z.string().default(''),
+        模型名称: z.string().default(''),
+        pi: ExtraModelPiProfile.optional(),
+        // 缺失选项保持未设置，使旧自定义方案可以一次性继承当前请求选项。
+        破限方案: ExtraModelJailbreakStrategy.optional().catch(undefined),
+        其他预设名称: z.string().optional().catch(undefined),
+        随机头部: z.boolean().optional().catch(undefined),
+        应答格式: ExtraModelResponseFormat.optional().catch(undefined),
+        关闭thinking: z.boolean().optional().catch(undefined),
+        兼容假流式: z.boolean().optional().catch(undefined),
+    })
+    .loose()
+    .transform(({ customApiKey: _customApiKey, ...profile }) => profile);
+
+// 逐项容错，单个损坏方案只被过滤，不使整份用户设置重置。
+const ExtraModelApiProfileList = z
+    .array(ExtraModelApiProfile.nullable().catch(null))
+    .catch([])
+    .transform(profiles =>
+        profiles.filter(
+            (profile): profile is z.infer<typeof ExtraModelApiProfile> => profile !== null
+        )
+    );
 
 const OldSettings = z
     .object({
@@ -134,9 +230,7 @@ const NewSettings = z
         更新方式: z.enum(['随AI输出', '额外模型解析']).default('随AI输出'),
         额外模型解析配置: z
             .object({
-                破限方案: z
-                    .enum(['使用内置破限', '使用当前预设', '使用其他预设'])
-                    .default('使用内置破限'),
+                破限方案: ExtraModelJailbreakStrategy.default('使用内置破限'),
                 其他预设名称: z.string().default(''),
                 使用函数调用: z.boolean().optional(),
                 应答格式: ExtraModelResponseFormat.optional(),
@@ -156,10 +250,12 @@ const NewSettings = z
                 世界书条目白名单正则: z.string().default(''),
                 世界书条目黑名单正则: z.string().default(''),
 
-                模型来源: z.enum(['与插头相同', '自定义']).default('与插头相同'),
+                模型来源: z.enum(['与插头相同', '自定义', '更多']).default('与插头相同'),
                 api地址: z.string().default('http://localhost:1234/v1'),
                 密钥: z.string().default(''),
+                customApiKey: z.string().catch('').default(''),
                 模型名称: z.string().default('gemini-2.5-flash-nothinking'),
+                pi: ExtraModelPiSettings,
                 温度: z.coerce
                     .number()
                     .default(1)
@@ -186,10 +282,12 @@ const NewSettings = z
                     .transform(value => _.clamp(Math.round(value), 2, 100)),
                 最大回复token数: z.coerce
                     .number()
+                    // 回复 token 的 0 没有默认值语义，可保留为阻止请求的无效导入值。
+                    .catch(0)
                     .default(4096)
                     .transform(value => Math.max(0, value)),
-                api方案列表: z.array(ExtraModelApiProfile).default([]),
-                当前api方案: z.string().default(''),
+                api方案列表: ExtraModelApiProfileList.default([]),
+                当前api方案: z.string().catch('').default(''),
             })
             .loose()
             .transform(({ 使用函数调用, 应答格式, ...data }) =>
@@ -238,10 +336,8 @@ const NewSettings = z
     })
     .loose()
     .transform(data => {
-        if (data.internal.已开启默认不兼容假流式 === false) {
-            data.额外模型解析配置.兼容假流式 = false;
-            data.internal.已开启默认不兼容假流式 = true;
-        }
+        // 新安装由 Schema 提供 false；迁移时保留已保存的流式选项及方案继承值。
+        data.internal.已开启默认不兼容假流式 = true;
         return data;
     })
     .prefault({});

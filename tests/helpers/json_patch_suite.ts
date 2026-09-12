@@ -1,11 +1,12 @@
+/**
+ * 测试场景：复用 JSON Patch 标准 fixture 与 MVU 特有包装场景，验证标签提取、增量写入及路径字符保持。
+ */
 import { updateVariables, extractCommands } from '@/function/update_variables';
 import { generateSchema } from '@/function/schema';
 import { isArraySchema, isObjectSchema, SchemaNode } from '@/variable_def';
 import { describe, expect, it } from '@jest/globals';
-// eslint-disable-next-line import-x/no-nodejs-modules
 import fs from 'fs';
 import _ from 'lodash';
-// eslint-disable-next-line import-x/no-nodejs-modules
 import path from 'path';
 
 type PatchCase = {
@@ -72,6 +73,7 @@ async function runPatchCase(testCase: PatchCase) {
 }
 
 export function registerJsonPatchTests(): void {
+    // 标准 fixture：仅运行当前支持操作的有效用例，排除禁用项、预期错误及缺少结果的项。
     describe('JSON Patch fixtures', () => {
         beforeEach(() => {
             jest.clearAllMocks();
@@ -86,7 +88,9 @@ export function registerJsonPatchTests(): void {
         )('%s', async (_label, testCase) => runPatchCase(testCase));
     });
 
+    // MVU 扩展场景：检查更新标签提取及命令执行的兼容行为。
     describe('JsonPatchMiscTest', () => {
+        // 多标签提取：忽略思考内容中的干扰，选择正确更新块。
         describe('含有多个标签的场合', () => {
             it('思考链测试', () => {
                 const value = `<JsonPatch> <JsonPatch>[{"op": "replace", "path": "/1", "value": ["bar", "baz"]}]</JsonPatch>
@@ -95,6 +99,7 @@ export function registerJsonPatchTests(): void {
                 expect(result.length).toEqual(2);
             });
         });
+        // 标签别名：大小写或别名包装保持相同提取行为。
         describe('含有多个标签的场合_别名', () => {
             it('思考链测试', () => {
                 const value = `<json_patch> <JsonPatch>[{"op": "replace", "path": "/1", "value": ["bar", "baz"]}]</JsonPatch>
@@ -103,6 +108,7 @@ export function registerJsonPatchTests(): void {
                 expect(result.length).toEqual(2);
             });
         });
+        // 空标签内容：空更新块不会遮蔽其他有效内容。
         describe('含有多个标签的场合_空内容', () => {
             it('思考链测试', () => {
                 const value = `<json_patch></json_patch>456 <JsonPatch>[{"op": "replace", "path": "/1", "value": ["bar", "baz"]}]</JsonPatch>fg
@@ -111,6 +117,7 @@ export function registerJsonPatchTests(): void {
                 expect(result.length).toEqual(2);
             });
         });
+        // 不对称标记：覆盖混合标签写法下的更新内容识别。
         describe('含有多个标签的场合_使用不对称标记', () => {
             it('思考链测试', () => {
                 const value = `<JsonPatch>345456 <json_patch>[{"op": "replace", "path": "/1", "value": ["bar", "baz"]}]</json_patch>2345
@@ -121,6 +128,7 @@ export function registerJsonPatchTests(): void {
         });
     });
 
+    // 补丁执行：验证 delta、数组追加和带特殊字符的对象路径。
     describe('执行测试', () => {
         test('delta指令', async () => {
             const statData = { 测试: 10 };
@@ -140,6 +148,7 @@ export function registerJsonPatchTests(): void {
             expect(variables.stat_data).toEqual({ 测试: 20 });
         });
 
+        // 路径回归：数组尾部、缺失根斜杠、点号与控制字符都必须保持各自路径语义。
         test('json patch insert with /- appends to array tail', async () => {
             const statData = {
                 主角: {
