@@ -1,9 +1,16 @@
 import type { Context, ImageContent, Message } from '@earendil-works/pi-ai';
-import { getPiImageMetadata, PI_IMAGE_INPUT_LIMITS } from './context_adapter';
+import {
+    getPiImageMetadata,
+    PI_IMAGE_INPUT_LIMITS,
+    type PiLateSystemMessage,
+} from './context_adapter';
 
+/** 发送前的保守预算结果，用于解释输入是否超出模型窗口，不代表计费 token 数。 */
 export type PiTokenPreflightResult = {
     estimatedInputTokens: number;
+    /** 额外预留的安全余量，不包含回复 token。 */
     reservedTokens: number;
+    /** 上下文窗口扣除回复额度及安全余量后允许的输入上限。 */
     maxInputTokens: number;
 };
 
@@ -155,13 +162,20 @@ function estimateMessageTokens(message: Message): number {
 }
 
 /** 汇总系统提示词、历史消息和工具定义的输入 token 估算。 */
-export function estimatePiContextTokens(context: Context): number {
+export function estimatePiContextTokens(
+    context: Context,
+    lateSystemMessages: readonly PiLateSystemMessage[] = []
+): number {
     let tokens = estimateTextTokens(context.systemPrompt ?? '');
     for (const message of context.messages) {
         tokens += estimateMessageTokens(message);
     }
     if (context.tools?.length) {
         tokens += estimateTextTokens(JSON.stringify(context.tools));
+    }
+    // 后置 system 尚未写入 Pi Context，但最终请求会恢复其文本和独立消息开销。
+    for (const message of lateSystemMessages) {
+        tokens += estimateTextTokens(message.text) + 8;
     }
     return Math.max(1, tokens);
 }
@@ -174,7 +188,8 @@ export function assertPiTokenBudget(
     context: Context,
     context_window: number,
     max_tokens: number,
-    reserve_ratio = 0.07
+    reserve_ratio = 0.07,
+    lateSystemMessages: readonly PiLateSystemMessage[] = []
 ): PiTokenPreflightResult {
     if (!Number.isInteger(context_window) || context_window <= 0) {
         throw new Error('More source contextWindow must be a positive integer');
@@ -190,7 +205,7 @@ export function assertPiTokenBudget(
     const normalized_reserve_ratio = Math.min(0.1, Math.max(0.05, reserve_ratio));
     const reserved_tokens = Math.ceil(context_window * normalized_reserve_ratio);
     const max_input_tokens = context_window - max_tokens - reserved_tokens;
-    const estimated_input_tokens = estimatePiContextTokens(context);
+    const estimated_input_tokens = estimatePiContextTokens(context, lateSystemMessages);
     if (max_input_tokens <= 0 || estimated_input_tokens > max_input_tokens) {
         throw new Error(
             `More source prompt is too long: estimated ${estimated_input_tokens} input tokens, ` +

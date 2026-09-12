@@ -313,7 +313,15 @@ API 请求形状判断，不根据目录模型或自定义 endpoint 的静态能
 - data URL 图片会转换成 Pi image block，并校验 MIME、base64 与模型输入能力。解码后每张图片最大 5
   MiB；单个 context 中所有图片合计最大 16
   MiB、最多 20 张。远程图片 URL 和 video 当前明确拒绝，不会静默丢弃。
-- 历史 tool call/tool result 会转换为 Pi 对应内容块；普通文本、消息名和后置 system 消息也会保留。
+- 历史 tool call/tool result 会转换为 Pi 对应内容块；普通文本和消息名也会保留。
+- 前置连续 system 进入 Pi 的 `systemPrompt`；中途和末尾 system 由 `context_adapter.ts`
+  单独记录内容及位置，在 `onPayload` 中恢复为原生 `role: "system"`，不会附着到 user 内容。
+  `system_messages.ts` 用请求级文本锚点定位 Pi 拆分后的消息，发送前移除锚点；工具 ID、图片和普通消息继续由 Pi 适配。
+  system 文本也计入 token 预检。无法完整恢复时终止请求，不使用改变角色的降级。
+- Responses（含 Codex）、Chat Completions 和 Mistral 路径在原生消息数组中恢复 system。
+  Anthropic 会检查插入位置：紧跟 user 或工具结果，之后为 assistant 或请求结束；具体模型是否支持仍由上游决定。
+  参见 [Anthropic 中途 system 的模型与位置要求](https://platform.claude.com/docs/en/build-with-claude/mid-conversation-system-messages)。
+  Google 的当前协议不能表达同位置的中途 system，因此遇到此类输入会在发送前报错；前置 system 仍可用。
 
 Provider 目录和上游能力会变化；上表只表示 MVU 已实现请求形状，不保证任意目标 endpoint/model 都会接受。
 

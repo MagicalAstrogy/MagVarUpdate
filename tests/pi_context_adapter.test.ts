@@ -70,7 +70,7 @@ function makeAlignedPngBase64(decodedBytes: number): string {
 
 // 上下文转换契约：显式处理 system 位置、空内容、多模态和历史工具返回值。
 describe('toPiContext', () => {
-    // 系统消息布局：合并连续前置 system，并按策略处理后置 system 的归属或拒绝。
+    // 系统消息布局：合并连续前置 system，后置 system 保留独立内容和原位置。
     test('combines only the contiguous leading system messages in source order', () => {
         const input: InputMessage[] = [
             { role: 'system', content: 'first instruction' },
@@ -84,13 +84,12 @@ describe('toPiContext', () => {
         expect(context.systemPrompt).toBe('first instruction\n\nsecond instruction');
         expect(context.messages.map(message => message.role)).toEqual(['user', 'assistant']);
         expect(diagnostics).toEqual({
-            movedLateSystemCount: 0,
-            lateSystemMoves: [],
+            preservedLateSystemCount: 0,
             droppedEmptyMessageIndexes: [],
         });
     });
 
-    test('attaches late system messages to the nearest user while preserving their relative position', () => {
+    test('preserves late system messages separately without changing user or assistant content', () => {
         const input: InputMessage[] = [
             { role: 'system', content: 'leading' },
             { role: 'user', content: 'first user' },
@@ -100,38 +99,37 @@ describe('toPiContext', () => {
             { role: 'system', content: 'after second user' },
         ];
 
-        const { context, diagnostics } = toPiContext(input, { now: () => NOW });
-        const secondUser = context.messages.find(
-            message => message.role === 'user' && getText(message.content).includes('second user')
-        );
-
-        expect(secondUser).toBeDefined();
-        const content = getText(secondUser?.content);
-        expect(content).toContain('<system_injection source="sillytavern">');
-        expect(content.indexOf('before second user')).toBeLessThan(content.indexOf('second user'));
-        expect(content.indexOf('second user')).toBeLessThan(content.indexOf('after second user'));
+        const { context, diagnostics, lateSystemMessages } = toPiContext(input, { now: () => NOW });
+        expect(context.messages.map(message => getText(message.content))).toEqual([
+            'first user',
+            'first assistant',
+            'second user',
+        ]);
+        expect(context.systemPrompt).toBe('leading');
+        expect(lateSystemMessages).toEqual([
+            { sourceIndex: 3, beforeMessageIndex: 2, text: 'before second user' },
+            { sourceIndex: 5, beforeMessageIndex: 3, text: 'after second user' },
+        ]);
         expect(diagnostics).toEqual({
-            movedLateSystemCount: 2,
-            lateSystemMoves: [
-                { sourceIndex: 3, targetUserIndex: 4, placement: 'before' },
-                { sourceIndex: 5, targetUserIndex: 4, placement: 'after' },
-            ],
+            preservedLateSystemCount: 2,
             droppedEmptyMessageIndexes: [],
         });
     });
 
-    test('uses the preceding user for a late system after the final user', () => {
+    test('keeps consecutive trailing systems in source order after dropping empty messages', () => {
         const input: InputMessage[] = [
             { role: 'user', content: 'final user' },
+            { role: 'assistant', content: '' },
             { role: 'system', content: 'tail instruction' },
+            { role: 'system', content: 'second tail instruction' },
         ];
 
-        const { context, diagnostics } = toPiContext(input, { now: () => NOW });
-        const content = getText(context.messages[0].content);
-
-        expect(content.indexOf('final user')).toBeLessThan(content.indexOf('tail instruction'));
-        expect(diagnostics.lateSystemMoves).toEqual([
-            { sourceIndex: 1, targetUserIndex: 0, placement: 'after' },
+        const { context, diagnostics, lateSystemMessages } = toPiContext(input, { now: () => NOW });
+        expect(getText(context.messages[0].content)).toBe('final user');
+        expect(diagnostics.droppedEmptyMessageIndexes).toEqual([1]);
+        expect(lateSystemMessages).toEqual([
+            { sourceIndex: 2, beforeMessageIndex: 1, text: 'tail instruction' },
+            { sourceIndex: 3, beforeMessageIndex: 1, text: 'second tail instruction' },
         ]);
     });
 
@@ -163,15 +161,15 @@ describe('toPiContext', () => {
         ).toThrow(/late.?system|system.*(?:index|位置)|(?:对话开始后|中途).*system/i);
     });
 
-    test('rejects a late system message when there is no user to attach it to', () => {
+    test('preserves a late system message even when there is no user to attach it to', () => {
         const input: InputMessage[] = [
             { role: 'assistant', content: 'orphan assistant' },
             { role: 'system', content: 'orphan instruction' },
         ];
 
-        expect(() => toPiContext(input, { now: () => NOW })).toThrow(
-            /system.*(?:user|attach)|系统.*用户/i
-        );
+        expect(toPiContext(input, { now: () => NOW }).lateSystemMessages).toEqual([
+            { sourceIndex: 1, beforeMessageIndex: 1, text: 'orphan instruction' },
+        ]);
     });
 
     // 消息元数据：角色名、空消息策略、诊断下标和历史助手占位信息保持稳定。

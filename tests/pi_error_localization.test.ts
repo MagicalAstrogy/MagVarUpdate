@@ -37,6 +37,28 @@ describe('Pi error localization boundary', () => {
         i18n.global.locale.value = original_locale;
     });
 
+    test.each(['zh-CN', 'en'] as const)(
+        'explains native system preservation failures in %s',
+        locale => {
+            i18n.global.locale.value = locale;
+            const cases = [
+                ['system-role-unsupported', 'runtime.pi.contextSystemRoleUnsupported'],
+                ['system-placement', 'runtime.pi.contextSystemPlacement'],
+                ['system-payload-mismatch', 'runtime.pi.contextSystemPayloadMismatch'],
+            ] as const;
+            for (const [code, key] of cases) {
+                const error = new PiContextAdapterError(
+                    'internal content must not appear',
+                    code,
+                    3
+                );
+                expect(getLocalizedPiErrorMessage(error)).toBe(i18n.global.t(key, { index: 3 }));
+                expect(error).toBeInstanceOf(PiContextAdapterError);
+                expect(error.code).toBe(code);
+            }
+        }
+    );
+
     // 已知错误分类：采样、模型解析、服务商、上下文和结果错误都有安全的双语提示。
     test.each(['zh-CN', 'en'] as const)('explains conflicting Anthropic samplers in %s', locale => {
         i18n.global.locale.value = locale;

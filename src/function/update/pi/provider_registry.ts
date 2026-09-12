@@ -69,8 +69,10 @@ export type { PiAuthType, PiProviderKey, PiWireApi } from './provider_target';
  */
 export const OPENAI_CODEX_ADAPTER_CLIENT_VERSION = '0.144.0';
 
+/** 来源面板单个配置字段的呈现与编辑方式。 */
 export type PiFieldMode = 'hidden' | 'readonly' | 'select' | 'editable';
 
+/** 服务商对应的面板字段规则，认证相关字段按所选认证方式显示。 */
 export interface PiProviderFieldVisibility {
     api: PiFieldMode;
     authType: PiFieldMode;
@@ -81,17 +83,20 @@ export interface PiProviderFieldVisibility {
     contextWindow: 'editable';
 }
 
+/** 协议与模型组合可用的请求能力，供面板显隐和发送前参数校验共用。 */
 export interface PiApiCapabilities {
-    /** The selected adapter/model combination supports MVU's streaming execution path. */
+    /** 是否支持 MVU 当前采用的 Pi 流式执行链路。 */
     streaming: boolean;
     tools: boolean;
     imageInput: boolean;
-    /** Native JSON Schema response support. */
+    /** 是否支持服务商原生 JSON Schema 输出约束。 */
     structuredOutput: boolean;
-    /** Native unconstrained JSON-object response support. */
+    /** 是否支持不指定 Schema 的原生 JSON 对象输出。 */
     jsonObjectOutput: boolean;
     temperature: boolean;
+    /** temperature 可配置的闭区间，仅在支持该参数时生效。 */
     temperatureRange: readonly [minimum: number, maximum: number];
+    /** 可直接传给当前协议的采样参数；未支持的配置在预检时拒绝。 */
     sampling: Readonly<{
         topP: boolean;
         topK: boolean;
@@ -100,11 +105,12 @@ export interface PiApiCapabilities {
     }>;
 }
 
+/** 令牌端点要求的请求正文编码：JSON 或 URL 编码表单。 */
 export type PiOAuthExchangeKind = 'json' | 'form';
 
 /**
- * Public-client OAuth metadata shared by the Source UI and the browser-safe OAuth bridge.
- * PKCE verifier/state values are request-scoped and intentionally do not belong here.
+ * 来源面板与浏览器 OAuth 流程共享的公共客户端配置。
+ * 每次登录独有的 PKCE verifier 和 state 保存在尝试状态中，不属于注册信息。
  */
 export interface PiOAuthDefinition {
     providerId: PiProviderKey;
@@ -113,16 +119,19 @@ export interface PiOAuthDefinition {
     authorizeUrl: string;
     tokenUrl: string;
     redirectUri: string;
+    /** 粘贴回调允许使用的回环主机名，端口和路径仍需与 redirectUri 匹配。 */
     allowedCallbackHosts: readonly ('localhost' | '127.0.0.1')[];
     scope: string;
     exchangeKind: PiOAuthExchangeKind;
     authorizeParams: Readonly<Record<string, string>>;
     tokenParams: Readonly<Record<string, string>>;
+    /** 部分服务商要求交换授权码时同时提交本次 state。 */
     includeStateInTokenRequest: boolean;
-    /** Milliseconds subtracted from the upstream expiry when persisting a credential. */
+    /** 持久化时从服务商有效期扣除的毫秒数，使刷新提前于实际过期。 */
     expirySkewMs: number;
 }
 
+/** 完整服务商注册信息，在轻量连接规则上加入能力表、界面配置和 OAuth 元数据。 */
 export interface PiProviderDefinition {
     key: PiProviderKey;
     providerId: PiProviderKey;
@@ -135,15 +144,20 @@ export interface PiProviderDefinition {
     defaultAuthType: PiAuthType;
     allowedAuthTypes: readonly PiAuthType[];
     defaultBaseUrl: string;
+    /** 同一服务商不同协议的专用地址；缺省时使用 defaultBaseUrl。 */
     apiBaseUrls?: Readonly<Partial<Record<PiWireApi, string>>>;
+    /** 内置端点在浏览器中必须经酒馆 CORS 代理访问的协议。 */
     readonly corsProxyRequiredApis: readonly PiWireApi[];
     allowCustomEndpoint: boolean;
+    /** 按协议登记的能力基线，查询具体模型时还会应用模型限制。 */
     apiCapabilities: Readonly<Partial<Record<PiWireApi, Readonly<PiApiCapabilities>>>>;
     fields: Readonly<PiProviderFieldVisibility>;
     oauth?: Readonly<PiOAuthDefinition>;
 }
 
+/** 按模型目录键索引的只读 Pi 元数据，不可直接修改为本次请求的配置。 */
 type Catalog = Readonly<Record<string, Model<Api>>>;
+/** 创建协议流适配器的工厂，供 Provider 构建时选择实际协议实现。 */
 type ApiLoader = () => ProviderStreams;
 
 const CATALOGS: Readonly<Record<PiProviderKey, Catalog>> = {

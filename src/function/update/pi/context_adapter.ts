@@ -11,39 +11,49 @@ import type {
     UserMessage,
 } from '@earendil-works/pi-ai';
 
-export type LateSystemPolicy = 'attach-to-nearest-user' | 'strict';
+/** 后置 system 默认保留原生角色；strict 用于明确禁止此类输入的调用方。 */
+export type LateSystemPolicy = 'preserve' | 'strict';
+/** 普通空消息的处理方式：strict 报错，lenient 丢弃并记录原始下标。 */
 export type ContextAdapterMode = 'strict' | 'lenient';
 
-export type LateSystemMoveDiagnostic = {
+/** Pi Context 无法表达的系统消息，交由请求载荷 hook 在原位置恢复。 */
+export type PiLateSystemMessage = {
     sourceIndex: number;
-    targetUserIndex: number;
-    placement: 'before' | 'after';
+    /** 插在转换后第几条普通消息之前；等于 messages.length 表示位于末尾。 */
+    beforeMessageIndex: number;
+    text: string;
 };
 
+/** 上下文转换的内容保留及空消息诊断，不包含完整提示词。 */
 export type PiContextAdapterDiagnostics = {
-    movedLateSystemCount: number;
-    lateSystemMoves: LateSystemMoveDiagnostic[];
+    preservedLateSystemCount: number;
     droppedEmptyMessageIndexes: number[];
 };
 
+/** 转换策略和可注入时钟；不包含服务商认证或网络配置。 */
 export type ToPiContextOptions = {
     mode?: ContextAdapterMode;
     lateSystemPolicy?: LateSystemPolicy;
     now?: () => number;
 };
 
+/** 标准 Pi 上下文与必须一并传给载荷适配层的原生 system 消息。 */
 export type PiContextAdapterResult = {
     context: Context;
+    lateSystemMessages: readonly PiLateSystemMessage[];
     diagnostics: PiContextAdapterDiagnostics;
 };
 
+/** 提示词转换或原生 system 恢复失败的稳定分类。 */
 export type PiContextAdapterErrorCode =
     | 'empty-content'
     | 'invalid-image'
     | 'invalid-tool-call'
     | 'late-system'
+    | 'system-role-unsupported'
+    | 'system-placement'
+    | 'system-payload-mismatch'
     | 'missing-tool-call'
-    | 'missing-user-for-system'
     | 'unsupported-content';
 
 export class PiContextAdapterError extends Error {
@@ -58,24 +68,17 @@ export class PiContextAdapterError extends Error {
     }
 }
 
+/** 酒馆捕获消息，加上历史工具结果可能携带的错误标记。 */
 type SendingMessage = SillyTavern.SendingMessage & {
     name?: string;
     is_error?: boolean;
     isError?: boolean;
 };
 
+/** 酒馆多模态内容数组中的单个块。 */
 type ContentBlock = NonNullable<Exclude<SendingMessage['content'], string>>[number];
+/** 当前转换层允许交给 Pi 的文本或图片输入。 */
 type PiInputContent = TextContent | ImageContent;
-
-type LateSystemAttachment = {
-    sourceIndex: number;
-    text: string;
-};
-
-type UserAttachments = {
-    before: LateSystemAttachment[];
-    after: LateSystemAttachment[];
-};
 
 const IMPORTED_ASSISTANT_API = 'sillytavern-import' as Api;
 const IMPORTED_ASSISTANT_PROVIDER = 'sillytavern';
@@ -98,6 +101,7 @@ export const PI_IMAGE_INPUT_LIMITS = Object.freeze({
 const MAX_ENCODED_CHARACTERS_PER_IMAGE =
     Math.ceil(PI_IMAGE_INPUT_LIMITS.maxDecodedBytesPerImage / 3) * 4;
 
+/** 图片校验时提取的预算元数据，避免 token 预检重复解码图片。 */
 export type PiImageMetadata = Readonly<{
     decodedBytes: number;
     dimensions?: Readonly<{
@@ -106,6 +110,7 @@ export type PiImageMetadata = Readonly<{
     }>;
 }>;
 
+/** 单次上下文转换累计使用的图片数量与解码字节数。 */
 type ImageInputBudget = {
     decodedBytes: number;
     imageCount: number;
@@ -117,9 +122,6 @@ const imageMetadata = new WeakMap<ImageContent, PiImageMetadata>();
 export function getPiImageMetadata(image: ImageContent): PiImageMetadata | undefined {
     return imageMetadata.get(image);
 }
-
-export const SYSTEM_INJECTION_OPEN = '<system_injection source="sillytavern">';
-export const SYSTEM_INJECTION_CLOSE = '</system_injection>';
 
 /** 为导入的历史助手消息补齐零用量结构，避免把历史内容记为本次生成消耗。 */
 function makeZeroUsage(): Usage {
@@ -150,11 +152,6 @@ export function formatSendingMessageName(name: string | undefined): string {
         return '';
     }
     return `<message_name>${escapeXmlText(name)}</message_name>`;
-}
-
-/** 用明确的系统注入标记包裹后置 system 内容，保留其来源语义。 */
-function formatSystemInjection(text: string): string {
-    return `${SYSTEM_INJECTION_OPEN}\n${text}\n${SYSTEM_INJECTION_CLOSE}`;
 }
 
 /** 识别仅含空白的内容，供严格校验和空消息处理使用。 */
@@ -598,45 +595,6 @@ function addNamePrefix(content: PiInputContent[], name: string | undefined): PiI
     return [{ type: 'text', text: prefix }, ...content];
 }
 
-/** 为后置 system 消息寻找最近的 user 消息，确定注入归属。 */
-function findNearestUserIndex(messages: readonly SendingMessage[], sourceIndex: number): number {
-    let bestIndex = -1;
-    let bestDistance = Number.POSITIVE_INFINITY;
-    for (let index = 0; index < messages.length; index++) {
-        if (messages[index].role !== 'user') {
-            continue;
-        }
-        const distance = Math.abs(index - sourceIndex);
-        if (distance < bestDistance || (distance === bestDistance && index < bestIndex)) {
-            bestIndex = index;
-            bestDistance = distance;
-        }
-    }
-    return bestIndex;
-}
-
-/** 初始化用户消息前后两组系统注入内容，保持原始相对顺序。 */
-function makeAttachments(): UserAttachments {
-    return { before: [], after: [] };
-}
-
-/** 把名称及前后置系统注入与用户原始内容组合，保留多模态内容块。 */
-function decorateUserContent(
-    content: PiInputContent[],
-    name: string | undefined,
-    attachments: UserAttachments | undefined
-): PiInputContent[] {
-    const before = (attachments?.before ?? []).map(attachment => ({
-        type: 'text' as const,
-        text: formatSystemInjection(attachment.text),
-    }));
-    const after = (attachments?.after ?? []).map(attachment => ({
-        type: 'text' as const,
-        text: formatSystemInjection(attachment.text),
-    }));
-    return [...before, ...addNamePrefix(content, name), ...after];
-}
-
 /** 将历史工具参数解析为普通对象，拒绝无效 JSON 或非对象参数。 */
 function parseToolArguments(argumentsValue: string, sourceIndex: number): Record<string, unknown> {
     let parsed: unknown;
@@ -771,19 +729,19 @@ function handleEmptyMessage(
 
 /**
  * 把酒馆最终提示词转换为 Pi 上下文，并返回转换诊断。
- * 前置 system 合并为系统提示词，后置 system 按策略归入用户消息；同时校验工具关联和图片预算。
+ * 前置 system 合并为系统提示词；后置 system 单独保留内容及原位置，由载荷 hook 恢复。
+ * 同时校验工具关联和图片预算，不把系统指令降为用户内容。
  */
 export function toPiContext(
     input: readonly SendingMessage[],
     options: ToPiContextOptions = {}
 ): PiContextAdapterResult {
     const mode = options.mode ?? 'lenient';
-    const lateSystemPolicy = options.lateSystemPolicy ?? 'attach-to-nearest-user';
+    const lateSystemPolicy = options.lateSystemPolicy ?? 'preserve';
     const now = options.now ?? Date.now;
     const messages = Array.from(input);
     const diagnostics: PiContextAdapterDiagnostics = {
-        movedLateSystemCount: 0,
-        lateSystemMoves: [],
+        preservedLateSystemCount: 0,
         droppedEmptyMessageIndexes: [],
     };
 
@@ -802,52 +760,36 @@ export function toPiContext(
         systemPromptParts.push(text);
     }
 
-    const attachmentsByUserIndex = new Map<number, UserAttachments>();
-    for (let index = leadingSystemEnd; index < messages.length; index++) {
-        if (messages[index].role !== 'system') {
-            continue;
-        }
-        if (lateSystemPolicy === 'strict') {
-            throw new PiContextAdapterError(
-                `第 ${index} 条消息是在对话开始后出现的 system 消息`,
-                'late-system',
-                index
-            );
-        }
-        const text = extractSystemText(messages[index], index);
-        if (isBlank(text)) {
-            handleEmptyMessage(mode, index, diagnostics);
-            continue;
-        }
-        const targetUserIndex = findNearestUserIndex(messages, index);
-        if (targetUserIndex === -1) {
-            throw new PiContextAdapterError(
-                `第 ${index} 条 system 消息附近没有可附着的 user 消息`,
-                'missing-user-for-system',
-                index
-            );
-        }
-        const placement = index < targetUserIndex ? 'before' : 'after';
-        const attachments = attachmentsByUserIndex.get(targetUserIndex) ?? makeAttachments();
-        attachments[placement].push({ sourceIndex: index, text });
-        attachmentsByUserIndex.set(targetUserIndex, attachments);
-        diagnostics.lateSystemMoves.push({ sourceIndex: index, targetUserIndex, placement });
-    }
-    diagnostics.movedLateSystemCount = diagnostics.lateSystemMoves.length;
-
+    const lateSystemMessages: PiLateSystemMessage[] = [];
     const piMessages: Message[] = [];
     const toolNamesById = new Map<string, string>();
     const imageBudget: ImageInputBudget = { decodedBytes: 0, imageCount: 0 };
     for (let index = leadingSystemEnd; index < messages.length; index++) {
         const message = messages[index];
         if (message.role === 'system') {
+            if (lateSystemPolicy === 'strict') {
+                throw new PiContextAdapterError(
+                    `第 ${index} 条消息是在对话开始后出现的 system 消息`,
+                    'late-system',
+                    index
+                );
+            }
+            const text = extractSystemText(message, index);
+            if (isBlank(text)) {
+                handleEmptyMessage(mode, index, diagnostics);
+                continue;
+            }
+            lateSystemMessages.push({
+                sourceIndex: index,
+                beforeMessageIndex: piMessages.length,
+                text,
+            });
             continue;
         }
         if (message.role === 'user') {
-            const content = decorateUserContent(
+            const content = addNamePrefix(
                 convertContent(message.content, index, true, imageBudget),
-                message.name,
-                attachmentsByUserIndex.get(index)
+                message.name
             );
             if (!contentHasValue(content)) {
                 handleEmptyMessage(mode, index, diagnostics);
@@ -893,6 +835,7 @@ export function toPiContext(
         );
     }
     diagnostics.droppedEmptyMessageIndexes.sort((left, right) => left - right);
+    diagnostics.preservedLateSystemCount = lateSystemMessages.length;
 
     return {
         context: {
@@ -901,6 +844,7 @@ export function toPiContext(
                 : {}),
             messages: piMessages,
         },
+        lateSystemMessages,
         diagnostics,
     };
 }

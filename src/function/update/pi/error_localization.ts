@@ -2,12 +2,16 @@ import { tr, type MessageKey, type TranslationParams } from '@/i18n';
 
 const PI_ERROR_LOCALIZED = Symbol('mvu.pi.error.localized');
 
+/** 各 Pi 层错误的最小公共形状，避免本地化模块依赖所有具体错误类。 */
 type PiErrorLike = Error & {
     code?: unknown;
+    /** 原始酒馆消息的位置，供错误提示定位上下文。 */
     sourceIndex?: unknown;
+    /** 标记已处理的错误，防止重复翻译覆盖原有错误信息。 */
     [PI_ERROR_LOCALIZED]?: true;
 };
 
+/** 错误对应的翻译键及插值参数，交由当前界面语言统一渲染。 */
 type LocalizedPiError = {
     key: MessageKey;
     params?: TranslationParams;
@@ -81,6 +85,12 @@ function contextError(error: PiErrorLike, code = codeOf(error)): LocalizedPiErro
             return { key: 'runtime.pi.invalidToolCall' };
         case 'late-system':
             return { key: 'runtime.pi.contextLateSystem', params: { index } };
+        case 'system-role-unsupported':
+            return { key: 'runtime.pi.contextSystemRoleUnsupported', params: { index } };
+        case 'system-placement':
+            return { key: 'runtime.pi.contextSystemPlacement', params: { index } };
+        case 'system-payload-mismatch':
+            return { key: 'runtime.pi.contextSystemPayloadMismatch' };
         case 'missing-tool-call':
             return { key: 'runtime.pi.contextMissingToolCall', params: { index } };
         case 'missing-user-for-system':

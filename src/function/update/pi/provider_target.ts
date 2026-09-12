@@ -34,6 +34,7 @@ export const PI_PROVIDER_KEYS = [
     'zai',
     'zai-coding-cn',
 ] as const;
+/** MVU 当前注册的服务商标识，用于设置、连接规则与 Pi 模型目录之间的关联。 */
 export type PiProviderKey = (typeof PI_PROVIDER_KEYS)[number];
 
 export const PI_WIRE_APIS = [
@@ -44,6 +45,7 @@ export const PI_WIRE_APIS = [
     'google-generative-ai',
     'mistral-conversations',
 ] as const;
+/** 实际发送请求所用的协议，与服务商名称分开选择。 */
 export type PiWireApi = (typeof PI_WIRE_APIS)[number];
 
 /** 标记必须使用流式传输的 Codex 账号接口，该接口没有 JSON 非流式模式。 */
@@ -52,8 +54,10 @@ export function isPiStreamingRequired(api: string): boolean {
 }
 
 export const PI_AUTH_TYPES = ['api_key', 'oauth'] as const;
+/** Pi 连接的凭证来源：手填 API Key 或浏览器 OAuth 登录凭证。 */
 export type PiAuthType = (typeof PI_AUTH_TYPES)[number];
 
+/** 不依赖 SDK 的连接规则，供设置迁移、凭证目标隔离和运行时校验共用。 */
 export interface PiProviderTargetDefinition {
     key: PiProviderKey;
     providerId: PiProviderKey;
@@ -62,12 +66,14 @@ export interface PiProviderTargetDefinition {
     defaultAuthType: PiAuthType;
     allowedAuthTypes: readonly PiAuthType[];
     defaultBaseUrl: string;
+    /** 同一服务商不同协议的专用地址；缺省时使用 defaultBaseUrl。 */
     apiBaseUrls?: Readonly<Partial<Record<PiWireApi, string>>>;
-    /** Wire APIs whose built-in endpoint requires SillyTavern's CORS proxy in a browser. */
+    /** 内置端点在浏览器中必须通过酒馆 CORS 代理访问的协议。 */
     readonly corsProxyRequiredApis: readonly PiWireApi[];
     allowCustomEndpoint: boolean;
 }
 
+/** 注册连接规则时允许省略代理列表，由定义函数补齐并冻结为空数组。 */
 type PiProviderTargetDefinitionInput = Omit<PiProviderTargetDefinition, 'corsProxyRequiredApis'> & {
     readonly corsProxyRequiredApis?: readonly PiWireApi[];
 };

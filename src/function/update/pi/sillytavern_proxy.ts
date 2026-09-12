@@ -6,6 +6,7 @@ const PROXY_PROBE_BODY = 'mvu-st-cors-proxy-probe';
 const PROXY_PROBE_TARGET = `data:text/plain,${PROXY_PROBE_BODY}`;
 const PROXY_PROBE_TIMEOUT_MS = 5_000;
 
+/** 酒馆 CORS 代理的探测状态，区分未检查、检查中和三种已完成结果。 */
 export type SillyTavernProxyStatus =
     | 'unchecked'
     | 'checking'
@@ -13,26 +14,28 @@ export type SillyTavernProxyStatus =
     | 'disabled'
     | 'unavailable';
 
+/** 一次探测完成后可缓存的结果：已启用、明确关闭或当前不可用。 */
 export type SillyTavernProxyTerminalStatus = Extract<
     SillyTavernProxyStatus,
     'enabled' | 'disabled' | 'unavailable'
 >;
 
+/** 代理探测的环境与缓存选项，允许测试注入传输和酒馆源地址。 */
 export interface SillyTavernProxyProbeOptions {
-    /** Defaults to the page's fetch implementation. */
+    /** 默认使用页面的 fetch 实现。 */
     fetch?: FetchFunction;
-    /** Defaults to the page origin. Exposed for deterministic tests. */
+    /** 默认从页面基础地址或 location 解析酒馆源地址。 */
     origin?: string;
-    /** Stops waiting for the shared probe without cancelling another caller's check. */
+    /** 仅取消当前调用方的等待，不中止其他调用方共用的探测。 */
     signal?: AbortSignal;
-    /** Ignore a cached terminal result and verify the live SillyTavern route again. */
+    /** 忽略已缓存的完成结果，重新检查酒馆代理路由。 */
     force?: boolean;
 }
 
+/** 创建代理 fetch 所需的配置，限定携带凭证请求能够访问的目标范围。 */
 export interface SillyTavernProxyFetchOptions extends SillyTavernProxyProbeOptions {
     /**
-     * Provider API base URL. Only this origin and this path (or descendants) may receive the
-     * credentials carried by the returned fetch implementation.
+     * 服务商 API 基础地址；返回的 fetch 仅允许向同源、同路径或下级路径转发凭证。
      */
     baseUrl: string | URL;
 }
@@ -52,8 +55,10 @@ export class PiProxyUnavailableError extends Error {
     }
 }
 
+/** 与 Pi fetch 契约保持一致的请求目标，可为 URL、字符串或 Request。 */
 type FetchInput = Parameters<FetchFunction>[0];
 
+/** 按 fetch 实现及酒馆源地址共享的探测记录，用 promise 合并同时发起的检查。 */
 type ProbeEntry = {
     status: SillyTavernProxyStatus;
     promise?: Promise<SillyTavernProxyTerminalStatus>;

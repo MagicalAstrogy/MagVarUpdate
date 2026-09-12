@@ -38,10 +38,9 @@ import {
 } from './pi_gateway';
 
 /**
- * The pinned Google SDK does not expose a supported per-client fetch option on GoogleGenAI.
- * Its browser implementation does, however, keep the HTTP entry point on this instance-local
- * object. Keeping the narrow structural assumption here makes SDK upgrades fail closed before a
- * credential-bearing request is sent, without mutating global fetch or an SDK prototype.
+ * 当前锁定的 Google SDK 未公开实例级 fetch 选项，但内部 apiClient 保留了 HTTP 入口。
+ * 只声明经过核对的最小结构；SDK 升级后若不再匹配，发送带凭证请求前即停止。
+ * 该入口只替换当前实例的传输，不修改全局 fetch 或 SDK 原型。
  */
 type InjectableGoogleClient = {
     apiClient?: {
@@ -70,11 +69,12 @@ export class GoogleProxyAdapterCompatibilityError extends Error {
     }
 }
 
+/** Google 自定义传输路径的请求选项，补齐通用流选项之外的工具选择和思考控制。 */
 export interface GoogleProxyOptions extends StreamOptions {
     toolChoice?: 'auto' | 'none' | 'any';
     thinking?: {
         enabled: boolean;
-        /** -1 asks Google to choose a dynamic budget; 0 disables budget-based thinking. */
+        /** -1 由 Google 动态分配预算；0 关闭基于预算的思考。 */
         budgetTokens?: number;
         level?: GoogleApiThinkingLevel;
     };

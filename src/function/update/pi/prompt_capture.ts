@@ -4,40 +4,52 @@ export const PI_PROMPT_CAPTURE_MODEL_PREFIX = 'mvu-pi-prompt-capture:';
 export const PI_PROMPT_CAPTURE_API_URL =
     'https://mvu-pi-prompt-capture.invalid/v1/chat/completions';
 
+/** 一次提示词捕获的诊断快照；只含状态和标记，不暴露完整提示词。 */
 export type PromptCaptureDiagnostics = {
     generationId: string;
+    /** 写入占位请求 model 字段的唯一标记，用于隔离并发生成事件。 */
     marker: string;
     markerMatched: boolean;
     captured: boolean;
+    /** 占位生成是否已被成功停止，避免捕获后继续请求酒馆后端。 */
     stopSucceeded: boolean;
+    /** 首次失败原因；清理阶段不会覆盖它。 */
     captureError?: string;
 };
 
+/** 从酒馆设置就绪事件复制出的最终消息及其所属生成编号。 */
 export type CapturedPrompt = {
     generationId: string;
     messages: SillyTavern.SendingMessage[];
 };
 
+/** 捕获完成后的消息、诊断信息和接管回调的返回值。 */
 export type PromptCaptureResult<T = undefined> = PromptCaptureDiagnostics &
     CapturedPrompt & {
         result?: T;
     };
 
+/** 接管捕获结果并接收原生停止事件的回调，使 Pi 请求沿用酒馆的生成生命周期。 */
 export type PromptCaptureOptions<T> = {
+    /** 在提示词就绪监听内等待此回调完成，期间保留酒馆原生停止按钮。 */
     onCaptured: (prompt: CapturedPrompt) => Promise<T>;
+    /** 仅转发用户停止当前生成的事件，不包含内部占位请求清理。 */
     onStopped: (generation_id: string) => void;
 };
 
+/** 进行中捕获的内部可变状态，messages 仅在成功复制提示词后存在。 */
 type MutablePromptCaptureState = PromptCaptureDiagnostics & {
     messages?: SillyTavern.SendingMessage[];
 };
 
+/** 酒馆设置就绪事件中本适配层需要读取的字段，其余请求参数保持透明。 */
 type SettingsReadyData = {
     messages: SillyTavern.SendingMessage[];
     model: string;
     [key: string]: unknown;
 };
 
+/** generate / generateRaw 的共同调用形状；捕获只依赖事件，不使用它们的返回结果。 */
 type GenerateRunner<TConfig extends GenerateConfig> = (config: TConfig) => Promise<unknown>;
 
 const pending_prompt_captures = new Map<string, MutablePromptCaptureState>();

@@ -14,6 +14,16 @@ function context(text: string): Context {
 
 // 输入预算：文本与图片按保守规则计数，扣除回复和安全余量后再决定能否发送。
 describe('Pi token preflight', () => {
+    test('counts preserved system text even though it is absent from the Pi message array', () => {
+        const adapted = toPiContext([
+            { role: 'user', content: 'short user' },
+            { role: 'system', content: '界'.repeat(2000) },
+        ]);
+        expect(() => assertPiTokenBudget(adapted.context, 1024, 256)).not.toThrow();
+        expect(() =>
+            assertPiTokenBudget(adapted.context, 1024, 256, undefined, adapted.lateSystemMessages)
+        ).toThrow(/estimated .* limit/);
+    });
     // 估算规则：有效文本留有余量，UTF-8 内容及更大图片应产生更高预算。
     test('estimates text and accepts a request with headroom', () => {
         const input = context('A short prompt');

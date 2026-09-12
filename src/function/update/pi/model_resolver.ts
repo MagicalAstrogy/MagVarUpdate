@@ -17,22 +17,26 @@ import {
 
 export { resolvePiApiKeyScope } from './provider_target';
 
+/** 设置中保存的 Pi 连接与模型选择，字符串取值仍需通过注册表校验。 */
 export interface PiModelConfiguration {
     provider: string;
     api: string;
     authType: string;
     endpoint?: string;
     model: string;
-    /** Zero means "use catalog metadata". A positive value overrides the catalog. */
+    /** 0 或未填写表示使用目录窗口；正值覆盖目录，目录外模型必须显式填写。 */
     contextWindow?: number;
 }
 
+/** 模型解析边界的原始输入，接受 unknown 以校验旧设置和外部调用。 */
 export interface ResolvePiModelInput {
     piConfig: PiModelConfiguration | unknown;
+    /** 用户配置的最大回复 token 数，尚未应用模型目录的输出上限。 */
     maxTokens: number | unknown;
     apiKey?: string | unknown;
 }
 
+/** 连接、认证和模型预算校验的失败分类，供预检及本地化提示使用。 */
 export type PiModelResolutionErrorCode =
     | 'invalid_config'
     | 'unknown_provider'
@@ -60,6 +64,7 @@ export class PiModelResolutionError extends Error {
     }
 }
 
+/** 校验并规范化后的连接配置，保留目录依据与最终预算，供构造本次 Pi Model 使用。 */
 export interface ValidatedPiConfiguration {
     definition: PiProviderDefinition;
     provider: PiProviderKey;
@@ -67,17 +72,22 @@ export interface ValidatedPiConfiguration {
     authType: PiAuthType;
     endpoint: string;
     modelId: string;
+    /** 用户显式窗口；0 表示采用匹配目录项的上下文窗口。 */
     manualContextWindow: number;
     configuredMaxTokens: number;
     apiKey?: string;
+    /** 仅在默认端点且协议兼容时使用，避免套用自定义端点的同名模型。 */
     catalogModel?: Model<Api>;
     effectiveContextWindow: number;
+    /** 用户回复额度与适用目录输出上限的较小值。 */
     effectiveMaxTokens: number;
 }
 
+/** 交给运行时的模型解析结果，model 是本次请求独立的目录副本或动态元数据。 */
 export interface ResolvedPiModel {
     definition: PiProviderDefinition;
     model: Model<Api>;
+    /** 是否实际采用了匹配目录的元数据，而非仅命中同名模型。 */
     catalogHit: boolean;
     effectiveContextWindow: number;
     effectiveMaxTokens: number;

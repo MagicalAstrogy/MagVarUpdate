@@ -641,6 +641,91 @@ describe('pi runtime execution', () => {
 
     afterEach(() => clearPiRequestControllers());
 
+    test('restores native system roles with separate hook state for concurrent requests sharing preflight', async () => {
+        const sent: unknown[] = [];
+        stream.mockImplementation((model, context, options) => {
+            sent.push(
+                options.onPayload(
+                    {
+                        input: context.messages.map((message: any) => ({
+                            role: message.role,
+                            content: message.content,
+                        })),
+                    },
+                    model
+                )
+            );
+            return fakeStream(assistant([{ type: 'text', text: 'done' }]));
+        });
+        const preflight = await assertPiRuntimeConfiguration({
+            settings: makeSettings(),
+            credentialStore: makeCredentialStore(),
+        });
+        const requests = ['first', 'second'].map(id => [
+            { role: 'user' as const, content: 'same' },
+            { role: 'system' as const, content: `${id} instruction` },
+            { role: 'user' as const, content: 'same' },
+        ]);
+        await Promise.all(
+            requests.map((messages, index) =>
+                runPiRequest({
+                    preflight,
+                    messages,
+                    generationId: `native-system-${index}`,
+                })
+            )
+        );
+        expect(sent).toEqual(requests.map(input => ({ input, top_p: 0.8 })));
+        expect(getActivePiRequestIds()).toEqual([]);
+    });
+
+    test('rejects the full native system token budget before entering the provider', async () => {
+        const error = await runPiRequest({
+            settings: makeSettings({ 最大回复token数: 256, pi: { contextWindow: 1024 } }),
+            credentialStore: makeCredentialStore(),
+            messages: [
+                { role: 'user', content: 'short' },
+                { role: 'system', content: '界'.repeat(2000) },
+            ],
+            generationId: 'native-system-budget',
+        }).catch(error => error);
+        expect(error).toMatchObject({
+            name: 'PiRuntimeError',
+            code: 'token_budget',
+            retryable: false,
+        });
+        expect(stream).not.toHaveBeenCalled();
+        expect(getActivePiRequestIds()).toEqual([]);
+    });
+
+    test('retains a non-retryable system restoration failure when Pi wraps the hook error', async () => {
+        stream.mockImplementation((model, _context, options) => {
+            try {
+                options.onPayload({ input: [] }, model);
+            } catch {
+                /* Pi absorbs hook errors. */
+            }
+            return fakeStream(assistant([], 'error', 'Provider error'));
+        });
+        const error = await runPiRequest({
+            settings: makeSettings(),
+            credentialStore: makeCredentialStore(),
+            messages: [
+                { role: 'user', content: 'private user' },
+                { role: 'system', content: 'private instruction' },
+                { role: 'assistant', content: 'private answer' },
+            ],
+            generationId: 'native-system-hook-error',
+        }).catch(error => error);
+        expect(error).toMatchObject({
+            name: 'PiContextAdapterError',
+            code: 'system-payload-mismatch',
+        });
+        expect(isNonRetryablePiRuntimeError(error)).toBe(true);
+        expect(error.message).not.toContain('private');
+        expect(getActivePiRequestIds()).toEqual([]);
+    });
+
     // 传输与发送前检查：流式设置随快照冻结，代理关闭或 Google SDK 不兼容时不进入服务商请求。
     test.each([undefined, false, true])(
         'uses pseudo-streaming=%s to choose the request transport and freezes it across retries',

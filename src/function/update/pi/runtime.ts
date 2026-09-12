@@ -42,6 +42,7 @@ import {
 import { fromPiAssistantMessage, PiResultAdapterError, toPiToolDefinition } from './result_adapter';
 import { assertPiTokenBudget } from './token_preflight';
 import { resolvePiToolChoice, type MvuToolChoice } from './tool_choice';
+import { createPiSystemMessageBridge, type PiSystemMessageBridge } from './system_messages';
 import {
     assertSillyTavernProxyAvailable,
     createSillyTavernProxyFetch,
@@ -58,9 +59,12 @@ export const PI_RUNTIME_RESPONSE_FORMATS = [
     '格式化输出(v4兼容)',
 ] as const;
 
+/** 额外解析允许使用的应答格式，供预检和原生载荷转换共同约束。 */
 export type PiRuntimeResponseFormat = (typeof PI_RUNTIME_RESPONSE_FORMATS)[number];
+/** 一次额外模型请求读取的完整设置结构。 */
 export type PiExtraModelSettings = MvuSettings['额外模型解析配置'];
 
+/** 运行时失败分类；配合 retryable 决定请求策略与界面提示。 */
 export type PiRuntimeErrorCode =
     | 'invalid_configuration'
     | 'invalid_prompt'
@@ -95,6 +99,7 @@ export function isNonRetryablePiRuntimeError(error: unknown): boolean {
     );
 }
 
+/** 已通过服务商能力校验的采样选项，不含独立传入 SDK 的 temperature。 */
 export type PiRuntimeSampling = Readonly<{
     topP?: number;
     topK?: number;
@@ -102,6 +107,7 @@ export type PiRuntimeSampling = Readonly<{
     presencePenalty?: number;
 }>;
 
+/** 在重试批次开始前进行静态预检所需的设置、工具和可注入依赖。 */
 export interface AssertPiRuntimeConfigurationInput {
     /** The whole persisted `额外模型解析配置` object. */
     settings: unknown;
@@ -119,8 +125,8 @@ export interface AssertPiRuntimeConfigurationInput {
 }
 
 /**
- * Immutable request configuration resolved before a retry strategy starts.
- * It deliberately contains no prompt/messages, so callers can reuse it for every attempt.
+ * 重试前解析并冻结的连接、认证、能力与载荷配置。
+ * 不包含提示词或请求级 system 锚点，可在同批次的每次尝试中复用。
  */
 export interface PiRuntimePreflight {
     readonly resolution: ResolvedPiModel;
@@ -140,8 +146,10 @@ export interface PiRuntimePreflight {
     readonly streaming: boolean;
 }
 
+/** 可选的 Pi 进度监听，运行时不会向此回调转发未经处理的错误事件。 */
 export type PiRuntimeProgressCallback = (event: AssistantMessageEvent) => void | Promise<void>;
 
+/** 执行单次请求的输入：预检快照、捕获消息、取消编号及可选进度监听。 */
 export interface RunPiRequestInput {
     /** Supply this when configuration was validated once outside the retry loop. */
     preflight?: PiRuntimePreflight;
@@ -160,6 +168,7 @@ export interface RunPiRequestInput {
     contextOptions?: ToPiContextOptions;
 }
 
+/** 设置根对象完成形状检查后、各字段尚未解析时的中间结构。 */
 type ExtraModelSettingsRecord = Record<string, unknown> & {
     pi?: unknown;
 };
@@ -627,7 +636,8 @@ function nativeStructuredFormat(
  */
 function createStreamOptions(
     preflight: PiRuntimePreflight,
-    signal: AbortSignal
+    signal: AbortSignal,
+    systemMessages: PiSystemMessageBridge
 ): ApiStreamOptions<Api> {
     const providerFetch = preflight.useCorsProxy
         ? createSillyTavernProxyFetch({
@@ -648,17 +658,20 @@ function createStreamOptions(
         ...(preflight.useCorsProxy && preflight.resolution.model.api === 'openai-codex-responses'
             ? { transport: 'sse' as const }
             : {}),
-        onPayload: createPiPayloadTransform({
-            api: preflight.resolution.model.api,
-            responseFormat: nativeStructuredFormat(preflight.responseFormat),
-            jsonSchema: preflight.jsonSchema,
-            customIncludeBody:
-                preflight.customIncludeBody === undefined
-                    ? undefined
-                    : { ...preflight.customIncludeBody },
-            customExcludeBody: preflight.customExcludeBody,
-            sampling: preflight.sampling,
-        }),
+        onPayload: payload =>
+            systemMessages.restore(
+                createPiPayloadTransform({
+                    api: preflight.resolution.model.api,
+                    responseFormat: nativeStructuredFormat(preflight.responseFormat),
+                    jsonSchema: preflight.jsonSchema,
+                    customIncludeBody:
+                        preflight.customIncludeBody === undefined
+                            ? undefined
+                            : { ...preflight.customIncludeBody },
+                    customExcludeBody: preflight.customExcludeBody,
+                    sampling: preflight.sampling,
+                })(payload)
+            ),
     };
 }
 
@@ -685,7 +698,7 @@ function isGoogleProxyAdapterCompatibilityFailure(error: unknown): boolean {
  * 未知错误可能附带请求头或正文，只返回固定提示，不保留原始 cause。
  */
 function normalizeRuntimeFailure(error: unknown): Error {
-    if (error instanceof PiRuntimeError) {
+    if (error instanceof PiRuntimeError || error instanceof PiContextAdapterError) {
         return error;
     }
     if (error instanceof PiProxyUnavailableError) {
@@ -801,6 +814,7 @@ export async function runPiRequest(
             error instanceof Error ? error.message : 'More source request is already active'
         );
     }
+    let systemMessages: PiSystemMessageBridge | undefined;
     try {
         if (registration.signal.aborted) {
             throw new PiRequestAbortedError(input.generationId, registration.signal.reason);
@@ -818,24 +832,28 @@ export async function runPiRequest(
             }
         }
 
-        let context: ReturnType<typeof toPiContext>['context'];
+        let adapted: ReturnType<typeof toPiContext>;
         try {
-            ({ context } = toPiContext(input.messages, input.contextOptions));
+            adapted = toPiContext(input.messages, input.contextOptions);
         } catch (error) {
             if (error instanceof PiContextAdapterError) {
                 throw new PiRuntimeError('invalid_prompt', error.message);
             }
             throw error;
         }
+        const { context, lateSystemMessages } = adapted;
         if (preflight.tools !== undefined) {
             context.tools = [...preflight.tools];
         }
         assertImageCapability(preflight, context);
+        systemMessages = createPiSystemMessageBridge(adapted, preflight.resolution.model.api);
         try {
             assertPiTokenBudget(
                 context,
                 preflight.resolution.effectiveContextWindow,
-                preflight.resolution.effectiveMaxTokens
+                preflight.resolution.effectiveMaxTokens,
+                undefined,
+                lateSystemMessages
             );
         } catch (error) {
             throw new PiRuntimeError(
@@ -849,7 +867,7 @@ export async function runPiRequest(
             authContext: BROWSER_AUTH_CONTEXT,
         });
         models.setProvider(createRuntimeProvider(preflight));
-        const options = createStreamOptions(preflight, registration.signal);
+        const options = createStreamOptions(preflight, registration.signal, systemMessages);
         if (
             preflight.resolution.model.api === 'google-generative-ai' &&
             options.fetch &&
@@ -859,7 +877,7 @@ export async function runPiRequest(
             // error code. Check the instance-only SDK seam before entering that boundary.
             assertGoogleProxyAdapterCompatible();
         }
-        const stream = models.stream(preflight.resolution.model, context, options);
+        const stream = models.stream(preflight.resolution.model, systemMessages.context, options);
 
         for await (const event of stream) {
             // Provider error events can contain raw response bodies, request headers, or echoed
@@ -875,7 +893,10 @@ export async function runPiRequest(
                 registration.signal.aborted ? registration.signal.reason : undefined
             );
         }
-        return fromPiAssistantMessage(message);
+        if (systemMessages.failure) throw systemMessages.failure;
+        const result = fromPiAssistantMessage(message);
+        systemMessages.assertRestored();
+        return result;
     } catch (error) {
         const wasAborted =
             registration.signal.aborted ||
@@ -886,6 +907,7 @@ export async function runPiRequest(
                 ? error
                 : new PiRequestAbortedError(input.generationId, error);
         }
+        const requestError = systemMessages?.failure ?? error;
         const proxy_status = preflight.useCorsProxy
             ? getSillyTavernProxyStatus({
                   ...(preflight.fetch === undefined ? {} : { fetch: preflight.fetch }),
@@ -897,7 +919,7 @@ export async function runPiRequest(
                       'proxy_unavailable',
                       'SillyTavern CORS proxy is not enabled or unavailable.'
                   )
-                : normalizeRuntimeFailure(error);
+                : normalizeRuntimeFailure(requestError);
         if (!registration.signal.aborted) {
             // Abort listeners must not observe the raw provider error either.
             registration.controller.abort(normalizedError);

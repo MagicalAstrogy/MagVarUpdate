@@ -1,7 +1,9 @@
 import type { Api } from '@earendil-works/pi-ai';
 
+/** 需要映射到服务商原生 JSON 输出配置的两种应答格式。 */
 export type PiStructuredResponseFormat = '格式化输出' | '格式化输出(v4兼容)';
 
+/** MVU 的结构化输出 Schema，包含协议需要的名称及可选严格校验标记。 */
 export type PiJsonSchema = {
     name: string;
     description?: string;
@@ -9,6 +11,7 @@ export type PiJsonSchema = {
     strict?: boolean;
 };
 
+/** 单次请求的原生载荷转换选项；消息角色由独立的 system 桥接层恢复。 */
 export type PiPayloadTransformOptions = {
     api: Api;
     responseFormat?: PiStructuredResponseFormat;

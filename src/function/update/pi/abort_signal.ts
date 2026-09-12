@@ -1,3 +1,4 @@
+/** 兼容旧浏览器的 AbortSignal 静态接口；可选方法由运行时检测后补齐。 */
 type AbortSignalConstructorWithPolyfills = {
     any?: (signals: Iterable<AbortSignal>) => AbortSignal;
     timeout?: (milliseconds: number) => AbortSignal;

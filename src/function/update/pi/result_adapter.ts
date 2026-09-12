@@ -1,5 +1,6 @@
 import type { AssistantMessage, Tool, ToolCall } from '@earendil-works/pi-ai';
 
+/** 模型输出无法交回原有变量更新流程的原因，区分取消、截断和无效结果。 */
 export type PiResultAdapterErrorCode =
     | 'aborted'
     | 'deferred'
@@ -20,7 +21,9 @@ export class PiResultAdapterError extends Error {
     }
 }
 
+/** 将酒馆函数工具转为 Pi Tool 时附加的协议选项。 */
 export type PiToolDefinitionOptions = {
+    /** 服务商端的 Schema 或语法约束配置；false 显式关闭约束采样。 */
     constrainedSampling?: Tool['constrainedSampling'];
 };
 

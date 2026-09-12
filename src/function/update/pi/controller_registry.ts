@@ -25,14 +25,18 @@ export function isPiRequestAbortedError(error: unknown): error is PiRequestAbort
     return error instanceof PiRequestAbortedError;
 }
 
+/** 实际服务商请求的取消句柄，连接本次请求、用户停止和完整尝试的取消信号。 */
 export type PiRequestControllerRegistration = {
     controller: AbortController;
     signal: AbortSignal;
+    /** 移除本次登记和关联监听；释放本身不会取消请求。 */
     release: () => void;
 };
 
+/** 跨越提示词捕获与服务商请求的尝试句柄，用于记住两阶段之间发生的取消。 */
 export type PiRequestAttemptRegistration = {
     signal: AbortSignal;
+    /** 完整尝试结束后移除登记；调用多次不会影响同编号的新尝试。 */
     release: () => void;
 };
 

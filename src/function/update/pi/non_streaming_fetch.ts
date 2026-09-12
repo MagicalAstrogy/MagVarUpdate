@@ -1,6 +1,7 @@
 import type { FetchFunction } from './pi_gateway';
 import type { PiWireApi } from './provider_target';
 
+/** 尚待逐字段校验的协议 JSON 对象，用于非流式响应和本地合成的流事件。 */
 type JsonObject = Record<string, unknown>;
 
 /** 校验响应结构为非空、非数组对象。 */

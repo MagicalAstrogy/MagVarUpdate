@@ -11,6 +11,7 @@ const OPENAI_CODEX_PROVIDER_ID = 'openai-codex';
 const ANTHROPIC_PROVIDER_ID = 'anthropic';
 const OPENAI_ACCOUNT_CLAIM = 'https://api.openai.com/auth';
 
+/** 浏览器登录、回调校验、令牌交换及持久化的失败分类，供界面和取消逻辑使用。 */
 export type PiOAuthErrorCode =
     | 'unsupported_provider'
     | 'browser_unavailable'
@@ -38,21 +39,27 @@ export class PiOAuthError extends Error {
     }
 }
 
+/** 可展示给界面的登录尝试信息，不包含 PKCE verifier 或令牌。 */
 export type PiOAuthAttemptView = {
     id: string;
     providerId: string;
     authorizationUrl: string;
+    /** 本次回调可被接受的截止时间，使用 Unix 毫秒时间戳。 */
     expiresAt: number;
 };
 
+/** 对外展示的 OAuth 凭证摘要；loggedIn 表示已存有凭证，过期凭证仍可尝试刷新。 */
 export type PiOAuthCredentialStatus = {
     loggedIn: boolean;
     type?: 'oauth';
+    /** 已保存访问令牌的过期时间，使用 Unix 毫秒时间戳。 */
     expiresAt?: number;
 };
 
+/** 令牌请求需要的最小 fetch 契约，便于注入测试传输。 */
 type FetchLike = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
 
+/** 生成 state、PKCE verifier 和 SHA-256 challenge 所需的最小 Web Crypto 接口。 */
 type CryptoLike = {
     getRandomValues<T extends ArrayBufferView>(array: T): T;
     subtle: {
@@ -60,49 +67,64 @@ type CryptoLike = {
     };
 };
 
+/** 单次登录引用的只读服务商 OAuth 注册信息。 */
 type OAuthMetadata = Readonly<PiOAuthDefinition>;
 
+/** 可替换的浏览器与存储依赖，未传入时使用页面环境和共享凭证仓库。 */
 type PiOAuthDependencies = {
     fetch?: FetchLike;
     crypto?: CryptoLike;
+    /** 返回 Unix 毫秒时间戳，用于登录有效期和令牌过期计算。 */
     now?: () => number;
     credentialStore?: CredentialStore;
 };
 
+/** 发起登录时的依赖、取消信号及回调等待期限。 */
 export type BeginPiOAuthOptions = PiOAuthDependencies & {
     signal?: AbortSignal;
+    /** 从创建授权链接起计算的有效时长，单位为毫秒。 */
     attemptTtlMs?: number;
 };
 
+/** 完成回调校验和授权码交换时使用的依赖与取消信号。 */
 export type CompletePiOAuthOptions = PiOAuthDependencies & {
     signal?: AbortSignal;
 };
 
+/** 凭证查询、删除等操作共享的取消与存储配置。 */
 export type PiOAuthOperationOptions = {
     signal?: AbortSignal;
     credentialStore?: CredentialStore;
 };
 
+/** 刷新令牌所需的操作选项，只额外依赖网络和时钟，不需要重新生成 PKCE。 */
 export type RefreshPiOAuthOptions = PiOAuthOperationOptions &
     Pick<PiOAuthDependencies, 'fetch' | 'now'>;
 
+/** 构建 Pi OAuthAuth 桥接对象时注入的浏览器能力与登录有效时长。 */
 export type BrowserOAuthAuthOptions = Pick<PiOAuthDependencies, 'fetch' | 'crypto' | 'now'> & {
     attemptTtlMs?: number;
 };
 
+/** 仅保存在内存中的登录尝试，负责回调防重放、有效期和交换请求取消。 */
 type PendingAttempt = {
     id: string;
     providerId: string;
     metadata: OAuthMetadata;
+    /** PKCE 原始验证串，只在交换授权码时提交给令牌端点。 */
     verifier: string;
+    /** 与回调严格匹配的随机 state，用于绑定本次授权请求。 */
     state: string;
     expiresAt: number;
+    /** exchanging 表示授权码已被领取处理，阻止重复提交同一回调。 */
     phase: 'pending' | 'exchanging';
     controller: AbortController;
     timeout: ReturnType<typeof setTimeout>;
+    /** 清理调用方取消监听，避免尝试结束后继续持有外部信号。 */
     detachCallerAbort?: () => void;
 };
 
+/** 短期保留已关闭尝试的原因，使迟到或重复回调得到明确错误。 */
 type ClosedAttemptReason = 'used' | 'expired' | 'cancelled';
 
 const pendingAttempts = new Map<string, PendingAttempt>();
@@ -320,6 +342,7 @@ function getPendingAttempt(attemptId: string, now: number): PendingAttempt {
     return attempt;
 }
 
+/** 通过地址与 state 校验后提取的授权码回调，不再携带完整 URL。 */
 type ParsedCallback = { code: string; state: string };
 
 /** 补齐 URL 的默认端口，使回调地址校验不受显式端口写法影响。 */
@@ -405,13 +428,16 @@ function normalizeFetchFailure(error: unknown, signal: AbortSignal): never {
     );
 }
 
+/** 令牌交换的两种输入：首次登录使用授权码和 PKCE，续期使用刷新令牌。 */
 type TokenGrant =
     | { type: 'authorization_code'; code: string; verifier: string; state: string }
     | { type: 'refresh_token'; refreshToken: string };
 
+/** 已校验并统一字段名的令牌响应，持久化前还需计算过期时间和补齐账号信息。 */
 type TokenData = {
     access: string;
     refresh: string;
+    /** 服务商返回的有效时长，单位为秒，并非绝对时间戳。 */
     expiresInSeconds: number;
 };
 

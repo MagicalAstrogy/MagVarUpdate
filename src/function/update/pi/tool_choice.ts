@@ -1,5 +1,6 @@
 import type { Api } from '@earendil-works/pi-ai';
 
+/** MVU 接受的工具选择规则；required/any 均表示必须调用工具，发送前按协议转换。 */
 export type MvuToolChoice =
     | 'auto'
     | 'none'

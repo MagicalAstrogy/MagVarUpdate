@@ -7,6 +7,7 @@ import type {
     OAuthCredential,
 } from './pi_gateway';
 
+/** 按服务商排队执行的凭证操作，进入队列前不提前读取或修改凭证。 */
 type CredentialTask<T> = () => Promise<T>;
 
 /** 复制 OAuth 凭证，避免调用方修改持久化对象本身。 */
