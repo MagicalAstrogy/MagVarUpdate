@@ -98,6 +98,61 @@ const SAFE_MATHJS_NAMESPACE = createReadOnlyMathNamespace(
     ]
 );
 
+const REUSABLE_MATH_FUNCTIONS = new Set([
+    ...Object.keys(SAFE_MATHJS_NAMESPACE).filter(
+        name => typeof SAFE_MATHJS_NAMESPACE[name] === 'function'
+    ),
+    'complex',
+    'det',
+    'matrix',
+    'number',
+    'unit',
+]);
+let reusable_math: math.MathJsInstance | undefined;
+
+/** 复用实例只允许访问现有只读 Math/math 门面，不接触函数对象或其他可变对象的成员。 */
+function isReadOnlyMathAccessor(node: math.AccessorNode): boolean {
+    const property = node.index.dimensions[0];
+    if (
+        !math.isSymbolNode(node.object) ||
+        node.index.dimensions.length !== 1 ||
+        !math.isConstantNode(property) ||
+        typeof property.value !== 'string'
+    ) {
+        return false;
+    }
+    const namespace =
+        node.object.name === 'Math'
+            ? SAFE_JAVASCRIPT_MATH
+            : node.object.name === 'math'
+              ? SAFE_MATHJS_NAMESPACE
+              : undefined;
+    return namespace !== undefined && Object.hasOwn(namespace, property.value);
+}
+
+/**
+ * 只让无赋值、无间接调用的纯数学表达式复用实例；检查整棵语法树，不能用字符串匹配替代。
+ * 求导后 evaluate、动态函数、配置/单位修改等仍走一次性实例，保留兼容性并隔离状态。
+ */
+function canReuseMathInstance(expression: math.MathNode): boolean {
+    return (
+        expression.filter(node => {
+            if (math.isAssignmentNode(node) || math.isFunctionAssignmentNode(node)) {
+                return true;
+            }
+            if (math.isAccessorNode(node)) {
+                return !isReadOnlyMathAccessor(node);
+            }
+            if (math.isFunctionNode(node)) {
+                return math.isSymbolNode(node.fn)
+                    ? !REUSABLE_MATH_FUNCTIONS.has(node.fn.name)
+                    : !math.isAccessorNode(node.fn) || !isReadOnlyMathAccessor(node.fn);
+            }
+            return false;
+        }).length === 0
+    );
+}
+
 export function trimQuotesAndBackslashes(str: string): string {
     if (!_.isString(str)) return str;
     // Regular expression to match backslashes and quotes (including backticks) at the beginning and end
@@ -161,7 +216,7 @@ export function applyTemplate(
 
 /**
  * 依次尝试将命令值解析为 JSON、宽松数据字面量或数学表达式，失败后保留字符串。
- * 宽松对象使用 JSON5；数学表达式在独立 mathjs 实例与只读命名空间中求值。
+ * 宽松对象使用 JSON5，单引号文本沿用 YAML；纯数学表达式复用受限实例，其他表达式单独隔离。
  */
 export function parseCommandValue(valStr: string): any {
     if (typeof valStr !== 'string') return valStr;
@@ -194,14 +249,21 @@ export function parseCommandValue(valStr: string): any {
         }
     }
 
+    // 单引号文本提前走原有 YAML 路径，保留反斜杠和双单引号的语义，不初始化数学库。
+    if (trimmed.startsWith("'") && trimmed.endsWith("'")) {
+        try {
+            return YAML.parse(trimmed);
+        } catch {
+            // 仍可能是含字符串操作数的数学表达式，继续尝试求值。
+        }
+    }
+
     // 如果代码走到这里，说明 trimmed 是一个未加引号的字符串，例如：
     // 'hello_world', '10 + 2', 'sqrt(16)'
 
     try {
-        // mathjs exposes stateful APIs such as createUnit/import and nested evaluate. A fresh
-        // instance contains any mutation to this one expression and prevents model output from
-        // corrupting the shared mathjs namespace or later MVU updates.
-        const isolated_math = math.create(math.all);
+        const evaluator = (reusable_math ??= math.create(math.all));
+        const expression = evaluator.parse(trimmed);
         // 创建一个 scope 对象，将多种数学库/对象注入到 mathjs 的执行环境中，
         // 以便统一处理不同风格的数学表达式。
         const scope = {
@@ -213,9 +275,11 @@ export function parseCommandValue(valStr: string): any {
         };
         // 尝试使用 mathjs 进行数学求值
         // math.evaluate 对于无法识别为表达式的纯字符串会抛出错误
-        const result = isolated_math.evaluate(trimmed, scope);
+        const result = canReuseMathInstance(expression)
+            ? expression.compile().evaluate(scope)
+            : math.create(math.all).evaluate(trimmed, scope);
         // 如果结果是 mathjs 的复数或矩阵对象，则将其转换为字符串表示形式
-        if (isolated_math.isComplex(result) || isolated_math.isMatrix(result)) {
+        if (math.isComplex(result) || math.isMatrix(result)) {
             return result.toString();
         }
         // 避免将单个单词的字符串（mathjs可能将其识别为符号）作为 undefined 返回
