@@ -1212,6 +1212,19 @@ describe('pi model resolver', () => {
         expect(catalogModel.maxTokens).toBe(8192);
     });
 
+    test.each([' secret-key ', 'secret-key\n', '\tsecret-key\r\n'])(
+        'normalizes surrounding whitespace in API keys: %j',
+        apiKey => {
+            const resolved = resolvePiModel({
+                piConfig: OPENAI_CONFIG,
+                maxTokens: 1024,
+                apiKey,
+            });
+
+            expect(resolved.apiKey).toBe('secret-key');
+        }
+    );
+
     // 自定义端点：手动窗口优先，只裁剪一次操作路径，并要求独立模型元数据。
     test('lets a manual window, selected API, and normalized custom endpoint override a catalog hit', () => {
         const resolved = resolvePiModel({
@@ -1532,7 +1545,7 @@ describe('pi model resolver', () => {
             'key',
             'max_tokens_exceed_context',
         ],
-        ['missing API key', {}, 1024, '   ', 'missing_api_key'],
+        ['missing API key', {}, 1024, ' \t\r\n ', 'missing_api_key'],
         [
             'invalid endpoint scheme',
             { endpoint: 'ftp://compatible.example/v1' },

@@ -330,7 +330,7 @@ export function validatePiConfiguration(input: ResolvePiModelInput): ValidatedPi
                 `An API key is required for ${definition.key}`
             );
         }
-        apiKey = input.apiKey;
+        apiKey = input.apiKey.trim();
     }
 
     return {

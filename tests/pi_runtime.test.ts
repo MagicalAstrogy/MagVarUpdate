@@ -733,6 +733,24 @@ describe('pi runtime execution', () => {
     });
 
     // 传输与发送前检查：流式设置随快照冻结，代理关闭或 Google SDK 不兼容时不进入服务商请求。
+    test.each([
+        { provider: 'openai', api: 'openai-responses', model: 'gpt-known' },
+        { provider: 'google', api: 'google-generative-ai', model: 'gemini-known' },
+    ])('passes a trimmed API key to the $provider adapter', async pi => {
+        stream.mockReturnValue(fakeStream(assistant([{ type: 'text', text: 'done' }])));
+
+        await expect(
+            runPiRequest({
+                settings: makeSettings({ 密钥: ' \ttest-api-key\r\n ', pi }),
+                credentialStore: makeCredentialStore(),
+                messages: [{ role: 'user', content: 'update' }],
+                generationId: `runtime-trimmed-key-${pi.provider}`,
+            })
+        ).resolves.toBe('done');
+
+        expect(stream.mock.calls[0][2].apiKey).toBe('test-api-key');
+    });
+
     test.each(['gpt-5.5-pro', 'o3-pro', 'gpt-realtime-2.1'])(
         'dispatches non-streaming-only catalog model %s when pseudo-streaming is disabled',
         async model => {
