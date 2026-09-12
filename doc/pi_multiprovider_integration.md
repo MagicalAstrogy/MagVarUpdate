@@ -345,7 +345,7 @@ Provider 目录和上游能力会变化；上表只表示 MVU 已实现请求形
    `stopGenerationById(generation_id)`，阻止固定捕获请求发送到酒馆后端。只有 marker 匹配、消息复制和定向 stop 全部成功时，才把随后固定失败的 fetch 视为正常控制流；Provider 错误仍进入失败路径。
 5. 酒馆停止按钮产生的定向停止事件会中止对应 Pi 请求。内部捕获清理不会被当作用户取消。并发策略选出结果后会中止其余请求并等待清理。
 
-后续消息的变量快照会等待前一条回复的变量写入结束，覆盖生成结束到变量保存完成之间的间隙。
+`MESSAGE_RECEIVED` 事件会等待变量解析和写入完成，后续消息无需额外的变量更新队列。
 
 Pi 的最终结果只转换回现有的 `string | GenerateToolCallResult` 接口，不追加到 Pi
 Context，也不直接写入 SillyTavern
@@ -422,6 +422,29 @@ chat。仓库不修改 SillyTavern 或 Slash-Runner，也不增加额外的 Slas
 - `update:pi:st-prompt-fixtures`
   在隔离真实浏览器中同时捕获 Legacy 与 Pi 的当前预设、其他预设、内置破限三条 prompt 路径，并生成带版本/产物 provenance 的回归 fixtures。三路分别为 12/11/15 条 messages，逐路 JSON 完全一致且没有允许差异或 normalization；覆盖宏、prompt-only 正则、角色卡、世界书过滤与深度、历史裁剪、注入和
   `filterPrompts`。这三条“聊天消息”fixtures 均未出现历史工具消息，因此首版不额外扩大该回归范围。
+- `yarn test:pi:google-live` 检查环境变量 `GEMINI_API_KEY`；未设置或为空时跳过全部四项测试。
+  设置后使用真实 Pi/Google SDK，通过 `google_proxy_adapter.ts` 的实例级 fetch 注入向 Google API
+  验证流式文本、非流式文本、工具调用和 JSON Schema 输出，并检查请求路径、认证头、事件、终态和用量。
+  默认模型为 `gemini-flash-lite-latest`，可通过 `MVU_PI_GOOGLE_MODEL` 指定锁定目录中的其他模型。
+  每项最多发送一次生成请求，输出上限为 256 tokens，请求超时为 30 秒；日志会隐藏密钥。
+  测试只读取环境变量，不自动读取本地密钥文件，也不启动 SillyTavern Proxy 服务。
+- `yarn test:pi:configured-live` 在同一个 Jest ESM 进程中加载真实 SDK 和生产运行时，直接统计
+  `src/function/update/pi` 的覆盖率。配置从本地 `api_settings.env` 读取，环境变量可覆盖文件值；
+  `MVU_PI_API_SETTINGS_FILE` 可指定其他文件。每组协议缺少地址或密钥时只跳过该组真实请求：
+  `RESPONSES_API_URL` / `RESPONSES_API_TOKEN`、`ANTHROPICS_API_URL` / `ANTHROPICS_API_TOKEN`、
+  `OPENAI_API_URL` / `OPENAI_API_TOKEN`。可分别用 `RESPONSES_API_MODEL`、`ANTHROPICS_API_MODEL`、
+  `OPENAI_API_MODEL` 指定模型；OpenRouter 默认沿用已配置的 `openai/gpt-4.1-mini`。
+  Google 使用 `GEMINI_API_KEY` 和可选的 `MVU_PI_GOOGLE_MODEL`。设置 `MVU_PI_ST_URL` 后还会验证
+  已启用 Proxy 的真实酒馆路由；测试不会更改酒馆配置、聊天或账号。
+  场景覆盖流式/非流式、工具调用及结果回传、原生 JSON Schema/JSON Object、角色名与中间 system、
+  已登记目录模型的图片输入、自定义头部/正文、取消与控制器清理、服务商真实拒绝及本地发送前拒绝。
+  每次生成最多发送一个 HTTP 请求，限制输出和超时；测试错误及报告均隐藏密钥。
+  Node 的原生 `Response.json()` 会产生宿主 realm 对象，测试在 VM 内解析相同正文以匹配浏览器语义，
+  不替换模型响应或放宽生产参数校验。详细 HTTP 证据保存在 `coverage/pi-live/requests.json`。
+- `yarn test:pi:coverage` 先运行普通回归基线，再运行上述真实链路，最后合并映射回 TypeScript
+  源码的 Istanbul 覆盖率。只有两组测试成功才会合并，缺少凭据的跳过数会保留在报告中。
+  `coverage/pi-combined/index.html` 是合并报告，`comparison.md` / `comparison.json` 给出逐文件的
+  基线与合并结果；`coverage/pi-unit` 和 `coverage/pi-live` 保留各自的原始报告。
 - `yarn test:pi:live` 会从未跟踪的 `test_token.md` 仅在内存中读取测试凭据，通过生产 Pi
   runtime 请求三种 OpenRouter-compatible wire
   API，并只输出脱敏后的路径、signal、认证头、CORS 和结果布尔值；遇到 HTTP

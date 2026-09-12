@@ -3,21 +3,18 @@ import { isFunctionCallingSupported } from '@/function/is_function_calling_suppo
 import { invokeExtraModelWithStrategy } from '@/function/update/invoke_extra_model';
 import { getPiRequestFailureToastMessage } from '@/function/update/pi/error_localization';
 import { isPiMultiproviderEnabled } from '@/function/update/pi/feature_flag';
-import { withPendingVariableUpdate } from '@/function/update/variable_update_queue';
 import { handleVariablesInMessage } from '@/function/update_variables';
 import { tr } from '@/i18n';
 import { useDataStore } from '@/store';
-
-/** 登记本条消息的完整变量更新任务，让后续消息等待其解析和写入结束。 */
-export async function onMessageReceived(message_id: number, options: { force?: boolean } = {}) {
-    return withPendingVariableUpdate(message_id, () => receiveMessage(message_id, options));
-}
 
 /**
  * 按更新模式处理消息，必要时调用额外模型并写回变量更新结果。
  * 错误提示使用发起请求时的来源和格式，避免面板切换导致错误归类失真。
  */
-async function receiveMessage(message_id: number, { force = false }: { force?: boolean } = {}) {
+export async function onMessageReceived(
+    message_id: number,
+    { force = false }: { force?: boolean } = {}
+) {
     const current_chatmsg = getChatMessages(message_id).at(-1);
     if (!current_chatmsg) {
         return;

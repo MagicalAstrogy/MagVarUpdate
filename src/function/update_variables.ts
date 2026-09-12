@@ -4,7 +4,6 @@ import {
     getSchemaForPath,
     reconcileAndApplySchema,
 } from '@/function/schema';
-import { waitForEarlierVariableUpdates } from '@/function/update/variable_update_queue';
 import { tr } from '@/i18n';
 import { useDataStore } from '@/store';
 import { getLastValidVariable, isJsonPatch } from '@/util';
@@ -1580,9 +1579,8 @@ export async function updateVariables(
     return is_modified;
 }
 
-/** 等待同一聊天中更早消息的变量写入，再读取本条消息并建立或更新变量快照。 */
+/** 读取本条消息并建立或更新变量快照。 */
 export async function handleVariablesInMessage(message_id: number) {
-    await waitForEarlierVariableUpdates(message_id);
     const chat_message = getChatMessages(message_id).at(-1);
     if (!chat_message) {
         return;

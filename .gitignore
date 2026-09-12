@@ -27,6 +27,8 @@ coverage/
 .env
 .env.*
 test_token.md
+/api_settings.env
+/GEMINI_KEY_FILE.txt
 
 # Ignore Webpack cache
 .cache/

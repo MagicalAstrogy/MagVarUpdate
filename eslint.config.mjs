@@ -80,7 +80,7 @@ export default [
         },
     },
     {
-        files: ['tests/**/*.{js,mjs,ts}'],
+        files: ['tests/**/*.{js,mjs,ts,mts}'],
         rules: {
             'import-x/no-nodejs-modules': 'off',
         },
