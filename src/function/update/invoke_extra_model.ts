@@ -19,6 +19,10 @@ import {
     setExtraModelRequestOverrides,
 } from '@/function/request/extra_model_request_override';
 import {
+    registerWorldinfoRequest,
+    withWorldinfoRequestMarker,
+} from '@/function/request/worldinfo_request';
+import {
     beginPiRequestAttempt,
     isPiRequestAbortedError,
     PiRequestAbortedError,
@@ -302,15 +306,17 @@ export async function invokeExtraModelWithStrategy(): Promise<string | null> {
         debug_extra_request_counter = 0;
 
         /** 执行并记录一次额外模型尝试，使错误处理和活动请求清理使用同一请求编号。 */
-        const recordedInvoke = async (generation_id?: string) => {
+        const recordedInvoke = async (generation_id?: string, signal?: AbortSignal) => {
             try {
                 return await invokeExtraModel(
                     generation_id,
                     batch_id,
                     pi_preflight,
-                    request_settings
+                    request_settings,
+                    signal
                 );
             } catch (e) {
+                if (signal?.aborted && !pi_preflight) throw e;
                 const localized_error = localizePiError(e);
                 console.error(localized_error);
                 if (pi_preflight) {
@@ -362,12 +368,13 @@ export async function invokeExtraModelWithStrategy(): Promise<string | null> {
         /** 协调同批并发尝试，接收有效结果并停止其余请求；致命错误立即结束整批执行。 */
         const concurrentInvoke = async (times: number) => {
             const uuids = _.times(times, uuidv4);
+            const controller = new AbortController();
             let attempts: Promise<string>[] = [];
             let did_set_extra_analysis_states = false;
             try {
                 await setExtraAnalysisStates(pi_preflight !== undefined);
                 did_set_extra_analysis_states = true;
-                attempts = uuids.map(recordedInvoke);
+                attempts = uuids.map(id => recordedInvoke(id, controller.signal));
                 //在函数调用的模式下，允许接受 **任意** 有效的函数结果，因此被允许被覆盖。
                 return await Promise.any(attempts);
             } catch (e) {
@@ -384,6 +391,8 @@ export async function invokeExtraModelWithStrategy(): Promise<string | null> {
                     throw last_pi_error;
                 }
             } finally {
+                // 先取消仍在等待世界书的调用，再停止助手和 Pi 中已启动的生成。
+                controller.abort();
                 uuids.forEach(generation_id => stopExtraModelRequestById(generation_id));
                 await Promise.allSettled(attempts);
                 if (did_set_extra_analysis_states) {
@@ -482,23 +491,38 @@ export async function generateExtraModel(): Promise<string | null> {
     }
 }
 
-// 在点击停止按钮时，会触发异常 `Clicked stop button`: string ,需要专门处理。
-//仅内部使用，因为一部分状态的初始化是在外面执行的。
 /**
- * 执行一次内部解析并验证变量更新块；由外层负责初始化生成状态。
- * Pi 尝试的取消标记覆盖提示词捕获和实际请求，结束时统一释放。
+ * 执行一次内部解析，登记请求级世界书策略并验证变量更新块；由外层初始化生成状态。
+ * Pi 尝试从世界书读取前登记，取消标记贯穿提示词捕获和实际请求，结束时统一释放。
+ *
+ * @param generation_id 本次生成编号；未指定时创建，与世界书识别和助手调用共用。
+ * @param batch_id 同批请求共享的随机提示词头部。
+ * @param pi_preflight 本次 Pi 请求的预检结果，旧来源不传入。
+ * @param request_settings 世界书过滤与模型调用共用的本次配置快照。
+ * @param signal 并发批次的取消信号，阻止登记较慢的调用在批次结束后启动生成。
+ * @returns 包含有效更新命令的 UpdateVariable 文本块。
  */
 async function invokeExtraModel(
     generation_id?: string,
     batch_id?: string,
     pi_preflight?: PiRuntimePreflight,
-    request_settings = useDataStore().settings.额外模型解析配置
+    request_settings = useDataStore().settings.额外模型解析配置,
+    signal?: AbortSignal
 ): Promise<string> {
+    generation_id ??= uuidv4();
     const pi_attempt =
         generation_id !== undefined && pi_preflight !== undefined
             ? beginPiRequestAttempt(generation_id)
             : undefined;
+    let release_worldinfo_request: (() => void) | undefined;
     try {
+        release_worldinfo_request = await registerWorldinfoRequest(
+            generation_id,
+            request_settings,
+            pi_attempt?.signal ?? signal
+        );
+        signal?.throwIfAborted();
+        pi_attempt?.signal.throwIfAborted();
         const result = await requestReply(
             generation_id,
             batch_id,
@@ -549,6 +573,7 @@ async function invokeExtraModel(
         }
         throw error;
     } finally {
+        release_worldinfo_request?.();
         pi_attempt?.release();
     }
 }
@@ -689,12 +714,12 @@ async function requestReply(
         assertV4CompatibleFormattedOutputUsable();
     }
 
-    const config: GenerateRawConfig = {
+    const config: GenerateRawConfig = withWorldinfoRequestMarker({
         user_input: '遵循<must>指令',
         max_chat_history: request_settings.max_chat_history,
         should_stream: request_settings.兼容假流式,
         generation_id,
-    };
+    });
     if (supports_request_scoped_tools) {
         config.tools = response_format === '工具调用' ? [MVU_TOOL_DEFINITION] : [];
     }

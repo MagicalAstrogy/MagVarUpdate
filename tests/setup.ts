@@ -117,6 +117,9 @@ const __eventHandlers = new Map<string, Array<(...args: unknown[]) => unknown>>(
     WORLDINFO_UPDATED: 'WORLDINFO_UPDATED',
     CHAT_CHANGED: 'CHAT_CHANGED',
     CHAT_COMPLETION_SETTINGS_READY: 'chat_completion_settings_ready',
+    CHAT_COMPLETION_PROMPT_READY: 'chat_completion_prompt_ready',
+    WORLDINFO_ENTRIES_LOADED: 'worldinfo_entries_loaded',
+    WORLDINFO_SCAN_DONE: 'worldinfo_scan_done',
 };
 
 // 用例隔离：每次重建 Pinia 和可变设置，避免前一用例污染后续场景。
@@ -151,6 +154,16 @@ beforeEach(() => {
         handler(TEST_SCRIPT_ID);
     }
 });
+(globalThis as any).eventMakeFirst = jest.fn(
+    (event: string, handler: (...args: unknown[]) => unknown) => {
+        const handlers = __eventHandlers.get(event) ?? [];
+        const existing_index = handlers.indexOf(handler);
+        if (existing_index !== -1) handlers.splice(existing_index, 1);
+        handlers.unshift(handler);
+        __eventHandlers.set(event, handlers);
+        return { stop: () => (globalThis as any).eventRemoveListener(event, handler) };
+    }
+);
 (globalThis as any).eventMakeLast = jest.fn(
     (event: string, handler: (...args: unknown[]) => unknown) => {
         if (!__eventHandlers.has(event)) {

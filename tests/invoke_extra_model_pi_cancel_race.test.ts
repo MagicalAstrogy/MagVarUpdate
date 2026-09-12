@@ -7,6 +7,8 @@ jest.mock('@/function/update/pi/runtime', () => ({
     runPiRequest: jest.fn(),
 }));
 
+import { nextTick } from 'vue';
+import { getPendingWorldinfoRequests } from '@/function/request/worldinfo_request';
 import { invokeExtraModelWithStrategy } from '@/function/update/invoke_extra_model';
 import {
     clearPiRequestControllers,
@@ -54,7 +56,12 @@ function installGenerationLifecycle() {
         try {
             await (globalThis as any).eventEmit(tavern_events.CHAT_COMPLETION_SETTINGS_READY, {
                 model: config.custom_api?.model,
-                messages: [{ role: 'user', content: 'captured prompt' }],
+                messages: [
+                    ...(config.overrides?.char_description
+                        ? [{ role: 'system', content: config.overrides.char_description }]
+                        : []),
+                    { role: 'user', content: 'captured prompt' },
+                ],
             });
             // Slash's fixed capture fetch must still receive an aborted signal.
             expect(controller.signal.aborted).toBe(true);
@@ -100,9 +107,75 @@ describe('Pi generation lifecycle and cancellation', () => {
     afterEach(() => {
         clearPiRequestControllers();
         delete (globalThis as any).generateRaw;
+        delete (globalThis as any).getCurrentCharPrimaryLorebook;
+        delete (globalThis as any).getLorebookEntries;
         jest.restoreAllMocks();
         expect(getPendingPromptCaptureDiagnostics()).toEqual([]);
         expect(getActivePiRequestIds()).toEqual([]);
+        expect(getPendingWorldinfoRequests()).toEqual([]);
+    });
+
+    test('cancels a delayed worldinfo lookup after another Pi request wins', async () => {
+        const store = useDataStore();
+        store.should_enable = true;
+        await nextTick();
+        store.settings.更新方式 = '额外模型解析';
+        store.settings.额外模型解析配置.请求方式 = '同时请求多次';
+        store.settings.额外模型解析配置.请求次数 = 2;
+        const entries = [{ comment: '[mvu_update]' }];
+        const slow_entries = deferred<typeof entries>();
+        (globalThis as any).getCurrentCharPrimaryLorebook = jest.fn(() => 'character');
+        (globalThis as any).getLorebookEntries = jest
+            .fn()
+            .mockResolvedValueOnce(entries)
+            .mockReturnValueOnce(slow_entries.promise);
+        installGenerationLifecycle();
+        jest.mocked(runPiRequest).mockResolvedValue(VALID_UPDATE);
+        jest.spyOn(console, 'error').mockImplementation(() => {});
+
+        await expect(invokeExtraModelWithStrategy()).resolves.toBe(VALID_UPDATE);
+        expect(getLorebookEntries).toHaveBeenCalledTimes(2);
+        expect(getActivePiRequestIds()).toEqual([]);
+        expect(getPendingWorldinfoRequests()).toEqual([]);
+        slow_entries.resolve(entries);
+        await new Promise(resolve => setTimeout(resolve, 0));
+
+        expect(generateRaw).toHaveBeenCalledTimes(1);
+        expect(runPiRequest).toHaveBeenCalledTimes(1);
+        expect(JSON.stringify(jest.mocked(runPiRequest).mock.calls[0][0].messages)).not.toContain(
+            '__MVU_WI_REQUEST_'
+        );
+        expect(store.runtimes.is_during_extra_analysis).toBe(false);
+    });
+
+    test('stops a Pi attempt during worldinfo lookup before any capture has started', async () => {
+        const store = useDataStore();
+        store.should_enable = true;
+        await nextTick();
+        store.settings.更新方式 = '额外模型解析';
+        const slow_entries = deferred<Array<{ comment: string }>>();
+        const lookup_started = deferred<void>();
+        (globalThis as any).getCurrentCharPrimaryLorebook = jest.fn(() => 'character');
+        (globalThis as any).getLorebookEntries = jest.fn(() => {
+            lookup_started.resolve();
+            return slow_entries.promise;
+        });
+        installGenerationLifecycle();
+        jest.spyOn(console, 'error').mockImplementation(() => {});
+
+        const request = invokeExtraModelWithStrategy();
+        await lookup_started.promise;
+        const ids = getActivePiRequestIds();
+        expect(ids).toHaveLength(1);
+        expect(stopExtraModelRequestById(ids[0])).toBe(true);
+        await expect(request).resolves.toBeNull();
+        slow_entries.resolve([{ comment: '[mvu_update]' }]);
+        await new Promise(resolve => setTimeout(resolve, 0));
+
+        expect(generateRaw).not.toHaveBeenCalled();
+        expect(runPiRequest).not.toHaveBeenCalled();
+        expect(getLorebookEntries).toHaveBeenCalledTimes(1);
+        expect(store.runtimes.is_during_extra_analysis).toBe(false);
     });
 
     test('keeps generation active through the provider response and ignores its own cleanup stop', async () => {
