@@ -3,7 +3,10 @@
  */
 import { isExtraModelSupported } from '@/function/is_extra_model_supported';
 import { invokeExtraModelWithStrategy } from '@/function/update/invoke_extra_model';
-import { onMessageReceived } from '@/function/update/on_message_received';
+import {
+    onCharacterMessageRendered,
+    onMessageReceived,
+} from '@/function/update/on_message_received';
 import { handleVariablesInMessage } from '@/function/update_variables';
 import { i18n } from '@/i18n';
 import { useDataStore } from '@/store';
@@ -37,6 +40,7 @@ describe('onMessageReceived Pi source gate', () => {
         Object.assign((globalThis as any).SillyTavern, {
             name2: 'Assistant',
             chat: [{}, {}],
+            getCurrentChatId: jest.fn().mockReturnValue('pi-gate-chat'),
         });
         (globalThis as any).SillyTavern.ToolManager.isToolCallingSupported.mockReturnValue(false);
         (globalThis as any).getChatMessages.mockReturnValue([
@@ -52,7 +56,7 @@ describe('onMessageReceived Pi source gate', () => {
     test('continues to Pi when Tavern Helper and ToolManager tool calling are unsupported', async () => {
         useDataStore().settings.额外模型解析配置.模型来源 = '更多';
 
-        await onMessageReceived(1);
+        await onMessageReceived(1, { force: true });
 
         expect(mockIsExtraModelSupported).toHaveBeenCalledTimes(1);
         expect(mockInvokeExtraModelWithStrategy).toHaveBeenCalledTimes(1);
@@ -104,7 +108,7 @@ describe('onMessageReceived Pi source gate', () => {
             );
             mockInvokeExtraModelWithStrategy.mockRejectedValueOnce(provider_error);
 
-            await expect(onMessageReceived(1)).rejects.toBe(provider_error);
+            await expect(onMessageReceived(1, { force: true })).rejects.toBe(provider_error);
 
             const toastr_error = (globalThis as any).toastr.error as jest.Mock;
             expect(toastr_error).toHaveBeenCalledTimes(1);
@@ -134,7 +138,7 @@ describe('onMessageReceived Pi source gate', () => {
             throw provider_error;
         });
 
-        await expect(onMessageReceived(1)).rejects.toBe(provider_error);
+        await expect(onMessageReceived(1, { force: true })).rejects.toBe(provider_error);
 
         expect((globalThis as any).toastr.error).toHaveBeenCalledWith(
             i18n.global.t('runtime.pi.structuredOutputRequestRejected'),
@@ -186,7 +190,7 @@ describe('onMessageReceived Pi source gate', () => {
             });
             mockInvokeExtraModelWithStrategy.mockRejectedValueOnce(error);
 
-            await expect(onMessageReceived(1)).rejects.toBe(error);
+            await expect(onMessageReceived(1, { force: true })).rejects.toBe(error);
 
             const toastr_error = (globalThis as any).toastr.error as jest.Mock;
             expect(toastr_error).toHaveBeenCalledTimes(1);
@@ -214,8 +218,63 @@ describe('onMessageReceived Pi source gate', () => {
         const error = new Error('legacy failure');
         mockInvokeExtraModelWithStrategy.mockRejectedValueOnce(error);
 
-        await expect(onMessageReceived(1)).rejects.toBe(error);
+        await expect(onMessageReceived(1, { force: true })).rejects.toBe(error);
 
         expect((globalThis as any).toastr.error).not.toHaveBeenCalled();
+    });
+
+    test('shares a background Pi failure with rendered and retry waiters, then accepts the next request', async () => {
+        useDataStore().settings.额外模型解析配置.模型来源 = '更多';
+        const pending = Promise.withResolvers<string | null>();
+        const error = Object.assign(new Error('provider failure'), {
+            name: 'PiRuntimeError',
+            code: 'provider',
+            retryable: true,
+        });
+        mockInvokeExtraModelWithStrategy.mockReturnValueOnce(pending.promise);
+
+        await onMessageReceived(1);
+        expect(mockInvokeExtraModelWithStrategy).toHaveBeenCalledTimes(1);
+        expect(mockHandleVariablesInMessage).not.toHaveBeenCalled();
+
+        const rendered = expect(onCharacterMessageRendered(1)).rejects.toBe(error);
+        const retry = expect(onMessageReceived(1, { force: true })).rejects.toBe(error);
+        pending.reject(error);
+        await Promise.all([rendered, retry]);
+
+        expect(mockInvokeExtraModelWithStrategy).toHaveBeenCalledTimes(1);
+        expect((globalThis as any).toastr.error).toHaveBeenCalledTimes(1);
+        expect((globalThis as any).toastr.error).toHaveBeenCalledWith(
+            i18n.global.t('runtime.pi.toolRequestRejected'),
+            i18n.global.t('runtime.extraModel.updateFailedTitle')
+        );
+        expect(mockHandleVariablesInMessage).not.toHaveBeenCalled();
+
+        const update = '<UpdateVariable>_.set("health", 80);</UpdateVariable>';
+        mockInvokeExtraModelWithStrategy.mockResolvedValueOnce(update);
+        await onMessageReceived(1, { force: true });
+
+        expect(mockInvokeExtraModelWithStrategy).toHaveBeenCalledTimes(2);
+        expect((globalThis as any).setChatMessages).toHaveBeenCalledWith(
+            [{ message_id: 1, message: `A sufficiently long reply\n\n${update}` }],
+            { refresh: 'none' }
+        );
+        expect(mockHandleVariablesInMessage).toHaveBeenCalledTimes(1);
+        expect((globalThis as any).toastr.error).toHaveBeenCalledTimes(1);
+    });
+
+    test('does not show a generic failure for a Pi null result after the panel switches source', async () => {
+        const store = useDataStore();
+        store.settings.额外模型解析配置.模型来源 = '更多';
+        mockInvokeExtraModelWithStrategy.mockImplementationOnce(async () => {
+            store.settings.额外模型解析配置.模型来源 = '自定义';
+            return null;
+        });
+
+        await onMessageReceived(1, { force: true });
+
+        expect((globalThis as any).toastr.error).not.toHaveBeenCalled();
+        expect((globalThis as any).setChatMessages).not.toHaveBeenCalled();
+        expect(mockHandleVariablesInMessage).toHaveBeenCalledWith(1);
     });
 });

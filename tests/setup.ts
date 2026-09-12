@@ -113,6 +113,8 @@ const __eventHandlers = new Map<string, Array<(...args: unknown[]) => unknown>>(
     GENERATION_ENDED: 'GENERATION_ENDED',
     GENERATION_STOPPED: 'GENERATION_STOPPED',
     MESSAGE_SENT: 'MESSAGE_SENT',
+    MESSAGE_RECEIVED: 'message_received',
+    CHARACTER_MESSAGE_RENDERED: 'character_message_rendered',
     GENERATION_STARTED: 'GENERATION_STARTED',
     WORLDINFO_UPDATED: 'WORLDINFO_UPDATED',
     CHAT_CHANGED: 'CHAT_CHANGED',
