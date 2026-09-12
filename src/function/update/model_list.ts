@@ -665,10 +665,10 @@ export async function fetchPiModelList(
 /** 通过请求共用的认证实现读取并按需刷新 OAuth 凭证，再供模型列表查询使用。 */
 export async function resolvePiModelListOAuthCredential(
     definition: PiProviderDefinition,
-    signal?: AbortSignal
+    signal?: AbortSignal,
+    credential_store = getPiCredentialStore()
 ): Promise<PiModelListOAuthCredential> {
     installPiAbortSignalPolyfills();
-    const credential_store = getPiCredentialStore();
     try {
         signal?.throwIfAborted();
         const models = createModels({

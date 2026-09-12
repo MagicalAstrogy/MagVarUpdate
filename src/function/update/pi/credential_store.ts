@@ -1,4 +1,5 @@
 import { useDataStore } from '@/store';
+import { resolvePiCredentialReferences, type PiCredentialReferences } from './credential_refs';
 import type {
     AuthOperationOptions,
     Credential,
@@ -7,7 +8,7 @@ import type {
     OAuthCredential,
 } from './pi_gateway';
 
-/** 按服务商排队执行的凭证操作，进入队列前不提前读取或修改凭证。 */
+/** 按凭证编号排队执行的凭证操作，进入队列前不提前读取或修改凭证。 */
 type CredentialTask<T> = () => Promise<T>;
 
 /** 复制 OAuth 凭证，避免调用方修改持久化对象本身。 */
@@ -40,10 +41,17 @@ function readOAuthCredential(value: unknown): OAuthCredential | undefined {
     return cloneOAuthCredential(candidate as OAuthCredential);
 }
 
-/** 每次操作重新获取当前 Pinia 仓库中的凭证表，避免缓存过期的响应式引用。 */
-function getPersistedCredentials(): Record<string, unknown> {
-    return useDataStore().settings.额外模型解析配置.pi.credentials;
-}
+/** 所有捕获同一设置仓库的适配器共用真实凭证编号的队列。 */
+const storeChains = new WeakMap<object, Map<string, Promise<void>>>();
+/** 登录和解绑的代次按所属连接记录，阻止已经退出的待完成登录重新绑定。 */
+const bindingGenerations = new WeakMap<object, Map<string, number>>();
+
+type DataStore = ReturnType<typeof useDataStore>;
+type CredentialStoreHooks = {
+    beforeWrite?: (providerId: string, credentialId: string) => void;
+    /** 返回 false 时仅解除绑定，保留其他方案仍使用的集中凭证。 */
+    beforeDelete?: (providerId: string, credentialId: string | undefined) => boolean;
+};
 
 /** 在读取或写入凭证前检查调用方是否已取消操作。 */
 function throwIfAborted(options?: AuthOperationOptions): void {
@@ -82,12 +90,21 @@ function raceWithAbort<T>(task: Promise<T>, signal?: AbortSignal): Promise<T> {
 
 /**
  * 创建基于设置持久化的 OAuth 凭证仓库。
- * 同一服务商的修改和删除串行执行，写入前复查取消状态，避免刷新覆盖登出或新凭证。
+ * 同一凭证编号的修改和删除串行执行，写入前复查取消状态，避免刷新覆盖登出或新凭证。
  */
-export function createPiCredentialStore(): CredentialStore {
-    const chains = new Map<string, Promise<void>>();
+export function createPiCredentialStore(
+    credentialIds?: PiCredentialReferences,
+    dataStore: DataStore = useDataStore(),
+    hooks: CredentialStoreHooks = {}
+): CredentialStore {
+    const references = credentialIds === undefined ? undefined : { ...credentialIds };
+    const getPersistedCredentials = () => dataStore.settings.额外模型解析配置.pi.credentials;
+    const resolveId = (providerId: string) =>
+        references === undefined ? providerId : references[providerId];
+    const chains = storeChains.get(dataStore) ?? new Map<string, Promise<void>>();
+    storeChains.set(dataStore, chains);
 
-    /** 按服务商串行安排凭证修改；前序失败不阻塞后续任务，取消后也保持队列顺序。 */
+    /** 按凭证编号串行安排凭证修改；前序失败不阻塞后续任务，取消后也保持队列顺序。 */
     const enqueue = <T>(
         providerId: string,
         task: CredentialTask<T>,
@@ -121,30 +138,41 @@ export function createPiCredentialStore(): CredentialStore {
             options?: AuthOperationOptions
         ): Promise<Credential | undefined> {
             throwIfAborted(options);
-            const credential = readOAuthCredential(getPersistedCredentials()[providerId]);
+            const credentialId = resolveId(providerId);
+            const credential =
+                credentialId === undefined
+                    ? undefined
+                    : readOAuthCredential(getPersistedCredentials()[credentialId]);
             return credential === undefined ? undefined : cloneOAuthCredential(credential);
         },
 
         /** 列出有效 OAuth 凭证的服务商和类型，不向列表调用方暴露令牌内容。 */
         async list(options?: AuthOperationOptions): Promise<readonly CredentialInfo[]> {
             throwIfAborted(options);
-            return Object.entries(getPersistedCredentials()).flatMap(([providerId, value]) =>
-                readOAuthCredential(value) === undefined
+            const ids =
+                references ??
+                Object.fromEntries(Object.keys(getPersistedCredentials()).map(id => [id, id]));
+            return Object.entries(ids).flatMap(([providerId, credentialId]) =>
+                readOAuthCredential(getPersistedCredentials()[credentialId]) === undefined
                     ? []
                     : [{ providerId, type: 'oauth' as const }]
             );
         },
 
-        /** 在服务商队列内读取、更新并保存凭证，提交前再次检查取消信号。 */
+        /** 在凭证队列内读取、更新并保存凭证，提交前再次检查取消信号。 */
         modify(
             providerId: string,
             fn: (current: Credential | undefined) => Promise<Credential | undefined>,
             options?: AuthOperationOptions
         ): Promise<Credential | undefined> {
+            const credentialId = resolveId(providerId);
+            if (credentialId === undefined) {
+                return Promise.reject(new Error('No OAuth credential is bound to this connection'));
+            }
             return enqueue(
-                providerId,
+                credentialId,
                 async () => {
-                    const current = readOAuthCredential(getPersistedCredentials()[providerId]);
+                    const current = readOAuthCredential(getPersistedCredentials()[credentialId]);
                     const next = await fn(
                         current === undefined ? undefined : cloneOAuthCredential(current)
                     );
@@ -162,20 +190,30 @@ export function createPiCredentialStore(): CredentialStore {
                     }
 
                     const persisted = cloneOAuthCredential(oauth);
-                    getPersistedCredentials()[providerId] = persisted;
+                    hooks.beforeWrite?.(providerId, credentialId);
+                    getPersistedCredentials()[credentialId] = persisted;
                     return cloneOAuthCredential(persisted);
                 },
                 options
             );
         },
 
-        /** 在同一服务商队列中删除凭证，与自动或手动刷新保持确定的先后顺序。 */
+        /** 在同一凭证队列中删除凭证，与自动或手动刷新保持确定的先后顺序。 */
         delete(providerId: string, options?: AuthOperationOptions): Promise<void> {
+            const credentialId = resolveId(providerId);
+            if (credentialId === undefined) {
+                return Promise.resolve().then(() => {
+                    throwIfAborted(options);
+                    hooks.beforeDelete?.(providerId, undefined);
+                });
+            }
             return enqueue(
-                providerId,
+                credentialId,
                 async () => {
                     throwIfAborted(options);
-                    delete getPersistedCredentials()[providerId];
+                    if (hooks.beforeDelete?.(providerId, credentialId) !== false) {
+                        delete getPersistedCredentials()[credentialId];
+                    }
                 },
                 options
             );
@@ -183,10 +221,119 @@ export function createPiCredentialStore(): CredentialStore {
     };
 }
 
-let credentialStore: CredentialStore | undefined;
+/** 捕获操作发起时所属的方案及活动连接，回调提交前复核原引用。 */
+function captureBinding(dataStore: DataStore) {
+    const config = dataStore.settings.额外模型解析配置;
+    const profileName = config.当前api方案;
+    const profile = config.api方案列表.find(
+        item => item.名称 === profileName && item.backend === 'pi'
+    );
+    const activeReferences = resolvePiCredentialReferences(config.pi, config.pi.credentials);
+    const profileReferences =
+        profile?.pi === undefined
+            ? undefined
+            : resolvePiCredentialReferences(profile.pi, config.pi.credentials);
+    const source = config.模型来源;
+    const provider = config.pi.provider;
+    const authType = config.pi.authType;
+    const generations = bindingGenerations.get(dataStore) ?? new Map<string, number>();
+    bindingGenerations.set(dataStore, generations);
+    const scope = JSON.stringify([profileName, source, provider, authType]);
+    const observedGenerations = new Map(generations);
 
-/** 返回运行时共用的凭证仓库；具体 Pinia 设置在每次操作时重新解析。 */
-export function getPiCredentialStore(): CredentialStore {
-    credentialStore ??= createPiCredentialStore();
-    return credentialStore;
+    /** 仅修改发起操作时的所属方案；活动连接只有仍绑定原值时才同步更新。 */
+    const replace = (providerId: string, nextId: string | undefined) => {
+        const generationKey = `${scope}:${providerId}`;
+        const generation = observedGenerations.get(generationKey) ?? 0;
+        if ((generations.get(generationKey) ?? 0) !== generation) {
+            throw new Error('The OAuth connection was changed by another authentication operation');
+        }
+        const current = dataStore.settings.额外模型解析配置;
+        const target =
+            profileReferences === undefined
+                ? undefined
+                : current.api方案列表.find(
+                      item => item.名称 === profileName && item.backend === 'pi'
+                  );
+        const isActive =
+            current.当前api方案 === profileName &&
+            current.模型来源 === source &&
+            current.pi.provider === provider &&
+            current.pi.authType === authType;
+        const currentRefs = resolvePiCredentialReferences(current.pi, current.pi.credentials);
+        const targetRefs =
+            target?.pi === undefined
+                ? undefined
+                : resolvePiCredentialReferences(target.pi, current.pi.credentials);
+        if (isActive && currentRefs[providerId] !== activeReferences[providerId]) {
+            throw new Error('The active OAuth credential changed while authentication was pending');
+        }
+        if (profileReferences !== undefined) {
+            if (!target?.pi || targetRefs?.[providerId] !== profileReferences[providerId]) {
+                throw new Error('The OAuth profile changed while authentication was pending');
+            }
+        } else if (!isActive || currentRefs[providerId] !== activeReferences[providerId]) {
+            throw new Error('The OAuth connection changed while authentication was pending');
+        }
+        const updated = (refs: PiCredentialReferences) => {
+            const result = { ...refs };
+            if (nextId === undefined) delete result[providerId];
+            else result[providerId] = nextId;
+            return result;
+        };
+        generations.set(generationKey, generation + 1);
+        if (target?.pi && targetRefs) target.pi.credentialIds = updated(targetRefs);
+        if (isActive && currentRefs[providerId] === activeReferences[providerId]) {
+            current.pi.credentialIds = updated(currentRefs);
+        }
+    };
+    return { references: activeReferences, replace };
+}
+
+/** 是否仍有方案或活动连接引用该凭证；未迁移的旧方案也参与引用检查。 */
+function isCredentialReferenced(dataStore: DataStore, credentialId: string): boolean {
+    const config = dataStore.settings.额外模型解析配置;
+    const connections = [
+        config.pi,
+        ...config.api方案列表.flatMap(profile =>
+            profile.backend === 'pi' && profile.pi ? [profile.pi] : []
+        ),
+    ];
+    return connections.some(pi =>
+        Object.values(resolvePiCredentialReferences(pi, config.pi.credentials)).includes(
+            credentialId
+        )
+    );
+}
+
+/** 捕获当前连接的凭证引用；随后切换方案不会改变此对象读写的账号。 */
+export function getPiCredentialStore(pi?: { credentialIds?: unknown }): CredentialStore {
+    const dataStore = useDataStore();
+    const settings = dataStore.settings.额外模型解析配置.pi;
+    const references = resolvePiCredentialReferences(pi ?? settings, settings.credentials);
+    return createPiCredentialStore(references, dataStore);
+}
+
+/** 捕获退出登录的所属方案，仅解绑该方案，最后一个引用消失后才删除集中凭证。 */
+export function createPiOAuthLogoutStore(): CredentialStore {
+    const dataStore = useDataStore();
+    const binding = captureBinding(dataStore);
+    return createPiCredentialStore(binding.references, dataStore, {
+        beforeDelete(providerId, credentialId) {
+            binding.replace(providerId, undefined);
+            return credentialId !== undefined && !isCredentialReferenced(dataStore, credentialId);
+        },
+    });
+}
+
+/** 为登录结果分配全新记录，成功提交时才绑定原方案，避免覆盖其他账号或失败时丢失旧登录态。 */
+export function createPiOAuthLoginStore(providerId: string, nonce: string): CredentialStore {
+    const dataStore = useDataStore();
+    const binding = captureBinding(dataStore);
+    const id = `oauth:${encodeURIComponent(providerId)}:${nonce}`;
+    return createPiCredentialStore({ [providerId]: id }, dataStore, {
+        beforeWrite(writtenProvider, credentialId) {
+            binding.replace(writtenProvider, credentialId);
+        },
+    });
 }

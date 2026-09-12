@@ -4,6 +4,7 @@ import {
     resolvePiApiKeyScope,
 } from '@/function/update/pi/provider_target';
 import { klona } from 'klona';
+import { resolvePiCredentialReferences, type PiCredentialReferences } from './pi/credential_refs';
 
 export type ExtraModelApiProfileBackend = 'custom' | 'pi';
 
@@ -39,6 +40,8 @@ function extractApiRequestFields(
 
 export type ExtraModelPiConnectionFields = {
     [key: string]: unknown;
+    /** 各服务商绑定的集中 OAuth 凭证编号；空映射表示明确未登录。 */
+    credentialIds?: PiCredentialReferences;
     provider: string;
     api: string;
     authType: string;
@@ -128,6 +131,12 @@ function clonePiConnectionFields(
     const cloned = klona(pi);
     delete cloned.credentials;
     delete cloned.apiKeys;
+    if (pi.credentialIds !== undefined || pi.credentials !== undefined) {
+        cloned.credentialIds = resolvePiCredentialReferences(
+            pi,
+            (pi.credentials as Record<string, unknown> | undefined) ?? {}
+        );
+    }
     // Runtime resolution treats surrounding whitespace on connection identifiers as insignificant.
     // Persist the same canonical representation so profile validation, the Source form, dirty
     // checks, and runtime resolution cannot disagree about a target after import.
@@ -264,6 +273,7 @@ function mergePiConnectionFields(
     return {
         ...current_clone,
         ...profile_clone,
+        credentialIds: resolvePiCredentialReferences(profile, current_clone?.credentials),
         credentials: klona(current_clone?.credentials ?? {}),
         apiKeys: klona(current_clone?.apiKeys ?? {}),
     } as ExtraModelPiSettings;
@@ -274,6 +284,7 @@ function clearPiConnectionFields(pi: ExtraModelPiSettings): ExtraModelPiSettings
     const cloned = klona(pi);
     return {
         ...cloned,
+        credentialIds: {},
         provider: '',
         api: '',
         authType: 'api_key',
@@ -562,11 +573,33 @@ export async function deleteActiveExtraModelApiProfileWithConfirmation(
 export function migrateExtraModelApiProfiles<T extends ExtraModelApiProfileFields>(config: T): T {
     let migrated = {
         ...config,
+        ...(config.pi === undefined
+            ? {}
+            : {
+                  pi: {
+                      ...config.pi,
+                      credentialIds: resolvePiCredentialReferences(
+                          config.pi,
+                          config.pi.credentials
+                      ),
+                  },
+              }),
         // Old profiles only stored connection fields. Copy the current request options into
         // every profile once; saved per-profile values must survive subsequent loads/imports.
         api方案列表: normalizeExtraModelApiProfileList(
             config.api方案列表.map(profile => ({
                 ...profile,
+                ...(profile.backend === 'pi' && profile.pi !== undefined
+                    ? {
+                          pi: {
+                              ...profile.pi,
+                              credentialIds: resolvePiCredentialReferences(
+                                  profile.pi,
+                                  config.pi?.credentials
+                              ),
+                          },
+                      }
+                    : {}),
                 ...extractApiRequestFields(config),
                 ...extractApiRequestFields(profile),
             }))

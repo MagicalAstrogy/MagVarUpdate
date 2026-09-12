@@ -201,7 +201,7 @@ API 方案通过 `backend` 区分两类快照：
 
 - `backend: 'custom'`：保存原有自定义 API 字段。
 - `backend: 'pi'`：保存结构完整的 Pi 连接快照，包括 provider、API、认证方式、endpoint、`useProxy`、model、
-  `contextWindow`、`customHeaders`、`customIncludeBody` 和 `customExcludeBody`。
+  `contextWindow`、`customHeaders`、`customIncludeBody`、`customExcludeBody` 和 OAuth 凭证引用 `credentialIds`。
 
 旧方案没有 `backend` 时按 `custom`
 迁移。保存、另存、切换和删除 Pi 方案时会深拷贝连接字段并保留未知字段，避免响应式对象共享或前向兼容数据丢失。
@@ -214,7 +214,11 @@ endpoint/model 回滚成创建该 Pi 方案时的旧值。方案名称在导入�
 `pi.apiKeys` 和 `pi.credentials` 都不会写入 `ExtraModelApiProfile` 的 Pi
 connection 快照。`pi.apiKeys`
 按“Provider + 规范化后的有效 endpoint”隔离；空 endpoint 会先解析为 Provider 默认地址，因此与显式填写的 canonical 默认地址共用同一槽。`pi.credentials`
-仍按 Provider ID 隔离 OAuth credential，“自定义”的 API Key 则单独保存在 `customApiKey`。
+按稳定的 credential ID 集中保存 OAuth credential，活动连接及每个方案通过 `pi.credentialIds[providerId]` 引用凭证；“自定义”的 API Key 则单独保存在 `customApiKey`。
+
+同一 Provider 的不同方案可以绑定不同账号。登录成功时创建新的 credential ID，并更新发起登录的方案引用；请求预检、模型列表查询和刷新会捕获引用，等待期间切换方案不会改变该操作使用或更新的凭证。退出登录解除当前方案的绑定，只有没有其他方案引用时才删除令牌。
+
+另存方案会保留当前账号的引用，令牌本身不复制。若要换成另一个账号，在新方案中退出并重新登录即可，原方案继续使用原账号。旧配置中以 Provider ID 为键的凭证保留原地，旧方案迁移为对同一凭证的显式引用，避免复制可能轮换的 refresh token。已经解绑的方案不会重新回退到旧 Provider 凭证。
 
 切换模型来源、Pi
 Provider、endpoint 或认证方式时，界面会先把当前“密钥”写回原有效 target 槽，再加载目标槽。OAuth、尚未配置的槽位，或 Provider/API/auth/endpoint 任一项非法而无法形成有效 target 时，活动 key 都为空且不会读取任何
@@ -223,7 +227,7 @@ key）会在完整连接快照安装后只写入该 Provider + endpoint 的目�
 cache 本身仍不进入 profile 快照。
 
 只有连接快照完整且认证方式为 API Key 的 Pi profile 才保存这一个 target key。OAuth
-profile 的顶层“密钥”恒为空，OAuth credential 只保存在按 Provider 隔离的 `pi.credentials`
+profile 的顶层“密钥”恒为空，OAuth credential 只保存在按 credential ID 隔离的 `pi.credentials`
 中；从旧设置加载 OAuth Pi 配置时也会在面板挂载前清空陈旧的活动顶层 key，同时保留
 `customApiKey`、`pi.apiKeys` 和 `pi.credentials`。malformed Pi
 profile 也会在迁移或导入时移除其无归属的顶层 key。
@@ -256,9 +260,9 @@ profile 时也会 fail-closed：保留隔离的
 3. 从浏览器地址栏复制完整 callback URL，包括协议、host、端口、路径、`code` 和 `state` 查询参数。
 4. 将完整 URL 粘贴回密码型 callback 输入框，点击“完成登录”。
 5. 登录成功后显示“刷新凭证”和“登出”。“刷新凭证”会使用当前 refresh
-   token 主动续期并更新有效期，不打开授权页；“登出”会删除该 Provider 的凭据，需要更换账号或重新授权时可登出后再登录。
+   token 主动续期并更新有效期，不打开授权页；“登出”会解除当前方案对该 Provider 账号的绑定，需要更换账号或重新授权时可登出后再登录。其他方案仍使用该账号时，集中保存的凭据会保留。
 
-手动刷新与请求中的自动刷新共用凭据锁。如果等待期间已被其他请求刷新或替换，会直接使用新凭据，避免重复轮换；刷新失败保留原凭据。操作中切换来源、方案或关闭面板时会取消等待，并防止旧操作结果更新新来源的界面。
+手动刷新与请求中的自动刷新按实际 credential ID 共用凭据锁，同渠道不同账号可独立刷新。如果等待期间同一凭据已被其他请求刷新，会直接使用新凭据，避免重复轮换；刷新失败保留原凭据。操作中切换来源、方案或关闭面板时会取消等待，并防止旧操作结果更新新来源的界面。
 
 不要手工修改 callback 的端口、路径、`code` 或
 `state`，也不要重复使用已经提交过的 callback。实现会校验协议、loopback

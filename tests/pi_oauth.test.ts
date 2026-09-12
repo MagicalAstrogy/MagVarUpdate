@@ -2,6 +2,13 @@
  * 测试场景：通过注入时钟、随机数、fetch 和凭证仓库，验证浏览器 OAuth 登录、回调校验、续期、取消及秘密隔离。
  */
 import { webcrypto } from 'node:crypto';
+import { createPinia, setActivePinia } from 'pinia';
+import { useDataStore } from '@/store';
+import {
+    saveCurrentExtraModelApiProfile,
+    saveAsNewExtraModelApiProfile,
+    selectExtraModelApiProfile,
+} from '@/function/update/extra_model_api_profiles';
 
 jest.mock('@/function/update/pi/pi_gateway', () => ({
     OPENAI_MODELS: {},
@@ -659,5 +666,152 @@ describe('browser-safe Pi OAuth', () => {
             expect(String(error)).not.toContain(token);
         }
         expect(store.credentials.has('openai-codex')).toBe(false);
+    });
+});
+
+// 真实设置绑定：方案共享凭证引用，但重新登录、退出和迟到回调必须只作用于原方案。
+describe('Pi OAuth profile credential ownership', () => {
+    function configureProfiles() {
+        const store = useDataStore();
+        const config = store.settings.额外模型解析配置;
+        Object.assign(config, { 模型来源: '更多', 当前api方案: '', 密钥: '', api方案列表: [] });
+        Object.assign(config.pi, {
+            provider: 'anthropic',
+            api: 'anthropic-messages',
+            authType: 'oauth',
+            endpoint: '',
+            model: 'claude-sonnet-4-5',
+            credentialIds: {},
+            credentials: {},
+        });
+        Object.assign(config, saveCurrentExtraModelApiProfile(config, 'A'));
+        return store;
+    }
+
+    function tokenResponse(access: string) {
+        return jest.fn().mockResolvedValue(
+            response({
+                access_token: access,
+                refresh_token: `refresh-${access}`,
+                expires_in: 3600,
+            })
+        );
+    }
+
+    beforeEach(() => {
+        (globalThis as any).SillyTavern.extensionSettings = {};
+        setActivePinia(createPinia());
+    });
+
+    test('login begun in A binds A after switching to B without logging B in', async () => {
+        const store = configureProfiles();
+        const config = store.settings.额外模型解析配置;
+        const attempt = await beginPiOAuth('anthropic', { crypto: cryptoImpl });
+        Object.assign(config, saveAsNewExtraModelApiProfile(config, 'B'));
+        await completePiOAuth(attempt.id, callbackUrl(attempt), {
+            fetch: tokenResponse('account-a'),
+        });
+        expect(config.当前api方案).toBe('B');
+        expect(config.pi.credentialIds).toEqual({});
+        await expect(getPiOAuthCredentialStatus('anthropic')).resolves.toEqual({ loggedIn: false });
+        Object.assign(config, selectExtraModelApiProfile(config, 'A'));
+        const id = config.pi.credentialIds!.anthropic;
+        expect(config.pi.credentials[id]).toMatchObject({ access: 'account-a' });
+        expect(Object.keys(config.pi.credentials)).toEqual([id]);
+        await expect(getPiOAuthCredentialStatus('anthropic')).resolves.toMatchObject({
+            loggedIn: true,
+        });
+    });
+
+    test('logout invalidates an unbound pending login only in its own profile', async () => {
+        const store = configureProfiles();
+        const config = store.settings.额外模型解析配置;
+        const attemptA = await beginPiOAuth('anthropic', { crypto: cryptoImpl });
+        Object.assign(config, saveAsNewExtraModelApiProfile(config, 'B'));
+        const attemptB = await beginPiOAuth('anthropic', { crypto: cryptoImpl });
+        Object.assign(config, selectExtraModelApiProfile(config, 'A'));
+        await logoutPiOAuth('anthropic');
+        await completePiOAuth(attemptB.id, callbackUrl(attemptB), {
+            fetch: tokenResponse('account-b'),
+        });
+        await expect(
+            completePiOAuth(attemptA.id, callbackUrl(attemptA), {
+                fetch: tokenResponse('must-not-return'),
+            })
+        ).rejects.toMatchObject({ code: 'credential_store' });
+        expect(config.pi.credentialIds).toEqual({});
+        expect(Object.values(config.pi.credentials)).toEqual([
+            expect.objectContaining({ access: 'account-b' }),
+        ]);
+        Object.assign(config, selectExtraModelApiProfile(config, 'B'));
+        await expect(getPiOAuthCredentialStatus('anthropic')).resolves.toMatchObject({
+            loggedIn: true,
+        });
+    });
+
+    test('a failed replacement login keeps the original binding and token', async () => {
+        const store = configureProfiles();
+        const config = store.settings.额外模型解析配置;
+        const original = await beginPiOAuth('anthropic', { crypto: cryptoImpl });
+        await completePiOAuth(original.id, callbackUrl(original), {
+            fetch: tokenResponse('original'),
+        });
+        const id = config.pi.credentialIds!.anthropic;
+        const replacement = await beginPiOAuth('anthropic', { crypto: cryptoImpl });
+        await expect(
+            completePiOAuth(replacement.id, callbackUrl(replacement), {
+                fetch: jest.fn().mockRejectedValue(new Error('offline')),
+            })
+        ).rejects.toMatchObject({ code: 'browser_network' });
+        expect(config.pi.credentialIds!.anthropic).toBe(id);
+        expect(config.api方案列表[0].pi!.credentialIds!.anthropic).toBe(id);
+        expect(config.pi.credentials[id]).toMatchObject({ access: 'original' });
+        expect(Object.keys(config.pi.credentials)).toEqual([id]);
+    });
+
+    test('logout queued behind refresh preserves the rotated token for a sharing profile', async () => {
+        const store = configureProfiles();
+        const config = store.settings.额外模型解析配置;
+        const attempt = await beginPiOAuth('anthropic', { crypto: cryptoImpl });
+        await completePiOAuth(attempt.id, callbackUrl(attempt), { fetch: tokenResponse('shared') });
+        Object.assign(config, saveAsNewExtraModelApiProfile(config, 'B'));
+        const id = config.pi.credentialIds!.anthropic;
+        let notifyStarted!: () => void;
+        const requestStarted = new Promise<void>(resolve => {
+            notifyStarted = resolve;
+        });
+        let releaseResponse!: (value: Response) => void;
+        const responseReady = new Promise<Response>(resolve => {
+            releaseResponse = resolve;
+        });
+        const refresh = refreshPiOAuth('anthropic', {
+            fetch: jest.fn(() => {
+                notifyStarted();
+                return responseReady;
+            }),
+        });
+        await requestStarted;
+        const logout = logoutPiOAuth('anthropic');
+        Object.assign(config, selectExtraModelApiProfile(config, 'A'));
+        releaseResponse(
+            response({
+                access_token: 'rotated',
+                refresh_token: 'rotated-refresh',
+                expires_in: 3600,
+            })
+        );
+        await refresh;
+        await logout;
+        expect(config.pi.credentialIds!.anthropic).toBe(id);
+        expect(config.pi.credentials[id]).toMatchObject({
+            access: 'rotated',
+            refresh: 'rotated-refresh',
+        });
+        Object.assign(config, selectExtraModelApiProfile(config, 'B'));
+        expect(config.pi.credentialIds).toEqual({});
+        await expect(getPiOAuthCredentialStatus('anthropic')).resolves.toEqual({ loggedIn: false });
+        Object.assign(config, selectExtraModelApiProfile(config, 'A'));
+        await logoutPiOAuth('anthropic');
+        expect(config.pi.credentials[id]).toBeUndefined();
     });
 });

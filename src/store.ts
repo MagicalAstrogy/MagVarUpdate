@@ -45,6 +45,7 @@ const ExtraModelPiProfileContextWindow = z
 // 方案只保存连接与请求覆盖，OAuth 凭证和按目标缓存的密钥由活动设置独立持有。
 const ExtraModelPiProfileSnapshot = z
     .object({
+        credentialIds: z.record(z.string(), z.string()).optional().catch({}),
         provider: z.string().trim(),
         api: z.string().trim(),
         authType: z
@@ -77,6 +78,7 @@ const ExtraModelPiSettings = z
         useProxy: z.boolean().catch(false).default(false),
         model: z.string().trim().default(''),
         contextWindow: ExtraModelPiContextWindow,
+        credentialIds: z.record(z.string(), z.string()).optional().catch({}),
         credentials: z.record(z.string(), z.unknown()).catch({}).default({}),
         apiKeys: z.record(z.string(), z.string()).catch({}).default({}),
         customHeaders: z.string().default(''),

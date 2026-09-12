@@ -780,8 +780,8 @@ export const panelMessages = defineMessages({
         en: 'Signed out.',
     },
     'panel.source.pi.oauth.logoutConfirm': {
-        'zh-CN': '确定登出 {provider} 吗？保存的 OAuth 凭据将被删除。',
-        en: 'Sign out of {provider}? The saved OAuth credential will be deleted.',
+        'zh-CN': '确定在当前配置中登出 {provider} 吗？之后可以登录其他账号。',
+        en: 'Sign out of {provider} for the current configuration? You can then sign in with another account.',
     },
     'panel.source.pi.oauth.failureTitle': {
         'zh-CN': '[MVU]OAuth 操作失败',

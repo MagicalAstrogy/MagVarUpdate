@@ -469,6 +469,10 @@ import {
     resolvePiModelListOAuthCredential,
 } from '@/function/update/model_list';
 import {
+    createPiOAuthLogoutStore,
+    getPiCredentialStore,
+} from '@/function/update/pi/credential_store';
+import {
     beginPiOAuth,
     cancelPiOAuth,
     completePiOAuth,
@@ -1111,9 +1115,10 @@ async function loadPiModels(signal: AbortSignal): Promise<readonly string[]> {
         customHeaders: pi.customHeaders,
     };
     const definition = getPiProviderDefinition(snapshot.provider);
+    const credentialStore = getPiCredentialStore(pi);
     const oauthCredential =
         snapshot.authType === 'oauth' && definition
-            ? await resolvePiModelListOAuthCredential(definition, signal)
+            ? await resolvePiModelListOAuthCredential(definition, signal, credentialStore)
             : undefined;
     signal.throwIfAborted();
     if (oauthCredential) {
@@ -1361,7 +1366,7 @@ function captureOAuthUiContext(provider: PiProviderDefinition): PiOAuthUiContext
     return {
         generation: oauthUiGeneration,
         providerId: provider.providerId,
-        profileName: selectedProfileName.value,
+        profileName: store.settings.额外模型解析配置.当前api方案,
     };
 }
 
@@ -1370,7 +1375,7 @@ function isOAuthUiContextCurrent(context: PiOAuthUiContext): boolean {
     return isPiOAuthUiContextCurrent(context, {
         generation: oauthUiGeneration,
         providerId: selected_pi_provider.value?.providerId,
-        profileName: selectedProfileName.value,
+        profileName: store.settings.额外模型解析配置.当前api方案,
         mounted: oauthComponentMounted,
         active: is_pi_source.value && show_pi_oauth.value,
     });
@@ -1415,6 +1420,7 @@ watch(
             store.settings.额外模型解析配置.pi.endpoint,
             store.settings.额外模型解析配置.pi.useProxy,
             store.settings.额外模型解析配置.pi.customHeaders,
+            store.settings.额外模型解析配置.pi.credentialIds,
             store.settings.额外模型解析配置.密钥,
             oauthBusy.value,
         ] as const,
@@ -1490,7 +1496,7 @@ watch(
     () =>
         [
             store.settings.额外模型解析配置.模型来源,
-            selectedProfileName.value,
+            store.settings.额外模型解析配置.当前api方案,
             store.settings.额外模型解析配置.pi.provider,
             store.settings.额外模型解析配置.pi.authType,
         ] as const,
@@ -1501,6 +1507,12 @@ watch(
         void refreshOAuthStatus();
     },
     { immediate: true }
+);
+
+watch(
+    () => store.settings.额外模型解析配置.pi.credentialIds,
+    () => void refreshOAuthStatus(),
+    { deep: true }
 );
 
 /** 建立与当前界面绑定的登录尝试，显示授权地址，并处理浏览器打开及取消状态。 */
@@ -1669,6 +1681,7 @@ async function logoutOAuth(): Promise<void> {
         return;
     }
     const confirmation_context = captureOAuthUiContext(provider);
+    const credentialStore = createPiOAuthLogoutStore();
     const display_name = provider.displayName[locale.value === 'zh-CN' ? 'zh-CN' : 'en'];
     const result = await SillyTavern.callGenericPopup(
         t('panel.source.pi.oauth.logoutConfirm', { provider: display_name }),
@@ -1692,7 +1705,10 @@ async function logoutOAuth(): Promise<void> {
     const operation_controller = new AbortController();
     oauthOperationController = operation_controller;
     try {
-        await logoutPiOAuth(provider.providerId, { signal: operation_controller.signal });
+        await logoutPiOAuth(provider.providerId, {
+            signal: operation_controller.signal,
+            credentialStore,
+        });
         if (isOAuthUiContextCurrent(operation_context)) {
             oauthProgress.value = t('panel.source.pi.oauth.logoutSucceeded');
             await refreshOAuthStatus();

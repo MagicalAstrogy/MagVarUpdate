@@ -217,6 +217,19 @@ jest.mock('@/function/update/pi/pi_gateway', () => {
 
 import { generateExtraModel } from '@/function/update/invoke_extra_model';
 import {
+    saveAsNewExtraModelApiProfile,
+    saveCurrentExtraModelApiProfile,
+    selectExtraModelApiProfile,
+} from '@/function/update/extra_model_api_profiles';
+import {
+    beginPiOAuth,
+    cancelAllPiOAuth,
+    completePiOAuth,
+    getPiOAuthCredentialStatus,
+    logoutPiOAuth,
+} from '@/function/update/pi/oauth';
+import { getPiCredentialStore } from '@/function/update/pi/credential_store';
+import {
     clearPiRequestControllers,
     getActivePiRequestIds,
 } from '@/function/update/pi/controller_registry';
@@ -226,6 +239,8 @@ import {
     PI_PROMPT_CAPTURE_API_URL,
 } from '@/function/update/pi/prompt_capture';
 import { useDataStore } from '@/store';
+import { klona } from 'klona';
+import { webcrypto } from 'node:crypto';
 
 const VALID_UPDATE = "<UpdateVariable>\n_.set('boundary', 1);\n</UpdateVariable>";
 const CAPTURED_MESSAGES: SillyTavern.SendingMessage[] = [
@@ -296,6 +311,54 @@ function jsonResponse(value: unknown, status = 200): Response {
         json: jest.fn(async () => structuredClone(value)),
         text: jest.fn(async () => text),
     } as unknown as Response;
+}
+
+/** 使用真实登录与方案保存逻辑建立账号绑定，令牌交换只走本地模拟响应。 */
+async function loginBoundaryAccount(account: string): Promise<void> {
+    const attempt = await beginPiOAuth('anthropic', {
+        crypto: webcrypto as unknown as Crypto,
+    });
+    const authorization = new URL(attempt.authorizationUrl);
+    const callback = new URL(authorization.searchParams.get('redirect_uri')!);
+    callback.searchParams.set('code', `boundary-code-${account}`);
+    callback.searchParams.set('state', authorization.searchParams.get('state')!);
+    await completePiOAuth(attempt.id, callback.toString(), {
+        fetch: jest.fn(async () =>
+            jsonResponse({
+                access_token: `sk-ant-oat-account-${account}`,
+                refresh_token: `boundary-refresh-${account}`,
+                expires_in: 3600,
+            })
+        ),
+    });
+    const config = useDataStore().settings.额外模型解析配置;
+    Object.assign(config, saveCurrentExtraModelApiProfile(config));
+}
+
+/** 从另存方案开始换账号，覆盖界面中最容易误用共享 OAuth 凭证的操作路径。 */
+async function configureOAuthProfiles(): Promise<ReturnType<typeof useDataStore>> {
+    const store = configurePi({
+        route: '使用内置破限',
+        runner: 'generateRaw',
+        provider: 'anthropic',
+        api: 'anthropic-messages',
+        endpoint: '',
+        expectedPath: '/v1/messages',
+        model: 'claude-catalog',
+        contextWindow: 0,
+        expectedContextWindow: 200_000,
+        maxTokens: 1024,
+    });
+    const config = store.settings.额外模型解析配置;
+    config.密钥 = '';
+    config.pi.authType = 'oauth';
+    Object.assign(config, saveAsNewExtraModelApiProfile(config, 'Account A'));
+    await loginBoundaryAccount('A');
+    Object.assign(config, saveAsNewExtraModelApiProfile(config, 'Account B'));
+    await logoutPiOAuth('anthropic');
+    await expect(getPiOAuthCredentialStatus('anthropic')).resolves.toEqual({ loggedIn: false });
+    await loginBoundaryAccount('B');
+    return store;
 }
 
 function installCaptureRunners(fetchRecords: FetchRecord[]) {
@@ -398,6 +461,7 @@ describe('requestReply production Pi capture/runtime boundary', () => {
 
     beforeEach(() => {
         jest.clearAllMocks();
+        (globalThis as any).SillyTavern.extensionSettings = {};
         clearPiRequestControllers();
         delete globalThis.__MVU_PI_MULTIPROVIDER_ENABLED__;
         (globalThis as any).getPresetNames = jest.fn().mockReturnValue(['boundary-preset']);
@@ -422,6 +486,7 @@ describe('requestReply production Pi capture/runtime boundary', () => {
     });
 
     afterEach(() => {
+        cancelAllPiOAuth();
         globalThis.fetch = originalFetch;
         delete (globalThis as any).generate;
         delete (globalThis as any).generateRaw;
@@ -430,6 +495,75 @@ describe('requestReply production Pi capture/runtime boundary', () => {
         delete (globalThis as any).SillyTavern.getChatCompletionModel;
         expect(getPendingPromptCaptureDiagnostics()).toEqual([]);
         expect(getActivePiRequestIds()).toEqual([]);
+    });
+
+    test('keeps OAuth accounts separate after saving, switching, and logging out of a copied profile', async () => {
+        const store = await configureOAuthProfiles();
+        const records = installMockNetwork();
+        installCaptureRunners(records);
+        const config = store.settings.额外模型解析配置;
+
+        Object.assign(config, selectExtraModelApiProfile(config, 'Account A'));
+        await expect(generateExtraModel()).resolves.toBe(VALID_UPDATE);
+        Object.assign(config, selectExtraModelApiProfile(config, 'Account B'));
+        await expect(generateExtraModel()).resolves.toBe(VALID_UPDATE);
+        await logoutPiOAuth('anthropic');
+        await expect(getPiOAuthCredentialStatus('anthropic')).resolves.toEqual({ loggedIn: false });
+        Object.assign(config, selectExtraModelApiProfile(config, 'Account A'));
+        await expect(generateExtraModel()).resolves.toBe(VALID_UPDATE);
+
+        const sent = records.filter(record => record.url.pathname === '/v1/messages');
+        expect(sent.map(record => new Headers(record.init.headers).get('Authorization'))).toEqual([
+            'Bearer sk-ant-oat-account-A',
+            'Bearer sk-ant-oat-account-B',
+            'Bearer sk-ant-oat-account-A',
+        ]);
+        expect(records.some(record => record.url.pathname === '/v1/oauth/token')).toBe(false);
+        for (const record of records.filter(record => record.url.toString() === ST_BACKEND_URL)) {
+            expectFixedCapture(record, ['sk-ant-oat-account-', 'boundary-refresh-']);
+        }
+    });
+
+    test('keeps an in-flight request and token refresh bound to the profile captured before switching', async () => {
+        const store = await configureOAuthProfiles();
+        const config = store.settings.额外模型解析配置;
+        Object.assign(config, selectExtraModelApiProfile(config, 'Account A'));
+        const accountA = getPiCredentialStore();
+        await accountA.modify('anthropic', async current => {
+            if (current?.type !== 'oauth') {
+                throw new Error('Account A was not persisted');
+            }
+            return { ...current, expires: Date.now() - 1 };
+        });
+        const records = installMockNetwork();
+        installCaptureRunners(records);
+        const capture = (globalThis as any).generateRaw as jest.Mock;
+        const originalCapture = capture.getMockImplementation()!;
+        capture.mockImplementationOnce(async (...args: unknown[]) => {
+            Object.assign(config, selectExtraModelApiProfile(config, 'Account B'));
+            return originalCapture(...args);
+        });
+
+        await expect(generateExtraModel()).resolves.toBe(VALID_UPDATE);
+        expect(config.当前api方案).toBe('Account B');
+        await expect(accountA.read('anthropic')).resolves.toMatchObject({
+            access: 'sk-ant-oat-boundary-refreshed',
+            refresh: 'boundary-refresh-rotated',
+        });
+        await expect(getPiCredentialStore().read('anthropic')).resolves.toMatchObject({
+            access: 'sk-ant-oat-account-B',
+            refresh: 'boundary-refresh-B',
+        });
+        await expect(generateExtraModel()).resolves.toBe(VALID_UPDATE);
+
+        const refreshed = records.filter(record => record.url.pathname === '/v1/oauth/token');
+        expect(refreshed).toHaveLength(1);
+        expect(refreshed[0].body.refresh_token).toBe('boundary-refresh-A');
+        const sent = records.filter(record => record.url.pathname === '/v1/messages');
+        expect(sent.map(record => new Headers(record.init.headers).get('Authorization'))).toEqual([
+            'Bearer sk-ant-oat-boundary-refreshed',
+            'Bearer sk-ant-oat-account-B',
+        ]);
     });
 
     // 协议矩阵：逐个提示词方案核对捕获次数、目标地址、认证头和业务载荷。
@@ -540,8 +674,8 @@ describe('requestReply production Pi capture/runtime boundary', () => {
         expect((globalThis as any).setChatMessages).not.toHaveBeenCalled();
     });
 
-    // 凭证续期：实际生成前自动刷新过期 OAuth 凭证。
-    test('automatically refreshes an expired OAuth credential before the Anthropic request', async () => {
+    // 旧方案迁移：保留唯一令牌记录，续期结果同时供原来共享账号的方案使用。
+    test('migrates legacy OAuth profiles and refreshes their shared credential once before sending', async () => {
         const config: RouteCase = {
             route: '使用内置破限',
             runner: 'generateRaw',
@@ -563,6 +697,18 @@ describe('requestReply production Pi capture/runtime boundary', () => {
             refresh: 'boundary-refresh-old',
             expires: Date.now() - 1,
         };
+        const settings = store.settings.额外模型解析配置;
+        Object.assign(settings, saveAsNewExtraModelApiProfile(settings, 'Legacy A'));
+        Object.assign(settings, saveAsNewExtraModelApiProfile(settings, 'Legacy B'));
+        // 旧版设置及方案没有引用字段；通过生产解析入口模拟重新加载旧配置。
+        delete settings.pi.credentialIds;
+        for (const profile of settings.api方案列表) {
+            if (profile.pi) {
+                delete profile.pi.credentialIds;
+            }
+        }
+        (globalThis as any).SillyTavern.extensionSettings.mvu_settings = klona(store.settings);
+        store._reload_settings();
         const records = installMockNetwork();
         installCaptureRunners(records);
 
@@ -596,6 +742,16 @@ describe('requestReply production Pi capture/runtime boundary', () => {
             access: 'sk-ant-oat-boundary-refreshed',
             refresh: 'boundary-refresh-rotated',
         });
+        const migrated = store.settings.额外模型解析配置;
+        Object.assign(migrated, selectExtraModelApiProfile(migrated, 'Legacy A'));
+        await expect(generateExtraModel()).resolves.toBe(VALID_UPDATE);
+        expect(records.filter(record => record.url.pathname === '/v1/oauth/token')).toHaveLength(1);
+        const sent = records.filter(record => record.url.pathname === '/v1/messages');
+        expect(sent).toHaveLength(2);
+        expect(new Headers(sent[1].init.headers).get('Authorization')).toBe(
+            'Bearer sk-ant-oat-boundary-refreshed'
+        );
+        expect(Object.keys(migrated.pi.credentials)).toEqual(['anthropic']);
     });
 
     // 拒绝与分流：无效配置在捕获或网络请求前失败，旧来源仍使用原链路。

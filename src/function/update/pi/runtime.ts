@@ -521,7 +521,7 @@ export async function assertPiRuntimeConfiguration(
         );
     }
     const jsonSchema = prepareJsonSchema(responseFormat, input.jsonSchema);
-    const credentialStore = input.credentialStore ?? getPiCredentialStore();
+    const credentialStore = input.credentialStore ?? getPiCredentialStore(piSettings);
     await assertOAuthCredential(resolution, credentialStore, input.signal);
 
     const preflight: PiRuntimePreflight = Object.freeze({

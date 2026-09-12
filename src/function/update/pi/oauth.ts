@@ -1,4 +1,8 @@
-import { getPiCredentialStore } from './credential_store';
+import {
+    createPiOAuthLoginStore,
+    createPiOAuthLogoutStore,
+    getPiCredentialStore,
+} from './credential_store';
 import { installPiAbortSignalPolyfills } from './abort_signal';
 import type { CredentialStore, ModelAuth, OAuthAuth, OAuthCredential } from './pi_gateway';
 import { getPiProviderRegistration, type PiOAuthDefinition } from './provider_registry';
@@ -111,6 +115,8 @@ type PendingAttempt = {
     id: string;
     providerId: string;
     metadata: OAuthMetadata;
+    /** 登录开始时捕获的所属方案仓库，回调不再解析当前界面。 */
+    credentialStore: CredentialStore;
     /** PKCE 原始验证串，只在交换授权码时提交给令牌端点。 */
     verifier: string;
     /** 与回调严格匹配的随机 state，用于绑定本次授权请求。 */
@@ -642,6 +648,9 @@ export async function beginPiOAuth(
         throw new RangeError('More source OAuth attemptTtlMs must be a positive number.');
     }
     const cryptoImpl = getCrypto(options);
+    const credentialStore =
+        options.credentialStore ??
+        createPiOAuthLoginStore(providerId, randomBase64Url(cryptoImpl, 18));
     const { verifier, challenge } = await createPkce(cryptoImpl);
     throwIfAborted(options.signal);
 
@@ -653,6 +662,7 @@ export async function beginPiOAuth(
         id,
         providerId,
         metadata,
+        credentialStore,
         verifier,
         state,
         expiresAt,
@@ -719,7 +729,9 @@ export async function completePiOAuth(
             options
         );
         const credential = credentialFromTokens(attempt.metadata, token, now());
-        await persistCredential(attempt.providerId, credential, attempt.controller.signal, options);
+        await persistCredential(attempt.providerId, credential, attempt.controller.signal, {
+            credentialStore: options.credentialStore ?? attempt.credentialStore,
+        });
         closeAttempt(attempt, 'used', false);
         return credential;
     } catch (error) {
@@ -751,7 +763,7 @@ export function cancelAllPiOAuth(): void {
     }
 }
 
-/** 先取消该服务商未完成的登录，再通过串行凭证仓库删除登录状态。 */
+/** 解除捕获方案的登录绑定；其他方案仍引用的集中凭证会继续保留。 */
 export async function logoutPiOAuth(
     providerId: string,
     options: PiOAuthOperationOptions = {}
@@ -759,7 +771,8 @@ export async function logoutPiOAuth(
     throwIfAborted(options.signal);
     getOAuthMetadata(providerId);
     try {
-        await getCredentialStore(options).delete(providerId, { signal: options.signal });
+        const store = options.credentialStore ?? createPiOAuthLogoutStore();
+        await store.delete(providerId, { signal: options.signal });
     } catch (error) {
         if (options.signal?.aborted) {
             throw cancellationError();

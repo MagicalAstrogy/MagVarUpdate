@@ -316,6 +316,82 @@ describe('extra model api profiles', () => {
         expect(profile.pi?.futurePiField).toEqual({ nested: true });
     });
 
+    test('preserves credential references across save-as and clears only the unbound connection references', () => {
+        const saved = saveCurrentExtraModelApiProfile(
+            {
+                ...base_config,
+                模型来源: '更多' as const,
+                pi: {
+                    ...structuredClone(base_pi_settings),
+                    credentialIds: { anthropic: 'anthropic' },
+                },
+            },
+            'A'
+        );
+        const copied = saveAsNewExtraModelApiProfile(saved, 'B');
+        expect(copied.api方案列表.map(profile => profile.pi!.credentialIds)).toEqual([
+            { anthropic: 'anthropic' },
+            { anthropic: 'anthropic' },
+        ]);
+        expect(copied.api方案列表[0].pi!.credentialIds).not.toBe(
+            copied.api方案列表[1].pi!.credentialIds
+        );
+        expect(copied.pi!.credentialIds).not.toBe(copied.api方案列表[1].pi!.credentialIds);
+        copied.pi!.credentials.anthropic = {
+            type: 'oauth',
+            access: 'rotated',
+            refresh: 'rotated-refresh',
+            expires: 2_000_000_000_000,
+        };
+        expect(isActiveExtraModelApiProfileDirty(copied)).toBe(false);
+        const selectedA = selectExtraModelApiProfile(copied, 'A');
+        expect(selectedA.pi!.credentials.anthropic).toMatchObject({ access: 'rotated' });
+        const cleared = clearUnboundExtraModelApiProfileFields(selectedA);
+        expect(cleared.pi!.credentialIds).toEqual({});
+        expect(cleared.pi!.credentials).toEqual(selectedA.pi!.credentials);
+        const restored = selectExtraModelApiProfile(cleared, 'B');
+        expect(restored.pi!.credentialIds).toEqual({ anthropic: 'anthropic' });
+    });
+
+    test('migrates legacy profiles to a shared reference once and preserves explicit logout on reload', () => {
+        const snapshot = { ...structuredClone(base_pi_settings) } as Record<string, unknown>;
+        delete snapshot.credentials;
+        delete snapshot.apiKeys;
+        const profiles = ['A', 'B'].map(名称 => ({
+            名称,
+            backend: 'pi' as const,
+            api地址: '',
+            密钥: '',
+            模型名称: '',
+            pi: snapshot as NonNullable<ExtraModelApiProfile['pi']>,
+        }));
+        const migrated = migrateExtraModelApiProfiles({
+            ...base_config,
+            模型来源: '更多' as const,
+            当前api方案: 'A',
+            pi: structuredClone(base_pi_settings),
+            api方案列表: profiles,
+        });
+        expect(
+            (migrated.pi as typeof migrated.pi & { credentialIds: Record<string, string> })
+                .credentialIds
+        ).toEqual({ anthropic: 'anthropic' });
+        expect(migrated.api方案列表.map(profile => profile.pi!.credentialIds)).toEqual([
+            { anthropic: 'anthropic' },
+            { anthropic: 'anthropic' },
+        ]);
+        expect(migrated.pi.credentials).toEqual(base_pi_settings.credentials);
+        expect(Object.keys(migrated.pi.credentials)).toEqual(['anthropic']);
+        migrated.api方案列表[1].pi!.credentialIds = {};
+        const reloaded = migrateExtraModelApiProfiles(migrated);
+        expect(reloaded.api方案列表[1].pi!.credentialIds).toEqual({});
+        expect(selectExtraModelApiProfile(reloaded, 'B').pi!.credentialIds).toEqual({});
+        expect(selectExtraModelApiProfile(reloaded, 'A').pi!.credentialIds).toEqual({
+            anthropic: 'anthropic',
+        });
+        expect(reloaded.api方案列表.every(profile => !('credentials' in profile.pi!))).toBe(true);
+    });
+
     test('keeps hidden Custom endpoint and model fields outside Pi profile lifecycle', () => {
         const saved = saveCurrentExtraModelApiProfile(
             {

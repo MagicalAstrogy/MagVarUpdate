@@ -240,15 +240,82 @@ describe('pi CredentialStore', () => {
         await expect(store.read('openai')).resolves.toMatchObject({ access: 'old' });
     });
 
-    test('the shared singleton resolves the active Pinia store for each operation', async () => {
-        const singleton = getPiCredentialStore();
-        useDataStore().settings.额外模型解析配置.pi.credentials.openai = oauth('first-pinia');
-        await expect(singleton.read('openai')).resolves.toMatchObject({ access: 'first-pinia' });
+    test('a captured store keeps its original Pinia and references after either changes', async () => {
+        const firstPi = useDataStore().settings.额外模型解析配置.pi;
+        firstPi.credentialIds = { openai: 'oauth:openai:first' };
+        firstPi.credentials['oauth:openai:first'] = oauth('first-pinia');
+        const captured = getPiCredentialStore();
 
         setActivePinia(createPinia());
         (globalThis as any).SillyTavern.extensionSettings = {};
-        useDataStore().settings.额外模型解析配置.pi.credentials.openai = oauth('second-pinia');
+        const secondPi = useDataStore().settings.额外模型解析配置.pi;
+        secondPi.credentialIds = { openai: 'oauth:openai:second' };
+        secondPi.credentials['oauth:openai:second'] = oauth('second-pinia');
 
-        await expect(singleton.read('openai')).resolves.toMatchObject({ access: 'second-pinia' });
+        await expect(captured.read('openai')).resolves.toMatchObject({ access: 'first-pinia' });
+        await expect(getPiCredentialStore().read('openai')).resolves.toMatchObject({
+            access: 'second-pinia',
+        });
+        await captured.modify('openai', async () => oauth('first-refreshed'));
+        expect(firstPi.credentials['oauth:openai:first']).toMatchObject({
+            access: 'first-refreshed',
+        });
+        expect(secondPi.credentials['oauth:openai:second']).toMatchObject({
+            access: 'second-pinia',
+        });
+    });
+
+    test('different adapters share one credential queue while same-provider accounts remain independent', async () => {
+        const pi = useDataStore().settings.额外模型解析配置.pi;
+        pi.credentials['oauth:anthropic:shared'] = oauth('shared');
+        pi.credentials['oauth:anthropic:other'] = oauth('other');
+        const refs = { credentialIds: { anthropic: 'oauth:anthropic:shared' } };
+        const first = getPiCredentialStore(refs);
+        const alias = getPiCredentialStore(refs);
+        const other = getPiCredentialStore({
+            credentialIds: { anthropic: 'oauth:anthropic:other' },
+        });
+        const started = deferred();
+        const release = deferred();
+        const pending = first.modify('anthropic', async () => {
+            started.resolve();
+            await release.promise;
+            return oauth('rotated-once');
+        });
+        await started.promise;
+        const queuedFn = jest.fn(async (current: Credential | undefined) => {
+            expect(current).toMatchObject({ access: 'rotated-once' });
+            return undefined;
+        });
+        const queued = alias.modify('anthropic', queuedFn);
+        await expect(
+            other.modify('anthropic', async () => oauth('independent'))
+        ).resolves.toMatchObject({ access: 'independent' });
+        expect(queuedFn).not.toHaveBeenCalled();
+        release.resolve();
+        await pending;
+        await queued;
+        expect(Object.keys(pi.credentials)).toEqual([
+            'oauth:anthropic:shared',
+            'oauth:anthropic:other',
+        ]);
+        await expect(alias.list()).resolves.toEqual([{ providerId: 'anthropic', type: 'oauth' }]);
+    });
+
+    test('an explicitly empty or foreign-provider reference cannot inherit a legacy credential', async () => {
+        const pi = useDataStore().settings.额外模型解析配置.pi;
+        pi.credentials.anthropic = oauth('legacy');
+        pi.credentials['oauth:openai-codex:account'] = oauth('foreign');
+        await expect(getPiCredentialStore({}).read('anthropic')).resolves.toMatchObject({
+            access: 'legacy',
+        });
+        await expect(
+            getPiCredentialStore({ credentialIds: {} }).read('anthropic')
+        ).resolves.toBeUndefined();
+        await expect(
+            getPiCredentialStore({
+                credentialIds: { anthropic: 'oauth:openai-codex:account' },
+            }).read('anthropic')
+        ).resolves.toBeUndefined();
     });
 });
