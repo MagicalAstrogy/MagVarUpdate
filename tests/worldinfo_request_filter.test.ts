@@ -105,6 +105,24 @@ describe('request-scoped worldinfo filtering', () => {
         expect(SillyTavern.saveWorldInfo).not.toHaveBeenCalled();
     });
 
+    test('snapshots Pi tool support independently of the current Tavern model', async () => {
+        const store = useDataStore();
+        store.versions.tavernhelper = '4.0.0';
+        store.settings.额外模型解析配置.模型来源 = '更多';
+        store.settings.额外模型解析配置.应答格式 = '工具调用';
+        const context = await createEntryFilterContext(true);
+        expect(context.tool_calling_unsupported).toBe(false);
+
+        store.settings.额外模型解析配置.模型来源 = '与插头相同';
+        const loaded = lores();
+        await filterEntries(loaded, context);
+        expect(loaded.characterLore.map(candidate => candidate.comment)).toEqual([
+            '[mvu_update]',
+            'A',
+            'B',
+        ]);
+    });
+
     test('keeps business entries untouched at loaded and snapshots all in-flight policies', async () => {
         const a = await register('A', '^A$');
         const b = await register('B', '^B$');

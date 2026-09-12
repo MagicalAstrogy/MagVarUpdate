@@ -1,61 +1,68 @@
 <template>
     <Detail :title="t('panel.source.section')">
-        <Select
-            v-model="store.settings.额外模型解析配置.模型来源"
-            :options="model_source_options"
-        />
-
-        <template v-if="store.settings.额外模型解析配置.模型来源 === '自定义'">
-            <Detail :title="t('panel.source.profile.section')">
-                <Field :label="t('panel.source.profile.current')">
-                    <div class="mvu-api-profile-controls">
-                        <select
-                            v-model="selectedProfileName"
-                            class="text_pole"
-                            :aria-label="t('panel.source.profile.ariaLabel')"
+        <Detail v-if="is_profile_source" :title="t('panel.source.profile.section')">
+            <Field :label="t('panel.source.profile.current')">
+                <div class="mvu-api-profile-controls">
+                    <select
+                        v-model="selectedProfileName"
+                        class="text_pole"
+                        :aria-label="t('panel.source.profile.ariaLabel')"
+                    >
+                        <option value="">{{ t('panel.source.profile.manual') }}</option>
+                        <option
+                            v-for="profile in store.settings.额外模型解析配置.api方案列表"
+                            :key="profile.名称"
+                            :value="profile.名称"
                         >
-                            <option value="">{{ t('panel.source.profile.manual') }}</option>
-                            <option
-                                v-for="profile in store.settings.额外模型解析配置.api方案列表"
-                                :key="profile.名称"
-                                :value="profile.名称"
-                            >
-                                {{ profile.名称 }}
-                            </option>
-                        </select>
+                            {{ profile.名称 }} · {{ getProfileBackendLabel(profile.backend) }}
+                        </option>
+                    </select>
 
-                        <input
-                            v-model="newProfileName"
-                            type="text"
-                            class="text_pole"
-                            :placeholder="t('panel.source.profile.newName')"
-                        />
-                    </div>
-                </Field>
-
-                <div class="mvu-api-profile-actions">
                     <input
-                        class="menu_button menu_button_icon interactable"
-                        type="button"
-                        :value="t('panel.source.profile.save')"
-                        @click="saveCurrentProfile"
-                    />
-                    <input
-                        class="menu_button menu_button_icon interactable"
-                        type="button"
-                        :value="t('panel.source.profile.saveAs')"
-                        @click="saveAsNewProfile"
-                    />
-                    <input
-                        class="menu_button menu_button_icon interactable"
-                        type="button"
-                        :value="t('panel.source.profile.delete')"
-                        :disabled="!canDeleteCurrentProfile"
-                        @click="deleteCurrentProfile"
+                        v-model="newProfileName"
+                        type="text"
+                        class="text_pole"
+                        :placeholder="t('panel.source.profile.newName')"
                     />
                 </div>
-            </Detail>
+            </Field>
 
+            <div class="mvu-api-profile-actions">
+                <input
+                    class="menu_button menu_button_icon interactable"
+                    type="button"
+                    :value="t('panel.source.profile.save')"
+                    @click="saveCurrentProfile"
+                />
+                <input
+                    class="menu_button menu_button_icon interactable"
+                    type="button"
+                    :value="t('panel.source.profile.saveAs')"
+                    @click="saveAsNewProfile"
+                />
+                <input
+                    class="menu_button menu_button_icon interactable"
+                    type="button"
+                    :value="t('panel.source.profile.delete')"
+                    :disabled="!canDeleteCurrentProfile"
+                    @click="deleteCurrentProfile"
+                />
+            </div>
+        </Detail>
+
+        <ApiOptions />
+
+        <Select
+            :model-value="store.settings.额外模型解析配置.模型来源"
+            :options="model_source_options"
+            @update:model-value="selectModelSource"
+        />
+
+        <div v-if="pi_feature_disabled" class="mvu-field-error">
+            {{ t('panel.source.pi.featureDisabled') }}
+        </div>
+
+        <template v-if="is_custom_source">
             <div class="mvu-field-grid">
                 <Field :label="t('panel.source.apiAddress')">
                     <input
@@ -76,90 +83,372 @@
                 </Field>
 
                 <Field :label="t('panel.source.modelName')">
-                    <ModelSelect />
+                    <ModelSelect
+                        v-model="store.settings.额外模型解析配置.模型名称"
+                        :load-models="loadCustomModels"
+                        :reset-key="custom_model_list_revision"
+                    />
+                </Field>
+            </div>
+        </template>
+
+        <template v-else-if="is_pi_source">
+            <div class="mvu-field-grid">
+                <Field :label="t('panel.source.pi.provider')">
+                    <Select
+                        :model-value="pi_source_choice_value"
+                        :options="pi_provider_options"
+                        @update:model-value="selectPiProvider"
+                    />
+                </Field>
+
+                <div v-if="show_pi_proxy_warning" class="mvu-warning">
+                    <span class="mvu-warning__icon">⚠️</span>
+                    <span class="mvu-warning__text">
+                        {{ t('panel.source.pi.proxy.notEnabled') }}
+                        <HelpIcon :help="t('panel.source.pi.proxy.notEnabledHelp')" />
+                    </span>
+                </div>
+
+                <Field v-if="show_pi_endpoint" :label="t('panel.source.pi.endpoint')">
+                    <template #label-suffix>
+                        <HelpIcon :help="t('panel.source.pi.endpointHelp')" />
+                    </template>
+                    <input
+                        :value="store.settings.额外模型解析配置.pi.endpoint"
+                        type="text"
+                        class="text_pole"
+                        :placeholder="pi_endpoint_placeholder"
+                        @input="selectPiEndpoint"
+                        @change="normalizePiEndpointInput"
+                    />
+                </Field>
+
+                <div v-if="show_pi_custom_endpoint_proxy" class="mvu-pi-proxy-option">
+                    <Checkbox v-model="store.settings.额外模型解析配置.pi.useProxy">
+                        <span>{{ t('panel.source.pi.proxy.use') }}</span>
+                        <HelpIcon :help="t('panel.source.pi.proxy.help')" />
+                    </Checkbox>
+                </div>
+
+                <Field v-if="show_pi_api_key" :label="t('panel.source.apiKey')">
+                    <input
+                        v-model="store.settings.额外模型解析配置.密钥"
+                        type="password"
+                        class="text_pole"
+                        :placeholder="t('panel.source.apiKeyPlaceholder')"
+                    />
+                </Field>
+
+                <Field :label="t('panel.source.pi.model')">
+                    <template #label-suffix>
+                        <HelpIcon v-if="pi_capability_summary" :help="pi_capability_summary" />
+                    </template>
+                    <ModelSelect
+                        v-model="store.settings.额外模型解析配置.pi.model"
+                        class="mvu-pi-model-controls"
+                        :catalog-models="pi_catalog_model_options"
+                        :load-models="loadPiModels"
+                        :reset-key="pi_model_list_revision"
+                        :disabled="Boolean(pi_configuration_error) || oauthBusy"
+                    />
                 </Field>
             </div>
 
-            <Detail :title="t('panel.source.advanced')">
-                <div v-if="!additional_extra_configuration_supported" class="mvu-note">
-                    {{ t('panel.source.unsupportedAdvanced') }}
+            <div v-if="pi_configuration_error" class="mvu-field-error">
+                {{ pi_configuration_error }}
+            </div>
+
+            <Detail v-if="show_pi_oauth" :title="t('panel.source.pi.oauth.section')">
+                <Field :label="t('panel.source.pi.oauth.status')">
+                    <div class="mvu-oauth-status">
+                        <span>{{ oauth_status_label }}</span>
+                        <small v-if="oauth_expiry_label">{{ oauth_expiry_label }}</small>
+                    </div>
+                </Field>
+
+                <div class="mvu-api-profile-actions">
+                    <input
+                        v-if="!oauthStatus.loggedIn"
+                        class="menu_button menu_button_icon interactable"
+                        type="button"
+                        :value="t('panel.source.pi.oauth.login')"
+                        :disabled="oauthBusy || oauthStatusLoading"
+                        @click="beginOAuthLogin"
+                    />
+                    <input
+                        v-else
+                        class="menu_button menu_button_icon interactable"
+                        type="button"
+                        :value="t('panel.source.pi.oauth.refresh')"
+                        :disabled="oauthBusy || oauthStatusLoading"
+                        @click="refreshOAuthCredentials"
+                    />
+                    <input
+                        v-if="oauthAttempt"
+                        class="menu_button menu_button_icon interactable"
+                        type="button"
+                        :value="t('panel.source.pi.oauth.cancel')"
+                        @click="cancelOAuthLogin(true)"
+                    />
+                    <input
+                        v-if="oauthStatus.loggedIn"
+                        class="menu_button menu_button_icon interactable"
+                        type="button"
+                        :value="t('panel.source.pi.oauth.logout')"
+                        :disabled="oauthBusy || oauthStatusLoading"
+                        @click="logoutOAuth"
+                    />
                 </div>
 
-                <div class="mvu-field-grid">
-                    <Field :label="t('panel.source.maxTokens')">
+                <template v-if="oauthAttempt">
+                    <Field :label="t('panel.source.pi.oauth.authorizationUrl')">
                         <input
-                            v-model.number="store.settings.额外模型解析配置.最大回复token数"
-                            :disabled="!additional_extra_configuration_supported"
-                            type="number"
+                            :value="oauthAttempt.authorizationUrl"
+                            type="text"
                             class="text_pole"
-                            min="0"
-                            step="128"
-                            placeholder="4096"
+                            readonly
+                            @focus="selectInputText"
                         />
                     </Field>
 
-                    <Field :label="t('panel.source.chatHistory')">
-                        <RangeNumber
-                            v-model="store.settings.额外模型解析配置.max_chat_history"
-                            :disabled="!additional_extra_configuration_supported"
-                            :min="2"
-                            :max="100"
-                            :step="1"
+                    <div class="mvu-api-profile-actions">
+                        <a
+                            class="menu_button menu_button_icon interactable mvu-link-button"
+                            :href="oauthAttempt.authorizationUrl"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                        >
+                            {{ t('panel.source.pi.oauth.openAuthorization') }}
+                        </a>
+                        <input
+                            class="menu_button menu_button_icon interactable"
+                            type="button"
+                            :value="t('panel.source.pi.oauth.copyAuthorization')"
+                            @click="copyOAuthAuthorizationUrl"
                         />
-                    </Field>
+                    </div>
 
-                    <Field :label="t('panel.source.temperature')">
-                        <RangeNumber
-                            v-model="store.settings.额外模型解析配置.温度"
-                            :disabled="!additional_extra_configuration_supported"
-                            :min="0"
-                            :max="2"
-                            :step="0.01"
+                    <Field :label="t('panel.source.pi.oauth.callbackUrl')">
+                        <template #label-suffix>
+                            <HelpIcon :help="t('panel.source.pi.oauth.callbackHelp')" />
+                        </template>
+                        <input
+                            v-model="oauthCallbackUrl"
+                            type="password"
+                            class="text_pole"
+                            autocomplete="off"
+                            spellcheck="false"
                         />
                     </Field>
+                    <div class="mvu-api-profile-actions">
+                        <input
+                            class="menu_button menu_button_icon interactable"
+                            type="button"
+                            :value="t('panel.source.pi.oauth.complete')"
+                            :disabled="oauthBusy || oauthCallbackUrl.trim().length === 0"
+                            @click="completeOAuthLogin"
+                        />
+                    </div>
+                </template>
 
-                    <Field :label="t('panel.source.frequencyPenalty')">
-                        <RangeNumber
-                            v-model="store.settings.额外模型解析配置.频率惩罚"
-                            :disabled="!additional_extra_configuration_supported"
-                            :min="-2"
-                            :max="2"
-                            :step="0.01"
-                        />
-                    </Field>
-
-                    <Field :label="t('panel.source.presencePenalty')">
-                        <RangeNumber
-                            v-model="store.settings.额外模型解析配置.存在惩罚"
-                            :disabled="!additional_extra_configuration_supported"
-                            :min="-2"
-                            :max="2"
-                            :step="0.01"
-                        />
-                    </Field>
-
-                    <Field :label="t('panel.source.topP')">
-                        <RangeNumber
-                            v-model="store.settings.额外模型解析配置.top_p"
-                            :disabled="!additional_extra_configuration_supported"
-                            :min="0"
-                            :max="1"
-                            :step="0.01"
-                        />
-                    </Field>
-
-                    <Field :label="t('panel.source.topK')">
-                        <RangeNumber
-                            v-model="store.settings.额外模型解析配置.top_k"
-                            :disabled="!additional_extra_configuration_supported"
-                            :min="0"
-                            :max="500"
-                            :step="1"
-                        />
-                    </Field>
-                </div>
+                <div v-if="oauthProgress" class="mvu-note">{{ oauthProgress }}</div>
+                <div v-if="oauthError" class="mvu-field-error">{{ oauthError }}</div>
             </Detail>
         </template>
+
+        <Detail v-if="is_profile_source" :title="t('panel.source.advanced')">
+            <template #title-suffix>
+                <HelpIcon
+                    v-if="is_pi_source"
+                    :help="t('panel.source.pi.customOverridesSwitchHelp')"
+                />
+            </template>
+            <div v-if="custom_advanced_disabled" class="mvu-note">
+                {{ t('panel.source.unsupportedAdvanced') }}
+            </div>
+
+            <div class="mvu-field-grid">
+                <Field v-if="is_pi_source" :label="t('panel.source.pi.contextWindow')">
+                    <template #label-suffix>
+                        <HelpIcon v-if="pi_context_window_help" :help="pi_context_window_help" />
+                    </template>
+                    <input
+                        :value="pi_context_window_input_value"
+                        type="number"
+                        class="text_pole"
+                        min="1"
+                        step="1"
+                        @input="updatePiContextWindow"
+                    />
+                    <div
+                        v-if="pi_token_errors.includes('context-window-required')"
+                        class="mvu-field-error"
+                    >
+                        {{ t('panel.source.pi.contextWindowRequired') }}
+                    </div>
+                </Field>
+
+                <Field :label="t('panel.source.maxTokens')">
+                    <input
+                        v-model.number="store.settings.额外模型解析配置.最大回复token数"
+                        :disabled="custom_advanced_disabled"
+                        type="number"
+                        class="text_pole"
+                        :min="is_pi_source ? 1 : 0"
+                        :step="is_pi_source ? 1 : 128"
+                        placeholder="4096"
+                    />
+                    <div
+                        v-if="pi_token_errors.includes('max-tokens-positive-integer')"
+                        class="mvu-field-error"
+                    >
+                        {{ t('panel.source.pi.maxTokensPositive') }}
+                    </div>
+                    <div
+                        v-if="pi_token_errors.includes('max-tokens-exceed-context-window')"
+                        class="mvu-field-error"
+                    >
+                        {{ t('panel.source.pi.maxTokensExceedContext') }}
+                    </div>
+                </Field>
+
+                <Field :label="t('panel.source.chatHistory')">
+                    <RangeNumber
+                        v-model="store.settings.额外模型解析配置.max_chat_history"
+                        :disabled="custom_advanced_disabled"
+                        :min="2"
+                        :max="100"
+                        :step="1"
+                    />
+                </Field>
+
+                <Field :label="t('panel.source.temperature')">
+                    <RangeNumber
+                        v-model="store.settings.额外模型解析配置.温度"
+                        :disabled="temperature_disabled"
+                        :min="0"
+                        :max="pi_temperature_max"
+                        :step="0.01"
+                    />
+                </Field>
+
+                <Field :label="t('panel.source.frequencyPenalty')">
+                    <RangeNumber
+                        v-model="store.settings.额外模型解析配置.频率惩罚"
+                        :disabled="frequency_penalty_disabled"
+                        :min="-2"
+                        :max="2"
+                        :step="0.01"
+                    />
+                </Field>
+
+                <Field :label="t('panel.source.presencePenalty')">
+                    <RangeNumber
+                        v-model="store.settings.额外模型解析配置.存在惩罚"
+                        :disabled="presence_penalty_disabled"
+                        :min="-2"
+                        :max="2"
+                        :step="0.01"
+                    />
+                </Field>
+
+                <Field :label="t('panel.source.topP')">
+                    <RangeNumber
+                        v-model="store.settings.额外模型解析配置.top_p"
+                        :disabled="top_p_disabled"
+                        :min="0"
+                        :max="1"
+                        :step="0.01"
+                    />
+                </Field>
+
+                <Field :label="t('panel.source.topK')">
+                    <RangeNumber
+                        v-model="store.settings.额外模型解析配置.top_k"
+                        :disabled="top_k_disabled"
+                        :min="0"
+                        :max="500"
+                        :step="1"
+                    />
+                </Field>
+
+                <Field v-if="is_pi_source" :label="t('panel.source.pi.customHeaders')">
+                    <template #label-suffix>
+                        <HelpIcon :help="t('panel.source.pi.customHeadersHelp')" />
+                    </template>
+                    <textarea
+                        v-model="store.settings.额外模型解析配置.pi.customHeaders"
+                        class="text_pole mvu-pi-advanced-textarea"
+                        rows="5"
+                        autocomplete="off"
+                        spellcheck="false"
+                        placeholder="X-Client-Name: MVU"
+                    ></textarea>
+                    <div class="mvu-api-profile-actions">
+                        <input
+                            class="menu_button menu_button_icon interactable"
+                            type="button"
+                            :value="t('panel.source.pi.clearCustomField')"
+                            :disabled="
+                                store.settings.额外模型解析配置.pi.customHeaders.length === 0
+                            "
+                            @click="store.settings.额外模型解析配置.pi.customHeaders = ''"
+                        />
+                    </div>
+                </Field>
+
+                <Field v-if="is_pi_source" :label="t('panel.source.pi.customIncludeBody')">
+                    <template #label-suffix>
+                        <HelpIcon :help="t('panel.source.pi.customIncludeBodyHelp')" />
+                    </template>
+                    <textarea
+                        v-model="store.settings.额外模型解析配置.pi.customIncludeBody"
+                        class="text_pole mvu-pi-advanced-textarea"
+                        rows="6"
+                        autocomplete="off"
+                        spellcheck="false"
+                        placeholder="metadata:&#10;  source: mvu"
+                    ></textarea>
+                    <div class="mvu-api-profile-actions">
+                        <input
+                            class="menu_button menu_button_icon interactable"
+                            type="button"
+                            :value="t('panel.source.pi.clearCustomField')"
+                            :disabled="
+                                store.settings.额外模型解析配置.pi.customIncludeBody.length === 0
+                            "
+                            @click="store.settings.额外模型解析配置.pi.customIncludeBody = ''"
+                        />
+                    </div>
+                </Field>
+
+                <Field v-if="is_pi_source" :label="t('panel.source.pi.customExcludeBody')">
+                    <template #label-suffix>
+                        <HelpIcon :help="t('panel.source.pi.customExcludeBodyHelp')" />
+                    </template>
+                    <textarea
+                        v-model="store.settings.额外模型解析配置.pi.customExcludeBody"
+                        class="text_pole mvu-pi-advanced-textarea"
+                        rows="4"
+                        autocomplete="off"
+                        spellcheck="false"
+                        placeholder="- store"
+                    ></textarea>
+                    <div class="mvu-api-profile-actions">
+                        <input
+                            class="menu_button menu_button_icon interactable"
+                            type="button"
+                            :value="t('panel.source.pi.clearCustomField')"
+                            :disabled="
+                                store.settings.额外模型解析配置.pi.customExcludeBody.length === 0
+                            "
+                            @click="store.settings.额外模型解析配置.pi.customExcludeBody = ''"
+                        />
+                    </div>
+                </Field>
+            </div>
+        </Detail>
     </Detail>
 </template>
 
@@ -171,29 +460,699 @@ import {
     saveAsNewExtraModelApiProfile,
     saveCurrentExtraModelApiProfile,
     selectExtraModelApiProfile,
+    type ExtraModelApiProfileBackend,
+    type ExtraModelApiProfileFields,
 } from '@/function/update/extra_model_api_profiles';
+import {
+    fetchOpenAICompatibleModelList,
+    fetchPiModelList,
+    resolvePiModelListOAuthCredential,
+} from '@/function/update/model_list';
+import {
+    createPiOAuthLogoutStore,
+    getPiCredentialStore,
+} from '@/function/update/pi/credential_store';
+import {
+    beginPiOAuth,
+    cancelPiOAuth,
+    completePiOAuth,
+    getPiOAuthCredentialStatus,
+    logoutPiOAuth,
+    refreshPiOAuth,
+    PiOAuthError,
+    type PiOAuthAttemptView,
+    type PiOAuthCredentialStatus,
+} from '@/function/update/pi/oauth';
+import { getLocalizedPiErrorMessage } from '@/function/update/pi/error_localization';
+import { isPiMultiproviderEnabled } from '@/function/update/pi/feature_flag';
+import {
+    isPiDefaultProviderEndpoint,
+    normalizePiEndpoint,
+} from '@/function/update/pi/model_resolver';
+import {
+    getPiProviderApiBaseUrl,
+    normalizePiApiBaseEndpoint,
+} from '@/function/update/pi/provider_target';
+import {
+    getSillyTavernProxyStatus,
+    probeSillyTavernProxy,
+    type SillyTavernProxyStatus,
+} from '@/function/update/pi/sillytavern_proxy';
+import type { Api, Model } from '@/function/update/pi/pi_gateway';
+import {
+    getPiCatalogModels,
+    getPiProviderDefinition,
+    isPiCatalogModelApiCompatible,
+    listPiProviderDefinitions,
+    shouldUsePiCorsProxy,
+    type PiAuthType,
+    type PiProviderDefinition,
+    type PiWireApi,
+} from '@/function/update/pi/provider_registry';
 import { useMvuI18n } from '@/i18n';
+import Checkbox from '@/panel/component/Checkbox.vue';
 import Detail from '@/panel/component/Detail.vue';
 import Field from '@/panel/component/Field.vue';
+import HelpIcon from '@/panel/component/HelpIcon.vue';
 import ModelSelect from '@/panel/component/ModelSelect.vue';
 import RangeNumber from '@/panel/component/RangeNumber.vue';
 import Select from '@/panel/component/Select.vue';
+import {
+    findPiCatalogModel,
+    getPiSourceChoiceValue,
+    listPiSourceChoices,
+    isPiOAuthUiContextCurrent,
+    parsePiContextWindowInput,
+    resolvePiApiKeyScope,
+    resolvePiContextWindow,
+    resolvePiEndpointSelection,
+    resolvePiRequestTargetIdentity,
+    resolvePiSourceCapabilities,
+    resolvePiSourceContextWindow,
+    resolvePiSourceSelection,
+    transitionPiApiKey,
+    transitionPiRequestOverrides,
+    type PiOAuthUiContext,
+    type PiSourceChoice,
+    validatePiTokenSettings,
+} from '@/panel/update/pi_source_form';
+import ApiOptions from '@/panel/update/ApiOptions.vue';
 import { useDataStore } from '@/store';
 import { compare } from 'compare-versions';
-import { computed, ref, watch } from 'vue';
+import { computed, onBeforeUnmount, ref, watch } from 'vue';
 
 const store = useDataStore();
-const { t } = useMvuI18n();
+const { locale, t } = useMvuI18n();
+const custom_model_list_revision = ref(0);
+const pi_model_list_revision = ref(0);
 
 const additional_extra_configuration_supported = compare(
     store.versions.tavernhelper,
     '4.0.14',
     '>='
 );
-const model_source_options = computed(() => [
-    { value: '与插头相同', label: t('panel.source.sameAsConnection') },
-    { value: '自定义', label: t('panel.source.custom') },
-]);
+const pi_multiprovider_enabled = isPiMultiproviderEnabled();
+const is_custom_source = computed(() => store.settings.额外模型解析配置.模型来源 === '自定义');
+const is_pi_source_selected = computed(() => store.settings.额外模型解析配置.模型来源 === '更多');
+const is_pi_source = computed(() => is_pi_source_selected.value && pi_multiprovider_enabled);
+const pi_feature_disabled = computed(
+    () => is_pi_source_selected.value && !pi_multiprovider_enabled
+);
+const is_profile_source = computed(() => is_custom_source.value || is_pi_source_selected.value);
+const custom_advanced_disabled = computed(
+    () => is_custom_source.value && !additional_extra_configuration_supported
+);
+
+const model_source_options = computed(() => {
+    const options = [
+        { value: '与插头相同', label: t('panel.source.sameAsConnection') },
+        { value: '自定义', label: t('panel.source.custom') },
+    ];
+    if (pi_multiprovider_enabled || is_pi_source_selected.value) {
+        options.push({ value: '更多', label: t('panel.source.more') });
+    }
+    return options;
+});
+
+type ExtraModelSource = '与插头相同' | '自定义' | '更多';
+
+/** 捕获活动来源的认证方式和密钥归属，作为切换前后缓存转移的依据。 */
+function getApiKeyContext() {
+    const config = store.settings.额外模型解析配置;
+    const definition = getPiProviderDefinition(config.pi.provider);
+    return {
+        source: config.模型来源,
+        authType: config.pi.authType,
+        keyScope: resolvePiApiKeyScope(
+            definition,
+            config.pi.api,
+            config.pi.authType,
+            config.pi.endpoint
+        ),
+    };
+}
+
+/**
+ * 在修改连接前保存旧密钥归属，修改后恢复新目标的缓存密钥。
+ * 共享输入框中的值不能直接流入另一个端点或 OAuth 来源。
+ */
+function applyApiKeyTransition(mutator: () => void): void {
+    const config = store.settings.额外模型解析配置;
+    const previous = getApiKeyContext();
+    const active_api_key = config.密钥;
+    mutator();
+    const transitioned = transitionPiApiKey(previous, getApiKeyContext(), active_api_key, {
+        customApiKey: config.customApiKey,
+        apiKeys: config.pi.apiKeys,
+    });
+    config.customApiKey = transitioned.customApiKey;
+    config.pi.apiKeys = transitioned.apiKeys;
+    config.密钥 = transitioned.activeApiKey;
+}
+
+/** 取得活动 Pi 请求目标的规范化标识，用于判断请求覆盖是否仍适用。 */
+function getPiRequestTargetIdentity(): string {
+    const pi = store.settings.额外模型解析配置.pi;
+    return resolvePiRequestTargetIdentity(
+        getPiProviderDefinition(pi.provider),
+        pi.provider,
+        pi.api,
+        pi.authType,
+        pi.endpoint
+    );
+}
+
+/** 统一切换密钥缓存与请求覆盖；实际目标变化时清除原目标的自定义请求头和正文配置。 */
+function applyPiConnectionTransition(mutator: () => void): void {
+    const previous_target = getPiRequestTargetIdentity();
+    const pi = store.settings.额外模型解析配置.pi;
+    const previous_overrides = {
+        customHeaders: pi.customHeaders,
+        customIncludeBody: pi.customIncludeBody,
+        customExcludeBody: pi.customExcludeBody,
+    };
+    applyApiKeyTransition(mutator);
+    Object.assign(
+        pi,
+        transitionPiRequestOverrides(
+            previous_target,
+            getPiRequestTargetIdentity(),
+            previous_overrides
+        )
+    );
+}
+
+/** 把当前输入框密钥同步到其所属连接缓存，并清理没有合法归属的活动密钥。 */
+function cacheCurrentApiKey(): void {
+    const config = store.settings.额外模型解析配置;
+    const context = getApiKeyContext();
+    const transitioned = transitionPiApiKey(context, context, config.密钥, {
+        customApiKey: config.customApiKey,
+        apiKeys: config.pi.apiKeys,
+    });
+    config.customApiKey = transitioned.customApiKey;
+    config.pi.apiKeys = transitioned.apiKeys;
+    config.密钥 = transitioned.activeApiKey;
+}
+
+/** 初始化来源各自的密钥缓存，遗留自定义密钥只进入能确认归属的位置。 */
+function initializeApiKeyCache(): void {
+    const config = store.settings.额外模型解析配置;
+    const context = getApiKeyContext();
+    if (context.source === '自定义' || (context.source === '更多' && context.keyScope !== '')) {
+        cacheCurrentApiKey();
+        return;
+    }
+
+    if (context.source === '与插头相同') {
+        // Before Pi existed, the dormant root key belonged to the stored Custom endpoint. Migrate
+        // it only into that slot; it must never become a Pi provider key implicitly.
+        if (config.customApiKey === '' && config.密钥 !== '') {
+            config.customApiKey = config.密钥;
+        }
+        cacheCurrentApiKey();
+        return;
+    }
+
+    // A legacy root key under OAuth has no active wire meaning. Preserve it only in a valid API-key
+    // scope for the same provider/endpoint, then clear the shared field.
+    if (context.source === '更多') {
+        const definition = getPiProviderDefinition(config.pi.provider);
+        const inactive_scope = resolvePiApiKeyScope(
+            definition,
+            config.pi.api,
+            'api_key',
+            config.pi.endpoint
+        );
+        if (
+            inactive_scope !== '' &&
+            config.密钥 !== '' &&
+            !Object.prototype.hasOwnProperty.call(config.pi.apiKeys, inactive_scope)
+        ) {
+            config.pi.apiKeys = { ...config.pi.apiKeys, [inactive_scope]: config.密钥 };
+        }
+        cacheCurrentApiKey();
+    }
+}
+
+/** 校验来源选项并通过统一密钥转移流程切换，避免跨来源沿用活动密钥。 */
+function selectModelSource(source: string): void {
+    if (!['与插头相同', '自定义', '更多'].includes(source)) {
+        return;
+    }
+    applyApiKeyTransition(() => {
+        store.settings.额外模型解析配置.模型来源 = source as ExtraModelSource;
+    });
+}
+
+initializeApiKeyCache();
+
+const pinned_pi_sources = [
+    {
+        provider: 'anthropic',
+        api: 'anthropic-messages',
+        authType: 'api_key',
+        label: 'Anthropic API Key Compatible',
+    },
+    {
+        provider: 'openai',
+        api: 'openai-responses',
+        authType: 'api_key',
+        label: 'OpenAI Responses Compatible',
+    },
+    {
+        provider: 'openai',
+        api: 'openai-completions',
+        authType: 'api_key',
+        label: 'OpenAI Chat Completion Compatible',
+    },
+].map(choice => ({ value: getPiSourceChoiceValue(choice), label: choice.label }));
+const pi_source_choices = _.sortBy(
+    listPiProviderDefinitions().flatMap(listPiSourceChoices),
+    choice => {
+        const index = pinned_pi_sources.findIndex(
+            pinned => pinned.value === getPiSourceChoiceValue(choice)
+        );
+        return index === -1 ? pinned_pi_sources.length : index;
+    }
+);
+const pi_source_choice_value = computed(() =>
+    getPiSourceChoiceValue(store.settings.额外模型解析配置.pi)
+);
+const pi_provider_options = computed(() =>
+    pi_source_choices.map(choice => ({
+        value: getPiSourceChoiceValue(choice),
+        label: getPiProviderOptionLabel(choice),
+    }))
+);
+const selected_pi_provider = computed<PiProviderDefinition | undefined>(() =>
+    getPiProviderDefinition(store.settings.额外模型解析配置.pi.provider)
+);
+const show_pi_endpoint = computed(
+    () =>
+        selected_pi_provider.value?.fields.endpoint === 'editable' &&
+        store.settings.额外模型解析配置.pi.authType === 'api_key'
+);
+const show_pi_custom_endpoint_proxy = computed(() => {
+    const provider = selected_pi_provider.value;
+    const pi = store.settings.额外模型解析配置.pi;
+    return (
+        show_pi_endpoint.value &&
+        pi.endpoint.trim() !== '' &&
+        !!provider &&
+        !isPiDefaultProviderEndpoint(provider, pi.endpoint, pi.api as PiWireApi)
+    );
+});
+const pi_uses_cors_proxy = computed(() => {
+    const pi = store.settings.额外模型解析配置.pi;
+    return shouldUsePiCorsProxy(selected_pi_provider.value, pi.api, pi.endpoint, pi.useProxy);
+});
+const show_pi_api_key = computed(
+    () =>
+        store.settings.额外模型解析配置.pi.authType === 'api_key' &&
+        selected_pi_provider.value?.fields.apiKey === 'when-api-key'
+);
+const show_pi_oauth = computed(
+    () =>
+        store.settings.额外模型解析配置.pi.authType === 'oauth' &&
+        selected_pi_provider.value?.fields.oauth === 'when-oauth' &&
+        selected_pi_provider.value.oauth !== undefined
+);
+const pi_endpoint_placeholder = computed(() => {
+    const provider = selected_pi_provider.value;
+    const api = store.settings.额外模型解析配置.pi.api as PiWireApi;
+    const endpoint = provider ? getPiProviderApiBaseUrl(provider, api) : '';
+    return endpoint
+        ? t('panel.source.pi.endpointDefault', { endpoint })
+        : t('panel.source.pi.endpointPlaceholder');
+});
+const pi_catalog_models = computed<readonly Model<Api>[]>(() => {
+    const provider = selected_pi_provider.value;
+    if (!provider) {
+        return [];
+    }
+    const api = store.settings.额外模型解析配置.pi.api;
+    return getPiCatalogModels(provider.key).filter(model =>
+        isPiCatalogModelApiCompatible(provider, model, api as PiWireApi)
+    );
+});
+const selected_catalog_model = computed(() =>
+    findPiCatalogModel(pi_catalog_models.value, store.settings.额外模型解析配置.pi.model)
+);
+const pi_catalog_model_options = computed(() =>
+    pi_catalog_models.value.map(model => ({ id: model.id, label: getPiModelLabel(model) }))
+);
+const effective_context_window = computed(() => {
+    const provider = selected_pi_provider.value;
+    const pi = store.settings.额外模型解析配置.pi;
+    return provider
+        ? resolvePiSourceContextWindow(
+              provider,
+              pi.api as PiWireApi,
+              pi.endpoint,
+              pi.contextWindow,
+              selected_catalog_model.value
+          )
+        : resolvePiContextWindow(pi.contextWindow);
+});
+const pi_context_window_input_value = computed(() => {
+    const configured = store.settings.额外模型解析配置.pi.contextWindow;
+    return configured === 0 ? effective_context_window.value || '' : configured;
+});
+const uses_catalog_context_window = computed(
+    () =>
+        store.settings.额外模型解析配置.pi.contextWindow === 0 && effective_context_window.value > 0
+);
+const uses_manual_context_window = computed(() => {
+    const configured = store.settings.额外模型解析配置.pi.contextWindow;
+    return typeof configured === 'number' && Number.isInteger(configured) && configured > 0;
+});
+const pi_context_window_help = computed(() => {
+    if (uses_catalog_context_window.value) {
+        return t('panel.source.pi.contextWindowCatalog', {
+            value: effective_context_window.value,
+        });
+    }
+    return uses_manual_context_window.value
+        ? t('panel.source.pi.contextWindowOverride')
+        : t('panel.source.pi.contextWindowHelp');
+});
+const pi_token_errors = computed(() =>
+    is_pi_source.value
+        ? validatePiTokenSettings(
+              effective_context_window.value,
+              store.settings.额外模型解析配置.最大回复token数
+          )
+        : []
+);
+const selected_pi_capabilities = computed(() => {
+    const provider = selected_pi_provider.value;
+    if (!provider) {
+        return undefined;
+    }
+    return resolvePiSourceCapabilities(
+        provider,
+        store.settings.额外模型解析配置.pi.api as PiWireApi,
+        store.settings.额外模型解析配置.pi.endpoint,
+        selected_catalog_model.value
+    );
+});
+const temperature_disabled = computed(
+    () =>
+        custom_advanced_disabled.value ||
+        (is_pi_source.value && selected_pi_capabilities.value?.temperature !== true)
+);
+const pi_temperature_max = computed(() =>
+    is_pi_source.value ? (selected_pi_capabilities.value?.temperatureRange[1] ?? 2) : 2
+);
+/** 结合高级选项总开关和当前模型能力，判断单个采样输入是否可编辑。 */
+function samplingFieldDisabled(
+    field: keyof NonNullable<typeof selected_pi_capabilities.value>['sampling']
+): boolean {
+    return (
+        custom_advanced_disabled.value ||
+        (is_pi_source.value && selected_pi_capabilities.value?.sampling[field] !== true)
+    );
+}
+const top_p_disabled = computed(() => samplingFieldDisabled('topP'));
+const top_k_disabled = computed(() => samplingFieldDisabled('topK'));
+const frequency_penalty_disabled = computed(() => samplingFieldDisabled('frequencyPenalty'));
+const presence_penalty_disabled = computed(() => samplingFieldDisabled('presencePenalty'));
+const pi_capability_summary = computed(() => {
+    const capabilities = selected_pi_capabilities.value;
+    if (!capabilities) {
+        return '';
+    }
+    const labels = [
+        capabilities.tools ? t('panel.source.pi.capability.tools') : '',
+        capabilities.imageInput ? t('panel.source.pi.capability.images') : '',
+        capabilities.structuredOutput ? t('panel.source.pi.capability.structured') : '',
+    ].filter(Boolean);
+    return labels.length
+        ? t('panel.source.pi.capabilities', { capabilities: labels.join(' · ') })
+        : '';
+});
+
+/** 将服务商、协议和认证方式规范为支持的组合，并清理不允许的自定义端点。 */
+function applyPiSourceSelection(definition: PiProviderDefinition, api: string, auth: string): void {
+    const resolved = resolvePiSourceSelection(definition, api, auth);
+    const pi = store.settings.额外模型解析配置.pi;
+    pi.provider = definition.key;
+    pi.api = resolved.api;
+    pi.authType = resolved.authType;
+    pi.endpoint = resolvePiEndpointSelection(definition, resolved.authType, pi.endpoint);
+}
+
+/** 将界面组合选项解析为 Pi 连接，并同步处理密钥归属和请求覆盖。 */
+function selectPiProvider(value: string): void {
+    const choice = pi_source_choices.find(choice => getPiSourceChoiceValue(choice) === value);
+    const definition = choice && getPiProviderDefinition(choice.provider);
+    if (!choice || !definition) {
+        return;
+    }
+    applyPiConnectionTransition(() => {
+        applyPiSourceSelection(definition, choice.api, choice.authType);
+    });
+}
+
+/** 应用用户输入的端点，同时使密钥和请求覆盖跟随实际目标变化。 */
+function selectPiEndpoint(event: Event): void {
+    const input = event.target as HTMLInputElement | null;
+    if (!input) {
+        return;
+    }
+    applyPiConnectionTransition(() => {
+        store.settings.额外模型解析配置.pi.endpoint = input.value;
+    });
+}
+
+/** 在输入结束后规范端点和操作路径；无效输入保留给校验提示处理。 */
+function normalizePiEndpointInput(event: Event): void {
+    const input = event.target as HTMLInputElement | null;
+    const definition = selected_pi_provider.value;
+    const pi = store.settings.额外模型解析配置.pi;
+    if (
+        !input ||
+        pi.endpoint.trim() === '' ||
+        !definition?.allowedApis.includes(pi.api as PiWireApi)
+    ) {
+        return;
+    }
+
+    let normalized_endpoint: string;
+    try {
+        normalized_endpoint = normalizePiApiBaseEndpoint(pi.api as PiWireApi, pi.endpoint);
+    } catch {
+        return;
+    }
+    if (normalized_endpoint === pi.endpoint) {
+        return;
+    }
+
+    applyPiConnectionTransition(() => {
+        pi.endpoint = normalized_endpoint;
+    });
+    input.value = normalized_endpoint;
+}
+
+const pi_configuration_error = computed(() => {
+    if (!is_pi_source.value) {
+        return '';
+    }
+    const pi = store.settings.额外模型解析配置.pi;
+    const definition = selected_pi_provider.value;
+    if (!definition) {
+        return t('panel.source.pi.error.unknownProvider', { provider: pi.provider });
+    }
+    if (!definition.allowedApis.includes(pi.api as PiWireApi)) {
+        return t('panel.source.pi.error.unsupportedApi', {
+            provider: definition.displayName[locale.value === 'zh-CN' ? 'zh-CN' : 'en'],
+            api: pi.api,
+        });
+    }
+    if (!definition.allowedAuthTypes.includes(pi.authType as PiAuthType)) {
+        return t('panel.source.pi.error.unsupportedAuth', {
+            provider: definition.displayName[locale.value === 'zh-CN' ? 'zh-CN' : 'en'],
+            auth: pi.authType,
+        });
+    }
+    if (pi.endpoint.trim() !== '' && (pi.authType === 'oauth' || !definition.allowCustomEndpoint)) {
+        return t('panel.source.pi.error.unsupportedEndpoint');
+    }
+    if (pi.endpoint.trim() !== '') {
+        try {
+            normalizePiEndpoint(pi.endpoint);
+        } catch (error) {
+            return getLocalizedPiErrorMessage(error);
+        }
+    }
+    return '';
+});
+
+const pi_proxy_status = ref<SillyTavernProxyStatus>('unchecked');
+const show_pi_proxy_warning = computed(
+    () =>
+        is_pi_source.value &&
+        pi_configuration_error.value === '' &&
+        pi_uses_cors_proxy.value &&
+        (pi_proxy_status.value === 'disabled' || pi_proxy_status.value === 'unavailable')
+);
+let piProxyProbeGeneration = 0;
+let piProxyUiMounted = true;
+
+watch(
+    () => [is_pi_source.value, pi_uses_cors_proxy.value, pi_configuration_error.value] as const,
+    async ([active, use_proxy, configuration_error]) => {
+        const generation = ++piProxyProbeGeneration;
+        if (!active || !use_proxy || configuration_error !== '') {
+            pi_proxy_status.value = 'unchecked';
+            return;
+        }
+
+        pi_proxy_status.value = getSillyTavernProxyStatus();
+        if (pi_proxy_status.value === 'enabled' || pi_proxy_status.value === 'disabled') {
+            return;
+        }
+
+        pi_proxy_status.value = 'checking';
+        const status = await probeSillyTavernProxy();
+        if (piProxyUiMounted && generation === piProxyProbeGeneration) {
+            pi_proxy_status.value = status;
+        }
+    },
+    { immediate: true }
+);
+
+/** 为需要酒馆代理的来源标签追加统一的代理标记。 */
+function withPiProxySuffix(label: string, use_proxy: boolean): string {
+    return use_proxy ? `${label} (Proxy)` : label;
+}
+
+/** 生成服务商、认证与协议组合的显示名称，并标明所需代理。 */
+function getPiProviderOptionLabel(choice: PiSourceChoice): string {
+    const definition = getPiProviderDefinition(choice.provider)!;
+    const pi = store.settings.额外模型解析配置.pi;
+    const is_selected = getPiSourceChoiceValue(choice) === pi_source_choice_value.value;
+    const uses_proxy = shouldUsePiCorsProxy(
+        definition,
+        choice.api,
+        is_selected ? pi.endpoint : '',
+        is_selected ? pi.useProxy : false
+    );
+    const pinned = pinned_pi_sources.find(
+        pinned => pinned.value === getPiSourceChoiceValue(choice)
+    );
+    if (pinned) {
+        return withPiProxySuffix(pinned.label, uses_proxy);
+    }
+    let label = definition.displayName[locale.value === 'zh-CN' ? 'zh-CN' : 'en'];
+    if (definition.allowedApis.length > 1) {
+        label += ` · ${getPiApiLabel(choice.api)}`;
+    }
+    if (definition.allowedAuthTypes.length > 1) {
+        label += ` · ${
+            choice.authType === 'oauth'
+                ? t('panel.source.pi.auth.accountLogin')
+                : t('panel.source.pi.auth.apiKey')
+        }`;
+    }
+    return withPiProxySuffix(label, uses_proxy);
+}
+
+/** 将底层协议标识转换为界面标签，未知值保留原标识便于排查。 */
+function getPiApiLabel(api: string): string {
+    let label: string;
+    switch (api) {
+        case 'openai-responses':
+            label = t('panel.source.pi.api.openaiResponses');
+            break;
+        case 'openai-completions':
+            label = t('panel.source.pi.api.openaiCompletions');
+            break;
+        case 'openai-codex-responses':
+            label = t('panel.source.pi.api.openaiCodexResponses');
+            break;
+        case 'anthropic-messages':
+            label = t('panel.source.pi.api.anthropicMessages');
+            break;
+        case 'google-generative-ai':
+            label = t('panel.source.pi.api.googleGenerativeAi');
+            break;
+        case 'mistral-conversations':
+            label = t('panel.source.pi.api.mistralConversations');
+            break;
+        default:
+            label = api;
+            break;
+    }
+    return label;
+}
+
+/** 同时显示模型名称与标识；两者相同时避免重复展示。 */
+function getPiModelLabel(model: Model<Api>): string {
+    return model.name && model.name !== model.id ? `${model.name} (${model.id})` : model.id;
+}
+
+/** 使用自定义来源的连接信息通过酒馆兼容接口发现模型，并保留取消信号。 */
+async function loadCustomModels(signal: AbortSignal): Promise<readonly string[]> {
+    const config = store.settings.额外模型解析配置;
+    return fetchOpenAICompatibleModelList(config.api地址, config.密钥, signal, {
+        sillyTavernRequestHeaders: () => SillyTavern.getRequestHeaders(),
+    });
+}
+
+/** 先捕获连接快照，再按需刷新 OAuth 凭证并查询模型，防止等待期间切换目标影响请求。 */
+async function loadPiModels(signal: AbortSignal): Promise<readonly string[]> {
+    const config = store.settings.额外模型解析配置;
+    const pi = config.pi;
+    const snapshot = {
+        provider: pi.provider,
+        api: pi.api,
+        authType: pi.authType,
+        endpoint: pi.endpoint,
+        useProxy: pi.useProxy,
+        apiKey: config.密钥,
+        customHeaders: pi.customHeaders,
+    };
+    const definition = getPiProviderDefinition(snapshot.provider);
+    const credentialStore = getPiCredentialStore(pi);
+    const oauthCredential =
+        snapshot.authType === 'oauth' && definition
+            ? await resolvePiModelListOAuthCredential(definition, signal, credentialStore)
+            : undefined;
+    signal.throwIfAborted();
+    if (oauthCredential) {
+        oauthStatus.value = {
+            loggedIn: true,
+            type: 'oauth',
+            expiresAt: oauthCredential.expiresAt,
+        };
+    }
+    try {
+        return await fetchPiModelList(
+            { ...snapshot, oauthCredential, signal },
+            { sillyTavernRequestHeaders: () => SillyTavern.getRequestHeaders() }
+        );
+    } catch (error) {
+        if (
+            error instanceof Error &&
+            (error.name === 'PiProxyUnavailableError' ||
+                (error as Error & { code?: unknown }).code === 'proxy_unavailable')
+        ) {
+            throw new Error(getLocalizedPiErrorMessage(error));
+        }
+        throw error;
+    }
+}
+
+/** 将数字输入的原始值和浏览器 badInput 状态交给统一解析，保留无效配置以供提示。 */
+function updatePiContextWindow(event: Event): void {
+    const input = event.target as HTMLInputElement | null;
+    store.settings.额外模型解析配置.pi.contextWindow = parsePiContextWindowInput(
+        input?.value ?? '',
+        input?.validity.badInput ?? false
+    );
+}
 
 const selectedProfileName = ref(store.settings.额外模型解析配置.当前api方案);
 const newProfileName = ref('');
@@ -207,6 +1166,21 @@ const canDeleteCurrentProfile = computed(
         selectedProfileName.value.trim().length > 0 &&
         store.settings.额外模型解析配置.api方案列表.length >= 2
 );
+
+/** 根据方案后端显示自定义或 Pi 标签，兼容没有显式后端的旧自定义方案。 */
+function getProfileBackendLabel(backend?: ExtraModelApiProfileBackend): string {
+    return t(
+        backend === 'pi' ? 'panel.source.profile.backendPi' : 'panel.source.profile.backendCustom'
+    );
+}
+
+/** 先应用完整方案快照，再将方案密钥写入新目标的缓存，避免污染旧目标。 */
+function assignProfileConfig(next_config: ExtraModelApiProfileFields): void {
+    Object.assign(store.settings.额外模型解析配置, next_config);
+    // The profile root key is authoritative only for its exact Custom/API-key endpoint. Install it
+    // after the complete snapshot, never into the previous slot. OAuth/invalid Pi targets clear it.
+    cacheCurrentApiKey();
+}
 
 watch(
     () => store.settings.额外模型解析配置.当前api方案,
@@ -248,23 +1222,20 @@ watch(selectedProfileName, async (value, old_value) => {
     }
 
     if (!value) {
-        isApplyingProfile.value = true;
-        const next_config = clearUnboundExtraModelApiProfileFields(store.settings.额外模型解析配置);
-        store.settings.额外模型解析配置.当前api方案 = next_config.当前api方案;
-        store.settings.额外模型解析配置.api地址 = next_config.api地址;
-        store.settings.额外模型解析配置.密钥 = next_config.密钥;
-        store.settings.额外模型解析配置.模型名称 = next_config.模型名称;
-        isApplyingProfile.value = false;
+        try {
+            isApplyingProfile.value = true;
+            assignProfileConfig(
+                clearUnboundExtraModelApiProfileFields(store.settings.额外模型解析配置)
+            );
+        } finally {
+            isApplyingProfile.value = false;
+        }
         return;
     }
 
     try {
         isApplyingProfile.value = true;
-        const next_config = selectExtraModelApiProfile(store.settings.额外模型解析配置, value);
-        store.settings.额外模型解析配置.api地址 = next_config.api地址;
-        store.settings.额外模型解析配置.密钥 = next_config.密钥;
-        store.settings.额外模型解析配置.模型名称 = next_config.模型名称;
-        store.settings.额外模型解析配置.当前api方案 = next_config.当前api方案;
+        assignProfileConfig(selectExtraModelApiProfile(store.settings.额外模型解析配置, value));
     } catch (error) {
         toastr.error(format_error(error), t('panel.source.switchFailureTitle'));
         isRevertingProfileSelection.value = true;
@@ -274,14 +1245,15 @@ watch(selectedProfileName, async (value, old_value) => {
     }
 });
 
+/** 保存活动方案并同步选择状态，抑制应用期间的重复切换监听。 */
 function saveCurrentProfile() {
     try {
         const saved = saveCurrentExtraModelApiProfile(
             store.settings.额外模型解析配置,
             selectedProfileName.value || newProfileName.value
         );
-        store.settings.额外模型解析配置.api方案列表 = saved.api方案列表;
-        store.settings.额外模型解析配置.当前api方案 = saved.当前api方案;
+        isApplyingProfile.value = true;
+        assignProfileConfig(saved);
         selectedProfileName.value = saved.当前api方案;
         toastr.success(
             t('panel.source.profileSaved', { name: _.escape(saved.当前api方案) }),
@@ -289,9 +1261,12 @@ function saveCurrentProfile() {
         );
     } catch (error) {
         toastr.error(format_error(error), t('panel.source.saveFailureTitle'));
+    } finally {
+        isApplyingProfile.value = false;
     }
 }
 
+/** 校验新名称并另存当前连接及请求选项，成功后切换到新方案。 */
 function saveAsNewProfile() {
     const profile_name = newProfileName.value.trim();
     if (!profile_name) {
@@ -301,8 +1276,8 @@ function saveAsNewProfile() {
 
     try {
         const saved = saveAsNewExtraModelApiProfile(store.settings.额外模型解析配置, profile_name);
-        store.settings.额外模型解析配置.api方案列表 = saved.api方案列表;
-        store.settings.额外模型解析配置.当前api方案 = saved.当前api方案;
+        isApplyingProfile.value = true;
+        assignProfileConfig(saved);
         selectedProfileName.value = saved.当前api方案;
         newProfileName.value = '';
         toastr.success(
@@ -311,9 +1286,12 @@ function saveAsNewProfile() {
         );
     } catch (error) {
         toastr.error(format_error(error), t('panel.source.saveFailureTitle'));
+    } finally {
+        isApplyingProfile.value = false;
     }
 }
 
+/** 按界面规则保留至少一个方案，经必要确认后删除活动方案并同步连接状态。 */
 async function deleteCurrentProfile() {
     const profile_name = selectedProfileName.value.trim();
     if (!profile_name) {
@@ -356,11 +1334,8 @@ async function deleteCurrentProfile() {
             return;
         }
 
-        store.settings.额外模型解析配置.api方案列表 = next_config.api方案列表;
-        store.settings.额外模型解析配置.当前api方案 = next_config.当前api方案;
-        store.settings.额外模型解析配置.api地址 = next_config.api地址;
-        store.settings.额外模型解析配置.密钥 = next_config.密钥;
-        store.settings.额外模型解析配置.模型名称 = next_config.模型名称;
+        isApplyingProfile.value = true;
+        assignProfileConfig(next_config);
         selectedProfileName.value = next_config.当前api方案;
         toastr.info(
             t('panel.source.profileDeleted', { name: _.escape(profile_name) }),
@@ -368,14 +1343,442 @@ async function deleteCurrentProfile() {
         );
     } catch (error) {
         toastr.error(format_error(error), t('panel.source.deleteFailureTitle'));
+    } finally {
+        isApplyingProfile.value = false;
     }
 }
 
-function format_error(error: unknown): string {
-    return t('runtime.common.errorCause', {
-        cause: _.escape(error instanceof Error ? error.message : String(error)),
+const oauthAttempt = ref<PiOAuthAttemptView | null>(null);
+const oauthStatus = ref<PiOAuthCredentialStatus>({ loggedIn: false });
+const oauthStatusLoading = ref(false);
+const oauthBusy = ref(false);
+const oauthCallbackUrl = ref('');
+const oauthProgress = ref('');
+const oauthError = ref('');
+let oauthOperationController: AbortController | undefined;
+let oauthStatusController: AbortController | undefined;
+let oauthUiGeneration = 0;
+let oauthStatusGeneration = 0;
+let oauthComponentMounted = true;
+
+/** 记录操作发起时的界面代次、服务商和方案，供异步完成后核对归属。 */
+function captureOAuthUiContext(provider: PiProviderDefinition): PiOAuthUiContext {
+    return {
+        generation: oauthUiGeneration,
+        providerId: provider.providerId,
+        profileName: store.settings.额外模型解析配置.当前api方案,
+    };
+}
+
+/** 确认异步操作仍属于当前挂载且活动的 OAuth 界面。 */
+function isOAuthUiContextCurrent(context: PiOAuthUiContext): boolean {
+    return isPiOAuthUiContextCurrent(context, {
+        generation: oauthUiGeneration,
+        providerId: selected_pi_provider.value?.providerId,
+        profileName: store.settings.额外模型解析配置.当前api方案,
+        mounted: oauthComponentMounted,
+        active: is_pi_source.value && show_pi_oauth.value,
     });
 }
+
+const oauth_status_label = computed(() =>
+    oauthStatusLoading.value
+        ? t('panel.source.pi.oauth.checking')
+        : oauthStatus.value.loggedIn
+          ? t('panel.source.pi.oauth.loggedIn')
+          : t('panel.source.pi.oauth.loggedOut')
+);
+const oauth_expiry_label = computed(() =>
+    oauthStatus.value.expiresAt
+        ? t('panel.source.pi.oauth.expiresAt', {
+              time: new Date(oauthStatus.value.expiresAt).toLocaleString(),
+          })
+        : ''
+);
+
+watch(
+    () =>
+        [
+            store.settings.额外模型解析配置.模型来源,
+            store.settings.额外模型解析配置.当前api方案,
+            store.settings.额外模型解析配置.api地址,
+            store.settings.额外模型解析配置.密钥,
+        ] as const,
+    () => {
+        custom_model_list_revision.value += 1;
+    }
+);
+
+watch(
+    () =>
+        [
+            store.settings.额外模型解析配置.模型来源,
+            store.settings.额外模型解析配置.当前api方案,
+            store.settings.额外模型解析配置.pi.provider,
+            store.settings.额外模型解析配置.pi.api,
+            store.settings.额外模型解析配置.pi.authType,
+            store.settings.额外模型解析配置.pi.endpoint,
+            store.settings.额外模型解析配置.pi.useProxy,
+            store.settings.额外模型解析配置.pi.customHeaders,
+            store.settings.额外模型解析配置.pi.credentialIds,
+            store.settings.额外模型解析配置.密钥,
+            oauthBusy.value,
+        ] as const,
+    () => {
+        pi_model_list_revision.value += 1;
+    }
+);
+
+/** 结束当前界面尝试并递增代次，取消进行中的操作，阻止迟到回调回写状态。 */
+function closeOAuthAttempt(options: { cancel: boolean; keepProgress?: boolean }): void {
+    oauthUiGeneration += 1;
+    oauthOperationController?.abort();
+    oauthOperationController = undefined;
+    if (options.cancel && oauthAttempt.value) {
+        cancelPiOAuth(oauthAttempt.value.id);
+    }
+    oauthAttempt.value = null;
+    oauthCallbackUrl.value = '';
+    oauthBusy.value = false;
+    oauthError.value = '';
+    if (!options.keepProgress) {
+        oauthProgress.value = '';
+    }
+}
+
+/** 取消登录尝试，并根据是否由用户主动触发决定是否显示取消进度。 */
+function cancelOAuthLogin(show_progress = false): void {
+    const had_attempt = oauthAttempt.value !== null || oauthBusy.value;
+    closeOAuthAttempt({ cancel: true });
+    if (show_progress && had_attempt) {
+        oauthProgress.value = t('panel.source.pi.oauth.cancel');
+    }
+}
+
+/** 读取活动服务商的登录状态，通过控制器和代次过滤过时结果。 */
+async function refreshOAuthStatus(): Promise<void> {
+    oauthStatusController?.abort();
+    const provider = selected_pi_provider.value;
+    if (!show_pi_oauth.value || !provider) {
+        oauthStatus.value = { loggedIn: false };
+        oauthStatusLoading.value = false;
+        return;
+    }
+
+    const generation = ++oauthStatusGeneration;
+    const controller = new AbortController();
+    oauthStatusController = controller;
+    oauthStatusLoading.value = true;
+    try {
+        const status = await getPiOAuthCredentialStatus(provider.providerId, {
+            signal: controller.signal,
+        });
+        if (oauthComponentMounted && generation === oauthStatusGeneration) {
+            oauthStatus.value = status;
+        }
+    } catch (error) {
+        if (
+            oauthComponentMounted &&
+            generation === oauthStatusGeneration &&
+            !controller.signal.aborted
+        ) {
+            oauthStatus.value = { loggedIn: false };
+            oauthError.value = getOAuthErrorMessage(error);
+        }
+    } finally {
+        if (oauthComponentMounted && generation === oauthStatusGeneration) {
+            oauthStatusLoading.value = false;
+        }
+    }
+}
+
+watch(
+    () =>
+        [
+            store.settings.额外模型解析配置.模型来源,
+            store.settings.额外模型解析配置.当前api方案,
+            store.settings.额外模型解析配置.pi.provider,
+            store.settings.额外模型解析配置.pi.authType,
+        ] as const,
+    (value, old_value) => {
+        if (old_value && !_.isEqual(value, old_value)) {
+            cancelOAuthLogin(false);
+        }
+        void refreshOAuthStatus();
+    },
+    { immediate: true }
+);
+
+watch(
+    () => store.settings.额外模型解析配置.pi.credentialIds,
+    () => void refreshOAuthStatus(),
+    { deep: true }
+);
+
+/** 建立与当前界面绑定的登录尝试，显示授权地址，并处理浏览器打开及取消状态。 */
+async function beginOAuthLogin(): Promise<void> {
+    const provider = selected_pi_provider.value;
+    if (
+        !show_pi_oauth.value ||
+        !provider ||
+        oauthStatus.value.loggedIn ||
+        oauthBusy.value ||
+        oauthStatusLoading.value
+    ) {
+        return;
+    }
+
+    cancelOAuthLogin(false);
+    const operation_context = captureOAuthUiContext(provider);
+    oauthBusy.value = true;
+    oauthProgress.value = t('panel.source.pi.oauth.preparing');
+    oauthError.value = '';
+    const operation_controller = new AbortController();
+    oauthOperationController = operation_controller;
+
+    let popup: Window | null = null;
+    try {
+        popup = window.open('about:blank', '_blank');
+        if (popup) {
+            popup.opener = null;
+        }
+    } catch {
+        popup = null;
+    }
+
+    try {
+        const attempt = await beginPiOAuth(provider.providerId, {
+            signal: operation_controller.signal,
+        });
+        if (!isOAuthUiContextCurrent(operation_context)) {
+            cancelPiOAuth(attempt.id);
+            popup?.close();
+            return;
+        }
+        oauthAttempt.value = attempt;
+        oauthProgress.value = t('panel.source.pi.oauth.waitingCallback');
+        if (popup && !popup.closed) {
+            popup.location.replace(attempt.authorizationUrl);
+        }
+    } catch (error) {
+        popup?.close();
+        if (isOAuthUiContextCurrent(operation_context)) {
+            oauthError.value = getOAuthErrorMessage(error);
+            oauthProgress.value = '';
+        }
+    } finally {
+        if (isOAuthUiContextCurrent(operation_context)) {
+            oauthBusy.value = false;
+        }
+    }
+}
+
+/** 消费用户粘贴的回调地址；只有操作仍属于当前界面时才展示登录结果。 */
+async function completeOAuthLogin(): Promise<void> {
+    const attempt = oauthAttempt.value;
+    const provider = selected_pi_provider.value;
+    if (
+        !attempt ||
+        !provider ||
+        attempt.providerId !== provider.providerId ||
+        oauthCallbackUrl.value.trim().length === 0
+    ) {
+        return;
+    }
+
+    const callback_url = oauthCallbackUrl.value.trim();
+    // The authorization code/state should not remain visible or retained in form state once the
+    // user submits it. Invalid callbacks can be pasted again after the explicit error.
+    oauthCallbackUrl.value = '';
+    const operation_context = captureOAuthUiContext(provider);
+    oauthBusy.value = true;
+    oauthProgress.value = t('panel.source.pi.oauth.exchanging');
+    oauthError.value = '';
+    oauthOperationController ??= new AbortController();
+    try {
+        await completePiOAuth(attempt.id, callback_url, {
+            signal: oauthOperationController.signal,
+        });
+        if (!isOAuthUiContextCurrent(operation_context)) {
+            return;
+        }
+        closeOAuthAttempt({ cancel: false, keepProgress: true });
+        oauthProgress.value = t('panel.source.pi.oauth.loginSucceeded');
+        await refreshOAuthStatus();
+    } catch (error) {
+        if (!isOAuthUiContextCurrent(operation_context)) {
+            return;
+        }
+        oauthError.value = getOAuthErrorMessage(error);
+        oauthProgress.value = '';
+        if (
+            !(error instanceof PiOAuthError) ||
+            !['invalid_callback', 'state_mismatch'].includes(error.code)
+        ) {
+            closeOAuthAttempt({ cancel: true });
+            oauthError.value = getOAuthErrorMessage(error);
+        }
+    } finally {
+        if (isOAuthUiContextCurrent(operation_context)) {
+            oauthBusy.value = false;
+        }
+    }
+}
+
+/** 手动刷新活动服务商凭证，复用共享刷新逻辑，并防止来源切换后的旧结果回写。 */
+async function refreshOAuthCredentials(): Promise<void> {
+    const provider = selected_pi_provider.value;
+    if (
+        !show_pi_oauth.value ||
+        !provider ||
+        !oauthStatus.value.loggedIn ||
+        oauthBusy.value ||
+        oauthStatusLoading.value
+    ) {
+        return;
+    }
+
+    cancelOAuthLogin(false);
+    const operation_context = captureOAuthUiContext(provider);
+    const operation_controller = new AbortController();
+    oauthOperationController = operation_controller;
+    oauthBusy.value = true;
+    oauthProgress.value = t('panel.source.pi.oauth.refreshing');
+    try {
+        const status = await refreshPiOAuth(provider.providerId, {
+            signal: operation_controller.signal,
+        });
+        if (isOAuthUiContextCurrent(operation_context)) {
+            oauthStatus.value = status;
+            oauthProgress.value = t('panel.source.pi.oauth.refreshSucceeded');
+        }
+    } catch (error) {
+        if (isOAuthUiContextCurrent(operation_context)) {
+            if (error instanceof PiOAuthError && error.code === 'missing_credential') {
+                oauthStatus.value = { loggedIn: false };
+            }
+            oauthError.value = getOAuthErrorMessage(error);
+            oauthProgress.value = '';
+        }
+    } finally {
+        if (isOAuthUiContextCurrent(operation_context)) {
+            oauthBusy.value = false;
+            oauthOperationController = undefined;
+        }
+    }
+}
+
+/** 确认后再次核对服务商和方案归属，再取消尝试并删除相应凭证。 */
+async function logoutOAuth(): Promise<void> {
+    const provider = selected_pi_provider.value;
+    if (
+        !show_pi_oauth.value ||
+        !provider ||
+        !oauthStatus.value.loggedIn ||
+        oauthBusy.value ||
+        oauthStatusLoading.value
+    ) {
+        return;
+    }
+    const confirmation_context = captureOAuthUiContext(provider);
+    const credentialStore = createPiOAuthLogoutStore();
+    const display_name = provider.displayName[locale.value === 'zh-CN' ? 'zh-CN' : 'en'];
+    const result = await SillyTavern.callGenericPopup(
+        t('panel.source.pi.oauth.logoutConfirm', { provider: display_name }),
+        SillyTavern.POPUP_TYPE.CONFIRM,
+        '',
+        {
+            okButton: t('panel.source.pi.oauth.logout'),
+            cancelButton: t('common.cancel'),
+        }
+    );
+    if (
+        result !== SillyTavern.POPUP_RESULT.AFFIRMATIVE ||
+        !isOAuthUiContextCurrent(confirmation_context)
+    ) {
+        return;
+    }
+
+    cancelOAuthLogin(false);
+    const operation_context = captureOAuthUiContext(provider);
+    oauthBusy.value = true;
+    const operation_controller = new AbortController();
+    oauthOperationController = operation_controller;
+    try {
+        await logoutPiOAuth(provider.providerId, {
+            signal: operation_controller.signal,
+            credentialStore,
+        });
+        if (isOAuthUiContextCurrent(operation_context)) {
+            oauthProgress.value = t('panel.source.pi.oauth.logoutSucceeded');
+            await refreshOAuthStatus();
+        }
+    } catch (error) {
+        if (isOAuthUiContextCurrent(operation_context)) {
+            oauthError.value = getOAuthErrorMessage(error);
+            toastr.error(format_oauth_error(error), t('panel.source.pi.oauth.failureTitle'));
+        }
+    } finally {
+        if (isOAuthUiContextCurrent(operation_context)) {
+            oauthBusy.value = false;
+        }
+    }
+}
+
+/** 复制当前尝试的授权地址，并使用本地化文案反馈剪贴板结果。 */
+async function copyOAuthAuthorizationUrl(): Promise<void> {
+    const url = oauthAttempt.value?.authorizationUrl;
+    if (!url) {
+        return;
+    }
+    try {
+        if (!navigator.clipboard?.writeText) {
+            throw new Error('Clipboard API unavailable');
+        }
+        await navigator.clipboard.writeText(url);
+        toastr.success(t('panel.source.pi.oauth.copySucceeded'), t('runtime.common.mvuTitle'));
+    } catch {
+        toastr.warning(t('panel.source.pi.oauth.copyFailed'), t('runtime.common.mvuTitle'));
+    }
+}
+
+/** 选中输入框内容，便于复制完整授权地址。 */
+function selectInputText(event: FocusEvent): void {
+    (event.target as HTMLInputElement | null)?.select();
+}
+
+/** 提取普通界面错误的文本，供后续转义或固定文案处理使用。 */
+function getErrorMessage(error: unknown): string {
+    return error instanceof Error ? error.message : String(error);
+}
+
+/** 将 OAuth 错误转换为可展示的本地化文案，不回显令牌接口的原始响应。 */
+function getOAuthErrorMessage(error: unknown): string {
+    return getLocalizedPiErrorMessage(error);
+}
+
+/** 对普通错误文本做 HTML 转义，供 toast 安全展示。 */
+function format_error(error: unknown): string {
+    return t('runtime.common.errorCause', {
+        cause: _.escape(getErrorMessage(error)),
+    });
+}
+
+/** 对已归类的 OAuth 错误文案做 HTML 转义后展示。 */
+function format_oauth_error(error: unknown): string {
+    return t('runtime.common.errorCause', {
+        cause: _.escape(getOAuthErrorMessage(error)),
+    });
+}
+
+onBeforeUnmount(() => {
+    piProxyUiMounted = false;
+    piProxyProbeGeneration += 1;
+    oauthComponentMounted = false;
+    cancelOAuthLogin(false);
+    oauthStatusGeneration += 1;
+    oauthStatusController?.abort();
+});
 </script>
 
 <style scoped>
@@ -400,6 +1803,57 @@ function format_error(error: unknown): string {
 .mvu-note {
     opacity: 0.85;
     color: var(--SmartThemeEmColor, inherit);
+}
+
+.mvu-pi-proxy-option {
+    padding: 0 0.6rem;
+}
+
+.mvu-warning {
+    margin-top: 0.5rem;
+    padding: 0.55rem 0.7rem;
+    border: 1px solid color-mix(in srgb, var(--SmartThemeEmColor, #d39e00) 35%, transparent);
+    border-radius: 10px;
+    background-color: color-mix(in srgb, var(--SmartThemeEmColor, #fff3cd) 15%, transparent);
+    color: var(--SmartThemeEmColor, #856404);
+    display: grid;
+    grid-template-columns: auto 1fr;
+    column-gap: 0.5rem;
+    align-items: center;
+}
+
+.mvu-warning__icon {
+    line-height: 1;
+}
+
+.mvu-warning__text {
+    word-break: break-word;
+}
+
+.mvu-pi-advanced-textarea {
+    width: 100%;
+    min-height: 5rem;
+    resize: vertical;
+    font-family: var(--monoFontFamily, monospace);
+    white-space: pre;
+}
+
+.mvu-field-error {
+    color: var(--SmartThemeQuoteColor, #ff6b6b);
+    line-height: 1.35;
+    word-break: break-word;
+}
+
+.mvu-oauth-status {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+}
+
+.mvu-link-button {
+    display: inline-flex;
+    align-items: center;
+    text-decoration: none;
 }
 
 @media (max-width: 520px) {

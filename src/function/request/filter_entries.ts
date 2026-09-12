@@ -71,7 +71,9 @@ export async function createEntryFilterContext(
         update_method: store.effective_settings.更新方式,
         is_extra_analysis,
         tool_calling_unsupported:
-            request_settings.应答格式 === '工具调用' && !isFunctionCallingSupported(),
+            request_settings.应答格式 === '工具调用' &&
+            request_settings.模型来源 !== '更多' &&
+            !isFunctionCallingSupported(),
         extra_model_supported: false,
         whitelist: request_settings.世界书条目白名单正则,
         blacklist: request_settings.世界书条目黑名单正则,

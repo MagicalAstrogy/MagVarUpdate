@@ -78,6 +78,27 @@ export const panelMessages = defineMessages({
         'zh-CN': 'sendas 不视为 user 消息',
         en: 'Do not treat sendas as a user message',
     },
+    'panel.compatibility.license': {
+        'zh-CN': 'LICENSE',
+        en: 'LICENSE',
+    },
+    'panel.compatibility.licenseIntro': {
+        'zh-CN': 'MVU 采用 MIT 许可证。以下是运行时使用或随扩展打包的第三方开源组件：',
+        en: 'MVU is licensed under MIT. The following third-party components are used at runtime or bundled with the extension:',
+    },
+    'panel.compatibility.licenseComponent': {
+        'zh-CN': '组件',
+        en: 'Component',
+    },
+    'panel.compatibility.licenseIdentifier': {
+        'zh-CN': '许可证',
+        en: 'License',
+    },
+    'panel.compatibility.licenseDetails': {
+        'zh-CN':
+            '许可证标识来自当前依赖元数据；点击组件名称可查看项目，完整条款以各项目 LICENSE 为准。',
+        en: 'License identifiers come from current dependency metadata. Select a component name to view its project; the project LICENSE contains the complete terms.',
+    },
     'panel.button.section': {
         'zh-CN': '修复按钮',
         en: 'Repair actions',
@@ -152,8 +173,8 @@ export const panelMessages = defineMessages({
         en: 'Fetching…',
     },
     'panel.modelSelect.fetch': {
-        'zh-CN': '获取模型',
-        en: 'Fetch models',
+        'zh-CN': '获取模型列表',
+        en: 'Fetch model list',
     },
     'panel.modelSelect.empty': {
         'zh-CN': '模型列表为空或获取失败',
@@ -166,6 +187,19 @@ export const panelMessages = defineMessages({
     'panel.modelSelect.fetchFailureTitle': {
         'zh-CN': '[MVU]获取模型列表失败',
         en: '[MVU] Failed to fetch model list',
+    },
+    'panel.prompt.apiOptionsMigrated': {
+        'zh-CN': '破限/应答格式等配置 已迁移到 API 方案，与方案配置绑定',
+        en: 'Jailbreak, response format, and related settings have moved to API profiles and are saved with each profile.',
+    },
+    'panel.source.pi.auth.accountLogin': {
+        'zh-CN': '账号登录',
+        en: 'Account sign-in',
+    },
+    'panel.source.pi.contextWindowHelp': {
+        'zh-CN':
+            '模型一次能读取和生成的总长度，单位为 token。请按服务商说明填写；数值过小会使较长的请求无法发送。',
+        en: 'The total length the model can read and generate, in tokens. Enter the limit given by your provider; setting it too low prevents longer requests from being sent.',
     },
     'panel.prompt.section': {
         'zh-CN': '请求内容',
@@ -241,8 +275,9 @@ export const panelMessages = defineMessages({
         en: 'Pseudo-streaming compatibility',
     },
     'panel.prompt.fakeStreamingHelp': {
-        'zh-CN': '勾选后，额外模型解析会要求 AI 流式传输，从而兼容一些需要假流式来保活的渠道模型。',
-        en: 'When enabled, extra-model parsing requests streaming so it works with providers that require pseudo-streaming to keep the connection alive.',
+        'zh-CN':
+            '默认关闭，等待模型一次返回完整结果。若渠道要求流式请求，或等待时经常超时，可尝试勾选。开启后仍会等回复完整后再更新变量。OpenAI Codex 只支持流式传输，会始终使用流式。',
+        en: 'Disabled by default: wait for the complete response. Enable this if your provider requires streaming or requests often time out while waiting. Variables are still updated after the full response arrives. OpenAI Codex requires streaming and always uses it.',
     },
     'panel.prompt.whitelist': {
         'zh-CN': '世界书条目白名单正则',
@@ -404,6 +439,10 @@ export const panelMessages = defineMessages({
         'zh-CN': '自定义',
         en: 'Custom',
     },
+    'panel.source.more': {
+        'zh-CN': '更多',
+        en: 'More',
+    },
     'panel.source.profile.section': {
         'zh-CN': 'API 方案',
         en: 'API profiles',
@@ -436,6 +475,14 @@ export const panelMessages = defineMessages({
         'zh-CN': '删除当前方案',
         en: 'Delete current profile',
     },
+    'panel.source.profile.backendCustom': {
+        'zh-CN': '自定义 API',
+        en: 'Custom API',
+    },
+    'panel.source.profile.backendPi': {
+        'zh-CN': '更多',
+        en: 'More',
+    },
     'panel.source.apiAddress': {
         'zh-CN': 'API 地址',
         en: 'API address',
@@ -451,6 +498,294 @@ export const panelMessages = defineMessages({
     'panel.source.modelName': {
         'zh-CN': '模型名称',
         en: 'Model name',
+    },
+    // “更多”来源的连接、协议能力和认证界面文案；底层 Pi 标识不作为产品名称展示。
+    'panel.source.pi.provider': {
+        'zh-CN': '来源',
+        en: 'Provider',
+    },
+    'panel.source.pi.endpoint': {
+        'zh-CN': 'API 基础地址',
+        en: 'API base URL',
+    },
+    'panel.source.pi.endpointDefault': {
+        'zh-CN': '留空使用默认地址：{endpoint}',
+        en: 'Leave blank to use the default: {endpoint}',
+    },
+    'panel.source.pi.endpointPlaceholder': {
+        'zh-CN': '请输入 API 基础地址',
+        en: 'Enter an API base URL',
+    },
+    'panel.source.pi.endpointHelp': {
+        'zh-CN':
+            '填写服务商提供的 API 地址，留空使用默认地址。也可以直接粘贴完整的聊天或 Responses 接口地址，MVU 会自动处理末尾路径。',
+        en: 'Enter the API URL supplied by your provider, or leave it blank to use the default. You can also paste a full chat or Responses URL; MVU adjusts its ending automatically.',
+    },
+    'panel.source.pi.proxy.use': {
+        'zh-CN': '使用 Proxy',
+        en: 'Use Proxy',
+    },
+    'panel.source.pi.proxy.help': {
+        'zh-CN':
+            '如果获取模型列表或生成请求因 CORS（浏览器跨域限制）失败，可以尝试勾选，通过 SillyTavern 转发请求。需要先在 SillyTavern 中开启 Proxy。开启这个功能后，任意前端脚本都可以无障碍地访问任意站点，请在了解相关的风险后决定是否打开这个功能。',
+        en: 'If fetching models or generating a response fails because of CORS (browser cross-origin restrictions), try enabling this to forward requests through SillyTavern. Proxy must also be enabled in SillyTavern. Once enabled, any frontend script can freely access any website. Decide whether to enable this feature only after understanding the risks.',
+    },
+    'panel.source.pi.proxy.notEnabled': {
+        'zh-CN': '当前来源需要 Proxy，但 SillyTavern 的 Proxy 未开启或无法连接。',
+        en: 'This provider needs Proxy, but SillyTavern Proxy is disabled or unavailable.',
+    },
+    'panel.source.pi.proxy.notEnabledHelp': {
+        'zh-CN':
+            '打开 SillyTavern 的 config.yaml，将 enableCorsProxy 设为 true，保存后重启 SillyTavern。如果酒馆由他人托管，请联系管理员开启。开启这个功能后，任意前端脚本都可以无障碍地访问任意站点，请在了解相关的风险后决定是否打开这个功能。',
+        en: 'Open SillyTavern config.yaml, set enableCorsProxy to true, save, and restart SillyTavern. If someone else hosts your server, ask its administrator to enable it. Once enabled, any frontend script can freely access any website. Decide whether to enable this feature only after understanding the risks.',
+    },
+    'panel.source.pi.model': {
+        'zh-CN': '模型',
+        en: 'Model',
+    },
+    'panel.source.pi.catalogModel': {
+        'zh-CN': '模型目录',
+        en: 'Model catalog',
+    },
+    'panel.source.pi.customModel': {
+        'zh-CN': '（手动填写模型）',
+        en: '(Enter a model manually)',
+    },
+    'panel.source.pi.api.openaiResponses': {
+        'zh-CN': 'OpenAI Responses',
+        en: 'OpenAI Responses',
+    },
+    'panel.source.pi.api.openaiCompletions': {
+        'zh-CN': 'OpenAI Chat Completions',
+        en: 'OpenAI Chat Completions',
+    },
+    'panel.source.pi.api.openaiCodexResponses': {
+        'zh-CN': 'OpenAI Codex Responses',
+        en: 'OpenAI Codex Responses',
+    },
+    'panel.source.pi.api.anthropicMessages': {
+        'zh-CN': 'Anthropic Messages',
+        en: 'Anthropic Messages',
+    },
+    'panel.source.pi.api.googleGenerativeAi': {
+        'zh-CN': 'Google Generative AI',
+        en: 'Google Generative AI',
+    },
+    'panel.source.pi.api.mistralConversations': {
+        'zh-CN': 'Mistral Conversations',
+        en: 'Mistral Conversations',
+    },
+    'panel.source.pi.auth.apiKey': {
+        'zh-CN': 'API Key',
+        en: 'API key',
+    },
+    'panel.source.pi.capabilities': {
+        'zh-CN': '可尝试的功能：{capabilities}。具体是否可用，以你使用的模型和服务商为准。',
+        en: 'Features you can try: {capabilities}. Availability depends on your model and provider.',
+    },
+    'panel.source.pi.capability.tools': {
+        'zh-CN': '工具调用',
+        en: 'tools',
+    },
+    'panel.source.pi.capability.images': {
+        'zh-CN': '读取图片',
+        en: 'Read images',
+    },
+    'panel.source.pi.capability.structured': {
+        'zh-CN': '格式化输出',
+        en: 'Structured output',
+    },
+    'panel.source.pi.contextWindow': {
+        'zh-CN': '上下文窗口',
+        en: 'Context window',
+    },
+    'panel.source.pi.contextWindowCatalog': {
+        'zh-CN':
+            '模型一次能读取和生成的总长度，单位为 token。已自动填入 {value}；如果服务商给出的限制不同，可手动修改，清空后恢复自动值。',
+        en: 'The total length the model can read and generate, in tokens. Automatically set to {value}. Edit it if your provider gives a different limit; clear it to restore the automatic value.',
+    },
+    'panel.source.pi.contextWindowOverride': {
+        'zh-CN':
+            '模型一次能读取和生成的总长度，单位为 token。当前使用你填写的值；清空后会尝试自动填写已知模型的限制。',
+        en: 'The total length the model can read and generate, in tokens. Using your entered value; clear it to try the known model limit.',
+    },
+    'panel.source.pi.contextWindowRequired': {
+        'zh-CN': '请输入正整数上下文窗口；模型目录未提供该值时必须手动填写。',
+        en: 'Enter a positive integer context window. It is required when the model catalog has no value.',
+    },
+    'panel.source.pi.error.unknownProvider': {
+        'zh-CN': '“更多”中的未知来源“{provider}”；请重新选择来源。',
+        en: 'Unknown provider "{provider}" under More. Select a provider again.',
+    },
+    'panel.source.pi.error.unsupportedApi': {
+        'zh-CN': '已保存的来源“{provider}”不支持接口“{api}”，请重新选择来源。',
+        en: 'The saved provider "{provider}" does not support API "{api}". Select a provider again.',
+    },
+    'panel.source.pi.error.unsupportedAuth': {
+        'zh-CN': '已保存的来源“{provider}”不支持认证方式“{auth}”，请重新选择来源。',
+        en: 'The saved provider "{provider}" does not support authentication type "{auth}". Select a provider again.',
+    },
+    'panel.source.pi.error.unsupportedEndpoint': {
+        'zh-CN': '当前来源不支持自定义 API 地址，请重新选择来源或切换 API 方案。',
+        en: 'This provider does not support a custom API URL. Select a provider again or switch API profiles.',
+    },
+    'panel.source.pi.featureDisabled': {
+        'zh-CN':
+            '此构建已关闭“更多”模型来源。已保存的“更多”配置仍会保留；请选择“与插头相同”或“自定义”。',
+        en: 'The More model source is disabled in this build. Saved More-source settings are preserved; select Same as current connection or Custom.',
+    },
+    'panel.source.pi.maxTokensPositive': {
+        'zh-CN': '最大回复 token 必须是正整数。',
+        en: 'Maximum response tokens must be a positive integer.',
+    },
+    'panel.source.pi.maxTokensExceedContext': {
+        'zh-CN': '最大回复 token 不能大于上下文窗口。',
+        en: 'Maximum response tokens cannot exceed the context window.',
+    },
+    'panel.source.pi.customHeaders': {
+        'zh-CN': '自定义请求头',
+        en: 'Custom request headers',
+    },
+    'panel.source.pi.customHeadersHelp': {
+        'zh-CN':
+            '仅在服务商要求额外请求头时填写，格式为 YAML 或 JSON，例如 X-App: MVU。留空即可；API 密钥请填在上方的密钥栏。',
+        en: 'Fill this in only if your provider requires extra headers. Use YAML or JSON, for example X-App: MVU. Otherwise leave it blank. Enter your API key in the key field above.',
+    },
+    'panel.source.pi.customOverridesSwitchHelp': {
+        'zh-CN':
+            '下方的自定义请求头、附加字段和排除字段会随 API 方案保存。手动切换来源或 API 地址时会清空这三项；切换方案会恢复该方案保存的内容。',
+        en: 'Custom headers, additional fields, and excluded fields below are saved with the API profile. Manually changing the provider or API URL clears these three fields; switching profiles restores their saved values.',
+    },
+    'panel.source.pi.customIncludeBody': {
+        'zh-CN': '请求体附加字段',
+        en: 'Additional request body fields',
+    },
+    'panel.source.pi.customIncludeBodyHelp': {
+        'zh-CN':
+            '服务商要求额外参数时在这里填写，使用 YAML 或 JSON，例如 seed: 123。同名参数会采用这里的值。Google 参数请放在 config 下。不需要时留空；密钥、模型和流式开关请使用对应选项。',
+        en: 'Add parameters required by your provider as YAML or JSON, for example seed: 123. These values replace matching parameters. Put Google parameters under config. Leave blank when unnecessary; use the dedicated controls for keys, models, and streaming.',
+    },
+    'panel.source.pi.customExcludeBody': {
+        'zh-CN': '请求体排除字段',
+        en: 'Excluded request body fields',
+    },
+    'panel.source.pi.customExcludeBodyHelp': {
+        'zh-CN':
+            '如果服务商提示某个参数不被支持，可在这里填写参数名，使请求不再携带它。多个名称用换行或逗号分隔，也支持 YAML 列表。Google 参数写为 config.&lt;参数名&gt;。不需要时留空。',
+        en: 'If your provider rejects a parameter, enter its name here to leave it out of requests. Separate names with newlines or commas, or use a YAML list. For Google, use config.&lt;parameter&gt;. Otherwise leave blank.',
+    },
+    'panel.source.pi.clearCustomField': {
+        'zh-CN': '清空',
+        en: 'Clear',
+    },
+    'panel.source.pi.oauth.section': {
+        'zh-CN': 'OAuth 登录',
+        en: 'OAuth login',
+    },
+    'panel.source.pi.oauth.status': {
+        'zh-CN': '状态',
+        en: 'Status',
+    },
+    'panel.source.pi.oauth.checking': {
+        'zh-CN': '检查中…',
+        en: 'Checking…',
+    },
+    'panel.source.pi.oauth.loggedIn': {
+        'zh-CN': '已登录',
+        en: 'Signed in',
+    },
+    'panel.source.pi.oauth.loggedOut': {
+        'zh-CN': '未登录',
+        en: 'Not signed in',
+    },
+    'panel.source.pi.oauth.expiresAt': {
+        'zh-CN': '凭据有效期：{time}',
+        en: 'Credential expiry: {time}',
+    },
+    'panel.source.pi.oauth.login': {
+        'zh-CN': '登录',
+        en: 'Sign in',
+    },
+    'panel.source.pi.oauth.refresh': {
+        'zh-CN': '刷新凭证',
+        en: 'Refresh credentials',
+    },
+    'panel.source.pi.oauth.refreshing': {
+        'zh-CN': '正在刷新凭证…',
+        en: 'Refreshing credentials…',
+    },
+    'panel.source.pi.oauth.refreshSucceeded': {
+        'zh-CN': '凭证已刷新。',
+        en: 'Credentials refreshed.',
+    },
+    'panel.source.pi.oauth.cancel': {
+        'zh-CN': '取消登录',
+        en: 'Cancel sign-in',
+    },
+    'panel.source.pi.oauth.logout': {
+        'zh-CN': '登出',
+        en: 'Sign out',
+    },
+    'panel.source.pi.oauth.authorizationUrl': {
+        'zh-CN': '授权链接',
+        en: 'Authorization URL',
+    },
+    'panel.source.pi.oauth.openAuthorization': {
+        'zh-CN': '打开授权页',
+        en: 'Open authorization page',
+    },
+    'panel.source.pi.oauth.copyAuthorization': {
+        'zh-CN': '复制授权链接',
+        en: 'Copy authorization URL',
+    },
+    'panel.source.pi.oauth.copySucceeded': {
+        'zh-CN': '已复制授权链接',
+        en: 'Authorization URL copied',
+    },
+    'panel.source.pi.oauth.copyFailed': {
+        'zh-CN': '无法复制授权链接，请手动选择并复制。',
+        en: 'Could not copy the authorization URL. Select and copy it manually.',
+    },
+    'panel.source.pi.oauth.callbackUrl': {
+        'zh-CN': '回调链接',
+        en: 'Callback URL',
+    },
+    'panel.source.pi.oauth.callbackHelp': {
+        'zh-CN':
+            '完成授权后，如果跳转到的页面打不开，不影响登录。请复制浏览器地址栏中以 127.0.0.1 或 localhost 开头的完整链接，粘贴到这里，再点击“完成登录”。',
+        en: 'After authorization, the redirected page may fail to open; you can still finish signing in. Copy the full URL starting with 127.0.0.1 or localhost from the address bar, paste it here, and click Complete sign-in.',
+    },
+    'panel.source.pi.oauth.complete': {
+        'zh-CN': '完成登录',
+        en: 'Complete sign-in',
+    },
+    'panel.source.pi.oauth.preparing': {
+        'zh-CN': '正在准备安全授权链接…',
+        en: 'Preparing a secure authorization URL…',
+    },
+    'panel.source.pi.oauth.waitingCallback': {
+        'zh-CN': '请在授权页完成登录，然后粘贴完整回调链接。',
+        en: 'Finish signing in on the authorization page, then paste the complete callback URL.',
+    },
+    'panel.source.pi.oauth.exchanging': {
+        'zh-CN': '正在验证回调并交换凭据…',
+        en: 'Validating the callback and exchanging credentials…',
+    },
+    'panel.source.pi.oauth.loginSucceeded': {
+        'zh-CN': 'OAuth 登录成功。',
+        en: 'OAuth sign-in succeeded.',
+    },
+    'panel.source.pi.oauth.logoutSucceeded': {
+        'zh-CN': '已登出。',
+        en: 'Signed out.',
+    },
+    'panel.source.pi.oauth.logoutConfirm': {
+        'zh-CN': '确定在当前配置中登出 {provider} 吗？之后可以登录其他账号。',
+        en: 'Sign out of {provider} for the current configuration? You can then sign in with another account.',
+    },
+    'panel.source.pi.oauth.failureTitle': {
+        'zh-CN': '[MVU]OAuth 操作失败',
+        en: '[MVU] OAuth operation failed',
     },
     'panel.source.advanced': {
         'zh-CN': '高级参数',

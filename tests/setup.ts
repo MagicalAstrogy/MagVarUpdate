@@ -1,15 +1,22 @@
-// Global test setup
+/**
+ * 测试场景：为 Jest 提供浏览器、酒馆、事件和变量 API 的共享模拟环境，并在每个用例前隔离设置及全局状态。
+ * 补齐 Web Streams，支持 Pi 和 Google SDK 在 jsdom 中初始化。
+ */
 import $ from 'jquery';
 import _ from 'lodash';
 import { createPinia, setActivePinia } from 'pinia';
 import { klona } from 'klona';
 import { watch } from 'vue';
+import { ReadableStream, TransformStream, WritableStream } from 'node:stream/web';
 
-// Make lodash available globally as it's used in the source code
+// 浏览器能力：补齐 jsdom 缺少的 Web Streams，满足 SDK 模块初始化要求。
+Object.assign(globalThis, { ReadableStream, TransformStream, WritableStream });
+
+// 全局工具：源码从全局访问 lodash 和 klona，测试中注入真实实现。
 (globalThis as any)._ = _;
 (globalThis as any).klona = klona;
 
-// Provide a default SillyTavern mock so Pinia stores can read/write settings
+// 酒馆环境：模拟设置、聊天和弹窗 API，供 Pinia 及界面逻辑读写。
 (globalThis as any).SillyTavern = {
     extensionSettings: {},
     getCurrentLocale: jest.fn().mockReturnValue('zh-CN'),
@@ -91,19 +98,20 @@ const TEST_SCRIPT_ID = 'test-script-id';
 
 const __eventHandlers = new Map<string, Array<(...args: unknown[]) => unknown>>();
 
-// Mock window object
+// 窗口环境：提供脚本依赖的浏览器窗口对象。
 (globalThis as any).atob =
     (globalThis as any).atob ??
     ((value: string) => Buffer.from(value, 'base64').toString('binary'));
 
-// Mock TavernHelper
+// 酒馆助手：提供测试需要的脚本接口入口。
 (globalThis as any).window.TavernHelper = {
     substitudeMacros: jest.fn(input => input),
 };
 
-// Mock tavern events
+// 事件环境：固定测试使用的酒馆事件名。
 (globalThis as any).tavern_events = {
     GENERATION_ENDED: 'GENERATION_ENDED',
+    GENERATION_STOPPED: 'GENERATION_STOPPED',
     MESSAGE_SENT: 'MESSAGE_SENT',
     GENERATION_STARTED: 'GENERATION_STARTED',
     WORLDINFO_UPDATED: 'WORLDINFO_UPDATED',
@@ -114,7 +122,7 @@ const __eventHandlers = new Map<string, Array<(...args: unknown[]) => unknown>>(
     WORLDINFO_SCAN_DONE: 'worldinfo_scan_done',
 };
 
-// Ensure each test runs with a fresh Pinia instance
+// 用例隔离：每次重建 Pinia 和可变设置，避免前一用例污染后续场景。
 beforeEach(() => {
     setActivePinia(createPinia());
     __eventHandlers.clear();
@@ -126,10 +134,10 @@ beforeEach(() => {
     }
     (globalThis as any).SillyTavern.chatCompletionSettings = { function_calling: true };
     (globalThis as any).builtin.saveSettings = jest.fn().mockResolvedValue(undefined);
-    (globalThis as any).stopGenerationById = jest.fn();
+    (globalThis as any).stopGenerationById = jest.fn().mockReturnValue(true);
 });
 
-// Mock functions that are not available in test environment
+// 宿主接口：为测试环境缺失的全局函数提供可观测的模拟实现。
 (globalThis as any).eventOn = jest.fn((event: string, handler: (...args: unknown[]) => unknown) => {
     const bridged = (globalThis as any).eventOnButton;
     if (typeof bridged === 'function') {
@@ -141,7 +149,7 @@ beforeEach(() => {
     }
     __eventHandlers.get(event)!.push(handler);
 
-    // Unique-script preference listeners should see current preferred script immediately in tests.
+    // 首选脚本监听在测试中立即读取当前选择，模拟宿主订阅后的初始通知。
     if (event.startsWith('th_unique_check.')) {
         handler(TEST_SCRIPT_ID);
     }
@@ -154,6 +162,26 @@ beforeEach(() => {
         handlers.unshift(handler);
         __eventHandlers.set(event, handlers);
         return { stop: () => (globalThis as any).eventRemoveListener(event, handler) };
+    }
+);
+(globalThis as any).eventMakeLast = jest.fn(
+    (event: string, handler: (...args: unknown[]) => unknown) => {
+        if (!__eventHandlers.has(event)) {
+            __eventHandlers.set(event, []);
+        }
+
+        const handlers = __eventHandlers.get(event)!;
+        const existing_index = handlers.indexOf(handler);
+        if (existing_index !== -1) {
+            handlers.splice(existing_index, 1);
+        }
+        handlers.push(handler);
+
+        return {
+            stop: jest.fn(() => {
+                (globalThis as any).eventRemoveListener(event, handler);
+            }),
+        };
     }
 );
 (globalThis as any).eventRemoveListener = jest.fn(

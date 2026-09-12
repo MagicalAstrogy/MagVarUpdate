@@ -57,6 +57,26 @@ export function stripWorldinfoRequestMarkers(data: {
     }
 }
 
+/** 取消时立即结束配置等待；底层世界书读取即使稍后返回，也不会继续登记请求。 */
+async function createRequestFilterContext(
+    request_settings: MvuSettings['额外模型解析配置'],
+    signal?: AbortSignal
+): Promise<EntryFilterContext> {
+    signal?.throwIfAborted();
+    if (!signal) return createEntryFilterContext(true, request_settings);
+
+    let on_abort!: () => void;
+    const canceled = new Promise<never>((_resolve, reject) => {
+        on_abort = () => reject(signal.reason);
+        signal.addEventListener('abort', on_abort, { once: true });
+    });
+    try {
+        return await Promise.race([createEntryFilterContext(true, request_settings), canceled]);
+    } finally {
+        signal.removeEventListener('abort', on_abort);
+    }
+}
+
 /**
  * 为单次额外变量分析登记独立标记和过滤策略快照。
  *
@@ -65,16 +85,19 @@ export function stripWorldinfoRequestMarkers(data: {
  *
  * @param generation_id 本次生成的唯一编号，与传给酒馆助手的编号一致。
  * @param request_settings 用于创建本次世界书过滤快照的额外模型配置。
+ * @param signal 取消配置读取等待的请求或批次信号；取消后不再登记或安装监听器。
  * @returns 幂等清理函数；调用方必须在 finally 中执行，未启用时返回空操作。
  * @throws 同一编号已有在途请求时抛出异常。
  */
 export async function registerWorldinfoRequest(
     generation_id: string,
-    request_settings: MvuSettings['额外模型解析配置']
+    request_settings: MvuSettings['额外模型解析配置'],
+    signal?: AbortSignal
 ): Promise<() => void> {
     const store = useDataStore();
     if (!store.should_enable || !store.runtimes.is_during_extra_analysis) return () => {};
-    const filter_context = await createEntryFilterContext(true, request_settings);
+    const filter_context = await createRequestFilterContext(request_settings, signal);
+    signal?.throwIfAborted();
     if (pending_requests.has(generation_id)) {
         throw new Error(`Worldinfo request is already pending: ${generation_id}`);
     }
