@@ -375,6 +375,80 @@ function throwIfAborted(signal: AbortSignal | null | undefined): void {
     }
 }
 
+/** 保留原始应答格式，仅遮盖上游可能在错误正文中回显的本次请求凭证。 */
+function redactProxyResponseBody(
+    body: string,
+    headers: HeadersInit | undefined,
+    target: URL
+): string {
+    const credentials = new Set<string>();
+    for (const name of ['authorization', 'x-api-key', 'x-goog-api-key', 'api-key']) {
+        const value = getHeader(headers, name)?.trim();
+        if (value) {
+            credentials.add(value);
+            credentials.add(value.replace(/^Bearer\s+/i, ''));
+        }
+    }
+    for (const [name, value] of target.searchParams) {
+        if (/^(?:key|api[_-]?key|(?:access[_-]?)?token)$/i.test(name) && value) {
+            credentials.add(value);
+        }
+    }
+    for (const credential of [...credentials].filter(Boolean).sort((a, b) => b.length - a.length)) {
+        body = body.split(credential).join('[REDACTED]');
+    }
+    return body;
+}
+
+/** 异步读取克隆应答，在流结束或中断后输出 debug 日志，不占用 SDK 的正文。 */
+async function debugProxyResponse(
+    response: Response,
+    target: URL,
+    method: string,
+    headers: HeadersInit | undefined,
+    signal: AbortSignal | null | undefined
+): Promise<void> {
+    const copy = response.clone();
+    const reader = copy.body?.getReader();
+    let body = '';
+    let complete = false;
+    // 不等待 tee 分支的 cancel：其 Promise 可能要等 SDK 也结束读取才完成。
+    const on_abort = () => {
+        void reader?.cancel().catch(() => {});
+    };
+    try {
+        if (reader) {
+            const decoder = new TextDecoder();
+            signal?.addEventListener('abort', on_abort, { once: true });
+            if (signal?.aborted) {
+                on_abort();
+            }
+            while (true) {
+                const chunk = await reader.read();
+                if (chunk.done) {
+                    body += decoder.decode();
+                    complete = !signal?.aborted;
+                    break;
+                }
+                body += decoder.decode(chunk.value, { stream: true });
+            }
+        } else {
+            body = await copy.text();
+            complete = !signal?.aborted;
+        }
+    } catch {
+        // 读取失败时仍记录已收到的部分；日志失败不能改变请求结果。
+    } finally {
+        signal?.removeEventListener('abort', on_abort);
+        reader?.releaseLock();
+    }
+    console.debug(
+        '[MVU Pi Proxy] raw response',
+        { method, url: `${target.origin}${target.pathname}`, status: response.status, complete },
+        redactProxyResponseBody(body, headers, target)
+    );
+}
+
 /** 检查返回值是否为酒馆明确的代理关闭提示，不把普通上游 404 误判为代理关闭。 */
 async function isDisabledProxyResponse(response: Response): Promise<boolean> {
     if (response.status !== 404) {
@@ -437,6 +511,7 @@ export function createSillyTavernProxyFetch(options: SillyTavernProxyFetchOption
             ...(signal === undefined ? {} : { signal }),
             credentials: 'same-origin',
         });
+        void debugProxyResponse(response, target, method, headers, signal).catch(() => {});
         if (await isDisabledProxyResponse(response)) {
             cacheTerminalStatus(fetch_impl, origin, 'disabled');
             throw new PiProxyUnavailableError('disabled');

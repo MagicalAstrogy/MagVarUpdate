@@ -1,6 +1,7 @@
 /**
  * 测试场景：通过模拟请求验证酒馆 CORS 代理探测、共享缓存、调用方取消，以及目标和 JSON 载荷约束。
  */
+import { TextDecoder, TextEncoder } from 'node:util';
 import {
     assertSillyTavernProxyAvailable,
     createSillyTavernProxyFetch,
@@ -9,6 +10,8 @@ import {
     probeSillyTavernProxy,
     resetSillyTavernProxyStatusForTests,
 } from '@/function/update/pi/sillytavern_proxy';
+
+Object.assign(globalThis, { TextDecoder, TextEncoder });
 
 type FetchMock = jest.Mock<Promise<Response>, [RequestInfo | URL, RequestInit?]>;
 
@@ -38,8 +41,15 @@ function deferred<T>() {
 
 // 代理传输契约：探测结果准确，凭证只转发到配置目标，取消不会污染其他调用方。
 describe('SillyTavern CORS proxy transport', () => {
+    let debugSpy: jest.SpyInstance;
+
     beforeEach(() => {
         resetSillyTavernProxyStatusForTests();
+        debugSpy = jest.spyOn(console, 'debug').mockImplementation(() => {});
+    });
+
+    afterEach(() => {
+        debugSpy.mockRestore();
     });
 
     // 探测与缓存：兼容 srcdoc 基础地址，使用本地探测载荷并合并并发检查。
@@ -96,6 +106,7 @@ describe('SillyTavern CORS proxy transport', () => {
             })
         );
         expect(getSillyTavernProxyStatus(options)).toBe('enabled');
+        expect(debugSpy).not.toHaveBeenCalled();
     });
 
     it('merges concurrent probes for the same fetch and origin', async () => {
@@ -313,5 +324,153 @@ describe('SillyTavern CORS proxy transport', () => {
             })
         ).rejects.toBe(reason);
         expect(fetchMock).not.toHaveBeenCalled();
+    });
+
+    // 原始响应日志：覆盖成功、错误、流式分块和中断，保持调用方响应及取消语义。
+    describe('raw response debug logging', () => {
+        const target = 'https://api.example.test/v1/responses';
+
+        function proxyReturning(response: Response) {
+            return createSillyTavernProxyFetch({
+                baseUrl: 'https://api.example.test/v1',
+                origin: ST_ORIGIN,
+                fetch: jest
+                    .fn()
+                    .mockResolvedValueOnce(textResponse(PROBE_BODY, 200))
+                    .mockResolvedValueOnce(response),
+            });
+        }
+
+        it.each([200, 400])('logs the untouched HTTP %s body at debug level', async status => {
+            const body = '{\n  "message": "原始应答", "extra": [1, 2]\n}\n';
+            const response = textResponse(body, status);
+
+            await expect(
+                proxyReturning(response)(`${target}?cursor=private-query`, {
+                    method: 'POST',
+                    headers: { 'content-type': 'application/json' },
+                    body: '{}',
+                })
+            ).resolves.toBe(response);
+
+            expect(response.text).not.toHaveBeenCalled();
+            expect(debugSpy).toHaveBeenCalledTimes(1);
+            expect(debugSpy).toHaveBeenCalledWith(
+                '[MVU Pi Proxy] raw response',
+                { method: 'POST', url: target, status, complete: true },
+                body
+            );
+            await expect(response.text()).resolves.toBe(body);
+        });
+
+        it('redacts echoed credentials while leaving the provider response intact', async () => {
+            const body =
+                'Bearer oauth-secret / oauth-secret / anthropic-secret / google-secret / query-secret';
+            const response = textResponse(body, 401);
+
+            await proxyReturning(response)(`${target}?key=query-secret`, {
+                headers: {
+                    Authorization: 'Bearer oauth-secret',
+                    'x-api-key': 'anthropic-secret',
+                    'x-goog-api-key': 'google-secret',
+                },
+            });
+
+            expect(debugSpy).toHaveBeenCalledWith(
+                '[MVU Pi Proxy] raw response',
+                { method: 'GET', url: target, status: 401, complete: true },
+                '[REDACTED] / [REDACTED] / [REDACTED] / [REDACTED] / [REDACTED]'
+            );
+            await expect(response.text()).resolves.toBe(body);
+        });
+
+        it('returns before SSE completion and preserves UTF-8 split across chunks', async () => {
+            let controller!: ReadableStreamDefaultController<Uint8Array>;
+            const stream = new ReadableStream<Uint8Array>({
+                start(value) {
+                    controller = value;
+                },
+            });
+            const response = textResponse('SDK body', 200);
+            jest.mocked(response.clone).mockReturnValue({ body: stream } as Response);
+            const logged = deferred<unknown[]>();
+            debugSpy.mockImplementation((...args) => logged.resolve(args));
+
+            // 流尚未结束，fetch 已返回；SDK 自己的正文不被日志读取。
+            await expect(proxyReturning(response)(target)).resolves.toBe(response);
+            expect(debugSpy).not.toHaveBeenCalled();
+            expect(response.text).not.toHaveBeenCalled();
+
+            const body =
+                'event: response.output_text.delta\ndata: {"delta":"你好"}\n\ndata: [DONE]\n\n';
+            const bytes = new TextEncoder().encode(body);
+            const split = bytes.findIndex(byte => byte > 127) + 1;
+            controller.enqueue(bytes.slice(0, split));
+            controller.enqueue(bytes.slice(split));
+            controller.close();
+
+            await expect(logged.promise).resolves.toEqual([
+                '[MVU Pi Proxy] raw response',
+                { method: 'GET', url: target, status: 200, complete: true },
+                body,
+            ]);
+            expect(stream.locked).toBe(false);
+        });
+
+        it.each(['abort', 'read error'])(
+            'logs partial SSE after %s without affecting fetch',
+            async stop => {
+                let controller!: ReadableStreamDefaultController<Uint8Array>;
+                // 模拟 tee 的 cancel 等待另一分支，日志不能等待这个 Promise。
+                const cancel = jest.fn(() => new Promise<void>(() => {}));
+                const stream = new ReadableStream<Uint8Array>({
+                    start(value) {
+                        controller = value;
+                    },
+                    cancel,
+                });
+                const response = textResponse('SDK body', 200);
+                jest.mocked(response.clone).mockReturnValue({ body: stream } as Response);
+                const abort = new AbortController();
+                const logged = deferred<unknown[]>();
+                debugSpy.mockImplementation((...args) => logged.resolve(args));
+
+                await expect(
+                    proxyReturning(response)(target, { signal: abort.signal })
+                ).resolves.toBe(response);
+                const partial = 'data: {"delta":"部分应答"}\n\n';
+                controller.enqueue(new TextEncoder().encode(partial));
+                await Promise.resolve();
+                if (stop === 'abort') {
+                    abort.abort();
+                } else {
+                    controller.error(new Error('connection closed'));
+                }
+
+                await expect(logged.promise).resolves.toEqual([
+                    '[MVU Pi Proxy] raw response',
+                    { method: 'GET', url: target, status: 200, complete: false },
+                    partial,
+                ]);
+                expect(cancel).toHaveBeenCalledTimes(stop === 'abort' ? 1 : 0);
+                expect(stream.locked).toBe(false);
+                expect(response.text).not.toHaveBeenCalled();
+            }
+        );
+
+        it.each(['clone', 'console'])('does not fail the request when %s throws', async failure => {
+            const response = textResponse('raw', 200);
+            const fail = () => {
+                throw new Error('debug unavailable');
+            };
+            if (failure === 'clone') {
+                jest.mocked(response.clone).mockImplementation(fail);
+            } else {
+                debugSpy.mockImplementation(fail);
+            }
+
+            await expect(proxyReturning(response)(target)).resolves.toBe(response);
+            await expect(response.text()).resolves.toBe('raw');
+        });
     });
 });

@@ -351,6 +351,11 @@ Pi 的最终结果只转换回现有的 `string | GenerateToolCallResult` 接口
 Context，也不直接写入 SillyTavern
 chat。仓库不修改 SillyTavern 或 Slash-Runner，也不增加额外的 Slash 版本探测。
 
+Proxy 渠道通过 `console.debug` 输出 `[MVU Pi Proxy] raw response`，可在浏览器控制台开启
+Verbose/详细级别并搜索此前缀。日志包含 HTTP 方法、去掉查询参数的目标地址、状态码及原始应答正文；
+SSE 在流结束后合并输出，中断或读取失败时保留已收到的正文并标记 `complete: false`。
+日志异步读取应答副本，不影响 SDK 读取；正文中回显的本次认证头或密钥查询参数值会被遮盖。
+
 ## 安全说明
 
 - API Key 和 OAuth
@@ -359,7 +364,8 @@ chat。仓库不修改 SillyTavern 或 Slash-Runner，也不增加额外的 Slas
   URL 只存在于当前内存登录尝试；callback 输入在完成或取消后清空。界面和状态只显示登录状态及到期时间，不回显 access/refresh
   token。
 - OAuth credential 与按 Provider + 规范化 endpoint 隔离的 API Key
-  map 都不进入 API 方案快照；日志和归一化 Provider 错误不应包含 key、code、token、请求 header 或响应正文。
+  map 都不进入 API 方案快照；普通日志和归一化 Provider 错误不应包含 key、code、token、请求 header 或响应正文。
+  Proxy 的 debug 应答日志会包含上述经凭证遮盖的响应正文。
 - Prompt 捕获请求永远使用空凭据和 `.invalid` endpoint。即使捕获监听器失效，也不应把真实 Pi
   endpoint、key 或 model 发送给 SillyTavern 后端。
 - Proxy 模式会把模型请求及其凭据交给当前 SillyTavern 实例转发，只应连接可信的 SillyTavern，并且只为可信、不跨站重定向的 HTTPS（或允许的 loopback
