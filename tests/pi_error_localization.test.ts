@@ -42,8 +42,6 @@ describe('Pi error localization boundary', () => {
         locale => {
             i18n.global.locale.value = locale;
             const cases = [
-                ['system-role-unsupported', 'runtime.pi.contextSystemRoleUnsupported'],
-                ['system-placement', 'runtime.pi.contextSystemPlacement'],
                 ['system-payload-mismatch', 'runtime.pi.contextSystemPayloadMismatch'],
             ] as const;
             for (const [code, key] of cases) {

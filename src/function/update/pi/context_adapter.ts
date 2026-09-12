@@ -11,11 +11,6 @@ import type {
     UserMessage,
 } from '@earendil-works/pi-ai';
 
-/** 后置 system 默认保留原生角色；strict 用于明确禁止此类输入的调用方。 */
-export type LateSystemPolicy = 'preserve' | 'strict';
-/** 普通空消息的处理方式：strict 报错，lenient 丢弃并记录原始下标。 */
-export type ContextAdapterMode = 'strict' | 'lenient';
-
 /** Pi Context 无法表达的系统消息，交由请求载荷 hook 在原位置恢复。 */
 export type PiLateSystemMessage = {
     sourceIndex: number;
@@ -26,15 +21,9 @@ export type PiLateSystemMessage = {
 
 /** 上下文转换的内容保留及空消息诊断，不包含完整提示词。 */
 export type PiContextAdapterDiagnostics = {
+    /** 保留待处理的 system 数量；最终角色由协议适配层自动决定。 */
     preservedLateSystemCount: number;
     droppedEmptyMessageIndexes: number[];
-};
-
-/** 转换策略和可注入时钟；不包含服务商认证或网络配置。 */
-export type ToPiContextOptions = {
-    mode?: ContextAdapterMode;
-    lateSystemPolicy?: LateSystemPolicy;
-    now?: () => number;
 };
 
 /** 标准 Pi 上下文与必须一并传给载荷适配层的原生 system 消息。 */
@@ -46,12 +35,8 @@ export type PiContextAdapterResult = {
 
 /** 提示词转换或原生 system 恢复失败的稳定分类。 */
 export type PiContextAdapterErrorCode =
-    | 'empty-content'
     | 'invalid-image'
     | 'invalid-tool-call'
-    | 'late-system'
-    | 'system-role-unsupported'
-    | 'system-placement'
     | 'system-payload-mismatch'
     | 'missing-tool-call'
     | 'unsupported-content';
@@ -560,7 +545,7 @@ function compactTextBlocks(content: PiInputContent[]): PiInputContent[] {
     return content.filter(block => block.type === 'image' || !isBlank(block.text));
 }
 
-/** 提取 system 消息的纯文本；严格模式下拒绝不支持的系统内容。 */
+/** 提取 system 消息的纯文本，统一拒绝不支持的系统内容。 */
 function extractSystemText(message: SendingMessage, sourceIndex: number): string {
     const content = message.content;
     let text: string;
@@ -710,35 +695,21 @@ function convertToolResultMessage(
     };
 }
 
-/** 按严格或宽松策略处理空消息，抛出定位错误或记录被丢弃的下标。 */
-function handleEmptyMessage(
-    mode: ContextAdapterMode,
-    sourceIndex: number,
-    diagnostics: PiContextAdapterDiagnostics
-): false {
-    if (mode === 'strict') {
-        throw new PiContextAdapterError(
-            `第 ${sourceIndex} 条消息内容为空`,
-            'empty-content',
-            sourceIndex
-        );
-    }
+/** 所有来源统一丢弃空消息，并保留原始下标用于诊断。 */
+function recordEmptyMessage(sourceIndex: number, diagnostics: PiContextAdapterDiagnostics): void {
     diagnostics.droppedEmptyMessageIndexes.push(sourceIndex);
-    return false;
 }
 
 /**
  * 把酒馆最终提示词转换为 Pi 上下文，并返回转换诊断。
  * 前置 system 合并为系统提示词；后置 system 单独保留内容及原位置，由载荷 hook 恢复。
- * 同时校验工具关联和图片预算，不把系统指令降为用户内容。
+ * 同时校验工具关联和图片预算、清理空消息；渠道兼容由载荷适配层处理。
+ * now 只供测试注入稳定时间，不提供渠道相关的转换策略开关。
  */
 export function toPiContext(
     input: readonly SendingMessage[],
-    options: ToPiContextOptions = {}
+    now: () => number = Date.now
 ): PiContextAdapterResult {
-    const mode = options.mode ?? 'lenient';
-    const lateSystemPolicy = options.lateSystemPolicy ?? 'preserve';
-    const now = options.now ?? Date.now;
     const messages = Array.from(input);
     const diagnostics: PiContextAdapterDiagnostics = {
         preservedLateSystemCount: 0,
@@ -754,7 +725,7 @@ export function toPiContext(
     for (let index = 0; index < leadingSystemEnd; index++) {
         const text = extractSystemText(messages[index], index);
         if (isBlank(text)) {
-            handleEmptyMessage(mode, index, diagnostics);
+            recordEmptyMessage(index, diagnostics);
             continue;
         }
         systemPromptParts.push(text);
@@ -767,16 +738,9 @@ export function toPiContext(
     for (let index = leadingSystemEnd; index < messages.length; index++) {
         const message = messages[index];
         if (message.role === 'system') {
-            if (lateSystemPolicy === 'strict') {
-                throw new PiContextAdapterError(
-                    `第 ${index} 条消息是在对话开始后出现的 system 消息`,
-                    'late-system',
-                    index
-                );
-            }
             const text = extractSystemText(message, index);
             if (isBlank(text)) {
-                handleEmptyMessage(mode, index, diagnostics);
+                recordEmptyMessage(index, diagnostics);
                 continue;
             }
             lateSystemMessages.push({
@@ -792,7 +756,7 @@ export function toPiContext(
                 message.name
             );
             if (!contentHasValue(content)) {
-                handleEmptyMessage(mode, index, diagnostics);
+                recordEmptyMessage(index, diagnostics);
                 continue;
             }
             const compactContent = compactTextBlocks(content);
@@ -816,7 +780,7 @@ export function toPiContext(
                 imageBudget
             );
             if (assistantMessage.content.length === 0) {
-                handleEmptyMessage(mode, index, diagnostics);
+                recordEmptyMessage(index, diagnostics);
                 continue;
             }
             piMessages.push(assistantMessage);

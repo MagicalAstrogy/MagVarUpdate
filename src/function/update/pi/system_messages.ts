@@ -67,54 +67,33 @@ function anchorMessage(message: Message, marker: string, api: Api): Message {
     return { ...message, content } as Message;
 }
 
-/** 只接受提供消息内 system 的协议；Anthropic 同时遵循 user → system → assistant 的位置规则。 */
-function assertNativeSystemPlacement(
-    { context, lateSystemMessages }: PiContextAdapterResult,
-    api: Api
-): void {
-    if (!lateSystemMessages.length) return;
-    if (
-        ![
-            'openai-completions',
-            'openai-responses',
-            'openai-codex-responses',
-            'anthropic-messages',
-            'mistral-conversations',
-        ].includes(api)
-    ) {
-        throw new PiContextAdapterError(
-            `More source API '${api}' cannot preserve intermediate system messages.`,
-            'system-role-unsupported',
-            lateSystemMessages[0].sourceIndex
-        );
-    }
-    if (api !== 'anthropic-messages') return;
-    for (const message of lateSystemMessages) {
+/** 按实际协议和消息位置自动选择角色，不暴露额外的渠道配置。 */
+function systemMessageRole(
+    context: Context,
+    api: Api,
+    message: PiLateSystemMessage
+): 'system' | 'user' {
+    if (api === 'google-generative-ai') return 'user';
+    if (api === 'anthropic-messages') {
         const previous = context.messages[message.beforeMessageIndex - 1];
         const next = context.messages[message.beforeMessageIndex];
-        // 本转换层中的 toolResult 在 Anthropic 协议里是携带工具结果的 user 回合。
-        if (
-            (previous?.role !== 'user' && previous?.role !== 'toolResult') ||
-            (next && next.role !== 'assistant')
-        ) {
-            throw new PiContextAdapterError(
-                `Message ${message.sourceIndex}: Anthropic intermediate system messages must follow a user turn and precede an assistant turn or end the request.`,
-                'system-placement',
-                message.sourceIndex
-            );
-        }
+        // toolResult 在 Anthropic 协议里是携带工具结果的 user 回合。
+        return (previous?.role === 'user' || previous?.role === 'toolResult') &&
+            (!next || next.role === 'assistant')
+            ? 'system'
+            : 'user';
     }
+    return 'system';
 }
 
 /**
- * 保留普通消息角色，在服务商完成拆分/合并之后按内容锚点恢复 system。
+ * 保留普通消息角色，在服务商完成拆分/合并之后按内容锚点恢复 system；不符合协议约束时转为 user。
  * 锚点只进入待转换的文本，发送前必须恰好移除一次；不修改捕获输入、共享上下文或全局 fetch。
  */
 export function createPiSystemMessageBridge(
     adapted: PiContextAdapterResult,
     api: Api
 ): PiSystemMessageBridge {
-    assertNativeSystemPlacement(adapted, api);
     const { context, lateSystemMessages } = adapted;
     if (!lateSystemMessages.length) {
         return {
@@ -146,7 +125,14 @@ export function createPiSystemMessageBridge(
     });
     const tail = groups.get(context.messages.length) ?? [];
     const field =
-        api === 'openai-responses' || api === 'openai-codex-responses' ? 'input' : 'messages';
+        api === 'google-generative-ai'
+            ? 'contents'
+            : api === 'openai-responses' || api === 'openai-codex-responses'
+              ? 'input'
+              : 'messages';
+    const hasUserFallback = lateSystemMessages.some(
+        message => systemMessageRole(context, api, message) === 'user'
+    );
     let failure: PiContextAdapterError | undefined;
     let applied = false;
     const restoredPayloads = new WeakSet<object>();
@@ -158,10 +144,60 @@ export function createPiSystemMessageBridge(
             lateSystemMessages[0].sourceIndex
         );
     const nativeMessages = (group: readonly PiLateSystemMessage[]) =>
-        group.map(message => ({
-            role: 'system',
-            content: message.text,
-        }));
+        group.map(message =>
+            api === 'google-generative-ai'
+                ? { role: 'user', parts: [{ text: message.text }] }
+                : { role: systemMessageRole(context, api, message), content: message.text }
+        );
+
+    /** 工具结果可能被 SDK 合并进同一 user；按工具结果块拆出插入边界，避免把指令提前到整组结果前。 */
+    const splitToolResultGroups = (items: unknown[]): unknown[] =>
+        items.flatMap(item => {
+            if (!item || typeof item !== 'object' || !hasUserFallback) return [item];
+            const message = item as Record<string, unknown>;
+            const key = api === 'google-generative-ai' ? 'parts' : 'content';
+            const blocks = message[key];
+            if (message.role !== 'user' || !Array.isArray(blocks)) return [item];
+            const result: unknown[] = [];
+            let current: unknown[] = [];
+            for (const block of blocks) {
+                const isToolResult =
+                    block &&
+                    typeof block === 'object' &&
+                    (block.type === 'tool_result' || block.functionResponse);
+                if (isToolResult && current.length && containsMarker(block, prefix)) {
+                    result.push({ ...message, [key]: current });
+                    current = [];
+                }
+                current.push(block);
+            }
+            result.push({ ...message, [key]: current });
+            return result;
+        });
+
+    /** 与酒馆兼容处理一致，user 回退后合并相邻 user，同时保留内容块、图片及工具结果的顺序。 */
+    const mergeFallbackUsers = (items: unknown[]): unknown[] => {
+        if (!hasUserFallback || (api !== 'anthropic-messages' && api !== 'google-generative-ai'))
+            return items;
+        const key = api === 'google-generative-ai' ? 'parts' : 'content';
+        const asBlocks = (value: unknown) =>
+            typeof value === 'string' ? [{ type: 'text', text: value }] : value;
+        const merged: unknown[] = [];
+        for (const item of items) {
+            const current = item as Record<string, unknown>;
+            const previous = merged.at(-1) as Record<string, unknown> | undefined;
+            if (current?.role === 'user' && previous?.role === 'user') {
+                const before = asBlocks(previous[key]);
+                const after = asBlocks(current[key]);
+                if (Array.isArray(before) && Array.isArray(after)) {
+                    merged[merged.length - 1] = { ...previous, [key]: [...before, ...after] };
+                    continue;
+                }
+            }
+            merged.push(item);
+        }
+        return merged;
+    };
 
     /** 只遍历原生消息字段；完整保留工具 ID、图片、缓存标记和其他服务商元数据。 */
     const clean = (value: unknown): CleanedNode => {
@@ -189,9 +225,10 @@ export function createPiSystemMessageBridge(
         if (!found.length) return { value, anchors: [] };
         const result = Object.fromEntries(entries.map(([key, child]) => [key, child.value]));
         const emptyAnchorBlock =
-            typeof result.type === 'string' &&
-            ['text', 'input_text', 'output_text'].includes(result.type) &&
-            result.text === '';
+            result.text === '' &&
+            (api === 'google-generative-ai' ||
+                (typeof result.type === 'string' &&
+                    ['text', 'input_text', 'output_text'].includes(result.type)));
         // Responses 会把仅含工具调用的 assistant 上新增的锚点文本拆成单独消息，恢复后移除它。
         const emptyAnchorMessage =
             result.type === 'message' &&
@@ -223,7 +260,7 @@ export function createPiSystemMessageBridge(
                 if (!Array.isArray(items)) throw mismatch();
                 const seen = new Set<SystemAnchor>();
                 const restored: unknown[] = [];
-                for (const item of items) {
+                for (const item of splitToolResultGroups(items)) {
                     const result = clean(item);
                     if (result.anchors.length > 1) throw mismatch();
                     const anchor = result.anchors[0];
@@ -236,7 +273,7 @@ export function createPiSystemMessageBridge(
                 }
                 if (seen.size !== anchors.length) throw mismatch();
                 restored.push(...nativeMessages(tail));
-                const result = { ...original, [field]: restored };
+                const result = { ...original, [field]: mergeFallbackUsers(restored) };
                 if (containsMarker(result, prefix)) throw mismatch();
                 restoredPayloads.add(result);
                 applied = true;

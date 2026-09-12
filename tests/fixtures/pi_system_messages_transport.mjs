@@ -31,6 +31,7 @@ const { toPiContext } = await load('context_adapter');
 const { createPiSystemMessageBridge } = await load('system_messages');
 const { transformPiPayload } = await load('payload');
 const { createPiNonStreamingFetch } = await load('non_streaming_fetch');
+const { createGoogleProxyAwareApi } = await load('google_proxy_adapter');
 const gateway = await load('pi_gateway');
 const adapters = {
     'openai-completions': gateway.openAICompletionsApi(),
@@ -38,6 +39,7 @@ const adapters = {
     'openai-codex-responses': gateway.openAICodexResponsesApi(),
     'anthropic-messages': gateway.anthropicMessagesApi(),
     'mistral-conversations': gateway.mistralConversationsApi(),
+    'google-generative-ai': createGoogleProxyAwareApi(gateway.googleGenerativeAIApi()),
 };
 const PNG =
     'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9ZfG8AAAAASUVORK5CYII=';
@@ -52,7 +54,12 @@ async function capture(api, input, { baseline = false, nonStreaming = false } = 
     const adapted = toPiContext(input);
     const bridge = baseline ? undefined : createPiSystemMessageBridge(adapted, api);
     const model = {
-        id: api === 'anthropic-messages' ? 'claude-opus-4-8' : 'test-model',
+        id:
+            api === 'anthropic-messages'
+                ? 'claude-opus-4-8'
+                : api === 'google-generative-ai'
+                  ? 'gemini-2.5-flash'
+                  : 'test-model',
         name: 'Test',
         api,
         provider:
@@ -116,7 +123,12 @@ async function capture(api, input, { baseline = false, nonStreaming = false } = 
     assert.ok(!JSON.stringify(body).includes('__mvu_pi_system_anchor_'), `${api}: leaked anchor`);
     return body;
 }
-const entries = (api, body) => (api.includes('responses') ? body.input : body.messages);
+const entries = (api, body) =>
+    api === 'google-generative-ai'
+        ? body.contents
+        : api.includes('responses')
+          ? body.input
+          : body.messages;
 const nativeSystems = list => list.filter(item => item.role === 'system');
 // Pi 的 Completions 适配器用 null 表示纯工具助手消息；去掉定位文本后的空串语义相同。
 const normalizeEmptyAssistant = list =>
@@ -124,7 +136,7 @@ const normalizeEmptyAssistant = list =>
         item.role === 'assistant' && item.content === null ? { ...item, content: '' } : item
     );
 
-for (const api of Object.keys(adapters)) {
+for (const api of Object.keys(adapters).filter(api => api !== 'google-generative-ai')) {
     for (const nonStreaming of [false, true]) {
         const input = [
             { role: 'system', content: 'global' },
@@ -223,6 +235,62 @@ for (const api of Object.keys(adapters)) {
             );
         }
     }
+}
+
+// 同一个请求中仅不合法的位置回退；Google 的全部中途 system 都按 user 处理。
+for (const api of ['anthropic-messages', 'google-generative-ai']) {
+    for (const nonStreaming of [false, true]) {
+        const mixed = [
+            { role: 'system', content: 'global' },
+            { role: 'user', content: 'first user' },
+            { role: 'system', content: 'valid middle' },
+            { role: 'assistant', content: 'first answer' },
+            { role: 'system', content: 'invalid middle' },
+            { role: 'user', content: 'second user' },
+            { role: 'system', content: 'valid tail' },
+        ];
+        const body = await capture(api, mixed, { nonStreaming });
+        const actual = entries(api, body);
+        const google = api === 'google-generative-ai';
+        const text = item =>
+            typeof item.content === 'string'
+                ? item.content
+                : (google ? item.parts : item.content).map(block => block.text).join('|');
+        assert.deepEqual(
+            actual.map(item => [item.role, text(item)]),
+            google
+                ? [
+                      ['user', 'first user|valid middle'],
+                      ['model', 'first answer'],
+                      ['user', 'invalid middle|second user|valid tail'],
+                  ]
+                : [
+                      ['user', 'first user'],
+                      ['system', 'valid middle'],
+                      ['assistant', 'first answer'],
+                      ['user', 'invalid middle|second user'],
+                      ['system', 'valid tail'],
+                  ],
+            `${api}: wrong conditional fallback`
+        );
+        assert.ok(JSON.stringify(google ? body.systemInstruction : body.system).includes('global'));
+    }
+
+    // SDK 会合并相邻工具结果；回退指令仍须位于两份结果之间。
+    const groupedTools = [
+        { role: 'user', content: 'inspect' },
+        {
+            role: 'assistant',
+            tool_calls: [tool('first-call', 'first'), tool('second-call', 'second')],
+        },
+        { role: 'tool', tool_call_id: 'first-call', content: 'first-result' },
+        { role: 'system', content: 'between-results' },
+        { role: 'tool', tool_call_id: 'second-call', content: 'second-result' },
+    ];
+    const serialized = JSON.stringify(entries(api, await capture(api, groupedTools)));
+    assert.ok(serialized.indexOf('first-result') < serialized.indexOf('between-results'));
+    assert.ok(serialized.indexOf('between-results') < serialized.indexOf('second-result'));
+    assert.ok(!serialized.includes('No result provided'));
 }
 
 // 把仓库已有的三条真实 ST 提示词基线送入 SDK，逐条比较最终角色、文本及原顺序。

@@ -77,24 +77,14 @@ function contains(message: string, ...patterns: RegExp[]): boolean {
 function contextError(error: PiErrorLike, code = codeOf(error)): LocalizedPiError {
     const index = sourceIndexOf(error);
     switch (code) {
-        case 'empty-content':
-            return { key: 'runtime.pi.contextEmptyContent', params: { index } };
         case 'invalid-image':
             return { key: 'runtime.pi.contextInvalidImage' };
         case 'invalid-tool-call':
             return { key: 'runtime.pi.invalidToolCall' };
-        case 'late-system':
-            return { key: 'runtime.pi.contextLateSystem', params: { index } };
-        case 'system-role-unsupported':
-            return { key: 'runtime.pi.contextSystemRoleUnsupported', params: { index } };
-        case 'system-placement':
-            return { key: 'runtime.pi.contextSystemPlacement', params: { index } };
         case 'system-payload-mismatch':
             return { key: 'runtime.pi.contextSystemPayloadMismatch' };
         case 'missing-tool-call':
             return { key: 'runtime.pi.contextMissingToolCall', params: { index } };
-        case 'missing-user-for-system':
-            return { key: 'runtime.pi.contextMissingUserForSystem', params: { index } };
         case 'unsupported-content':
             if (contains(error.message, /remote image|远程图片/i)) {
                 return { key: 'runtime.pi.remoteImageUnsupported' };
@@ -121,18 +111,6 @@ function runtimeInvalidPrompt(error: PiErrorLike): LocalizedPiError {
     }
     if (contains(message, /base64|mime|图片/i)) {
         return { key: 'runtime.pi.contextInvalidImage' };
-    }
-    if (contains(message, /empty|为空/i)) {
-        return { key: 'runtime.pi.contextEmptyContent', params: { index: sourceIndex } };
-    }
-    if (contains(message, /late[ -]?system|对话开始后.*system/i)) {
-        return { key: 'runtime.pi.contextLateSystem', params: { index: sourceIndex } };
-    }
-    if (contains(message, /missing user|没有可附着.*user/i)) {
-        return {
-            key: 'runtime.pi.contextMissingUserForSystem',
-            params: { index: sourceIndex },
-        };
     }
     if (contains(message, /tool_call_id|missing tool|找不到对应.*工具|工具.*缺少/i)) {
         return { key: 'runtime.pi.contextMissingToolCall', params: { index: sourceIndex } };

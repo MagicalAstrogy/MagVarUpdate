@@ -79,7 +79,7 @@ describe('toPiContext', () => {
             { role: 'assistant', content: 'hi' },
         ];
 
-        const { context, diagnostics } = toPiContext(input, { now: () => NOW });
+        const { context, diagnostics } = toPiContext(input, () => NOW);
 
         expect(context.systemPrompt).toBe('first instruction\n\nsecond instruction');
         expect(context.messages.map(message => message.role)).toEqual(['user', 'assistant']);
@@ -99,7 +99,7 @@ describe('toPiContext', () => {
             { role: 'system', content: 'after second user' },
         ];
 
-        const { context, diagnostics, lateSystemMessages } = toPiContext(input, { now: () => NOW });
+        const { context, diagnostics, lateSystemMessages } = toPiContext(input, () => NOW);
         expect(context.messages.map(message => getText(message.content))).toEqual([
             'first user',
             'first assistant',
@@ -124,7 +124,7 @@ describe('toPiContext', () => {
             { role: 'system', content: 'second tail instruction' },
         ];
 
-        const { context, diagnostics, lateSystemMessages } = toPiContext(input, { now: () => NOW });
+        const { context, diagnostics, lateSystemMessages } = toPiContext(input, () => NOW);
         expect(getText(context.messages[0].content)).toBe('final user');
         expect(diagnostics.droppedEmptyMessageIndexes).toEqual([1]);
         expect(lateSystemMessages).toEqual([
@@ -133,32 +133,15 @@ describe('toPiContext', () => {
         ]);
     });
 
-    test('rejects a late system message under the strict late-system policy', () => {
-        const input: InputMessage[] = [
-            { role: 'user', content: 'hello' },
-            { role: 'system', content: 'must not be moved' },
-        ];
-
-        expect(() =>
-            toPiContext(input, {
-                lateSystemPolicy: 'strict',
-                now: () => NOW,
-            })
-        ).toThrow(/late.?system|system.*(?:index|位置)|(?:对话开始后|中途).*system/i);
-    });
-
-    test('strict late-system policy also rejects an empty late system', () => {
+    test('drops empty late system messages using the same rule as ordinary empty messages', () => {
         const input: InputMessage[] = [
             { role: 'user', content: 'hello' },
             { role: 'system', content: '' },
         ];
 
-        expect(() =>
-            toPiContext(input, {
-                lateSystemPolicy: 'strict',
-                now: () => NOW,
-            })
-        ).toThrow(/late.?system|system.*(?:index|位置)|(?:对话开始后|中途).*system/i);
+        const result = toPiContext(input);
+        expect(result.lateSystemMessages).toEqual([]);
+        expect(result.diagnostics.droppedEmptyMessageIndexes).toEqual([1]);
     });
 
     test('preserves a late system message even when there is no user to attach it to', () => {
@@ -167,7 +150,7 @@ describe('toPiContext', () => {
             { role: 'system', content: 'orphan instruction' },
         ];
 
-        expect(toPiContext(input, { now: () => NOW }).lateSystemMessages).toEqual([
+        expect(toPiContext(input, () => NOW).lateSystemMessages).toEqual([
             { sourceIndex: 1, beforeMessageIndex: 1, text: 'orphan instruction' },
         ]);
     });
@@ -179,7 +162,7 @@ describe('toPiContext', () => {
             { role: 'assistant', name: 'Narrator', content: 'welcome' },
         ];
 
-        const { context } = toPiContext(input, { now: () => NOW });
+        const { context } = toPiContext(input, () => NOW);
         const userText = getText(context.messages[0].content);
         const assistantText = getText(context.messages[1].content);
 
@@ -194,26 +177,20 @@ describe('toPiContext', () => {
         { role: 'assistant', content: '' },
         { role: 'user', content: [] },
         { role: 'assistant', content: [{ type: 'text', text: '' }] },
-    ])('rejects an empty ordinary message in strict mode: %#', message => {
-        expect(() =>
-            toPiContext([message], {
-                mode: 'strict',
-                now: () => NOW,
-            })
-        ).toThrow(/empty|content|内容为空|空(?:消息|内容|回复)/i);
+    ])('drops an empty ordinary message with no channel-specific mode: %#', message => {
+        const result = toPiContext([message]);
+        expect(result.context.messages).toEqual([]);
+        expect(result.diagnostics.droppedEmptyMessageIndexes).toEqual([0]);
     });
 
-    test('drops empty ordinary messages in lenient mode and reports their source indexes', () => {
+    test('drops empty ordinary messages and reports their source indexes', () => {
         const input: InputMessage[] = [
             { role: 'user', content: '' },
             { role: 'user', content: 'kept' },
             { role: 'assistant', content: [] },
         ];
 
-        const { context, diagnostics } = toPiContext(input, {
-            mode: 'lenient',
-            now: () => NOW,
-        });
+        const { context, diagnostics } = toPiContext(input, () => NOW);
 
         expect(context.messages).toHaveLength(1);
         expect(getText(context.messages[0].content)).toBe('kept');
@@ -227,10 +204,7 @@ describe('toPiContext', () => {
             { role: 'system', content: '' },
         ];
 
-        const { diagnostics } = toPiContext(input, {
-            mode: 'lenient',
-            now: () => NOW,
-        });
+        const { diagnostics } = toPiContext(input, () => NOW);
 
         expect(diagnostics.droppedEmptyMessageIndexes).toEqual([0, 2]);
     });
@@ -241,7 +215,7 @@ describe('toPiContext', () => {
             { role: 'assistant', content: 'historical answer' },
         ];
 
-        const { context } = toPiContext(input, { now: () => NOW });
+        const { context } = toPiContext(input, () => NOW);
 
         expect(context.messages[0]).toEqual({
             role: 'user',
@@ -292,7 +266,7 @@ describe('toPiContext', () => {
             },
         ];
 
-        const { context } = toPiContext(input, { now: () => NOW });
+        const { context } = toPiContext(input, () => NOW);
 
         expect(context.messages[0]).toEqual({
             role: 'user',
@@ -329,7 +303,7 @@ describe('toPiContext', () => {
             },
         ];
 
-        expect(toPiContext(input, { now: () => NOW }).context.messages[0]).toEqual({
+        expect(toPiContext(input, () => NOW).context.messages[0]).toEqual({
             role: 'user',
             content: [
                 { type: 'image', mimeType: 'image/png', data: PNG_BASE64 },
@@ -358,7 +332,7 @@ describe('toPiContext', () => {
             },
         ];
 
-        expect(toPiContext(input, { now: () => NOW }).context.messages[0]).toMatchObject({
+        expect(toPiContext(input, () => NOW).context.messages[0]).toMatchObject({
             content: [{ type: 'image', mimeType, data }],
         });
     });
@@ -379,7 +353,7 @@ describe('toPiContext', () => {
             },
         ];
 
-        expect(toPiContext(input, { now: () => NOW }).context.messages[0]).toMatchObject({
+        expect(toPiContext(input, () => NOW).context.messages[0]).toMatchObject({
             content: [{ type: 'image', mimeType: 'image/png', data: PNG_BASE64 }],
         });
     });
@@ -401,9 +375,7 @@ describe('toPiContext', () => {
             },
         ];
 
-        expect(() => toPiContext(input, { now: () => NOW })).toThrow(
-            /remote|data.?url|https|远程.*图片/i
-        );
+        expect(() => toPiContext(input, () => NOW)).toThrow(/remote|data.?url|https|远程.*图片/i);
     });
 
     test('rejects an oversized data URL before decoding any base64', () => {
@@ -427,7 +399,7 @@ describe('toPiContext', () => {
         const atobSpy = jest.spyOn(globalThis, 'atob');
 
         try {
-            expect(() => toPiContext(input, { now: () => NOW })).toThrow(
+            expect(() => toPiContext(input, () => NOW)).toThrow(
                 /image|picture|large|limit|图片|上限/i
             );
             expect(atobSpy).not.toHaveBeenCalled();
@@ -452,7 +424,7 @@ describe('toPiContext', () => {
         const atobSpy = jest.spyOn(globalThis, 'atob');
 
         try {
-            expect(() => toPiContext(input, { now: () => NOW })).toThrow(
+            expect(() => toPiContext(input, () => NOW)).toThrow(
                 /image|total|limit|图片|总量|上限/i
             );
             expect(atobSpy).toHaveBeenCalledTimes(3);
@@ -479,7 +451,7 @@ describe('toPiContext', () => {
             },
         ];
 
-        expect(() => toPiContext(input, { now: () => NOW })).toThrow(/20|image|图片|最多/i);
+        expect(() => toPiContext(input, () => NOW)).toThrow(/20|image|图片|最多/i);
     });
 
     test.each([
@@ -497,9 +469,7 @@ describe('toPiContext', () => {
             },
         ];
 
-        expect(() => toPiContext(input, { now: () => NOW })).toThrow(
-            /image|mime|base64|data.?url|图片/i
-        );
+        expect(() => toPiContext(input, () => NOW)).toThrow(/image|mime|base64|data.?url|图片/i);
     });
 
     test('rejects video blocks instead of silently dropping them', () => {
@@ -515,7 +485,7 @@ describe('toPiContext', () => {
             },
         ];
 
-        expect(() => toPiContext(input, { now: () => NOW })).toThrow(/video|视频/i);
+        expect(() => toPiContext(input, () => NOW)).toThrow(/video|视频/i);
     });
 
     // 历史工具与输入隔离：调用和返回值正确关联，无效结构报错，原始对象不被修改。
@@ -543,7 +513,7 @@ describe('toPiContext', () => {
             },
         ];
 
-        const { context } = toPiContext(input, { now: () => NOW });
+        const { context } = toPiContext(input, () => NOW);
 
         expect(context.messages[1]).toEqual(
             expect.objectContaining({
@@ -596,7 +566,7 @@ describe('toPiContext', () => {
             error: /tool.*(?:call|unknown|missing)|工具.*(?:调用|匹配)/i,
         },
     ])('rejects $name', ({ input, error }) => {
-        expect(() => toPiContext(input, { now: () => NOW })).toThrow(error);
+        expect(() => toPiContext(input, () => NOW)).toThrow(error);
     });
 
     test('does not mutate captured messages or their nested content and tool call objects', () => {
@@ -634,7 +604,7 @@ describe('toPiContext', () => {
         ]);
         const snapshot = JSON.parse(JSON.stringify(input));
 
-        expect(() => toPiContext(input, { now: () => NOW })).not.toThrow();
+        expect(() => toPiContext(input, () => NOW)).not.toThrow();
         expect(input).toEqual(snapshot);
     });
 });

@@ -315,13 +315,15 @@ API 请求形状判断，不根据目录模型或自定义 endpoint 的静态能
   MiB、最多 20 张。远程图片 URL 和 video 当前明确拒绝，不会静默丢弃。
 - 历史 tool call/tool result 会转换为 Pi 对应内容块；普通文本和消息名也会保留。
 - 前置连续 system 进入 Pi 的 `systemPrompt`；中途和末尾 system 由 `context_adapter.ts`
-  单独记录内容及位置，在 `onPayload` 中恢复为原生 `role: "system"`，不会附着到 user 内容。
+  单独记录内容及位置，在 `onPayload` 中优先恢复为原生 `role: "system"`；仅在不符合协议约束时转为 user。
   `system_messages.ts` 用请求级文本锚点定位 Pi 拆分后的消息，发送前移除锚点；工具 ID、图片和普通消息继续由 Pi 适配。
-  system 文本也计入 token 预检。无法完整恢复时终止请求，不使用改变角色的降级。
+  system 文本也计入 token 预检。锚点丢失或内容无法完整恢复时仍终止请求，避免遗漏指令。
 - Responses（含 Codex）、Chat Completions 和 Mistral 路径在原生消息数组中恢复 system。
-  Anthropic 会检查插入位置：紧跟 user 或工具结果，之后为 assistant 或请求结束；具体模型是否支持仍由上游决定。
+  Anthropic 会检查插入位置：紧跟 user 或工具结果，之后为 assistant 或请求结束时保留 system；其余位置转为 user。
+  user 回退后合并相邻 user 的内容块，保留文本、图片和工具结果顺序；具体模型是否支持原生 system 仍由上游决定。
   参见 [Anthropic 中途 system 的模型与位置要求](https://platform.claude.com/docs/en/build-with-claude/mid-conversation-system-messages)。
-  Google 的当前协议不能表达同位置的中途 system，因此遇到此类输入会在发送前报错；前置 system 仍可用。
+  Google 的当前协议不能表达中途 system，因此将这些消息转为 user 并保留原位置；前置 system 仍进入 `systemInstruction`。
+  上下文转换没有按渠道设置的 strict/lenient 开关：统一清理空消息，由所选协议自动决定 system 的原生保留或 user 回退。
 
 Provider 目录和上游能力会变化；上表只表示 MVU 已实现请求形状，不保证任意目标 endpoint/model 都会接受。
 

@@ -5,7 +5,7 @@ import {
     parsePiCustomHeaders,
     parsePiCustomIncludeBody,
 } from './config_parser';
-import { PiContextAdapterError, toPiContext, type ToPiContextOptions } from './context_adapter';
+import { PiContextAdapterError, toPiContext } from './context_adapter';
 import { PiRequestAbortedError, registerPiRequestController } from './controller_registry';
 import { getPiCredentialStore } from './credential_store';
 import { assertGoogleProxyAdapterCompatible } from './google_proxy_adapter';
@@ -165,7 +165,6 @@ export interface RunPiRequestInput {
     generationId: string;
     signal?: AbortSignal;
     onProgress?: PiRuntimeProgressCallback;
-    contextOptions?: ToPiContextOptions;
 }
 
 /** 设置根对象完成形状检查后、各字段尚未解析时的中间结构。 */
@@ -834,7 +833,7 @@ export async function runPiRequest(
 
         let adapted: ReturnType<typeof toPiContext>;
         try {
-            adapted = toPiContext(input.messages, input.contextOptions);
+            adapted = toPiContext(input.messages);
         } catch (error) {
             if (error instanceof PiContextAdapterError) {
                 throw new PiRuntimeError('invalid_prompt', error.message);

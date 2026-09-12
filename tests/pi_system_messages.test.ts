@@ -83,7 +83,7 @@ test('does not treat a skipped hook as successful preservation', () => {
     expect(() => bridge.assertRestored()).toThrow(/could not restore/);
 });
 
-test('allows leading systems for Google and rejects unsupported intermediate systems', () => {
+test('keeps leading Google systems and converts only intermediate systems to user content', () => {
     expect(() =>
         createPiSystemMessageBridge(
             toPiContext([
@@ -93,12 +93,24 @@ test('allows leading systems for Google and rejects unsupported intermediate sys
             'google-generative-ai'
         )
     ).not.toThrow();
-    expect(() => createPiSystemMessageBridge(toPiContext(input), 'google-generative-ai')).toThrow(
-        /cannot preserve/
+    const bridge = createPiSystemMessageBridge(
+        toPiContext([{ role: 'system', content: 'global' }, ...input]),
+        'google-generative-ai'
     );
+    const result = bridge.restore({
+        contents: bridge.context.messages.map(message => ({
+            role: message.role,
+            parts: [{ text: message.content }],
+        })),
+        config: { systemInstruction: bridge.context.systemPrompt },
+    });
+    expect(result).toEqual({
+        config: { systemInstruction: 'global' },
+        contents: [{ role: 'user', parts: input.map(message => ({ text: message.content })) }],
+    });
 });
 
-test('validates Anthropic system placement while retaining consecutive systems and trailing systems', () => {
+test('retains valid Anthropic systems and falls back only for invalid positions within the same request', () => {
     const valid = [
         { role: 'user' as const, content: 'user' },
         { role: 'system' as const, content: 'first instruction' },
@@ -121,18 +133,41 @@ test('validates Anthropic system placement while retaining consecutive systems a
             })),
         })
     ).toEqual({ messages: valid });
-    expect(() => createPiSystemMessageBridge(toPiContext(input), 'anthropic-messages')).toThrow(
-        /must follow a user/
-    );
-    expect(() =>
-        createPiSystemMessageBridge(
-            toPiContext([
-                { role: 'assistant', content: 'answer' },
-                { role: 'system', content: 'tail' },
-            ]),
-            'anthropic-messages'
-        )
-    ).toThrow(/must follow a user/);
+    const mixed = [
+        { role: 'user' as const, content: 'first user' },
+        { role: 'system' as const, content: 'valid middle' },
+        { role: 'assistant' as const, content: 'first answer' },
+        { role: 'system' as const, content: 'invalid middle' },
+        { role: 'user' as const, content: 'second user' },
+        { role: 'system' as const, content: 'valid tail' },
+    ];
+    const mixedBridge = createPiSystemMessageBridge(toPiContext(mixed), 'anthropic-messages');
+    const result = mixedBridge.restore({
+        messages: mixedBridge.context.messages.map(message => ({
+            role: message.role,
+            content:
+                typeof message.content === 'string'
+                    ? message.content
+                    : message.content
+                          .map(block => (block.type === 'text' ? block.text : ''))
+                          .join(''),
+        })),
+    });
+    expect(result).toEqual({
+        messages: [
+            mixed[0],
+            mixed[1],
+            mixed[2],
+            {
+                role: 'user',
+                content: [
+                    { type: 'text', text: 'invalid middle' },
+                    { type: 'text', text: 'second user' },
+                ],
+            },
+            mixed[5],
+        ],
+    });
 });
 
 test('real Pi adapters send native systems without changing ordinary text, images or tool associations', () => {

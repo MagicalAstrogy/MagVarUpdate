@@ -695,24 +695,6 @@ export const runtimeMessages = defineMessages({
         'zh-CN': '“更多”链路当前不支持视频内容，请移除视频后重试。',
         en: 'The More path does not currently support video content. Remove the video and retry.',
     },
-    'runtime.pi.contextEmptyContent': {
-        'zh-CN': '第 {index} 条消息内容为空，请移除该消息或关闭“更多”严格模式。',
-        en: 'Message {index} is empty. Remove it or disable strict mode under More.',
-    },
-    'runtime.pi.contextLateSystem': {
-        'zh-CN': '“更多”严格模式不允许对话开始后的 system 消息，请检查预设或注入顺序。',
-        en: 'Strict mode under More does not allow system messages after the conversation begins. Check the preset or injection order.',
-    },
-    'runtime.pi.contextSystemRoleUnsupported': {
-        'zh-CN':
-            '当前协议无法在原位置保留第 {index} 条 system 消息，请选择支持中途 system 的协议或调整预设。',
-        en: 'The selected API cannot preserve system message {index} at its original position. Select an API supporting intermediate system messages or adjust the preset.',
-    },
-    'runtime.pi.contextSystemPlacement': {
-        'zh-CN':
-            '第 {index} 条 system 消息不符合 Anthropic 的位置要求：须紧跟 user 或工具结果，之后为 assistant 或请求结束。请调整预设或选择其他协议。',
-        en: 'System message {index} violates Anthropic placement rules: it must follow a user turn or tool results and precede an assistant turn or end the request. Adjust the preset or select another API.',
-    },
     'runtime.pi.contextSystemPayloadMismatch': {
         'zh-CN':
             '无法在服务商请求中完整恢复 system 消息，已停止发送。请检查 Pi 适配器版本或更换协议。',
@@ -721,10 +703,6 @@ export const runtimeMessages = defineMessages({
     'runtime.pi.contextMissingToolCall': {
         'zh-CN': '第 {index} 条历史工具结果无法找到对应的工具调用，请检查聊天历史。',
         en: 'Historical tool result {index} has no matching tool call. Check the chat history.',
-    },
-    'runtime.pi.contextMissingUserForSystem': {
-        'zh-CN': '第 {index} 条 system 消息附近没有可附着的 user 消息，请检查预设或注入顺序。',
-        en: 'System message {index} has no nearby user message to attach to. Check the preset or injection order.',
     },
     'runtime.pi.contextUnsupportedContent': {
         'zh-CN': '第 {index} 条消息包含“更多”当前不支持的内容，请移除该内容后重试。',
