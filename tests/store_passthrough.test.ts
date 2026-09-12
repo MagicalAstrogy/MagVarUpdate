@@ -27,6 +27,7 @@ describe('settings unknown field passthrough', () => {
             useProxy: false,
             model: '',
             contextWindow: 0,
+            credentialIds: {},
             credentials: {},
             apiKeys: {},
             customHeaders: '',

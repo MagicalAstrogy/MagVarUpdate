@@ -696,9 +696,8 @@ export const runtimeMessages = defineMessages({
         en: 'The More path does not currently support video content. Remove the video and retry.',
     },
     'runtime.pi.contextSystemPayloadMismatch': {
-        'zh-CN':
-            '无法在服务商请求中完整恢复 system 消息，已停止发送。请检查 Pi 适配器版本或更换协议。',
-        en: 'Could not restore all system messages in the provider payload. Sending was stopped. Check the Pi adapter version or select another API.',
+        'zh-CN': '无法在服务商请求中完整恢复 system 消息，已停止发送。请更新脚本或更换协议后重试。',
+        en: 'Could not restore all system messages in the provider payload. Sending was stopped. Update the script or select another API and try again.',
     },
     'runtime.pi.contextMissingToolCall': {
         'zh-CN': '第 {index} 条历史工具结果无法找到对应的工具调用，请检查聊天历史。',
