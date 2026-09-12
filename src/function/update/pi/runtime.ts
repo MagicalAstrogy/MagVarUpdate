@@ -1,0 +1,930 @@
+import type { MvuSettings } from '@/store';
+import { installPiAbortSignalPolyfills } from './abort_signal';
+import {
+    parsePiCustomExcludeBody,
+    parsePiCustomHeaders,
+    parsePiCustomIncludeBody,
+} from './config_parser';
+import { PiContextAdapterError, toPiContext } from './context_adapter';
+import { PiRequestAbortedError, registerPiRequestController } from './controller_registry';
+import { getPiCredentialStore } from './credential_store';
+import { assertGoogleProxyAdapterCompatible } from './google_proxy_adapter';
+import {
+    isPiDefaultProviderEndpoint,
+    PiModelResolutionError,
+    resolvePiModelFromExtraModelSettings,
+    type ResolvedPiModel,
+} from './model_resolver';
+import { getBrowserOAuthAuth } from './oauth';
+import { createPiNonStreamingFetch } from './non_streaming_fetch';
+import { isPiStreamingRequired } from './provider_target';
+import { createPiPayloadTransform, transformPiPayload, type PiJsonSchema } from './payload';
+import {
+    createModels,
+    createProvider,
+    type Api,
+    type ApiStreamOptions,
+    type AssistantMessageEvent,
+    type AuthContext,
+    type CredentialStore,
+    type FetchFunction,
+    type ProviderAuth,
+    type ProviderHeaders,
+    type Tool,
+} from './pi_gateway';
+import {
+    createPiApiImplementations,
+    resolvePiCapabilities,
+    shouldUsePiCorsProxy,
+    type PiApiCapabilities,
+    type PiWireApi,
+} from './provider_registry';
+import { fromPiAssistantMessage, PiResultAdapterError, toPiToolDefinition } from './result_adapter';
+import { assertPiTokenBudget } from './token_preflight';
+import { resolvePiToolChoice, type MvuToolChoice } from './tool_choice';
+import { createPiSystemMessageBridge, type PiSystemMessageBridge } from './system_messages';
+import {
+    assertSillyTavernProxyAvailable,
+    createSillyTavernProxyFetch,
+    getSillyTavernProxyStatus,
+    PiProxyUnavailableError,
+} from './sillytavern_proxy';
+
+installPiAbortSignalPolyfills();
+
+export const PI_RUNTIME_RESPONSE_FORMATS = [
+    '聊天消息',
+    '工具调用',
+    '格式化输出',
+    '格式化输出(v4兼容)',
+] as const;
+
+/** 额外解析允许使用的应答格式，供预检和原生载荷转换共同约束。 */
+export type PiRuntimeResponseFormat = (typeof PI_RUNTIME_RESPONSE_FORMATS)[number];
+/** 一次额外模型请求读取的完整设置结构。 */
+export type PiExtraModelSettings = MvuSettings['额外模型解析配置'];
+
+/** 运行时失败分类；配合 retryable 决定请求策略与界面提示。 */
+export type PiRuntimeErrorCode =
+    | 'invalid_configuration'
+    | 'invalid_prompt'
+    | 'missing_oauth_credential'
+    | 'request_already_active'
+    | 'unsupported_capability'
+    | 'unsupported_image_input'
+    | 'token_budget'
+    | 'proxy_unavailable'
+    | 'network'
+    | 'provider'
+    | 'protocol';
+
+export class PiRuntimeError extends Error {
+    /** 为运行时错误保存稳定类别和重试标记，供额外模型策略统一决策。 */
+    constructor(
+        readonly code: PiRuntimeErrorCode,
+        message: string,
+        readonly retryable = false
+    ) {
+        super(message);
+        this.name = 'PiRuntimeError';
+    }
+}
+
+/** 为串行和并发策略提供统一的不可重试错误判断。 */
+export function isNonRetryablePiRuntimeError(error: unknown): boolean {
+    return (
+        (error instanceof PiRuntimeError && !error.retryable) ||
+        error instanceof PiModelResolutionError ||
+        error instanceof PiContextAdapterError
+    );
+}
+
+/** 已通过服务商能力校验的采样选项，不含独立传入 SDK 的 temperature。 */
+export type PiRuntimeSampling = Readonly<{
+    topP?: number;
+    topK?: number;
+    frequencyPenalty?: number;
+    presencePenalty?: number;
+}>;
+
+/** 在重试批次开始前进行静态预检所需的设置、工具和可注入依赖。 */
+export interface AssertPiRuntimeConfigurationInput {
+    /** The whole persisted `额外模型解析配置` object. */
+    settings: unknown;
+    /** Defaults to `settings.应答格式`. */
+    responseFormat?: unknown;
+    /** Required by `格式化输出`; ignored by non-structured response modes. */
+    jsonSchema?: PiJsonSchema;
+    /** Required by `工具调用`; the MVU ToolDefinition constants can be passed directly. */
+    tools?: readonly ToolDefinition[];
+    /** Defaults to `required` in tool mode. */
+    toolChoice?: MvuToolChoice;
+    credentialStore?: CredentialStore;
+    fetch?: FetchFunction;
+    signal?: AbortSignal;
+}
+
+/**
+ * 重试前解析并冻结的连接、认证、能力与载荷配置。
+ * 不包含提示词或请求级 system 锚点，可在同批次的每次尝试中复用。
+ */
+export interface PiRuntimePreflight {
+    readonly resolution: ResolvedPiModel;
+    readonly responseFormat: PiRuntimeResponseFormat;
+    readonly capabilities: Readonly<PiApiCapabilities>;
+    readonly headers?: Readonly<ProviderHeaders>;
+    readonly customIncludeBody?: Readonly<Record<string, unknown>>;
+    readonly customExcludeBody?: readonly string[];
+    readonly temperature?: number;
+    readonly sampling: PiRuntimeSampling;
+    readonly tools?: readonly Tool[];
+    readonly toolChoice?: unknown;
+    readonly jsonSchema?: PiJsonSchema;
+    readonly credentialStore: CredentialStore;
+    readonly fetch?: FetchFunction;
+    readonly useCorsProxy: boolean;
+    readonly streaming: boolean;
+}
+
+/** 可选的 Pi 进度监听，运行时不会向此回调转发未经处理的错误事件。 */
+export type PiRuntimeProgressCallback = (event: AssistantMessageEvent) => void | Promise<void>;
+
+/** 执行单次请求的输入：预检快照、捕获消息、取消编号及可选进度监听。 */
+export interface RunPiRequestInput {
+    /** Supply this when configuration was validated once outside the retry loop. */
+    preflight?: PiRuntimePreflight;
+    /** Required only when `preflight` is omitted. */
+    settings?: unknown;
+    responseFormat?: unknown;
+    jsonSchema?: PiJsonSchema;
+    tools?: readonly ToolDefinition[];
+    toolChoice?: MvuToolChoice;
+    credentialStore?: CredentialStore;
+    fetch?: FetchFunction;
+    messages: readonly SillyTavern.SendingMessage[];
+    generationId: string;
+    signal?: AbortSignal;
+    onProgress?: PiRuntimeProgressCallback;
+}
+
+/** 设置根对象完成形状检查后、各字段尚未解析时的中间结构。 */
+type ExtraModelSettingsRecord = Record<string, unknown> & {
+    pi?: unknown;
+};
+
+const BROWSER_AUTH_CONTEXT: AuthContext = Object.freeze({
+    env: async () => undefined,
+    fileExists: async () => false,
+});
+
+/** 确认设置是非空、非数组对象，再读取请求字段。 */
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+    return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+/** 校验额外模型设置的根结构，结构错误在构造请求前失败。 */
+function requireSettings(value: unknown): ExtraModelSettingsRecord {
+    if (!isPlainObject(value)) {
+        throw new PiRuntimeError(
+            'invalid_configuration',
+            'More source extra-model settings must be an object'
+        );
+    }
+    return value;
+}
+
+/** 优先采用本次显式应答格式，否则读取设置，并拒绝未知格式。 */
+function resolveResponseFormat(
+    settings: ExtraModelSettingsRecord,
+    override: unknown
+): PiRuntimeResponseFormat {
+    const value = override ?? settings['应答格式'];
+    if (
+        typeof value !== 'string' ||
+        !PI_RUNTIME_RESPONSE_FORMATS.some(candidate => candidate === value)
+    ) {
+        throw new PiRuntimeError(
+            'invalid_configuration',
+            'More source response format is missing or unsupported'
+        );
+    }
+    return value as PiRuntimeResponseFormat;
+}
+
+/** 读取可选字符串配置；缺失返回空字符串，类型错误不能隐式转换。 */
+function optionalStringField(source: Record<string, unknown>, name: string): string {
+    const value = source[name];
+    if (value === undefined) {
+        return '';
+    }
+    if (typeof value !== 'string') {
+        throw new PiRuntimeError('invalid_configuration', `More source ${name} must be a string`);
+    }
+    return value;
+}
+
+/** 校验可选数值的范围、有限性及整数要求，缺失字段保持未设置。 */
+function optionalNumberField(
+    source: Record<string, unknown>,
+    name: string,
+    minimum: number,
+    maximum: number,
+    integer = false
+): number | undefined {
+    const value = source[name];
+    if (value === undefined) {
+        return undefined;
+    }
+    if (
+        typeof value !== 'number' ||
+        !Number.isFinite(value) ||
+        value < minimum ||
+        value > maximum ||
+        (integer && !Number.isInteger(value))
+    ) {
+        const kind = integer ? 'integer' : 'number';
+        throw new PiRuntimeError(
+            'invalid_configuration',
+            `More source ${name} must be a ${kind} between ${minimum} and ${maximum}`
+        );
+    }
+    return value;
+}
+
+/** 仅解析当前模型支持的采样字段，并处理协议或模型特有的组合限制。 */
+function resolveSampling(
+    settings: ExtraModelSettingsRecord,
+    capabilities: Readonly<PiApiCapabilities>,
+    resolution: ResolvedPiModel
+): {
+    temperature?: number;
+    sampling: PiRuntimeSampling;
+} {
+    let temperature = capabilities.temperature
+        ? optionalNumberField(
+              settings,
+              '温度',
+              capabilities.temperatureRange[0],
+              capabilities.temperatureRange[1]
+          )
+        : undefined;
+    let topP = capabilities.sampling.topP
+        ? optionalNumberField(settings, 'top_p', 0, 1)
+        : undefined;
+    const topK = capabilities.sampling.topK
+        ? optionalNumberField(settings, 'top_k', 0, 500, true)
+        : undefined;
+    const frequencyPenalty = capabilities.sampling.frequencyPenalty
+        ? optionalNumberField(settings, '频率惩罚', -2, 2)
+        : undefined;
+    const presencePenalty = capabilities.sampling.presencePenalty
+        ? optionalNumberField(settings, '存在惩罚', -2, 2)
+        : undefined;
+    if (
+        resolution.definition.key === 'anthropic' &&
+        isPiDefaultProviderEndpoint(resolution.definition, resolution.model.baseUrl) &&
+        temperature !== undefined &&
+        topP !== undefined
+    ) {
+        // Native Claude models require at most one of these samplers. MVU persists both
+        // controls with 1 as their default, so omit the untouched one from the wire request.
+        if (topP === 1) {
+            topP = undefined;
+        } else if (temperature === 1) {
+            temperature = undefined;
+        } else {
+            throw new PiRuntimeError(
+                'invalid_configuration',
+                'More source Anthropic sampling requires temperature or top_p; reset one to 1.'
+            );
+        }
+    }
+    return {
+        temperature,
+        sampling: Object.freeze({
+            ...(topP === undefined ? {} : { topP }),
+            // zero is the existing "unset" value and is invalid for APIs that send top_k.
+            ...(topK === undefined || topK === 0 ? {} : { topK }),
+            ...(frequencyPenalty === undefined ? {} : { frequencyPenalty }),
+            ...(presencePenalty === undefined ? {} : { presencePenalty }),
+        }),
+    };
+}
+
+/** 复制本次结构化输出 Schema，避免执行时修改调用方定义。 */
+function cloneJsonSchema(schema: PiJsonSchema | undefined): PiJsonSchema | undefined {
+    return schema === undefined ? undefined : structuredClone(schema);
+}
+
+/** 解析当前模型的可信协议能力，注册信息缺失时终止配置预检。 */
+function capabilityFor(resolution: ResolvedPiModel): Readonly<PiApiCapabilities> {
+    const capability = resolvePiCapabilities(
+        resolution.definition,
+        resolution.model.api as PiWireApi,
+        {
+            model: resolution.model,
+            catalogHit: resolution.catalogHit,
+        }
+    );
+    if (!capability) {
+        throw new PiRuntimeError(
+            'invalid_configuration',
+            `More source API '${resolution.model.api}' has no registered runtime capability metadata`
+        );
+    }
+    return capability;
+}
+
+/** 在捕获提示词前确认所选应答格式受到支持，避免重复发送必然失败的请求。 */
+function assertResponseCapability(
+    responseFormat: PiRuntimeResponseFormat,
+    capabilities: Readonly<PiApiCapabilities>,
+    api: Api
+): void {
+    if (responseFormat === '工具调用' && !capabilities.tools) {
+        throw new PiRuntimeError(
+            'unsupported_capability',
+            `More source API '${api}' does not support tool calls`
+        );
+    }
+    const structuredOutputUnsupported =
+        responseFormat === '格式化输出' && !capabilities.structuredOutput;
+    const jsonObjectOutputUnsupported =
+        responseFormat === '格式化输出(v4兼容)' && !capabilities.jsonObjectOutput;
+    if (structuredOutputUnsupported || jsonObjectOutputUnsupported) {
+        throw new PiRuntimeError(
+            'unsupported_capability',
+            `More source API '${api}' does not support native structured output`
+        );
+    }
+}
+
+/** 仅在工具调用模式校验并复制工具定义，其他模式不携带业务工具。 */
+function prepareTools(
+    responseFormat: PiRuntimeResponseFormat,
+    definitions: readonly ToolDefinition[] | undefined
+): readonly Tool[] | undefined {
+    if (responseFormat !== '工具调用') {
+        return undefined;
+    }
+    if (!definitions?.length) {
+        throw new PiRuntimeError(
+            'invalid_configuration',
+            'More source tool-call mode requires at least one tool definition'
+        );
+    }
+    return Object.freeze(
+        definitions.map(definition =>
+            toPiToolDefinition(definition, {
+                constrainedSampling: { type: 'json_schema', strict: 'prefer' },
+            })
+        )
+    );
+}
+
+/** JSON Schema 模式要求显式结构定义，其他应答格式不继承残留 Schema。 */
+function prepareJsonSchema(
+    responseFormat: PiRuntimeResponseFormat,
+    schema: PiJsonSchema | undefined
+): PiJsonSchema | undefined {
+    if (responseFormat === '格式化输出' && schema === undefined) {
+        throw new PiRuntimeError(
+            'invalid_configuration',
+            'More source structured output requires a JSON schema'
+        );
+    }
+    return responseFormat === '格式化输出' ? cloneJsonSchema(schema) : undefined;
+}
+
+/** 用空载荷预演请求转换，提前发现受保护字段覆盖及格式配置错误。 */
+function validatePayloadConfiguration(preflight: {
+    resolution: ResolvedPiModel;
+    responseFormat: PiRuntimeResponseFormat;
+    customIncludeBody?: Readonly<Record<string, unknown>>;
+    customExcludeBody?: readonly string[];
+    sampling: PiRuntimeSampling;
+    jsonSchema?: PiJsonSchema;
+}): void {
+    try {
+        transformPiPayload(
+            {},
+            {
+                api: preflight.resolution.model.api,
+                responseFormat: nativeStructuredFormat(preflight.responseFormat),
+                jsonSchema: preflight.jsonSchema,
+                customIncludeBody:
+                    preflight.customIncludeBody === undefined
+                        ? undefined
+                        : { ...preflight.customIncludeBody },
+                customExcludeBody: preflight.customExcludeBody,
+                sampling: preflight.sampling,
+            }
+        );
+    } catch (error) {
+        throw new PiRuntimeError(
+            'invalid_configuration',
+            error instanceof Error ? error.message : 'More source payload configuration is invalid'
+        );
+    }
+}
+
+/** 确认 OAuth 来源已有可用类型的凭证；到期刷新由后续 Pi 认证流程处理。 */
+async function assertOAuthCredential(
+    resolution: ResolvedPiModel,
+    credentialStore: CredentialStore,
+    signal?: AbortSignal
+): Promise<void> {
+    if (resolution.authType !== 'oauth') {
+        return;
+    }
+    signal?.throwIfAborted();
+    const credential = await credentialStore.read(resolution.definition.providerId, { signal });
+    signal?.throwIfAborted();
+    if (!credential || credential.type !== 'oauth') {
+        throw new PiRuntimeError(
+            'missing_oauth_credential',
+            `More source provider '${resolution.definition.providerId}' is not logged in`
+        );
+    }
+}
+
+/**
+ * 一次性校验不依赖提示词的连接、认证、能力、预算参数和请求覆盖，并冻结本轮快照。
+ * 应在串行或并发重试前调用，避免把固定配置错误误判为可重试的服务商失败。
+ */
+export async function assertPiRuntimeConfiguration(
+    input: AssertPiRuntimeConfigurationInput
+): Promise<PiRuntimePreflight> {
+    input.signal?.throwIfAborted();
+    const settings = requireSettings(input.settings);
+    const resolution = resolvePiModelFromExtraModelSettings(settings);
+    const responseFormat = resolveResponseFormat(settings, input.responseFormat);
+    const capabilities = capabilityFor(resolution);
+    const streaming =
+        settings['兼容假流式'] === true || isPiStreamingRequired(resolution.model.api);
+    if (streaming && !capabilities.streaming) {
+        throw new PiRuntimeError(
+            'unsupported_capability',
+            `More source model '${resolution.model.id}' does not support streaming requests`
+        );
+    }
+    assertResponseCapability(responseFormat, capabilities, resolution.model.api);
+
+    const piSettings = settings.pi;
+    if (!isPlainObject(piSettings)) {
+        throw new PiRuntimeError(
+            'invalid_configuration',
+            'More source connection settings must be an object'
+        );
+    }
+    const useCorsProxy = shouldUsePiCorsProxy(
+        resolution.definition,
+        resolution.model.api,
+        optionalStringField(piSettings, 'endpoint'),
+        piSettings.useProxy
+    );
+    let headers: ProviderHeaders | undefined;
+    let customIncludeBody: Record<string, unknown> | undefined;
+    let customExcludeBody: string[] | undefined;
+    try {
+        headers = parsePiCustomHeaders(optionalStringField(piSettings, 'customHeaders'));
+        customIncludeBody = parsePiCustomIncludeBody(
+            optionalStringField(piSettings, 'customIncludeBody')
+        );
+        customExcludeBody = parsePiCustomExcludeBody(
+            optionalStringField(piSettings, 'customExcludeBody')
+        );
+    } catch (error) {
+        throw new PiRuntimeError(
+            'invalid_configuration',
+            error instanceof Error
+                ? error.message
+                : 'More source custom request configuration is invalid'
+        );
+    }
+    const { temperature, sampling } = resolveSampling(settings, capabilities, resolution);
+    let tools: readonly Tool[] | undefined;
+    let toolChoice: unknown;
+    try {
+        tools = prepareTools(responseFormat, input.tools);
+        toolChoice =
+            responseFormat === '工具调用'
+                ? resolvePiToolChoice(resolution.model.api, input.toolChoice ?? 'required')
+                : undefined;
+    } catch (error) {
+        if (error instanceof PiRuntimeError) {
+            throw error;
+        }
+        throw new PiRuntimeError(
+            'invalid_configuration',
+            error instanceof Error ? error.message : 'More source tool configuration is invalid'
+        );
+    }
+    const jsonSchema = prepareJsonSchema(responseFormat, input.jsonSchema);
+    const credentialStore = input.credentialStore ?? getPiCredentialStore(piSettings);
+    await assertOAuthCredential(resolution, credentialStore, input.signal);
+
+    const preflight: PiRuntimePreflight = Object.freeze({
+        resolution,
+        responseFormat,
+        capabilities,
+        ...(headers === undefined ? {} : { headers: Object.freeze({ ...headers }) }),
+        ...(customIncludeBody === undefined
+            ? {}
+            : { customIncludeBody: Object.freeze(structuredClone(customIncludeBody)) }),
+        ...(customExcludeBody === undefined
+            ? {}
+            : { customExcludeBody: Object.freeze([...customExcludeBody]) }),
+        temperature: capabilities.temperature ? temperature : undefined,
+        sampling,
+        tools,
+        toolChoice,
+        jsonSchema,
+        credentialStore,
+        fetch: input.fetch,
+        useCorsProxy,
+        streaming,
+    });
+    validatePayloadConfiguration(preflight);
+    return preflight;
+}
+
+/** 只为本次解析出的模型和协议创建 Pi 服务商，并接入浏览器 OAuth 或请求密钥。 */
+function createRuntimeProvider(preflight: PiRuntimePreflight) {
+    const { resolution } = preflight;
+    let auth: ProviderAuth;
+    if (resolution.authType === 'oauth') {
+        auth = {
+            oauth: getBrowserOAuthAuth(resolution.definition.providerId, {
+                fetch: preflight.fetch,
+            }),
+        };
+    } else {
+        auth = {
+            apiKey: {
+                name: `${resolution.definition.displayName.en} API key`,
+                /** 将本次设置提供的 API Key 转为 Pi 认证结果，解析前检查请求是否取消。 */
+                async resolve({ credential, signal }) {
+                    signal.throwIfAborted();
+                    if (!credential?.key) {
+                        return undefined;
+                    }
+                    return {
+                        auth: { apiKey: credential.key },
+                        source: 'extra-model settings',
+                    };
+                },
+            },
+        };
+    }
+
+    return createProvider<Api>({
+        id: resolution.definition.providerId,
+        name: resolution.definition.displayName.en,
+        baseUrl: resolution.model.baseUrl,
+        auth,
+        models: [resolution.model],
+        api: createPiApiImplementations(resolution.definition),
+    });
+}
+
+/** 检查用户消息和工具返回值是否包含图片，供能力预检使用。 */
+function contextHasImages(context: ReturnType<typeof toPiContext>['context']): boolean {
+    return context.messages.some(message => {
+        if (message.role === 'user') {
+            return (
+                Array.isArray(message.content) &&
+                message.content.some(content => content.type === 'image')
+            );
+        }
+        if (message.role === 'toolResult') {
+            return message.content.some(content => content.type === 'image');
+        }
+        return false;
+    });
+}
+
+/** 提示词含图片时同时核对协议能力和模型输入类型，发送前拒绝不支持的组合。 */
+function assertImageCapability(
+    preflight: PiRuntimePreflight,
+    context: ReturnType<typeof toPiContext>['context']
+): void {
+    if (!contextHasImages(context)) {
+        return;
+    }
+    if (!preflight.capabilities.imageInput || !preflight.resolution.model.input.includes('image')) {
+        throw new PiRuntimeError(
+            'unsupported_image_input',
+            `More source model '${preflight.resolution.model.id}' does not support image input`
+        );
+    }
+}
+
+/** 仅保留需要写入原生载荷的两种格式化输出模式。 */
+function nativeStructuredFormat(
+    responseFormat: PiRuntimeResponseFormat
+): '格式化输出' | '格式化输出(v4兼容)' | undefined {
+    return responseFormat === '格式化输出' || responseFormat === '格式化输出(v4兼容)'
+        ? responseFormat
+        : undefined;
+}
+
+/**
+ * 按本轮快照组合认证、采样、代理、非流式传输及载荷转换回调。
+ * Codex 经代理时强制使用 SSE，所有请求层共享同一取消信号。
+ */
+function createStreamOptions(
+    preflight: PiRuntimePreflight,
+    signal: AbortSignal,
+    systemMessages: PiSystemMessageBridge
+): ApiStreamOptions<Api> {
+    const providerFetch = preflight.useCorsProxy
+        ? createSillyTavernProxyFetch({
+              baseUrl: preflight.resolution.model.baseUrl,
+              ...(preflight.fetch === undefined ? {} : { fetch: preflight.fetch }),
+          })
+        : preflight.fetch;
+    return {
+        signal,
+        apiKey: preflight.resolution.apiKey,
+        fetch: preflight.streaming
+            ? providerFetch
+            : createPiNonStreamingFetch(preflight.resolution.model.api as PiWireApi, providerFetch),
+        headers: preflight.headers === undefined ? undefined : { ...preflight.headers },
+        temperature: preflight.capabilities.temperature ? preflight.temperature : undefined,
+        maxTokens: preflight.resolution.effectiveMaxTokens,
+        ...(preflight.toolChoice === undefined ? {} : { toolChoice: preflight.toolChoice }),
+        ...(preflight.useCorsProxy && preflight.resolution.model.api === 'openai-codex-responses'
+            ? { transport: 'sse' as const }
+            : {}),
+        onPayload: payload =>
+            systemMessages.restore(
+                createPiPayloadTransform({
+                    api: preflight.resolution.model.api,
+                    responseFormat: nativeStructuredFormat(preflight.responseFormat),
+                    jsonSchema: preflight.jsonSchema,
+                    customIncludeBody:
+                        preflight.customIncludeBody === undefined
+                            ? undefined
+                            : { ...preflight.customIncludeBody },
+                    customExcludeBody: preflight.customExcludeBody,
+                    sampling: preflight.sampling,
+                })(payload)
+            ),
+    };
+}
+
+/** 识别常见浏览器 fetch、网络和 CORS 失败，供运行时选择网络错误类别。 */
+function isNetworkFailure(error: unknown): boolean {
+    const message = error instanceof Error ? error.message : typeof error === 'string' ? error : '';
+    return /failed to fetch|fetch failed|network\s*error|networkerror|load failed|cors/i.test(
+        message
+    );
+}
+
+/** 通过稳定错误码识别 Google 注入点不兼容，避免直接导入适配器产生循环依赖。 */
+function isGoogleProxyAdapterCompatibilityFailure(error: unknown): boolean {
+    // Keep the runtime boundary independent from the Google adapter module: provider registration
+    // imports the runtime-facing gateway, so importing the adapter here would create a cycle.
+    return (
+        error instanceof Error &&
+        (error as Error & { code?: unknown }).code === 'google_proxy_adapter_incompatible'
+    );
+}
+
+/**
+ * 将已知底层失败归类为运行时错误并保留重试语义。
+ * 未知错误可能附带请求头或正文，只返回固定提示，不保留原始 cause。
+ */
+function normalizeRuntimeFailure(error: unknown): Error {
+    if (error instanceof PiRuntimeError || error instanceof PiContextAdapterError) {
+        return error;
+    }
+    if (error instanceof PiProxyUnavailableError) {
+        return new PiRuntimeError(
+            'proxy_unavailable',
+            'SillyTavern CORS proxy is not enabled or unavailable.'
+        );
+    }
+    if (isGoogleProxyAdapterCompatibilityFailure(error)) {
+        return new PiRuntimeError(
+            'protocol',
+            'The installed Google Generative AI SDK is incompatible with the browser proxy transport required by this build.'
+        );
+    }
+    if (error instanceof PiResultAdapterError && error.code === 'aborted') {
+        // The generation id is supplied by the request-level abort conversion below.
+        return error;
+    }
+    if (
+        (error instanceof PiResultAdapterError && error.code === 'network') ||
+        isNetworkFailure(error)
+    ) {
+        return new PiRuntimeError(
+            'network',
+            'The browser could not complete the More source request. Check the endpoint, network access, and CORS policy.',
+            true
+        );
+    }
+    if (error instanceof PiResultAdapterError) {
+        switch (error.code) {
+            case 'provider-error':
+                return new PiRuntimeError('provider', 'More source request failed.', true);
+            case 'deferred':
+                return new PiRuntimeError(
+                    'protocol',
+                    'More source provider returned a deferred response, which is not supported.'
+                );
+            case 'empty-response':
+                return new PiRuntimeError(
+                    'protocol',
+                    'More source provider returned no usable response content.'
+                );
+            case 'invalid-tool-call':
+                return new PiRuntimeError(
+                    'protocol',
+                    'More source provider returned an invalid tool call.'
+                );
+            case 'length':
+                return new PiRuntimeError(
+                    'protocol',
+                    'More source provider response was truncated because it reached the output limit.'
+                );
+            case 'aborted':
+                return error;
+            case 'network':
+                return new PiRuntimeError(
+                    'network',
+                    'The browser could not complete the More source request. Check the endpoint, network access, and CORS policy.',
+                    true
+                );
+        }
+    }
+    // SDK/fetch implementations may attach response bodies, headers, or request configuration to
+    // arbitrary errors. Do not surface the unknown error or retain it as a cause.
+    return new PiRuntimeError('provider', 'More source request failed.', true);
+}
+
+/** 要求非空生成编号，使取消登记与提示词捕获可以准确关联。 */
+function assertGenerationId(generationId: string): void {
+    if (!generationId.trim()) {
+        throw new PiRuntimeError(
+            'invalid_configuration',
+            'More source request generationId must not be empty'
+        );
+    }
+}
+
+/**
+ * 将捕获的酒馆提示词转换为 Pi 上下文，检查图片及 token 预算后执行所选服务商请求。
+ * 统一处理代理检查、取消登记、错误分类和结果转换；返回值不自动追加到聊天或上下文。
+ */
+export async function runPiRequest(
+    input: RunPiRequestInput
+): Promise<string | GenerateToolCallResult> {
+    assertGenerationId(input.generationId);
+    let preflight: PiRuntimePreflight;
+    try {
+        preflight =
+            input.preflight ??
+            (await assertPiRuntimeConfiguration({
+                settings: input.settings,
+                responseFormat: input.responseFormat,
+                jsonSchema: input.jsonSchema,
+                tools: input.tools,
+                toolChoice: input.toolChoice,
+                credentialStore: input.credentialStore,
+                fetch: input.fetch,
+                signal: input.signal,
+            }));
+    } catch (error) {
+        if (input.signal?.aborted) {
+            throw new PiRequestAbortedError(input.generationId, input.signal.reason ?? error);
+        }
+        throw error;
+    }
+
+    let registration: ReturnType<typeof registerPiRequestController>;
+    try {
+        registration = registerPiRequestController(input.generationId, input.signal);
+    } catch (error) {
+        throw new PiRuntimeError(
+            'request_already_active',
+            error instanceof Error ? error.message : 'More source request is already active'
+        );
+    }
+    let systemMessages: PiSystemMessageBridge | undefined;
+    try {
+        if (registration.signal.aborted) {
+            throw new PiRequestAbortedError(input.generationId, registration.signal.reason);
+        }
+
+        if (preflight.useCorsProxy) {
+            try {
+                await assertSillyTavernProxyAvailable({
+                    ...(preflight.fetch === undefined ? {} : { fetch: preflight.fetch }),
+                    signal: registration.signal,
+                    force: true,
+                });
+            } catch (error) {
+                throw normalizeRuntimeFailure(error);
+            }
+        }
+
+        let adapted: ReturnType<typeof toPiContext>;
+        try {
+            adapted = toPiContext(input.messages);
+        } catch (error) {
+            if (error instanceof PiContextAdapterError) {
+                throw new PiRuntimeError('invalid_prompt', error.message);
+            }
+            throw error;
+        }
+        const { context, lateSystemMessages } = adapted;
+        if (preflight.tools !== undefined) {
+            context.tools = [...preflight.tools];
+        }
+        assertImageCapability(preflight, context);
+        systemMessages = createPiSystemMessageBridge(adapted, preflight.resolution.model.api);
+        try {
+            assertPiTokenBudget(
+                context,
+                preflight.resolution.effectiveContextWindow,
+                preflight.resolution.effectiveMaxTokens,
+                undefined,
+                lateSystemMessages
+            );
+        } catch (error) {
+            throw new PiRuntimeError(
+                'token_budget',
+                error instanceof Error ? error.message : 'More source token preflight failed'
+            );
+        }
+
+        const models = createModels({
+            credentials: preflight.credentialStore,
+            authContext: BROWSER_AUTH_CONTEXT,
+        });
+        models.setProvider(createRuntimeProvider(preflight));
+        const options = createStreamOptions(preflight, registration.signal, systemMessages);
+        if (
+            preflight.resolution.model.api === 'google-generative-ai' &&
+            options.fetch &&
+            options.fetch !== globalThis.fetch
+        ) {
+            // Pi wraps provider setup in lazyStream and would otherwise erase the compatibility
+            // error code. Check the instance-only SDK seam before entering that boundary.
+            assertGoogleProxyAdapterCompatible();
+        }
+        const stream = models.stream(preflight.resolution.model, systemMessages.context, options);
+
+        for await (const event of stream) {
+            // Provider error events can contain raw response bodies, request headers, or echoed
+            // credentials. The normalized terminal error below is the public failure boundary.
+            if (event.type !== 'error') {
+                await input.onProgress?.(event);
+            }
+        }
+        const message = await stream.result();
+        if (registration.signal.aborted || message.stopReason === 'aborted') {
+            throw new PiRequestAbortedError(
+                input.generationId,
+                registration.signal.aborted ? registration.signal.reason : undefined
+            );
+        }
+        if (systemMessages.failure) throw systemMessages.failure;
+        const result = fromPiAssistantMessage(message);
+        systemMessages.assertRestored();
+        return result;
+    } catch (error) {
+        const wasAborted =
+            registration.signal.aborted ||
+            error instanceof PiRequestAbortedError ||
+            (error instanceof PiResultAdapterError && error.code === 'aborted');
+        if (wasAborted) {
+            throw error instanceof PiRequestAbortedError
+                ? error
+                : new PiRequestAbortedError(input.generationId, error);
+        }
+        const requestError = systemMessages?.failure ?? error;
+        const proxy_status = preflight.useCorsProxy
+            ? getSillyTavernProxyStatus({
+                  ...(preflight.fetch === undefined ? {} : { fetch: preflight.fetch }),
+              })
+            : 'unchecked';
+        const normalizedError =
+            proxy_status === 'disabled' || proxy_status === 'unavailable'
+                ? new PiRuntimeError(
+                      'proxy_unavailable',
+                      'SillyTavern CORS proxy is not enabled or unavailable.'
+                  )
+                : normalizeRuntimeFailure(requestError);
+        if (!registration.signal.aborted) {
+            // Abort listeners must not observe the raw provider error either.
+            registration.controller.abort(normalizedError);
+        }
+        throw normalizedError;
+    } finally {
+        registration.release();
+    }
+}

@@ -88,11 +88,11 @@ describeHost('native WorldInfo scanner request isolation', () => {
             loaded: onWorldinfoEntriesLoaded,
             scan: async data => {
                 candidates.push(
-                    data.new.all.filter(item => item.world.startsWith('__MVU_WI_PROBE_')).length
+                    data.new.all.filter(item => item.world.startsWith('龘靐齉')).length
                 );
                 expect(
                     [...data.activated.entries.values()].some(item =>
-                        item.world.startsWith('__MVU_WI_PROBE_')
+                        item.world.startsWith('龘靐齉')
                     )
                 ).toBe(false);
                 await onWorldinfoScanDone(data);
@@ -106,6 +106,28 @@ describeHost('native WorldInfo scanner request isolation', () => {
         ]);
         expect(candidates.sort()).toEqual([0, 1, 1]);
         expect(JSON.stringify(input)).toBe(original);
+    });
+
+    test('a legitimate lorebook name sharing the old probe prefix retains its entries', async () => {
+        const config = await request('prefix');
+        const input = books([
+            entry(1, '[mvu_update]', 'UPDATE', { world: '__MVU_WI_PROBE_user_book' }),
+            entry(2, 'setting', 'SETTING', { world: '__MVU_WI_PROBE_user_book' }),
+        ]);
+        // 不安装 MVU 回调的宿主扫描确认这些是正常、可激活的业务条目。
+        const baseline = createWorldinfoHost({
+            books: input,
+            loaded: async () => {},
+            scan: async () => {},
+        });
+        const expected = (await baseline.run({})).worldInfoBefore.split('\n').sort();
+        expect(expected).toEqual(['SETTING', 'UPDATE']);
+        const host = createWorldinfoHost({
+            books: input,
+            loaded: onWorldinfoEntriesLoaded,
+            scan: onWorldinfoScanDone,
+        });
+        expect((await host.run(config)).worldInfoBefore.split('\n').sort()).toEqual(expected);
     });
 
     test('probe checks do not consume token budget, minimum activations, or recursion steps', async () => {

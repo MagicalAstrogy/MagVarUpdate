@@ -1,6 +1,8 @@
 import { isExtraModelSupported } from '@/function/is_extra_model_supported';
 import { isFunctionCallingSupported } from '@/function/is_function_calling_supported';
 import { invokeExtraModelWithStrategy } from '@/function/update/invoke_extra_model';
+import { getPiRequestFailureToastMessage } from '@/function/update/pi/error_localization';
+import { isPiMultiproviderEnabled } from '@/function/update/pi/feature_flag';
 import { handleVariablesInMessage } from '@/function/update_variables';
 import { tr } from '@/i18n';
 import { useDataStore } from '@/store';
@@ -52,7 +54,8 @@ function floorKey(chat_id: string, message_id: number): string {
 async function applyAnalysisResult(
     chat_id: string,
     message_id: number,
-    result: string | null
+    result: string | null,
+    show_failure_toast: boolean
 ): Promise<void> {
     if (SillyTavern.getCurrentChatId() !== chat_id) {
         return;
@@ -88,7 +91,7 @@ async function applyAnalysisResult(
         ) {
             return;
         }
-    } else {
+    } else if (show_failure_toast) {
         toastr.error(
             tr('runtime.extraModel.updateFailed'),
             tr('runtime.extraModel.updateFailedTitle')
@@ -116,11 +119,23 @@ async function runAnalysis(task: AnalysisTask): Promise<void> {
             return;
         }
 
-        let result: string | null = null;
+        // 排队期间面板可能变化；在实际发起请求时捕获来源和格式，供失败提示使用。
+        const request_settings = useDataStore().settings.额外模型解析配置;
+        const request_source = request_settings.模型来源;
+        const request_response_format = request_settings.应答格式;
+        let result: string | null;
         try {
             result = await invokeExtraModelWithStrategy();
         } catch (error) {
-            console.error('[MVU]额外模型解析失败:', error);
+            if (request_source === '更多') {
+                toastr.error(
+                    getPiRequestFailureToastMessage(error, request_response_format),
+                    tr('runtime.extraModel.updateFailedTitle')
+                );
+            } else {
+                console.error('[MVU]额外模型解析失败:', error);
+            }
+            throw error;
         }
 
         if (isSuperseded(task)) {
@@ -129,7 +144,12 @@ async function runAnalysis(task: AnalysisTask): Promise<void> {
 
         task.applying = true;
         try {
-            await applyAnalysisResult(task.chat_id, task.message_id, result);
+            await applyAnalysisResult(
+                task.chat_id,
+                task.message_id,
+                result,
+                request_source !== '更多'
+            );
         } catch (error) {
             console.error('[MVU]变量更新写回失败:', error);
             toastr.error(
@@ -165,8 +185,9 @@ function startAnalysis(chat_id: string, message_id: number): AnalysisTask {
         finished: Promise.resolve(),
         applying: false,
     };
-    task.finished = chain.then(() => runAnalysis(task)).catch(() => undefined);
-    chain = task.finished;
+    task.finished = chain.then(() => runAnalysis(task));
+    // 串行链消费失败以便后续任务继续；渲染等待和手动重试仍能收到本次请求的异常。
+    chain = task.finished.catch(() => undefined);
     current = task;
     return task;
 }
@@ -231,7 +252,9 @@ export async function onMessageReceived(
 
     if (
         store.effective_settings.更新方式 === '随AI输出' ||
+        (store.settings.额外模型解析配置.模型来源 === '更多' && !isPiMultiproviderEnabled()) ||
         (store.settings.额外模型解析配置.应答格式 === '工具调用' &&
+            store.settings.额外模型解析配置.模型来源 !== '更多' &&
             !isFunctionCallingSupported()) ||
         !(await isExtraModelSupported())
     ) {

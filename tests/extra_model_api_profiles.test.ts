@@ -1,3 +1,6 @@
+/**
+ * 测试场景：验证额外模型 API 方案的保存、切换、迁移、删除确认，以及 Pi 连接快照与凭证缓存的隔离。
+ */
 import {
     applyExtraModelApiProfile,
     clearUnboundExtraModelApiProfileFields,
@@ -12,22 +15,47 @@ import {
     saveCurrentExtraModelApiProfile,
     selectExtraModelApiProfile,
     upsertExtraModelApiProfile,
+    type ExtraModelApiProfile,
+    type ExtraModelApiRequestFields,
 } from '@/function/update/extra_model_api_profiles';
 import { useDataStore } from '@/store';
+import { reactive } from 'vue';
 
 const base_config = {
+    模型来源: '自定义' as const,
     api地址: 'http://localhost:1234/v1',
     密钥: 'secret-a',
     模型名称: 'model-a',
-    api方案列表: [] as Array<{
-        名称: string;
-        api地址: string;
-        密钥: string;
-        模型名称: string;
-    }>,
+    api方案列表: [] as ExtraModelApiProfile[],
     当前api方案: '',
 };
 
+const base_pi_settings = {
+    provider: 'anthropic',
+    api: 'anthropic-messages',
+    authType: 'oauth' as const,
+    endpoint: 'https://api.anthropic.com',
+    useProxy: true,
+    model: 'claude-sonnet-4-5',
+    contextWindow: 200_000,
+    credentials: {
+        anthropic: {
+            type: 'oauth',
+            access: 'access-token',
+            refresh: 'refresh-token',
+            expires: 1_900_000_000_000,
+        },
+    },
+    apiKeys: {
+        'anthropic\nhttps://api.anthropic.com': 'cached-anthropic-key',
+    },
+    customHeaders: 'X-Test: true',
+    customIncludeBody: 'metadata:\n  source: mvu',
+    customExcludeBody: '- store',
+    futurePiField: { nested: true },
+};
+
+// 方案生命周期：自定义与 Pi 后端共用方案操作，但各自保持连接、密钥和请求选项的归属。
 describe('extra model api profiles', () => {
     beforeEach(() => {
         (globalThis as any).SillyTavern.extensionSettings = {};
@@ -37,12 +65,87 @@ describe('extra model api profiles', () => {
         (globalThis as any).SillyTavern.extensionSettings = {};
     });
 
+    const request_options: ExtraModelApiRequestFields = {
+        破限方案: '使用其他预设',
+        其他预设名称: '变量预设',
+        随机头部: false,
+        应答格式: '格式化输出(v4兼容)',
+        关闭thinking: true,
+        兼容假流式: true,
+    };
+
+    // 请求选项与旧方案：补全缺失选项，保存后保持独立，并检测未保存修改。
+    test('migrates current request options into every old profile and preserves them on reload', () => {
+        (globalThis as any).SillyTavern.extensionSettings = {
+            mvu_settings: {
+                额外模型解析配置: {
+                    ...base_config,
+                    ...request_options,
+                    api方案列表: [
+                        { 名称: 'A', api地址: 'https://a.test/v1', 模型名称: 'a', 密钥: '' },
+                        { 名称: 'B', api地址: 'https://b.test/v1', 模型名称: 'b', 密钥: '' },
+                    ],
+                    当前api方案: 'A',
+                },
+            },
+        };
+        const store = useDataStore();
+        expect(store.settings.额外模型解析配置).toMatchObject(request_options);
+        expect(store.settings.额外模型解析配置.api方案列表).toEqual([
+            expect.objectContaining({ 名称: 'A', ...request_options }),
+            expect.objectContaining({ 名称: 'B', ...request_options }),
+        ]);
+
+        const saved = saveCurrentExtraModelApiProfile({
+            ...selectExtraModelApiProfile(store.settings.额外模型解析配置, 'B'),
+            破限方案: '使用内置破限',
+            其他预设名称: '',
+            随机头部: true,
+            应答格式: '聊天消息',
+            关闭thinking: false,
+            兼容假流式: false,
+        });
+        (globalThis as any).SillyTavern.extensionSettings.mvu_settings.额外模型解析配置 = saved;
+        store._reload_settings();
+        const reloaded = store.settings.额外模型解析配置;
+        expect(reloaded.api方案列表[0]).toMatchObject(request_options);
+        expect(reloaded.api方案列表[1]).toMatchObject({
+            破限方案: '使用内置破限',
+            其他预设名称: '',
+            随机头部: true,
+            应答格式: '聊天消息',
+            关闭thinking: false,
+            兼容假流式: false,
+        });
+        expect(selectExtraModelApiProfile(reloaded, 'A')).toMatchObject(request_options);
+    });
+
+    test.each<[keyof ExtraModelApiRequestFields, unknown]>([
+        ['破限方案', '使用当前预设'],
+        ['其他预设名称', '另一个预设'],
+        ['随机头部', true],
+        ['应答格式', '工具调用'],
+        ['关闭thinking', false],
+        ['兼容假流式', false],
+    ])('detects unsaved %s changes and saves them in an independent profile', (field, value) => {
+        const original = saveAsNewExtraModelApiProfile({ ...base_config, ...request_options }, 'A');
+        const changed = { ...original, [field]: value };
+        expect(isActiveExtraModelApiProfileDirty(original)).toBe(false);
+        expect(isActiveExtraModelApiProfileDirty(changed)).toBe(true);
+        const saved = saveAsNewExtraModelApiProfile(changed, 'B');
+        expect(isActiveExtraModelApiProfileDirty(saved)).toBe(false);
+        expect(selectExtraModelApiProfile(saved, 'A')[field]).toBe(request_options[field]);
+        expect(selectExtraModelApiProfile(saved, 'B')[field]).toBe(value);
+    });
+
+    // 自定义方案基础操作：迁移单连接配置，按名称切换、更新并保留未知字段。
     test('migrates legacy single api fields into a default profile', () => {
         const migrated = migrateExtraModelApiProfiles(base_config);
 
         expect(migrated.api方案列表).toEqual([
             {
                 名称: DEFAULT_EXTRA_MODEL_API_PROFILE_NAME,
+                backend: 'custom',
                 api地址: 'http://localhost:1234/v1',
                 密钥: 'secret-a',
                 模型名称: 'model-a',
@@ -113,6 +216,7 @@ describe('extra model api profiles', () => {
         expect(saved.api方案列表).toEqual([
             {
                 名称: '变量',
+                backend: 'custom',
                 api地址: 'https://api-b.example/v1',
                 密钥: 'key-b',
                 模型名称: 'gemini-b',
@@ -141,6 +245,7 @@ describe('extra model api profiles', () => {
 
         expect(saved.api方案列表[0]).toEqual({
             名称: '变量',
+            backend: 'custom',
             api地址: 'https://edited.example/v1',
             密钥: 'secret-a',
             模型名称: 'model-a',
@@ -169,10 +274,582 @@ describe('extra model api profiles', () => {
         expect(saved.api方案列表).toHaveLength(2);
         expect(saved.api方案列表[1]).toMatchObject({
             名称: '变量',
+            backend: 'custom',
             metadata: { owner: 'player' },
         });
     });
 
+    // Pi 方案与秘密隔离：深拷贝连接，排除 OAuth 凭证及密钥缓存，不覆盖隐藏自定义连接。
+    test('saves a deep pi connection snapshot without OAuth credentials', () => {
+        const config = {
+            ...base_config,
+            模型来源: '更多' as const,
+            pi: structuredClone(base_pi_settings),
+        };
+
+        const saved = saveCurrentExtraModelApiProfile(config, 'Pi 方案');
+        const profile = saved.api方案列表[0];
+
+        expect(profile).toMatchObject({
+            名称: 'Pi 方案',
+            backend: 'pi',
+            密钥: '',
+            pi: {
+                provider: 'anthropic',
+                api: 'anthropic-messages',
+                authType: 'oauth',
+                endpoint: 'https://api.anthropic.com',
+                useProxy: true,
+                model: 'claude-sonnet-4-5',
+                contextWindow: 200_000,
+                customHeaders: 'X-Test: true',
+                customIncludeBody: 'metadata:\n  source: mvu',
+                customExcludeBody: '- store',
+                futurePiField: { nested: true },
+            },
+        });
+        expect(profile.pi).not.toHaveProperty('credentials');
+        expect(profile.pi).not.toHaveProperty('apiKeys');
+        expect(saved.密钥).toBe('');
+
+        (config.pi.futurePiField as { nested: boolean }).nested = false;
+        expect(profile.pi?.futurePiField).toEqual({ nested: true });
+    });
+
+    test('preserves credential references across save-as and clears only the unbound connection references', () => {
+        const saved = saveCurrentExtraModelApiProfile(
+            {
+                ...base_config,
+                模型来源: '更多' as const,
+                pi: {
+                    ...structuredClone(base_pi_settings),
+                    credentialIds: { anthropic: 'anthropic' },
+                },
+            },
+            'A'
+        );
+        const copied = saveAsNewExtraModelApiProfile(saved, 'B');
+        expect(copied.api方案列表.map(profile => profile.pi!.credentialIds)).toEqual([
+            { anthropic: 'anthropic' },
+            { anthropic: 'anthropic' },
+        ]);
+        expect(copied.api方案列表[0].pi!.credentialIds).not.toBe(
+            copied.api方案列表[1].pi!.credentialIds
+        );
+        expect(copied.pi!.credentialIds).not.toBe(copied.api方案列表[1].pi!.credentialIds);
+        copied.pi!.credentials.anthropic = {
+            type: 'oauth',
+            access: 'rotated',
+            refresh: 'rotated-refresh',
+            expires: 2_000_000_000_000,
+        };
+        expect(isActiveExtraModelApiProfileDirty(copied)).toBe(false);
+        const selectedA = selectExtraModelApiProfile(copied, 'A');
+        expect(selectedA.pi!.credentials.anthropic).toMatchObject({ access: 'rotated' });
+        const cleared = clearUnboundExtraModelApiProfileFields(selectedA);
+        expect(cleared.pi!.credentialIds).toEqual({});
+        expect(cleared.pi!.credentials).toEqual(selectedA.pi!.credentials);
+        const restored = selectExtraModelApiProfile(cleared, 'B');
+        expect(restored.pi!.credentialIds).toEqual({ anthropic: 'anthropic' });
+    });
+
+    test('migrates legacy profiles to a shared reference once and preserves explicit logout on reload', () => {
+        const snapshot = { ...structuredClone(base_pi_settings) } as Record<string, unknown>;
+        delete snapshot.credentials;
+        delete snapshot.apiKeys;
+        const profiles = ['A', 'B'].map(名称 => ({
+            名称,
+            backend: 'pi' as const,
+            api地址: '',
+            密钥: '',
+            模型名称: '',
+            pi: snapshot as NonNullable<ExtraModelApiProfile['pi']>,
+        }));
+        const migrated = migrateExtraModelApiProfiles({
+            ...base_config,
+            模型来源: '更多' as const,
+            当前api方案: 'A',
+            pi: structuredClone(base_pi_settings),
+            api方案列表: profiles,
+        });
+        expect(
+            (migrated.pi as typeof migrated.pi & { credentialIds: Record<string, string> })
+                .credentialIds
+        ).toEqual({ anthropic: 'anthropic' });
+        expect(migrated.api方案列表.map(profile => profile.pi!.credentialIds)).toEqual([
+            { anthropic: 'anthropic' },
+            { anthropic: 'anthropic' },
+        ]);
+        expect(migrated.pi.credentials).toEqual(base_pi_settings.credentials);
+        expect(Object.keys(migrated.pi.credentials)).toEqual(['anthropic']);
+        migrated.api方案列表[1].pi!.credentialIds = {};
+        const reloaded = migrateExtraModelApiProfiles(migrated);
+        expect(reloaded.api方案列表[1].pi!.credentialIds).toEqual({});
+        expect(selectExtraModelApiProfile(reloaded, 'B').pi!.credentialIds).toEqual({});
+        expect(selectExtraModelApiProfile(reloaded, 'A').pi!.credentialIds).toEqual({
+            anthropic: 'anthropic',
+        });
+        expect(reloaded.api方案列表.every(profile => !('credentials' in profile.pi!))).toBe(true);
+    });
+
+    test('keeps hidden Custom endpoint and model fields outside Pi profile lifecycle', () => {
+        const saved = saveCurrentExtraModelApiProfile(
+            {
+                ...base_config,
+                模型来源: '更多' as const,
+                api地址: 'https://hidden-custom.example/v1',
+                模型名称: 'hidden-custom-model',
+                pi: structuredClone(base_pi_settings),
+            },
+            'Pi 方案'
+        );
+        const imported_profile = {
+            ...saved.api方案列表[0],
+            api地址: 'https://legacy-profile-value.example/v1',
+            模型名称: 'legacy-profile-model',
+        };
+
+        expect(saved.api方案列表[0]).toMatchObject({ api地址: '', 模型名称: '' });
+
+        const selected = selectExtraModelApiProfile(
+            {
+                ...saved,
+                api地址: 'https://current-custom.example/v1',
+                模型名称: 'current-custom-model',
+                api方案列表: [imported_profile],
+                当前api方案: '',
+            },
+            'Pi 方案'
+        );
+
+        expect(selected.api地址).toBe('https://current-custom.example/v1');
+        expect(selected.模型名称).toBe('current-custom-model');
+        expect(selected.api方案列表[0]).toMatchObject({ api地址: '', 模型名称: '' });
+        expect(isActiveExtraModelApiProfileDirty(selected)).toBe(false);
+
+        selected.api地址 = 'https://edited-hidden-custom.example/v1';
+        selected.模型名称 = 'edited-hidden-custom-model';
+        expect(isActiveExtraModelApiProfileDirty(selected)).toBe(false);
+
+        const cleared = clearUnboundExtraModelApiProfileFields(selected);
+        expect(cleared.api地址).toBe('https://edited-hidden-custom.example/v1');
+        expect(cleared.模型名称).toBe('edited-hidden-custom-model');
+    });
+
+    test('strips injected secret caches from imported Pi profiles while preserving unknown metadata', () => {
+        const profiles = upsertExtraModelApiProfile([], {
+            名称: 'Imported Pi',
+            backend: 'pi',
+            api地址: '',
+            密钥: 'profile-key',
+            模型名称: '',
+            customApiKey: 'must-remove-custom-cache',
+            pi: {
+                ...structuredClone(base_pi_settings),
+                credentials: { leaked: { access: 'must-remove' } },
+                apiKeys: { 'openai\nhttps://api.openai.com/v1': 'must-remove-key' },
+            },
+            future_profile: { keep: true },
+        });
+
+        expect(profiles[0]).toMatchObject({ future_profile: { keep: true } });
+        expect(profiles[0].密钥).toBe('');
+        expect(profiles[0]).not.toHaveProperty('customApiKey');
+        expect(profiles[0].pi).not.toHaveProperty('credentials');
+        expect(profiles[0].pi).not.toHaveProperty('apiKeys');
+    });
+
+    test('retains the target key for a complete Pi API-key profile', () => {
+        const saved = saveCurrentExtraModelApiProfile(
+            {
+                ...base_config,
+                模型来源: '更多' as const,
+                pi: {
+                    ...structuredClone(base_pi_settings),
+                    authType: 'api_key' as const,
+                },
+            },
+            'Pi API Key'
+        );
+
+        expect(saved.密钥).toBe('secret-a');
+        expect(saved.api方案列表[0]).toMatchObject({
+            backend: 'pi',
+            密钥: 'secret-a',
+            pi: { authType: 'api_key' },
+        });
+    });
+
+    test.each([
+        ['unknown provider', 'future-provider', 'openai-responses', ''],
+        ['unsupported API', 'openai', 'anthropic-messages', ''],
+        ['invalid endpoint', 'openai', 'openai-responses', 'not a URL'],
+        ['forbidden custom endpoint', 'google', 'google-generative-ai', 'https://proxy.example/v1'],
+    ])(
+        'does not persist or install a Pi key for an %s target',
+        (_label, provider, api, endpoint) => {
+            const profile = upsertExtraModelApiProfile([], {
+                名称: 'Imported Pi',
+                backend: 'pi',
+                api地址: 'https://legacy-custom.example/v1',
+                密钥: 'must-not-install',
+                模型名称: 'legacy-custom-model',
+                pi: {
+                    provider,
+                    api,
+                    authType: 'api_key',
+                    endpoint,
+                    useProxy: false,
+                    model: 'model-a',
+                    contextWindow: 128_000,
+                    customHeaders: '',
+                    customIncludeBody: '',
+                    customExcludeBody: '',
+                },
+            })[0];
+
+            expect(profile).toMatchObject({ api地址: '', 密钥: '', 模型名称: '' });
+
+            const selected = applyExtraModelApiProfile(
+                {
+                    ...base_config,
+                    pi: structuredClone(base_pi_settings),
+                },
+                profile
+            );
+            expect(selected.密钥).toBe('');
+        }
+    );
+
+    // 窗口与响应式对象：规范导入的窗口值，并支持 Pinia 代理对象的保存和应用。
+    test('normalizes a numeric profile contextWindow string before save and apply', () => {
+        const saved = saveCurrentExtraModelApiProfile(
+            {
+                ...base_config,
+                模型来源: '更多' as const,
+                pi: {
+                    ...structuredClone(base_pi_settings),
+                    provider: ' anthropic ',
+                    api: ' anthropic-messages ',
+                    authType: ' oauth ',
+                    endpoint: ' https://api.anthropic.com ',
+                    model: ' claude-sonnet-4-5 ',
+                    contextWindow: ' 200000 ',
+                },
+            },
+            'Pi 数字字符串'
+        );
+
+        expect(saved.api方案列表[0].pi?.contextWindow).toBe(200_000);
+        expect(saved.pi).toMatchObject({
+            provider: 'anthropic',
+            api: 'anthropic-messages',
+            authType: 'oauth',
+            endpoint: 'https://api.anthropic.com',
+            model: 'claude-sonnet-4-5',
+            contextWindow: 200_000,
+            credentials: base_pi_settings.credentials,
+            apiKeys: base_pi_settings.apiKeys,
+        });
+        expect(typeof saved.pi?.contextWindow).toBe('number');
+        const selected = selectExtraModelApiProfile(
+            {
+                ...base_config,
+                pi: structuredClone(base_pi_settings),
+                api方案列表: saved.api方案列表,
+                当前api方案: '',
+            },
+            'Pi 数字字符串'
+        );
+        expect(selected.pi?.contextWindow).toBe(200_000);
+        expect(typeof selected.pi?.contextWindow).toBe('number');
+    });
+
+    test('fails closed before an invalid profile contextWindow string reaches runtime settings', () => {
+        const profile = upsertExtraModelApiProfile([], {
+            名称: 'Invalid Context',
+            backend: 'pi',
+            api地址: '',
+            密钥: 'must-not-install',
+            模型名称: '',
+            pi: {
+                ...structuredClone(base_pi_settings),
+                authType: 'api_key',
+                contextWindow: 'not-a-number',
+            },
+        })[0];
+
+        expect(profile.密钥).toBe('');
+        const selected = applyExtraModelApiProfile(
+            {
+                ...base_config,
+                pi: structuredClone(base_pi_settings),
+            },
+            profile
+        );
+        expect(selected.pi).toMatchObject({ provider: '', api: '', contextWindow: 0 });
+        expect(typeof selected.pi?.contextWindow).toBe('number');
+    });
+
+    test('supports reactive Pi settings and profile entries from Pinia', () => {
+        const config = reactive({
+            ...base_config,
+            模型来源: '更多' as const,
+            pi: structuredClone(base_pi_settings),
+        });
+
+        const saved = saveCurrentExtraModelApiProfile(config, 'Reactive Pi');
+        expect(saved.api方案列表[0]).toMatchObject({
+            名称: 'Reactive Pi',
+            backend: 'pi',
+            pi: {
+                provider: 'anthropic',
+                model: 'claude-sonnet-4-5',
+            },
+        });
+        expect(saved.api方案列表[0].pi).not.toHaveProperty('credentials');
+        expect(saved.api方案列表[0].pi).not.toHaveProperty('apiKeys');
+
+        const selected = selectExtraModelApiProfile(
+            reactive({
+                ...base_config,
+                pi: structuredClone(base_pi_settings),
+                api方案列表: saved.api方案列表,
+                当前api方案: '',
+            }),
+            'Reactive Pi'
+        );
+        expect(selected.模型来源).toBe('更多');
+        expect(selected.pi?.credentials).toEqual(base_pi_settings.credentials);
+    });
+
+    // 凭证归属和无效快照：刷新不影响脏检查，残缺连接不能借用活动字段继续发送。
+    test('applies pi profiles, preserves provider credentials, and does not share nested state', () => {
+        const profile = saveCurrentExtraModelApiProfile(
+            {
+                ...base_config,
+                模型来源: '更多' as const,
+                pi: structuredClone(base_pi_settings),
+            },
+            'Pi 方案'
+        ).api方案列表[0];
+        const credentials = {
+            anthropic: { type: 'oauth', access: 'new-access', refresh: 'new-refresh', expires: 42 },
+        };
+        const selected = applyExtraModelApiProfile(
+            {
+                ...base_config,
+                pi: {
+                    ...structuredClone(base_pi_settings),
+                    provider: 'openai',
+                    credentials,
+                },
+            },
+            profile
+        );
+
+        expect(selected.模型来源).toBe('更多');
+        expect(selected.pi).toMatchObject({
+            provider: 'anthropic',
+            api: 'anthropic-messages',
+            useProxy: true,
+            model: 'claude-sonnet-4-5',
+            credentials,
+            apiKeys: base_pi_settings.apiKeys,
+            futurePiField: { nested: true },
+        });
+        expect(selected.pi?.credentials).not.toBe(credentials);
+        expect(selected.pi?.apiKeys).not.toBe(base_pi_settings.apiKeys);
+
+        (profile.pi!.futurePiField as { nested: boolean }).nested = false;
+        expect(selected.pi?.futurePiField).toEqual({ nested: true });
+    });
+
+    test('ignores credential refreshes for dirty checks but detects pi connection changes', () => {
+        const saved = saveCurrentExtraModelApiProfile(
+            {
+                ...base_config,
+                模型来源: '更多' as const,
+                pi: structuredClone(base_pi_settings),
+            },
+            'Pi 方案'
+        );
+
+        expect(isActiveExtraModelApiProfileDirty(saved)).toBe(false);
+        saved.pi!.credentials.anthropic = { type: 'oauth', access: 'refreshed' };
+        expect(isActiveExtraModelApiProfileDirty(saved)).toBe(false);
+        saved.pi!.apiKeys!['anthropic\nhttps://proxy.example'] = 'rotated';
+        expect(isActiveExtraModelApiProfileDirty(saved)).toBe(false);
+        saved.pi!.useProxy = false;
+        expect(isActiveExtraModelApiProfileDirty(saved)).toBe(true);
+        saved.pi!.useProxy = true;
+        expect(isActiveExtraModelApiProfileDirty(saved)).toBe(false);
+        saved.pi!.model = 'claude-opus-4-1';
+        expect(isActiveExtraModelApiProfileDirty(saved)).toBe(true);
+    });
+
+    test('migrates profiles without a backend as custom and strips misplaced credentials', () => {
+        const migrated = migrateExtraModelApiProfiles({
+            ...base_config,
+            模型来源: '更多' as const,
+            pi: structuredClone(base_pi_settings),
+            api方案列表: [
+                {
+                    名称: '旧方案',
+                    api地址: 'https://legacy.example/v1',
+                    密钥: 'legacy-key',
+                    模型名称: 'legacy-model',
+                    pi: structuredClone(base_pi_settings),
+                    future_profile: { keep: true },
+                },
+            ],
+            当前api方案: '旧方案',
+        });
+
+        expect(migrated.api方案列表[0]).toMatchObject({
+            backend: 'custom',
+            future_profile: { keep: true },
+        });
+        expect(migrated.api方案列表[0]).not.toHaveProperty('pi');
+
+        const selected = selectExtraModelApiProfile(migrated, '旧方案');
+        expect(selected.模型来源).toBe('自定义');
+        expect(selected.pi?.credentials).toEqual(base_pi_settings.credentials);
+    });
+
+    test('clears a stale OAuth root key without an active profile while preserving credential caches', () => {
+        const migrated = migrateExtraModelApiProfiles({
+            ...base_config,
+            模型来源: '更多' as const,
+            api地址: '',
+            密钥: 'stale-oauth-root-key',
+            customApiKey: 'custom-key',
+            模型名称: '',
+            pi: structuredClone(base_pi_settings),
+            api方案列表: [],
+            当前api方案: '',
+        });
+
+        expect(migrated.密钥).toBe('');
+        expect(migrated.customApiKey).toBe('custom-key');
+        expect(migrated.pi.credentials).toEqual(base_pi_settings.credentials);
+        expect(migrated.pi.apiKeys).toEqual(base_pi_settings.apiKeys);
+        expect(migrated.api方案列表).toEqual([]);
+        expect(migrated.当前api方案).toBe('');
+    });
+
+    test('disables a missing pi profile snapshot instead of mixing its key with stale settings', () => {
+        const migrated = migrateExtraModelApiProfiles({
+            ...base_config,
+            模型来源: '更多' as const,
+            pi: structuredClone(base_pi_settings),
+            api方案列表: [
+                {
+                    名称: 'Pi 早期方案',
+                    backend: 'pi',
+                    api地址: '',
+                    密钥: 'pi-key',
+                    模型名称: '',
+                },
+            ] as ExtraModelApiProfile[],
+            当前api方案: 'Pi 早期方案',
+        });
+
+        expect(migrated.api方案列表[0]).toMatchObject({
+            backend: 'pi',
+            密钥: '',
+        });
+        expect(migrated.api方案列表[0].pi).toBeUndefined();
+        expect(migrated.模型来源).toBe('更多');
+        expect(migrated.密钥).toBe('');
+        expect(migrated.pi).toMatchObject({
+            provider: '',
+            api: '',
+            model: '',
+            credentials: base_pi_settings.credentials,
+            apiKeys: base_pi_settings.apiKeys,
+        });
+    });
+
+    test('fails closed when selecting a malformed pi profile', () => {
+        const selected = selectExtraModelApiProfile(
+            {
+                ...base_config,
+                pi: structuredClone(base_pi_settings),
+                api方案列表: [
+                    {
+                        名称: 'Malformed Pi',
+                        backend: 'pi',
+                        api地址: '',
+                        密钥: 'must-not-be-sent',
+                        模型名称: '',
+                    },
+                ],
+                当前api方案: '',
+            },
+            'Malformed Pi'
+        );
+
+        expect(selected.当前api方案).toBe('Malformed Pi');
+        expect(selected.模型来源).toBe('更多');
+        expect(selected.密钥).toBe('');
+        expect(selected.pi).toMatchObject({
+            provider: '',
+            api: '',
+            model: '',
+            credentials: base_pi_settings.credentials,
+            apiKeys: base_pi_settings.apiKeys,
+        });
+        expect(selected.pi?.credentials).not.toBe(base_pi_settings.credentials);
+    });
+
+    test('refuses to save a Pi profile without a complete connection snapshot', () => {
+        expect(() =>
+            saveCurrentExtraModelApiProfile(
+                {
+                    ...base_config,
+                    模型来源: '更多',
+                },
+                'Broken Pi'
+            )
+        ).toThrow('“更多”API 方案缺少完整的连接配置，无法保存。');
+    });
+
+    test('refuses to save structurally present Pi settings with empty required fields', () => {
+        expect(() =>
+            saveCurrentExtraModelApiProfile(
+                {
+                    ...base_config,
+                    模型来源: '更多',
+                    pi: {
+                        ...structuredClone(base_pi_settings),
+                        provider: '',
+                        api: '',
+                        model: '',
+                    },
+                },
+                'Unconfigured Pi'
+            )
+        ).toThrow('“更多”API 方案缺少完整的连接配置，无法保存。');
+    });
+
+    test('does not synthesize a Pi profile from unrelated legacy root fields', () => {
+        const migrated = migrateExtraModelApiProfiles({
+            ...base_config,
+            模型来源: '更多' as const,
+            密钥: 'unbound-key',
+            pi: {
+                ...structuredClone(base_pi_settings),
+                model: '',
+            },
+        });
+
+        expect(migrated.api方案列表).toEqual([]);
+        expect(migrated.当前api方案).toBe('');
+        expect(migrated.pi?.model).toBe('');
+    });
+
+    // 名称与删除后选择：去重、拒绝重名，并在删除后正确切换剩余后端。
     test('removes a saved profile', () => {
         const profiles = removeExtraModelApiProfile(
             [
@@ -194,6 +871,55 @@ describe('extra model api profiles', () => {
 
         expect(profiles).toHaveLength(1);
         expect(profiles[0].名称).toBe('变量');
+    });
+
+    test('trims profile names consistently and keeps the first imported duplicate', () => {
+        const migrated = migrateExtraModelApiProfiles({
+            ...base_config,
+            api地址: 'https://first.example/v1',
+            密钥: 'first-key',
+            模型名称: 'first-model',
+            api方案列表: [
+                {
+                    名称: '方案 A',
+                    api地址: 'https://first.example/v1',
+                    密钥: 'first-key',
+                    模型名称: 'first-model',
+                },
+                {
+                    名称: ' 方案 A ',
+                    api地址: 'https://duplicate.example/v1',
+                    密钥: 'duplicate-key',
+                    模型名称: 'duplicate-model',
+                },
+                {
+                    名称: '   ',
+                    api地址: 'https://blank.example/v1',
+                    密钥: 'blank-key',
+                    模型名称: 'blank-model',
+                },
+                {
+                    名称: '方案 B',
+                    api地址: 'https://second.example/v1',
+                    密钥: 'second-key',
+                    模型名称: 'second-model',
+                },
+            ],
+            当前api方案: ' 方案 A ',
+        });
+
+        expect(migrated.当前api方案).toBe('方案 A');
+        expect(migrated.api方案列表.map(profile => profile.名称)).toEqual(['方案 A', '方案 B']);
+        expect(migrated.api方案列表[0].api地址).toBe('https://first.example/v1');
+        expect(isActiveExtraModelApiProfileDirty(migrated)).toBe(false);
+
+        const saved = saveCurrentExtraModelApiProfile(migrated, ' 方案 A ');
+        expect(saved.当前api方案).toBe('方案 A');
+        expect(saved.api方案列表.map(profile => profile.名称)).toEqual(['方案 A', '方案 B']);
+
+        const deleted = deleteActiveExtraModelApiProfile(saved, ' 方案 A ');
+        expect(deleted.api方案列表.map(profile => profile.名称)).toEqual(['方案 B']);
+        expect(deleted.当前api方案).toBe('方案 B');
     });
 
     test('rejects duplicate names when saving as a new profile', () => {
@@ -247,6 +973,118 @@ describe('extra model api profiles', () => {
         expect(next_config.模型名称).toBe('gemini-b');
     });
 
+    test('does not delete or switch when the requested profile is not active', async () => {
+        const config = {
+            ...base_config,
+            api地址: 'https://api-a.example/v1',
+            密钥: 'key-a',
+            模型名称: 'gemini-a',
+            api方案列表: [
+                {
+                    名称: '剧情',
+                    api地址: 'https://api-a.example/v1',
+                    密钥: 'key-a',
+                    模型名称: 'gemini-a',
+                },
+                {
+                    名称: '变量',
+                    api地址: 'https://api-b.example/v1',
+                    密钥: 'key-b',
+                    模型名称: 'gemini-b',
+                },
+            ],
+            当前api方案: '剧情',
+        };
+        const confirm = jest.fn().mockResolvedValue(true);
+
+        expect(deleteActiveExtraModelApiProfile(config, '变量')).toBe(config);
+        expect(deleteActiveExtraModelApiProfile(config, '不存在')).toBe(config);
+        await expect(
+            deleteActiveExtraModelApiProfileWithConfirmation(config, '变量', confirm)
+        ).resolves.toBe(config);
+        expect(confirm).not.toHaveBeenCalled();
+    });
+
+    test('switches from a deleted pi profile to the remaining custom backend', () => {
+        const pi_profile = saveCurrentExtraModelApiProfile(
+            {
+                ...base_config,
+                模型来源: '更多' as const,
+                pi: structuredClone(base_pi_settings),
+            },
+            'Pi 方案'
+        ).api方案列表[0];
+        const config = {
+            ...base_config,
+            模型来源: '更多' as const,
+            pi: structuredClone(base_pi_settings),
+            api方案列表: [
+                pi_profile,
+                {
+                    名称: '自定义方案',
+                    backend: 'custom' as const,
+                    api地址: 'https://custom.example/v1',
+                    密钥: 'custom-key',
+                    模型名称: 'custom-model',
+                },
+            ],
+            当前api方案: 'Pi 方案',
+        };
+
+        const next_config = deleteActiveExtraModelApiProfile(config, 'Pi 方案');
+
+        expect(next_config.模型来源).toBe('自定义');
+        expect(next_config.当前api方案).toBe('自定义方案');
+        expect(next_config.api地址).toBe('https://custom.example/v1');
+        expect(next_config.pi?.credentials).toEqual(base_pi_settings.credentials);
+    });
+
+    test('switches from a deleted custom profile to the remaining pi backend', () => {
+        const pi_profile = saveCurrentExtraModelApiProfile(
+            {
+                ...base_config,
+                模型来源: '更多' as const,
+                pi: structuredClone(base_pi_settings),
+            },
+            'Pi 方案'
+        ).api方案列表[0];
+        const config = {
+            ...base_config,
+            模型来源: '自定义' as const,
+            pi: structuredClone(base_pi_settings),
+            api方案列表: [
+                {
+                    名称: '自定义方案',
+                    backend: 'custom' as const,
+                    api地址: 'https://custom.example/v1',
+                    密钥: 'custom-key',
+                    模型名称: 'custom-model',
+                },
+                pi_profile,
+            ],
+            当前api方案: '自定义方案',
+        };
+
+        const next_config = deleteActiveExtraModelApiProfile(config, '自定义方案');
+
+        expect(next_config.模型来源).toBe('更多');
+        expect(next_config.当前api方案).toBe('Pi 方案');
+        expect(next_config.密钥).toBe('');
+        expect(next_config.pi).toMatchObject({
+            provider: base_pi_settings.provider,
+            api: base_pi_settings.api,
+            authType: base_pi_settings.authType,
+            endpoint: base_pi_settings.endpoint,
+            model: base_pi_settings.model,
+            contextWindow: base_pi_settings.contextWindow,
+            credentials: base_pi_settings.credentials,
+            apiKeys: base_pi_settings.apiKeys,
+        });
+        expect(next_config.pi?.credentials).not.toBe(config.pi.credentials);
+        expect(next_config.pi?.apiKeys).not.toBe(config.pi.apiKeys);
+    });
+
+    // 删除确认流程：有未保存修改时先确认丢弃，再确认删除；任一步取消都保留方案。
     test('asks to discard dirty edits before asking to delete a profile', async () => {
         const config = {
             ...base_config,
@@ -389,6 +1227,7 @@ describe('extra model api profiles', () => {
         expect(next_config?.api方案列表.map(profile => profile.名称)).toEqual(['变量']);
     });
 
+    // 解除绑定与导入校正：清理活动字段但保留共享凭证，修复失效的方案引用。
     test('detects dirty active profile fields', () => {
         const config = {
             ...base_config,
@@ -422,6 +1261,35 @@ describe('extra model api profiles', () => {
         expect(cleared.api地址).toBe('');
         expect(cleared.密钥).toBe('');
         expect(cleared.模型名称).toBe('');
+    });
+
+    test('clears pi connection fields in unbound mode without clearing credentials or unknown data', () => {
+        const config = {
+            ...base_config,
+            模型来源: '更多' as const,
+            pi: structuredClone(base_pi_settings),
+            当前api方案: 'Pi 方案',
+        };
+
+        const cleared = clearUnboundExtraModelApiProfileFields(config);
+
+        expect(cleared.pi).toMatchObject({
+            provider: '',
+            api: '',
+            authType: 'api_key',
+            endpoint: '',
+            useProxy: false,
+            model: '',
+            contextWindow: 0,
+            credentials: base_pi_settings.credentials,
+            apiKeys: base_pi_settings.apiKeys,
+            customHeaders: '',
+            customIncludeBody: '',
+            customExcludeBody: '',
+            futurePiField: { nested: true },
+        });
+        expect(cleared.pi?.credentials).not.toBe(config.pi.credentials);
+        expect(cleared.pi?.apiKeys).not.toBe(config.pi.apiKeys);
     });
 
     test('reconciles invalid active profile names on load', () => {
@@ -497,9 +1365,16 @@ describe('extra model api profiles', () => {
         expect(store.settings.额外模型解析配置.api方案列表).toEqual([
             {
                 名称: DEFAULT_EXTRA_MODEL_API_PROFILE_NAME,
+                backend: 'custom',
                 api地址: 'https://legacy.example/v1',
                 密钥: 'legacy-key',
                 模型名称: 'legacy-model',
+                破限方案: '使用内置破限',
+                其他预设名称: '',
+                随机头部: true,
+                应答格式: '聊天消息',
+                关闭thinking: false,
+                兼容假流式: false,
             },
         ]);
         expect(store.settings.额外模型解析配置.当前api方案).toBe(

@@ -1,3 +1,6 @@
+/**
+ * 测试场景：为不同变量实现复用命令提取场景，覆盖别名、嵌套字面量、数学表达式和求值隔离。
+ */
 import { updateVariables, extractCommands, parseCommandValue } from '@/function/update_variables';
 
 type MvuData = any;
@@ -11,7 +14,9 @@ export function registerExtractSetCommandTests({
     mvuZod = false,
 }: ExtractSetCommandTestOptions = {}): void {
     const nativeTest = mvuZod ? test.skip : test;
+    // 命令提取契约：同一组用例可验证基础实现及 mvu_zod 集成实现。
     describe('extractCommands', () => {
+        // 基础语法：提取单条、多条及省略旧值参数的 set 调用。
         describe('基本功能测试', () => {
             test('提取简单的 _.set 调用', () => {
                 const input = `_.set('name', 'John', 'Jane');//更新名字`;
@@ -59,6 +64,7 @@ export function registerExtractSetCommandTests({
             });
         });
 
+        // 嵌套结构：括号、数组、对象和字符串中的命令文本不会导致错误截断。
         describe('嵌套括号处理', () => {
             test('处理参数中包含 _.set 的情况', () => {
                 const input = `_.set('悠纪.想对user说的事', ["与希雅 在一起时，会邀请希雅做一些事情，是 出去喝一杯咖啡，接下来设置变量\\"_.set('当前事件',null,'yuki_relation_level1');//邀请希雅\\"，然后断章。"], []);//邀请已经发出并被接受，待办事项完成并清空。`;
@@ -100,6 +106,7 @@ export function registerExtractSetCommandTests({
             });
         });
 
+        // 引号与求值隔离：覆盖混合、转义和模板引号，并检查数据解析不能执行任意代码。
         describe('引号处理', () => {
             test('处理混合引号', () => {
                 const input = `_.set("path", 'old"value', "new'value");//混合引号`;
@@ -132,8 +139,38 @@ export function registerExtractSetCommandTests({
                 expect(parseCommandValue(cmd.args[1])).toBe('Hello ${name}');
                 expect(parseCommandValue(cmd.args[2])).toBe('Goodbye ${name}');
             });
+
+            // 求值隔离回归：JSON5 只解析数据，数学表达式不能修改全局 Math 或共享 mathjs。
+            test('只解析 JSON5 数据字面量，不执行模型输出中的 JavaScript', () => {
+                const marker = '__mvu_command_value_executed__';
+                Reflect.deleteProperty(globalThis, marker);
+                const malicious = `{value: (globalThis.${marker} = true)}`;
+
+                parseCommandValue(malicious);
+
+                expect(Reflect.get(globalThis, marker)).toBeUndefined();
+                Reflect.deleteProperty(globalThis, marker);
+            });
+
+            test('数学表达式不能覆写全局 Math 或 mathjs 命名空间', () => {
+                const originalRandom = Math.random;
+
+                expect(parseCommandValue('Math.random = 0')).toBe('Math.random = 0');
+                expect(Math.random).toBe(originalRandom);
+                expect(parseCommandValue('math.pow = 0')).toBe('math.pow = 0');
+                expect(parseCommandValue('Math.floor(3.9) + math.pow(2, 3)')).toBe(11);
+
+                const radians = 'number(unit(180, "deg"), "rad")';
+                expect(parseCommandValue(radians)).toBeCloseTo(Math.PI);
+                parseCommandValue('createUnit("deg", "2 rad", {override: true})');
+                expect(parseCommandValue(radians)).toBeCloseTo(Math.PI);
+
+                parseCommandValue('evaluate("Math.random = 0")');
+                expect(Math.random).toBe(originalRandom);
+            });
         });
 
+        // 命令注释：验证空注释、带空格注释和多行说明的提取。
         describe('注释处理', () => {
             test('处理无注释的情况', () => {
                 const input = `_.set('name', 'old', 'new');`;
@@ -161,6 +198,7 @@ export function registerExtractSetCommandTests({
             });
         });
 
+        // 不完整输入：空文本、缺失分号、括号或参数时仍按契约处理。
         describe('边界情况', () => {
             test('处理空输入', () => {
                 const result = extractCommands('');
@@ -192,6 +230,7 @@ export function registerExtractSetCommandTests({
             });
         });
 
+        // 混合内容：从叙述文本和真实复杂输出中提取有效更新命令。
         describe('复杂场景', () => {
             test('处理混合内容', () => {
                 const input = `
@@ -228,6 +267,7 @@ export function registerExtractSetCommandTests({
         });
     });
 
+    // 插入命令别名：验证数组追加、指定位置插入、对象键和值，以及根路径操作。
     describe('Assign/Insert 命令及别名测试', () => {
         test.each(ASSIGN_ALIASES)('简单的 %s 调用（向数组追加）', command => {
             const input = `_.${command}('inventory', 'healing potion');//获得治疗药水`;
@@ -282,6 +322,7 @@ export function registerExtractSetCommandTests({
         });
     });
 
+    // 删除命令别名：验证对象属性、数组下标和按值删除。
     describe('Remove/Unset/Delete 命令及别名测试', () => {
         test.each(REMOVE_ALIASES)('简单的 %s 调用（删除属性）', command => {
             const input = `_.${command}('user.status.is_tired');//不再疲劳`;
@@ -320,6 +361,7 @@ export function registerExtractSetCommandTests({
         });
     });
 
+    // 增量命令：验证数值与表达式增量、错误参数及混合命令。
     describe('Add 命令测试', () => {
         /*    test('简单的 add 调用（切换布尔值）', () => {
         const input = `_.add('user.is_active');//切换活跃状态`;
@@ -389,6 +431,7 @@ export function registerExtractSetCommandTests({
         });
     });
 
+    // 数学与字符串：支持常用运算，同时避免误求值普通文本、日期及 JSON 字符串。
     describe('数学和表达式测试', () => {
         test('处理基本的四则运算', () => {
             const input = "_.set('悠纪.好感度', 10, 10 + 2 * 5 - 3 / 3);//羁绊加深";
@@ -462,6 +505,7 @@ export function registerExtractSetCommandTests({
         });
     });
 
+    // 高级运算：验证求导、复数、矩阵、统计和连续插入等复杂参数。
     describe('高等数学与高级运算测试', () => {
         test('处理微积分（求导）运算', () => {
             // 求函数 f(x) = x^3 在 x = 2 时的导数值 (f'(x) = 3x^2, f'(2) = 3 * 2^2 = 12)
@@ -566,6 +610,7 @@ export function registerExtractSetCommandTests({
             expect(variables.stat_data.items).toEqual(['user-value', 'user-description']);
         });
 
+        // 别名组合：插入后使用不同删除别名仍作用于正确数组元素。
         describe('插入元素后使用不同别名删除', () => {
             test.each(REMOVE_ALIASES)(
                 '使用 assign 插入多个元素后用 %s 按索引删除',

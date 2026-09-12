@@ -1,3 +1,6 @@
+/**
+ * 测试场景：验证全局 Mvu 接口的导出、消息解析、变量读写和异常返回，使用模拟酒馆环境隔离宿主依赖。
+ */
 import { initGlobals as exportGlobals } from '@/function/global';
 import { updateVariable, updateVariables } from '@/function/update_variables';
 import { variable_events } from '@/variable_def';
@@ -26,6 +29,7 @@ declare global {
     }
 }
 
+// 全局接口总体验证：统一准备酒馆变量和解析依赖，再分别验证各公开方法。
 describe('exportGlobals', () => {
     let originalWindow: any;
     let mockMvuData: MvuData;
@@ -35,7 +39,6 @@ describe('exportGlobals', () => {
 
     beforeEach(() => {
         originalWindow = global.window;
-        //@ts-ignore
         global.window = {
             parent: {} as any,
         } as any;
@@ -80,11 +83,11 @@ describe('exportGlobals', () => {
     });
 
     afterEach(() => {
-        //@ts-ignore
         global.window = originalWindow;
         jest.restoreAllMocks();
     });
 
+    // 接口导出：当前窗口和父窗口都获得完整方法与事件名称。
     describe('exportGlobals function', () => {
         test('should export Mvu object to window and window.parent', () => {
             exportGlobals();
@@ -123,6 +126,7 @@ describe('exportGlobals', () => {
         });
     });
 
+    // 消息解析：变量更新和无更新结果都返回独立数据。
     describe('parseMessage', () => {
         test('should update variables and return new variables', async () => {
             const newMvuData: MvuData = {
@@ -158,6 +162,7 @@ describe('exportGlobals', () => {
         });
     });
 
+    // 读取变量：将显式目标选项传给宿主并返回对应数据。
     describe('getMvuData', () => {
         test('should call getVariables with correct options and return MvuData', () => {
             mockGetVariables.mockReturnValue(mockMvuData);
@@ -173,6 +178,7 @@ describe('exportGlobals', () => {
         });
     });
 
+    // 替换变量：原样转交目标选项和完整变量数据。
     describe('replaceMvuData', () => {
         test('should call replaceVariables with correct parameters', async () => {
             mockReplaceVariables.mockResolvedValue(undefined);
@@ -187,6 +193,7 @@ describe('exportGlobals', () => {
         });
     });
 
+    // 读取当前消息：使用当前楼层的变量目标。
     describe('getCurrentMvuData', () => {
         test('should get variables for current message', () => {
             mockGetCurrentMessageId.mockReturnValue('current-msg-123');
@@ -206,6 +213,7 @@ describe('exportGlobals', () => {
         });
     });
 
+    // 替换当前消息：写入当前楼层而非其他变量存储。
     describe('replaceCurrentMvuData', () => {
         test('should replace variables for current message', async () => {
             mockGetCurrentMessageId.mockReturnValue('current-msg-456');
@@ -224,6 +232,7 @@ describe('exportGlobals', () => {
         });
     });
 
+    // 重新初始化：分别检查初始化成功与失败的布尔返回。
     describe('reloadInitVar', () => {
         test('should call loadInitVarData and return true on success', async () => {
             mockLoadInitVarData.mockResolvedValue(true);
@@ -249,6 +258,7 @@ describe('exportGlobals', () => {
         });
     });
 
+    // 单变量写入：验证默认选项、自定义原因和递归标记，以及失败返回。
     describe('setMvuVariable', () => {
         test('should update variable with default options', async () => {
             mockUpdateVariable.mockResolvedValue(true);
@@ -301,6 +311,7 @@ describe('exportGlobals', () => {
         });
     });
 
+    // 单变量读取：覆盖数据类别、缺失路径、描述包装和嵌套路径。
     describe('getMvuVariable', () => {
         test('should get value from stat_data by default', () => {
             exportGlobals();
@@ -363,6 +374,7 @@ describe('exportGlobals', () => {
         });
     });
 
+    // 数据类别选择：分别读取状态、展示和增量数据。
     describe('getRecordFromMvuData', () => {
         test('should return stat_data when category is stat', () => {
             exportGlobals();
@@ -392,6 +404,7 @@ describe('exportGlobals', () => {
         });
     });
 
+    // 异常与边界：空消息、缺失字段和不完整数据不破坏公开接口约定。
     describe('Edge Cases', () => {
         test('parseMessage should handle empty message', async () => {
             mockUpdateVariables.mockResolvedValue(false);
