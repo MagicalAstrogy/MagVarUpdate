@@ -26,6 +26,13 @@ declare module '*.vue' {
 
 declare const YAML: typeof import('yaml');
 
+/** MVU 启用后注册到酒馆父窗口；空路径输出整个 stat_data。 */
+declare function mvuYaml(path?: string, stat_data?: unknown): string;
+
+interface Window {
+    mvuYaml?: typeof mvuYaml;
+}
+
 declare const z: typeof import('zod');
 declare namespace z {
     export type infer<T> = import('zod').infer<T>;
