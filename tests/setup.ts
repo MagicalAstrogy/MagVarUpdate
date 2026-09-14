@@ -199,7 +199,8 @@ beforeEach(() => {
     }
 );
 (globalThis as any).eventEmit = jest.fn(async (event: string, ...args: unknown[]) => {
-    const handlers = __eventHandlers.get(event) ?? [];
+    // 派发使用快照，监听自行移除时仍须调用本轮的其他监听。
+    const handlers = [...(__eventHandlers.get(event) ?? [])];
     for (const handler of handlers) {
         const result = handler(...args);
         if (result && typeof (result as Promise<unknown>).then === 'function') {

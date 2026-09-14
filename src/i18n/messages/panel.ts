@@ -78,6 +78,15 @@ export const panelMessages = defineMessages({
         'zh-CN': 'sendas 不视为 user 消息',
         en: 'Do not treat sendas as a user message',
     },
+    'panel.compatibility.nonblockingExtraAnalysis': {
+        'zh-CN': '额外模型解析不阻塞正文显示（实验性）',
+        en: 'Show replies without waiting for extra model analysis (experimental)',
+    },
+    'panel.compatibility.nonblockingExtraAnalysisHelp': {
+        'zh-CN':
+            '默认关闭。开启后，角色卡的部分默认前端页面会立即显示，其他插件的额外分析流程也可同时执行，无需等待变量解析完成。仅对非工具调用的自动解析生效。',
+        en: "Off by default. When enabled, some of a character card's default frontend pages appear immediately, and other plugins can run their additional analysis at the same time, without waiting for variable analysis to finish. Applies only to automatic analysis without tool calling.",
+    },
     'panel.compatibility.license': {
         'zh-CN': 'LICENSE',
         en: 'LICENSE',

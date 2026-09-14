@@ -23,6 +23,11 @@
                 />
             </Checkbox>
 
+            <Checkbox v-model="store.settings.兼容性.额外模型解析非阻塞">
+                <span>{{ t('panel.compatibility.nonblockingExtraAnalysis') }}</span>
+                <HelpIcon :help="t('panel.compatibility.nonblockingExtraAnalysisHelp')" />
+            </Checkbox>
+
             <Detail :title="t('panel.compatibility.license')">
                 <template #title-suffix>
                     <HelpIcon :help="license_help" />

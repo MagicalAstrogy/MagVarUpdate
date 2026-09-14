@@ -14,6 +14,15 @@ describe('settings unknown field passthrough', () => {
         (globalThis as any).SillyTavern.extensionSettings = {};
     });
 
+    test('defaults nonblocking analysis to off and persists an explicit opt-in', async () => {
+        const store = useDataStore();
+        expect(store.settings.兼容性.额外模型解析非阻塞).toBe(false);
+        store.settings.兼容性.额外模型解析非阻塞 = true;
+        await nextTick();
+        store._reload_settings();
+        expect(store.settings.兼容性.额外模型解析非阻塞).toBe(true);
+    });
+
     // Pi 默认值与快照：保留旧来源默认行为，剔除方案中误放的凭证，残缺快照不补成完整连接。
     test('provides fail-closed pi defaults without changing the legacy model source', () => {
         const store = useDataStore();
