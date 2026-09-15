@@ -113,6 +113,8 @@ const __eventHandlers = new Map<string, Array<(...args: unknown[]) => unknown>>(
     GENERATION_ENDED: 'GENERATION_ENDED',
     GENERATION_STOPPED: 'GENERATION_STOPPED',
     MESSAGE_SENT: 'MESSAGE_SENT',
+    MESSAGE_RECEIVED: 'message_received',
+    CHARACTER_MESSAGE_RENDERED: 'character_message_rendered',
     GENERATION_STARTED: 'GENERATION_STARTED',
     WORLDINFO_UPDATED: 'WORLDINFO_UPDATED',
     CHAT_CHANGED: 'CHAT_CHANGED',
@@ -197,7 +199,8 @@ beforeEach(() => {
     }
 );
 (globalThis as any).eventEmit = jest.fn(async (event: string, ...args: unknown[]) => {
-    const handlers = __eventHandlers.get(event) ?? [];
+    // 派发使用快照，监听自行移除时仍须调用本轮的其他监听。
+    const handlers = [...(__eventHandlers.get(event) ?? [])];
     for (const handler of handlers) {
         const result = handler(...args);
         if (result && typeof (result as Promise<unknown>).then === 'function') {

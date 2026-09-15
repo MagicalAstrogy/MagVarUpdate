@@ -310,6 +310,7 @@ const NewSettings = z
             .object({
                 更新到聊天变量: z.boolean().default(false),
                 显示老旧功能: z.boolean().default(false),
+                额外模型解析非阻塞: z.boolean().default(false),
                 sendas不视为user消息: z.boolean().optional(),
                 sandas不视为user消息: z.boolean().optional(),
             })
