@@ -1,6 +1,7 @@
 import { onMessageReceived } from '@/function/update/on_message_received';
 import { clearPiRequestControllers } from '@/function/update/pi/controller_registry';
 import { handleVariablesInMessage } from '@/function/update_variables';
+import { is_jest_environment } from '@/jest';
 import { controlledStoppableEventOn } from '@/util';
 
 /**
@@ -9,18 +10,22 @@ import { controlledStoppableEventOn } from '@/util';
  */
 export function initResponse() {
     const controller = new AbortController();
+    const receive = (message_id: number) =>
+        onMessageReceived(message_id, { signal: controller.signal });
+    const throttled_receive = _.throttle(receive, 3000);
     const stop_list: Array<() => void> = [];
     stop_list.push(
         controlledStoppableEventOn(tavern_events.MESSAGE_SENT, handleVariablesInMessage)
     );
     stop_list.push(
-        // 接收事件必须直接执行：节流的尾调用可能晚于对应渲染事件，导致临时监听漏接。
-        controlledStoppableEventOn(tavern_events.MESSAGE_RECEIVED, message_id =>
-            onMessageReceived(message_id, { signal: controller.signal })
+        controlledStoppableEventOn(
+            tavern_events.MESSAGE_RECEIVED,
+            is_jest_environment ? receive : throttled_receive
         )
     );
     return () => {
         controller.abort();
+        throttled_receive.cancel();
         // Tombstone active capture attempts before tearing down response listeners. A capture
         // that settles concurrently must not be able to register a fresh Pi provider request.
         clearPiRequestControllers();

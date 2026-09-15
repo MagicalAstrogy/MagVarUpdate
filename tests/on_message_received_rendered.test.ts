@@ -283,7 +283,7 @@ describe('onMessageReceived 请求闭包中的临时渲染监听', () => {
         expect(mockInvoke).toHaveBeenCalledTimes(1);
     });
 
-    test('快速连续的宿主事件都能在对应渲染前注册监听', async () => {
+    test('宿主事件依次注册并清理各自的渲染监听', async () => {
         const stop = initResponse();
         try {
             await emitReceived();
