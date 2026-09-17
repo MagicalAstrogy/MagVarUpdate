@@ -3,6 +3,7 @@ import { isExtraModelSupported } from '@/function/is_extra_model_supported';
 import { isFunctionCallingSupported } from '@/function/is_function_calling_supported';
 import { cleanUpMetadata, reconcileAndApplySchema } from '@/function/schema';
 import { onMessageReceived } from '@/function/update/on_message_received';
+import { runIncrementalExtraModelRepair } from '@/function/update/incremental_repair';
 import { isPiMultiproviderEnabled } from '@/function/update/pi/feature_flag';
 import { handleVariablesInMessage, updateVariables } from '@/function/update_variables';
 import { tr, type MessageKey } from '@/i18n';
@@ -536,6 +537,11 @@ export const buttons: Button[] = [
                 tr('runtime.button.extraModelRetryTitle')
             );
         },
+    },
+    {
+        name: '增量校正额外模型解析',
+        label_key: 'panel.button.incrementalRepairExtraModelParsing',
+        function: runIncrementalExtraModelRepair,
     },
     {
         name: '清除旧楼层变量',

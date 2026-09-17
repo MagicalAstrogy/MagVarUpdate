@@ -40,8 +40,14 @@ import {
 import type { PiExtraModelSettings, PiRuntimePreflight } from '@/function/update/pi/runtime';
 import { tr } from '@/i18n';
 import { useDataStore } from '@/store';
-import { normalizeBaseURL } from '@/util';
-import { literalYamlify, uuidv4 } from '@util/common';
+import { normalizeBaseURL, isJsonPatch } from '@/util';
+import {
+    cleanStructuredUpdate,
+    findUpdateMarkupBlocks,
+    isJsonSafe,
+    scanUpdateMarkup,
+} from './structured_update';
+import { literalYamlify, parseString, uuidv4 } from '@util/common';
 import { compare } from 'compare-versions';
 import { klona } from 'klona';
 import YAML from 'yaml';
@@ -286,11 +292,26 @@ async function unsetExtraAnalysisStates() {
 
 let is_analysis_in_progress = false;
 
+export interface ExtraModelInvocationOptions {
+    /** Override the built-in full variable-update task. Kept for existing callers. */
+    task?: string;
+    /** Append task-specific constraints while retaining the built-in update task. */
+    task_suffix?: string;
+    /** Override the short user message sent to the extra model. */
+    user_input?: string;
+    /** Legacy reminder option, appended to user_input without moving the preset tail. */
+    prompt_tail?: string;
+    /** Validate and optionally normalize each attempt before the retry strategy accepts it. */
+    validate_result?: (result: string) => string;
+}
+
 /**
  * 根据串行或并发策略调用额外模型，统一管理请求状态、重试和停止操作。
  * Pi 设置预检与请求快照在策略开始前完成，取消及不可重试错误会终止后续尝试。
  */
-export async function invokeExtraModelWithStrategy(): Promise<string | null> {
+export async function invokeExtraModelWithStrategy(
+    options: ExtraModelInvocationOptions = {}
+): Promise<string | null> {
     const batch_id = generateRandomHeader();
     if (is_analysis_in_progress) {
         return null;
@@ -308,13 +329,15 @@ export async function invokeExtraModelWithStrategy(): Promise<string | null> {
         /** 执行并记录一次额外模型尝试，使错误处理和活动请求清理使用同一请求编号。 */
         const recordedInvoke = async (generation_id?: string, signal?: AbortSignal) => {
             try {
-                return await invokeExtraModel(
+                const result = await invokeExtraModel(
                     generation_id,
                     batch_id,
                     pi_preflight,
                     request_settings,
-                    signal
+                    signal,
+                    options
                 );
+                return options.validate_result ? options.validate_result(result) : result;
             } catch (e) {
                 if (signal?.aborted && !pi_preflight) throw e;
                 const localized_error = localizePiError(e);
@@ -473,7 +496,9 @@ export async function invokeExtraModelWithStrategy(): Promise<string | null> {
 }
 
 /** 执行一次额外模型解析，按需建立生成状态，并在结束后恢复界面状态。 */
-export async function generateExtraModel(): Promise<string | null> {
+export async function generateExtraModel(
+    options: ExtraModelInvocationOptions = {}
+): Promise<string | null> {
     let did_set_extra_analysis_states = false;
     const request_settings = getRequestSettings();
     try {
@@ -481,7 +506,14 @@ export async function generateExtraModel(): Promise<string | null> {
         did_set_extra_analysis_states = true;
         const pi_preflight = await preparePiRuntimePreflight(request_settings);
         const generation_id = pi_preflight ? uuidv4() : undefined;
-        return await invokeExtraModel(generation_id, undefined, pi_preflight, request_settings);
+        return await invokeExtraModel(
+            generation_id,
+            undefined,
+            pi_preflight,
+            request_settings,
+            undefined,
+            options
+        );
     } catch (error) {
         throw localizePiError(error);
     } finally {
@@ -500,6 +532,7 @@ export async function generateExtraModel(): Promise<string | null> {
  * @param pi_preflight 本次 Pi 请求的预检结果，旧来源不传入。
  * @param request_settings 世界书过滤与模型调用共用的本次配置快照。
  * @param signal 并发批次的取消信号，阻止登记较慢的调用在批次结束后启动生成。
+ * @param options 本次调用的任务、输入覆盖及增量结果校验选项。
  * @returns 包含有效更新命令的 UpdateVariable 文本块。
  */
 async function invokeExtraModel(
@@ -507,7 +540,8 @@ async function invokeExtraModel(
     batch_id?: string,
     pi_preflight?: PiRuntimePreflight,
     request_settings = useDataStore().settings.额外模型解析配置,
-    signal?: AbortSignal
+    signal?: AbortSignal,
+    options: ExtraModelInvocationOptions = {}
 ): Promise<string> {
     generation_id ??= uuidv4();
     const pi_attempt =
@@ -528,37 +562,71 @@ async function invokeExtraModel(
             batch_id,
             pi_preflight,
             request_settings,
-            pi_attempt?.signal
+            pi_attempt?.signal,
+            options
         );
 
-        const tag = _([...result.matchAll(/<(update(?:variable)?|variableupdate)>/gi)]).last()?.[1];
-        if (!tag) {
-            if (pi_preflight) {
-                throw await createPiProtocolError();
+        // Fallbacks are shared by ordinary parsing and incremental repair. Reasoning examples
+        // are ignored only outside structured data, preserving literal tags in payload strings.
+        const updates = findUpdateMarkupBlocks(result, 'update');
+        const update = updates.filter(block => block.closed).at(-1) ?? updates.at(-1);
+        let body = update ? result.slice(update.contentStart, update.contentEnd) : result;
+        let hasUpdateBody = !!update;
+        let patches = findUpdateMarkupBlocks(body, 'patch');
+        if (!patches.some(block => block.closed) && update) {
+            // A valid patch can follow an empty or invalid update wrapper.
+            patches = findUpdateMarkupBlocks(result, 'patch');
+            if (patches.some(block => block.closed)) {
+                body = result;
+                hasUpdateBody = false;
             }
-            throw new Error(
-                literalYamlify({
-                    [tr('runtime.extraModel.updateTagMissing')]: result,
-                })
-            );
         }
-
-        const start_index = result.lastIndexOf(`<${tag}>`);
-        const end_index = result.indexOf(`</${tag}>`, start_index);
-        const update_block = result.slice(
-            start_index + 2 + tag.length,
-            end_index === -1 ? undefined : end_index
-        );
-
-        const fn_call_match =
+        if (patches.length) {
+            if (patches.some(block => !block.closed)) throw new Error('JSONPatch 标签未闭合');
+            if (options.validate_result && (patches.length !== 1 || updates.length > 1)) {
+                throw new Error('增量校正返回了多个更新块');
+            }
+            for (const block of patches) {
+                const value = parseString(
+                    cleanStructuredUpdate(body.slice(block.contentStart, block.contentEnd))
+                );
+                if (!isJsonPatch(value) || !isJsonSafe(value))
+                    throw new Error('JSONPatch 内容不合法或包含非有限值');
+            }
+            // Preserve analysis and mixed legacy commands inside a real update block. A fallback
+            // patch outside that block must not import surrounding story/reasoning as commands.
+            let patchText = '';
+            let cursor = 0;
+            for (const block of patches) {
+                if (hasUpdateBody) patchText += body.slice(cursor, block.start);
+                else if (patchText) patchText += '\n';
+                patchText += `<JSONPatch>${body.slice(block.contentStart, block.contentEnd)}</JSONPatch>`;
+                cursor = block.end;
+            }
+            if (hasUpdateBody) patchText += body.slice(cursor);
+            return `<UpdateVariable>${patchText}</UpdateVariable>`;
+        }
+        const scanned = scanUpdateMarkup(body);
+        const visible = scanned.visible;
+        // Legacy script commands remain supported, but never use examples from Think/Analysis.
+        if (
             /_\.(?:set|insert|assign|remove|unset|delete|add)\s*\([\s\S]*?\)\s*;/.test(
-                update_block
-            );
-        const json_patch_match = /json_?patch/i.test(update_block);
-        if (fn_call_match || json_patch_match) {
-            return `<UpdateVariable>${update_block}</UpdateVariable>`;
+                scanned.structural
+            )
+        ) {
+            return `<UpdateVariable>${visible}</UpdateVariable>`;
         }
-
+        // No JSONPatch wrapper: parse the whole remaining structured block (JSON/JSON5/YAML).
+        let structured;
+        try {
+            structured = parseString(cleanStructuredUpdate(visible));
+        } catch {
+            /* handled below */
+        }
+        if (structured !== undefined && isJsonSafe(structured)) {
+            const formatted = extractFromFormattedOutput(visible);
+            if (formatted) return formatted;
+        }
         if (pi_preflight) {
             throw await createPiProtocolError();
         }
@@ -699,7 +767,8 @@ async function requestReply(
     batch_id?: string,
     pi_preflight?: PiRuntimePreflight,
     request_settings = useDataStore().settings.额外模型解析配置,
-    pi_signal?: AbortSignal
+    pi_signal?: AbortSignal,
+    options: ExtraModelInvocationOptions = {}
 ): Promise<string> {
     const store = useDataStore();
     const is_pi_request = pi_preflight !== undefined;
@@ -715,7 +784,9 @@ async function requestReply(
     }
 
     const config: GenerateRawConfig = withWorldinfoRequestMarker({
-        user_input: '遵循<must>指令',
+        user_input: [options.user_input ?? '遵循<must>指令', options.prompt_tail?.trim()]
+            .filter(Boolean)
+            .join('\n'),
         max_chat_history: request_settings.max_chat_history,
         should_stream: request_settings.兼容假流式,
         generation_id,
@@ -753,7 +824,10 @@ async function requestReply(
         }
     }
 
-    let task = decoded_extra_model_task;
+    let task = options.task ?? decoded_extra_model_task;
+    if (options.task_suffix) {
+        task += `\n${options.task_suffix}`;
+    }
     if (response_format === '工具调用') {
         task += `\n use \`${MVU_TOOL_DEFINITION.function.name}\` tool to update variables.`;
         if (!is_pi_request) {

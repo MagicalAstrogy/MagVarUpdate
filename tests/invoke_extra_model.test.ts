@@ -70,6 +70,14 @@ describe('extractFromToolCall', () => {
         expect(extractFromToolCall(toolCalls)).toBeNull();
     });
 
+    test('accepts an empty JSONPatch array as a no-op', () => {
+        const args = JSON.stringify({ delta: '[]', analysis: 'no changes' });
+        const toolCalls = makeToolCalls(args);
+        const result = extractFromToolCall(toolCalls);
+        expect(result).toContain('<JSONPatch>');
+        expect(result).toContain('[]');
+    });
+
     // 有效结果与标签边界：选择正确调用，保留补丁值中的字面标签。
     test('extracts from the last matching call in the first batch', () => {
         const firstArgs = JSON.stringify({

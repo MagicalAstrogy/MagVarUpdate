@@ -258,6 +258,77 @@ describe('invoke extra model through Pi', () => {
         }
     );
 
+    test.each(['使用当前预设', '使用其他预设', '使用内置破限'] as const)(
+        'preserves incremental repair prompts through Pi with %s',
+        async route => {
+            const store = configurePiSource();
+            store.settings.额外模型解析配置.破限方案 = route;
+            store.settings.额外模型解析配置.其他预设名称 = 'pi-preset';
+
+            await expect(
+                generateExtraModel({
+                    task: 'INCREMENTAL_REPAIR_TASK',
+                    task_suffix: 'INCREMENTAL_REPAIR_CONSTRAINTS',
+                    user_input: 'INCREMENTAL_REPAIR_INPUT',
+                    prompt_tail: 'INCREMENTAL_REPAIR_FOCUS',
+                })
+            ).resolves.toBe(VALID_UPDATE);
+
+            const capture =
+                route === '使用当前预设' ? mockCaptureGeneratePrompt : mockCaptureGenerateRawPrompt;
+            expect(capture).toHaveBeenCalledTimes(1);
+            const config = capture.mock.calls[0][0];
+            expect(config.user_input).toBe('INCREMENTAL_REPAIR_INPUT\nINCREMENTAL_REPAIR_FOCUS');
+            expect(JSON.stringify(config)).toContain(
+                'INCREMENTAL_REPAIR_TASK\\nINCREMENTAL_REPAIR_CONSTRAINTS'
+            );
+            expect(mockRunPiRequest).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    generationId: config.generation_id,
+                    preflight: PREFLIGHT,
+                })
+            );
+            expect((globalThis as any).generate).not.toHaveBeenCalled();
+            expect((globalThis as any).generateRaw).not.toHaveBeenCalled();
+        }
+    );
+
+    test.each([
+        '依次请求，失败后重试',
+        '同时请求多次',
+        '先请求一次, 失败后再同时请求多次',
+    ] as const)(
+        'validates incremental repairs before accepting a Pi result with %s',
+        async strategy => {
+            const store = configurePiSource();
+            store.settings.额外模型解析配置.请求方式 = strategy;
+            store.settings.额外模型解析配置.请求次数 = 2;
+            const valid_patch =
+                '<UpdateVariable><JSONPatch>[{"op":"replace","path":"/hp","value":72}]</JSONPatch></UpdateVariable>';
+            mockRunPiRequest
+                .mockResolvedValueOnce('<UpdateVariable><JSONPatch>[]</JSONPatch></UpdateVariable>')
+                .mockResolvedValueOnce(valid_patch);
+            const validate_result = jest.fn((result: string) => {
+                if (result.includes('[]'))
+                    throw new Error('repair did not correct the missing value');
+                return `<!-- validated -->${result}`;
+            });
+            jest.spyOn(console, 'error').mockImplementation(() => {});
+
+            await expect(
+                invokeExtraModelWithStrategy({ task: 'INCREMENTAL_REPAIR_TASK', validate_result })
+            ).resolves.toBe(`<!-- validated -->${valid_patch}`);
+
+            expect(mockRunPiRequest).toHaveBeenCalledTimes(2);
+            expect(validate_result).toHaveBeenCalledTimes(2);
+            expect(mockCaptureGenerateRawPrompt).toHaveBeenCalledTimes(2);
+            for (const [config] of mockCaptureGenerateRawPrompt.mock.calls) {
+                expect(JSON.stringify(config)).toContain('INCREMENTAL_REPAIR_TASK');
+            }
+            expect(store.runtimes.is_during_extra_analysis).toBe(false);
+        }
+    );
+
     test.each(['与插头相同', '自定义'] as const)(
         'keeps the %s source on the existing TavernHelper path',
         async source => {
@@ -444,7 +515,7 @@ describe('invoke extra model through Pi', () => {
             'invalid update command',
             '<UpdateVariable>refresh_token=sk-live-invalid-command-token</UpdateVariable>',
         ],
-    ])('does not expose a successful Pi response with %s', async (_case, response) => {
+    ])('reports a protocol error while logging a Pi response with %s', async (_case, response) => {
         const store = configurePiSource();
         store.settings.额外模型解析配置.请求次数 = 1;
         mockRunPiRequest.mockResolvedValue(response);
@@ -465,16 +536,12 @@ describe('invoke extra model through Pi', () => {
         });
         expect(error.message).toBe(i18n.global.t('runtime.pi.protocolError'));
         expect(mockRunPiRequest).toHaveBeenCalledTimes(1);
-        expect(console_error).toHaveBeenCalledTimes(1);
+        expect(console_error).toHaveBeenCalledWith(expect.stringContaining('sk-live'));
+        expect(console_error).toHaveBeenLastCalledWith(error);
 
         const observable_error_text = [
             String(error),
             error instanceof Error ? error.stack : '',
-            ...console_error.mock.calls.flatMap(call =>
-                call.map(value =>
-                    value instanceof Error ? `${value.message}\n${value.stack}` : String(value)
-                )
-            ),
         ].join('\n');
         expect(observable_error_text).not.toContain(response);
         expect(observable_error_text).not.toContain('Bearer');
