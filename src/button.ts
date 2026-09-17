@@ -4,6 +4,7 @@ import { isFunctionCallingSupported } from '@/function/is_function_calling_suppo
 import { cleanUpMetadata, reconcileAndApplySchema } from '@/function/schema';
 import { onMessageReceived } from '@/function/update/on_message_received';
 import { runIncrementalExtraModelRepair } from '@/function/update/incremental_repair';
+import { isPiMultiproviderEnabled } from '@/function/update/pi/feature_flag';
 import { handleVariablesInMessage, updateVariables } from '@/function/update_variables';
 import { tr, type MessageKey } from '@/i18n';
 import { useDataStore } from '@/store';
@@ -11,7 +12,6 @@ import { controlledStoppableEventOn, getLastValidMessageId, getLastValidVariable
 import { MvuData } from '@/variable_def';
 import { klona } from 'klona';
 import { watch } from 'vue';
-import { ScriptButton } from '../slash-runner/src/type/scripts';
 
 /**
  * 递归更新描述字段
@@ -434,6 +434,7 @@ export const buttons: Button[] = [
     {
         name: '重试额外模型解析',
         label_key: 'panel.button.retryExtraModelParsing',
+        /** 按所选来源校验重试入口；Pi 使用自身能力预检，旧来源继续检查酒馆助手工具支持。 */
         function: async () => {
             const store = useDataStore();
             if (store.effective_settings.更新方式 === '随AI输出') {
@@ -446,7 +447,18 @@ export const buttons: Button[] = [
                 );
                 return;
             } else if (
+                store.settings.额外模型解析配置.模型来源 === '更多' &&
+                !isPiMultiproviderEnabled()
+            ) {
+                toastr.info(
+                    tr('runtime.pi.featureDisabled'),
+                    tr('runtime.button.extraModelRetryTitle'),
+                    { timeOut: 3000 }
+                );
+                return;
+            } else if (
                 store.settings.额外模型解析配置.应答格式 === '工具调用' &&
+                store.settings.额外模型解析配置.模型来源 !== '更多' &&
                 !isFunctionCallingSupported()
             ) {
                 toastr.info(

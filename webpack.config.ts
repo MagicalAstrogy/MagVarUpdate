@@ -17,6 +17,20 @@ import unpluginVueComponents from 'unplugin-vue-components/webpack';
 import { VueLoaderPlugin } from 'vue-loader';
 import webpack from 'webpack';
 
+const PI_ESM_PACKAGES = ['@earendil-works/pi-ai', '@google/genai'] as const;
+const package_json = JSON.parse(
+    fs.readFileSync(path.join(import.meta.dirname, 'package.json'), 'utf8')
+) as { dependencies: Record<string, string> };
+const PI_ESM_VERSIONS = Object.fromEntries(
+    PI_ESM_PACKAGES.map(name => {
+        const version = package_json.dependencies[name];
+        if (!/^\d+\.\d+\.\d+$/.test(version)) {
+            throw new Error(`${name} must use an exact version for browser ESM imports`);
+        }
+        return [name, version];
+    })
+);
+
 let io: Server;
 function watch_tavern_helper(compiler: webpack.Compiler) {
     if (compiler.options.watch) {
@@ -300,6 +314,9 @@ function config(_env: any, argv: any): webpack.Configuration {
             new webpack.DefinePlugin({
                 __BUILD_DATE__: JSON.stringify(buildDate),
                 __COMMIT_ID__: JSON.stringify(commitId),
+                __PI_MULTIPROVIDER_ENABLED__: JSON.stringify(
+                    process.env.MVU_PI_MULTIPROVIDER_ENABLED !== 'false'
+                ),
                 __VUE_OPTIONS_API__: false,
                 __VUE_PROD_DEVTOOLS__: process.env.CI !== 'true',
                 __VUE_PROD_HYDRATION_MISMATCH_DETAILS__: false,
@@ -352,6 +369,20 @@ function config(_env: any, argv: any): webpack.Configuration {
         externals: ({ context, request }, callback) => {
             if (!context || !request) {
                 return callback();
+            }
+
+            // Load Pi and its provider SDKs as browser ESM instead of embedding them in MVU.
+            // Version every direct Pi/Google entry point from the same manifest used by local
+            // builds/tests; Pi's own dependency graph is then resolved by the CDN.
+            const pi_package = PI_ESM_PACKAGES.find(
+                name => request === name || request.startsWith(`${name}/`)
+            );
+            if (pi_package) {
+                const subpath = request.slice(pi_package.length);
+                return callback(
+                    null,
+                    `module-import https://testingcf.jsdelivr.net/npm/${pi_package}@${PI_ESM_VERSIONS[pi_package]}${subpath}/+esm`
+                );
             }
 
             if (

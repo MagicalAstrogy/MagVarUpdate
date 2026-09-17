@@ -1,0 +1,610 @@
+/**
+ * 测试场景：验证酒馆消息转换为 Pi 上下文时的顺序、角色、图片和工具调用关联，且不修改原始提示词。
+ */
+import { PI_IMAGE_INPUT_LIMITS, toPiContext } from '@/function/update/pi/context_adapter';
+
+const NOW = 1_725_000_000_000;
+const PNG_BASE64 =
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9ZfG8AAAAASUVORK5CYII=';
+const JPEG_SIGNATURE_BASE64 = '/9j/2Q==';
+const GIF_SIGNATURE_BASE64 = 'R0lGODlh';
+const WEBP_SIGNATURE_BASE64 = 'UklGRgAAAABXRUJQ';
+
+type InputMessage = {
+    role: 'user' | 'assistant' | 'system' | 'tool';
+    name?: string;
+    content?:
+        | string
+        | Array<
+              | { type: 'text'; text: string }
+              | {
+                    type: 'image_url';
+                    image_url: { url: string; detail: 'auto' | 'low' | 'high' };
+                }
+              | { type: 'video_url'; video_url: { url: string } }
+          >;
+    tool_call_id?: string;
+    tool_calls?: Array<{
+        id: string;
+        type: 'function';
+        function: { name: string; arguments: string };
+    }>;
+};
+
+function getText(content: unknown): string {
+    if (typeof content === 'string') {
+        return content;
+    }
+    if (!Array.isArray(content)) {
+        return '';
+    }
+    return content
+        .filter((block): block is { type: 'text'; text: string } => {
+            return (
+                typeof block === 'object' &&
+                block !== null &&
+                (block as { type?: unknown }).type === 'text'
+            );
+        })
+        .map(block => block.text)
+        .join('');
+}
+
+function deepFreeze<T>(value: T): T {
+    if (value && typeof value === 'object' && !Object.isFrozen(value)) {
+        Object.freeze(value);
+        Object.values(value).forEach(child => deepFreeze(child));
+    }
+    return value;
+}
+
+function makeAlignedPngBase64(decodedBytes: number): string {
+    if (decodedBytes < 9 || decodedBytes % 3 !== 0) {
+        throw new Error('Test PNG byte length must be a multiple of three and at least nine');
+    }
+    const encodedLength = (decodedBytes / 3) * 4;
+    // PNG's eight-byte signature plus one zero byte makes a complete base64
+    // quantum, after which zero bytes can be represented by repeated A chars.
+    return `iVBORw0KGgoA${'A'.repeat(encodedLength - 12)}`;
+}
+
+// 上下文转换契约：显式处理 system 位置、空内容、多模态和历史工具返回值。
+describe('toPiContext', () => {
+    // 系统消息布局：合并连续前置 system，后置 system 保留独立内容和原位置。
+    test('combines only the contiguous leading system messages in source order', () => {
+        const input: InputMessage[] = [
+            { role: 'system', content: 'first instruction' },
+            { role: 'system', content: 'second instruction' },
+            { role: 'user', content: 'hello' },
+            { role: 'assistant', content: 'hi' },
+        ];
+
+        const { context, diagnostics } = toPiContext(input, () => NOW);
+
+        expect(context.systemPrompt).toBe('first instruction\n\nsecond instruction');
+        expect(context.messages.map(message => message.role)).toEqual(['user', 'assistant']);
+        expect(diagnostics).toEqual({
+            preservedLateSystemCount: 0,
+            droppedEmptyMessageIndexes: [],
+        });
+    });
+
+    test('preserves late system messages separately without changing user or assistant content', () => {
+        const input: InputMessage[] = [
+            { role: 'system', content: 'leading' },
+            { role: 'user', content: 'first user' },
+            { role: 'assistant', content: 'first assistant' },
+            { role: 'system', content: 'before second user' },
+            { role: 'user', content: 'second user' },
+            { role: 'system', content: 'after second user' },
+        ];
+
+        const { context, diagnostics, lateSystemMessages } = toPiContext(input, () => NOW);
+        expect(context.messages.map(message => getText(message.content))).toEqual([
+            'first user',
+            'first assistant',
+            'second user',
+        ]);
+        expect(context.systemPrompt).toBe('leading');
+        expect(lateSystemMessages).toEqual([
+            { sourceIndex: 3, beforeMessageIndex: 2, text: 'before second user' },
+            { sourceIndex: 5, beforeMessageIndex: 3, text: 'after second user' },
+        ]);
+        expect(diagnostics).toEqual({
+            preservedLateSystemCount: 2,
+            droppedEmptyMessageIndexes: [],
+        });
+    });
+
+    test('keeps consecutive trailing systems in source order after dropping empty messages', () => {
+        const input: InputMessage[] = [
+            { role: 'user', content: 'final user' },
+            { role: 'assistant', content: '' },
+            { role: 'system', content: 'tail instruction' },
+            { role: 'system', content: 'second tail instruction' },
+        ];
+
+        const { context, diagnostics, lateSystemMessages } = toPiContext(input, () => NOW);
+        expect(getText(context.messages[0].content)).toBe('final user');
+        expect(diagnostics.droppedEmptyMessageIndexes).toEqual([1]);
+        expect(lateSystemMessages).toEqual([
+            { sourceIndex: 2, beforeMessageIndex: 1, text: 'tail instruction' },
+            { sourceIndex: 3, beforeMessageIndex: 1, text: 'second tail instruction' },
+        ]);
+    });
+
+    test('drops empty late system messages using the same rule as ordinary empty messages', () => {
+        const input: InputMessage[] = [
+            { role: 'user', content: 'hello' },
+            { role: 'system', content: '' },
+        ];
+
+        const result = toPiContext(input);
+        expect(result.lateSystemMessages).toEqual([]);
+        expect(result.diagnostics.droppedEmptyMessageIndexes).toEqual([1]);
+    });
+
+    test('preserves a late system message even when there is no user to attach it to', () => {
+        const input: InputMessage[] = [
+            { role: 'assistant', content: 'orphan assistant' },
+            { role: 'system', content: 'orphan instruction' },
+        ];
+
+        expect(toPiContext(input, () => NOW).lateSystemMessages).toEqual([
+            { sourceIndex: 1, beforeMessageIndex: 1, text: 'orphan instruction' },
+        ]);
+    });
+
+    // 消息元数据：角色名、空消息策略、诊断下标和历史助手占位信息保持稳定。
+    test('keeps message names as stable explicit prefixes for user and assistant text', () => {
+        const input: InputMessage[] = [
+            { role: 'user', name: 'Alice', content: 'hello' },
+            { role: 'assistant', name: 'Narrator', content: 'welcome' },
+        ];
+
+        const { context } = toPiContext(input, () => NOW);
+        const userText = getText(context.messages[0].content);
+        const assistantText = getText(context.messages[1].content);
+
+        expect(userText).toMatch(/Alice[\s\S]*hello/);
+        expect(assistantText).toMatch(/Narrator[\s\S]*welcome/);
+        expect(userText.indexOf('Alice')).toBeLessThan(userText.indexOf('hello'));
+        expect(assistantText.indexOf('Narrator')).toBeLessThan(assistantText.indexOf('welcome'));
+    });
+
+    test.each<InputMessage>([
+        { role: 'user' },
+        { role: 'assistant', content: '' },
+        { role: 'user', content: [] },
+        { role: 'assistant', content: [{ type: 'text', text: '' }] },
+    ])('drops an empty ordinary message with no channel-specific mode: %#', message => {
+        const result = toPiContext([message]);
+        expect(result.context.messages).toEqual([]);
+        expect(result.diagnostics.droppedEmptyMessageIndexes).toEqual([0]);
+    });
+
+    test('drops empty ordinary messages and reports their source indexes', () => {
+        const input: InputMessage[] = [
+            { role: 'user', content: '' },
+            { role: 'user', content: 'kept' },
+            { role: 'assistant', content: [] },
+        ];
+
+        const { context, diagnostics } = toPiContext(input, () => NOW);
+
+        expect(context.messages).toHaveLength(1);
+        expect(getText(context.messages[0].content)).toBe('kept');
+        expect(diagnostics.droppedEmptyMessageIndexes).toEqual([0, 2]);
+    });
+
+    test('reports dropped empty messages in stable source order across adapter passes', () => {
+        const input: InputMessage[] = [
+            { role: 'user', content: '' },
+            { role: 'assistant', content: 'kept' },
+            { role: 'system', content: '' },
+        ];
+
+        const { diagnostics } = toPiContext(input, () => NOW);
+
+        expect(diagnostics.droppedEmptyMessageIndexes).toEqual([0, 2]);
+    });
+
+    test('adds the complete pi placeholder metadata to imported assistant history', () => {
+        const input: InputMessage[] = [
+            { role: 'user', content: 'question' },
+            { role: 'assistant', content: 'historical answer' },
+        ];
+
+        const { context } = toPiContext(input, () => NOW);
+
+        expect(context.messages[0]).toEqual({
+            role: 'user',
+            content: 'question',
+            timestamp: NOW,
+        });
+        expect(context.messages[1]).toEqual({
+            role: 'assistant',
+            content: [{ type: 'text', text: 'historical answer' }],
+            api: 'sillytavern-import',
+            provider: 'sillytavern',
+            model: 'prepared-prompt',
+            usage: {
+                input: 0,
+                output: 0,
+                cacheRead: 0,
+                cacheWrite: 0,
+                totalTokens: 0,
+                cost: {
+                    input: 0,
+                    output: 0,
+                    cacheRead: 0,
+                    cacheWrite: 0,
+                    total: 0,
+                },
+            },
+            stopReason: 'stop',
+            timestamp: NOW,
+        });
+    });
+
+    // 有效图片：验证 data URL 格式、图片类型和多块顺序。
+    test('converts user data URL images into pi image blocks without changing block order', () => {
+        const input: InputMessage[] = [
+            {
+                role: 'user',
+                content: [
+                    { type: 'text', text: 'before' },
+                    {
+                        type: 'image_url',
+                        image_url: {
+                            url: `data:image/png;base64,${PNG_BASE64}`,
+                            detail: 'high',
+                        },
+                    },
+                    { type: 'text', text: 'after' },
+                ],
+            },
+        ];
+
+        const { context } = toPiContext(input, () => NOW);
+
+        expect(context.messages[0]).toEqual({
+            role: 'user',
+            content: [
+                { type: 'text', text: 'before' },
+                { type: 'image', mimeType: 'image/png', data: PNG_BASE64 },
+                { type: 'text', text: 'after' },
+            ],
+            timestamp: NOW,
+        });
+    });
+
+    test('preserves multiple data URL images in one user message', () => {
+        const input: InputMessage[] = [
+            {
+                role: 'user',
+                content: [
+                    {
+                        type: 'image_url',
+                        image_url: {
+                            url: `data:image/png;base64,${PNG_BASE64}`,
+                            detail: 'auto',
+                        },
+                    },
+                    { type: 'text', text: 'compare' },
+                    {
+                        type: 'image_url',
+                        image_url: {
+                            url: `data:image/jpeg;base64,${JPEG_SIGNATURE_BASE64}`,
+                            detail: 'high',
+                        },
+                    },
+                ],
+            },
+        ];
+
+        expect(toPiContext(input, () => NOW).context.messages[0]).toEqual({
+            role: 'user',
+            content: [
+                { type: 'image', mimeType: 'image/png', data: PNG_BASE64 },
+                { type: 'text', text: 'compare' },
+                { type: 'image', mimeType: 'image/jpeg', data: JPEG_SIGNATURE_BASE64 },
+            ],
+            timestamp: NOW,
+        });
+    });
+
+    test.each([
+        ['image/png', PNG_BASE64],
+        ['image/jpeg', JPEG_SIGNATURE_BASE64],
+        ['image/gif', GIF_SIGNATURE_BASE64],
+        ['image/webp', WEBP_SIGNATURE_BASE64],
+    ])('accepts a recognizable %s data URL', (mimeType, data) => {
+        const input: InputMessage[] = [
+            {
+                role: 'user',
+                content: [
+                    {
+                        type: 'image_url',
+                        image_url: { url: `data:${mimeType};base64,${data}`, detail: 'auto' },
+                    },
+                ],
+            },
+        ];
+
+        expect(toPiContext(input, () => NOW).context.messages[0]).toMatchObject({
+            content: [{ type: 'image', mimeType, data }],
+        });
+    });
+
+    test('treats the data URL scheme and MIME type case-insensitively', () => {
+        const input: InputMessage[] = [
+            {
+                role: 'user',
+                content: [
+                    {
+                        type: 'image_url',
+                        image_url: {
+                            url: `DATA:IMAGE/PNG;BASE64,${PNG_BASE64}`,
+                            detail: 'auto',
+                        },
+                    },
+                ],
+            },
+        ];
+
+        expect(toPiContext(input, () => NOW).context.messages[0]).toMatchObject({
+            content: [{ type: 'image', mimeType: 'image/png', data: PNG_BASE64 }],
+        });
+    });
+
+    // 图片边界：拒绝远程地址、超限载荷、过多图片、非法编码和视频内容。
+    test('rejects remote images instead of silently fetching or dropping them', () => {
+        const input: InputMessage[] = [
+            {
+                role: 'user',
+                content: [
+                    {
+                        type: 'image_url',
+                        image_url: {
+                            url: 'https://example.com/private.png',
+                            detail: 'auto',
+                        },
+                    },
+                ],
+            },
+        ];
+
+        expect(() => toPiContext(input, () => NOW)).toThrow(/remote|data.?url|https|远程.*图片/i);
+    });
+
+    test('rejects an oversized data URL before decoding any base64', () => {
+        const maximumEncodedLength =
+            Math.ceil(PI_IMAGE_INPUT_LIMITS.maxDecodedBytesPerImage / 3) * 4;
+        const oversizedData = `iVBORw0KGgoA${'A'.repeat(maximumEncodedLength - 8)}`;
+        const input: InputMessage[] = [
+            {
+                role: 'user',
+                content: [
+                    {
+                        type: 'image_url',
+                        image_url: {
+                            url: `data:image/png;base64,${oversizedData}`,
+                            detail: 'auto',
+                        },
+                    },
+                ],
+            },
+        ];
+        const atobSpy = jest.spyOn(globalThis, 'atob');
+
+        try {
+            expect(() => toPiContext(input, () => NOW)).toThrow(
+                /image|picture|large|limit|图片|上限/i
+            );
+            expect(atobSpy).not.toHaveBeenCalled();
+        } finally {
+            atobSpy.mockRestore();
+        }
+    });
+
+    test('enforces the aggregate image-byte budget while decoding only bounded headers', () => {
+        const decodedBytesPerImage = 4 * 1024 * 1024 + 2;
+        const data = makeAlignedPngBase64(decodedBytesPerImage);
+        const url = `data:image/png;base64,${data}`;
+        const input: InputMessage[] = [
+            {
+                role: 'user',
+                content: Array.from({ length: 4 }, () => ({
+                    type: 'image_url' as const,
+                    image_url: { url, detail: 'auto' as const },
+                })),
+            },
+        ];
+        const atobSpy = jest.spyOn(globalThis, 'atob');
+
+        try {
+            expect(() => toPiContext(input, () => NOW)).toThrow(
+                /image|total|limit|图片|总量|上限/i
+            );
+            expect(atobSpy).toHaveBeenCalledTimes(3);
+            expect(atobSpy.mock.calls.every(([value]) => value.length <= 1024)).toBe(true);
+        } finally {
+            atobSpy.mockRestore();
+        }
+    });
+
+    test('limits the number of otherwise-small images in one context', () => {
+        const input: InputMessage[] = [
+            {
+                role: 'user',
+                content: Array.from(
+                    { length: PI_IMAGE_INPUT_LIMITS.maxImagesPerContext + 1 },
+                    () => ({
+                        type: 'image_url' as const,
+                        image_url: {
+                            url: `data:image/png;base64,${PNG_BASE64}`,
+                            detail: 'auto' as const,
+                        },
+                    })
+                ),
+            },
+        ];
+
+        expect(() => toPiContext(input, () => NOW)).toThrow(/20|image|图片|最多/i);
+    });
+
+    test.each([
+        'data:image/png;base64,not%base64',
+        'data:text/plain;base64,aGVsbG8=',
+        'data:image/svg+xml;base64,PHN2Zz48L3N2Zz4=',
+        'data:image/bmp;base64,Qk0AAAAA',
+        'data:image/png;base64,aGVsbG8=',
+        `data:image/jpeg;base64,${PNG_BASE64}`,
+    ])('rejects an invalid or unsupported image data URL: %s', url => {
+        const input: InputMessage[] = [
+            {
+                role: 'user',
+                content: [{ type: 'image_url', image_url: { url, detail: 'auto' } }],
+            },
+        ];
+
+        expect(() => toPiContext(input, () => NOW)).toThrow(/image|mime|base64|data.?url|图片/i);
+    });
+
+    test('rejects video blocks instead of silently dropping them', () => {
+        const input: InputMessage[] = [
+            {
+                role: 'user',
+                content: [
+                    {
+                        type: 'video_url',
+                        video_url: { url: 'data:video/mp4;base64,AAAA' },
+                    },
+                ],
+            },
+        ];
+
+        expect(() => toPiContext(input, () => NOW)).toThrow(/video|视频/i);
+    });
+
+    // 历史工具与输入隔离：调用和返回值正确关联，无效结构报错，原始对象不被修改。
+    test('converts historical tool calls and correlates their following tool results', () => {
+        const input: InputMessage[] = [
+            { role: 'user', content: 'look it up' },
+            {
+                role: 'assistant',
+                content: 'calling lookup',
+                tool_calls: [
+                    {
+                        id: 'call_1',
+                        type: 'function',
+                        function: {
+                            name: 'lookup',
+                            arguments: JSON.stringify({ query: 'weather' }),
+                        },
+                    },
+                ],
+            },
+            {
+                role: 'tool',
+                tool_call_id: 'call_1',
+                content: 'sunny',
+            },
+        ];
+
+        const { context } = toPiContext(input, () => NOW);
+
+        expect(context.messages[1]).toEqual(
+            expect.objectContaining({
+                role: 'assistant',
+                content: [
+                    { type: 'text', text: 'calling lookup' },
+                    {
+                        type: 'toolCall',
+                        id: 'call_1',
+                        name: 'lookup',
+                        arguments: { query: 'weather' },
+                    },
+                ],
+                stopReason: 'toolUse',
+                timestamp: NOW,
+            })
+        );
+        expect(context.messages[2]).toEqual({
+            role: 'toolResult',
+            toolCallId: 'call_1',
+            toolName: 'lookup',
+            content: [{ type: 'text', text: 'sunny' }],
+            isError: false,
+            timestamp: NOW,
+        });
+    });
+
+    test.each([
+        {
+            name: 'malformed tool arguments',
+            input: [
+                {
+                    role: 'assistant',
+                    tool_calls: [
+                        {
+                            id: 'call_bad',
+                            type: 'function',
+                            function: { name: 'lookup', arguments: '{bad json' },
+                        },
+                    ],
+                },
+            ] satisfies InputMessage[],
+            error: /tool.*arguments|json|工具.*参数/i,
+        },
+        {
+            name: 'orphan tool result',
+            input: [
+                { role: 'tool', tool_call_id: 'missing', content: 'result' },
+            ] satisfies InputMessage[],
+            error: /tool.*(?:call|unknown|missing)|工具.*(?:调用|匹配)/i,
+        },
+    ])('rejects $name', ({ input, error }) => {
+        expect(() => toPiContext(input, () => NOW)).toThrow(error);
+    });
+
+    test('does not mutate captured messages or their nested content and tool call objects', () => {
+        const input = deepFreeze<InputMessage[]>([
+            { role: 'system', content: 'system' },
+            {
+                role: 'user',
+                name: 'Alice',
+                content: [
+                    { type: 'text', text: 'inspect' },
+                    {
+                        type: 'image_url',
+                        image_url: {
+                            url: `data:image/png;base64,${PNG_BASE64}`,
+                            detail: 'auto',
+                        },
+                    },
+                ],
+            },
+            {
+                role: 'assistant',
+                tool_calls: [
+                    {
+                        id: 'call_immutable',
+                        type: 'function',
+                        function: { name: 'inspect', arguments: '{"deep":true}' },
+                    },
+                ],
+            },
+            {
+                role: 'tool',
+                tool_call_id: 'call_immutable',
+                content: 'done',
+            },
+        ]);
+        const snapshot = JSON.parse(JSON.stringify(input));
+
+        expect(() => toPiContext(input, () => NOW)).not.toThrow();
+        expect(input).toEqual(snapshot);
+    });
+});

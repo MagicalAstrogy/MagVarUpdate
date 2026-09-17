@@ -1,5 +1,8 @@
+/**
+ * 测试场景：验证 parseString 对 YAML、JSON、JSON5 和模型常见残缺 JSON 的处理，并记录与官方 JSON5 fixture 的已知差异。
+ */
 import { parseString } from '@util/common';
-import JSON5 from 'json5';
+import { parse as parseJSON5 } from 'json5';
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { isDeepStrictEqual } from 'node:util';
@@ -40,11 +43,13 @@ function parseWithError(fn: () => unknown): { ok: true; value: unknown } | { ok:
     }
 }
 
+// 文本解析契约：兼容常见数据字面量、转义、注释和数值，同时显式保留标准兼容性的已知边界。
 describe('parseString', () => {
     beforeAll(() => {
         (globalThis as any).YAML = YAML;
     });
 
+    // 基础与修复：解析标准输入，并修复常见 JSON 和 JSON Patch 包装缺失。
     test('parses YAML input', () => {
         const input = ['foo: bar', 'count: 2', 'items:', '  - a', '  - b'].join('\n');
         expect(parseString(input)).toEqual({ foo: 'bar', count: 2, items: ['a', 'b'] });
@@ -78,6 +83,7 @@ describe('parseString', () => {
         ]);
     });
 
+    // JSON5 扩展：覆盖标识符键、尾逗号、注释、单引号、特殊空白与非标准数值。
     test('accepts identifier keys and single trailing commas in objects and arrays', () => {
         const input = "{default: 1, $_id: 'abc', list: [1, 2,],}";
         expect(parseString(input)).toEqual({
@@ -137,6 +143,7 @@ describe('parseString', () => {
         });
     });
 
+    // 官方 fixture 对照：分别核对有效和无效输入，固定当前已知差异以便后续追踪。
     test('matches JSON5 parser on official valid fixtures except known divergences', () => {
         expect(existsSync(JSON5_TEST_ROOT)).toBe(true);
 
@@ -146,7 +153,7 @@ describe('parseString', () => {
         for (const relPath of validFixtureFiles) {
             const input = readFileSync(path.join(JSON5_TEST_ROOT, relPath), 'utf8');
             const parsedByParseString = parseWithError(() => parseString(input));
-            const parsedByJSON5 = parseWithError(() => JSON5.parse(input));
+            const parsedByJSON5 = parseWithError(() => parseJSON5(input));
 
             if (!parsedByParseString.ok || !parsedByJSON5.ok) {
                 mismatches.push(`${relPath} (threw)`);
@@ -187,7 +194,7 @@ describe('parseString', () => {
         for (const relPath of invalidFixtureFiles) {
             const input = readFileSync(path.join(JSON5_TEST_ROOT, relPath), 'utf8');
             const parsedByParseString = parseWithError(() => parseString(input));
-            const parsedByJSON5 = parseWithError(() => JSON5.parse(input));
+            const parsedByJSON5 = parseWithError(() => parseJSON5(input));
             const parseStringThrows = !parsedByParseString.ok;
             const json5Throws = !parsedByJSON5.ok;
 

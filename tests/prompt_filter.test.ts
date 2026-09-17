@@ -1,3 +1,6 @@
+/**
+ * 测试场景：验证主生成和额外解析阶段的世界书条目过滤、来源能力分流，以及全局与角色卡正则的组合和诊断。
+ */
 import { ENTRY_COMMENT_FILTER_LOG_TITLE } from '@/function/request/entry_comment_regex';
 import { filterEntries } from '@/function/request/filter_entries';
 import { useDataStore } from '@/store';
@@ -10,6 +13,7 @@ let mockGetCurrentCharPrimaryLorebook: jest.MockedFunction<() => string | undefi
 let mockGetLorebookEntries: jest.MockedFunction<(name: string) => Promise<any[]>>;
 let consoleLogSpy: jest.SpyInstance;
 
+// 世界书过滤：按更新标签和阶段保留内容，再应用有效的来源正则，并记录过滤理由。
 describe('filterEntries', () => {
     beforeEach(() => {
         const store = useDataStore();
@@ -51,6 +55,7 @@ describe('filterEntries', () => {
     });
 
     // 场景: 更新方式为随AI输出时，不进行任何过滤处理
+    // 入口与能力：随 AI 输出时跳过额外过滤，Pi 工具模式独立于旧工具管理器。
     test('returns early when update mode is 随AI输出', async () => {
         const store = useDataStore();
         store.settings.更新方式 = '随AI输出';
@@ -95,7 +100,32 @@ describe('filterEntries', () => {
         expect((globalThis as any).toastr.warning).toHaveBeenCalled();
     });
 
+    test('allows Pi tool calling without Tavern Helper or ToolManager support', async () => {
+        const store = useDataStore();
+        store.settings.额外模型解析配置.应答格式 = '工具调用';
+        store.settings.额外模型解析配置.模型来源 = '更多';
+        store.versions.tavernhelper = '4.8.3';
+
+        (globalThis as any).SillyTavern.ToolManager.isToolCallingSupported.mockReturnValue(false);
+
+        const lores = {
+            globalLore: [makeEntry('WorldA', '[mvu_update]')],
+            characterLore: [makeEntry('WorldA', '[mvu_plot]')],
+            chatLore: [],
+            personaLore: [],
+        };
+
+        mockGetLorebookEntries.mockResolvedValue(cloneEntries(lores.characterLore));
+
+        await filterEntries(lores);
+
+        expect(lores.globalLore).toHaveLength(0);
+        expect(lores.characterLore).toHaveLength(1);
+        expect((globalThis as any).toastr.warning).not.toHaveBeenCalled();
+    });
+
     // 场景: 角色世界书未标记时，额外模型不启用且不处理其他世界书
+    // 条目类型与阶段：主生成、额外解析及纯剧情世界书采用对应保留规则。
     test('returns early when character lore has no tags', async () => {
         const store = useDataStore();
 
@@ -212,6 +242,7 @@ describe('filterEntries', () => {
         expect(store.runtimes.unsupported_warnings).toBe('UntaggedWorld');
     });
 
+    // 名单正则：组合白名单和黑名单，未过滤时不生成多余日志。
     test('applies whitelist regex to entry comments during extra analysis', async () => {
         const store = useDataStore();
 
@@ -354,6 +385,7 @@ describe('filterEntries', () => {
         );
     });
 
+    // 正则适用边界：更新条目可豁免，非额外解析阶段不应用，错误正则不打断其他过滤。
     test('lets update entries bypass comment whitelist and blacklist filters', async () => {
         const store = useDataStore();
 
@@ -465,6 +497,7 @@ describe('filterEntries', () => {
         );
     });
 
+    // 配置来源：合并全局与角色卡规则，并准确记录不匹配或无效正则的来源。
     test('combines global and character whitelist regexes with OR and records both sources on failure', async () => {
         const store = useDataStore();
 
