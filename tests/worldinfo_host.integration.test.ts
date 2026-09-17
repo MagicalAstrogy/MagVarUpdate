@@ -46,6 +46,7 @@ describeHost('native WorldInfo scanner request isolation', () => {
         store.should_enable = true;
         await nextTick();
         store.settings.更新方式 = '额外模型解析';
+        store.settings.兼容性.额外模型解析非阻塞 = true;
         store.settings.额外模型解析配置.应答格式 = '聊天消息';
         store.settings.额外模型解析配置.世界书条目白名单正则 = '';
         store.settings.额外模型解析配置.世界书条目黑名单正则 = '';
@@ -71,6 +72,54 @@ describeHost('native WorldInfo scanner request isolation', () => {
         releases.push(await registerWorldinfoRequest(id, useDataStore().settings.额外模型解析配置));
         return withWorldinfoRequestMarker({ generation_id: id });
     }
+
+    test.each([false, true])(
+        'blocking mode filters before scanning without a scan-done callback (extra=%s)',
+        async is_extra_analysis => {
+            const store = useDataStore();
+            store.settings.兼容性.额外模型解析非阻塞 = false;
+            store.runtimes.is_during_extra_analysis = is_extra_analysis;
+            const scan = jest.fn(async () => {});
+            const host = createWorldinfoHost({
+                books: books([
+                    entry(1, '[mvu_update]', 'UPDATE'),
+                    entry(2, '[mvu_plot]', 'PLOT'),
+                    entry(3, 'ordinary', 'COMMON'),
+                ]),
+                loaded: async lores => {
+                    await onWorldinfoEntriesLoaded(lores);
+                    expect(lores.characterLore.every(item => item.world === 'character')).toBe(
+                        true
+                    );
+                },
+                // 模拟旧 ST 没有 WORLDINFO_SCAN_DONE：不调用 MVU 的扫描完成回调。
+                scan,
+            });
+            const result = await host.run({});
+            expect(result.worldInfoBefore.split('\n').sort()).toEqual(
+                (is_extra_analysis ? ['UPDATE', 'COMMON'] : ['PLOT', 'COMMON']).sort()
+            );
+            expect(getPendingWorldinfoRequests()).toHaveLength(0);
+        }
+    );
+
+    test('blocking mode removes plot entries before they can consume budget or trigger recursion', async () => {
+        useDataStore().settings.兼容性.额外模型解析非阻塞 = false;
+        const host = createWorldinfoHost({
+            books: books([
+                entry(1, '[mvu_plot]', 'PLOT_TRIGGER'.repeat(100), { order: 1000 }),
+                entry(2, '[mvu_update]', 'UPDATE'),
+                entry(3, 'only triggered by excluded plot', 'UNEXPECTED', {
+                    constant: false,
+                    key: ['PLOT_TRIGGER'],
+                }),
+            ]),
+            settings: { world_info_recursive: true, world_info_budget: 1 },
+            loaded: onWorldinfoEntriesLoaded,
+            scan: async () => {},
+        });
+        expect((await host.run({})).worldInfoBefore).toBe('UPDATE');
+    });
 
     test('isolates two overlapping requests and an unmarked request using actual scanData', async () => {
         const a = await request('A', '^A$');

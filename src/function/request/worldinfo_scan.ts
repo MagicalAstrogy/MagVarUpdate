@@ -111,14 +111,20 @@ function makeProbe(world: string, uid: number): Entry {
 }
 
 /**
- * 在世界书加载后保存来源快照，并为在途请求插入识别探针。
+ * 按非阻塞选项选择扫描前过滤或请求级探针识别。
  *
- * 有在途请求且额外分析开关开启时，保留业务条目，等待扫描结果揭示请求身份。
+ * 阻塞模式直接使用当前额外分析阶段完成过滤，不插入探针，也不依赖扫描完成事件。
+ * 非阻塞模式有在途请求且额外分析开关开启时，保留业务条目，等待扫描结果揭示请求身份。
  * 其余情况直接执行普通生成的扫描前过滤；空世界书不插入探针，保留宿主短路行为。
  *
  * @param lores 宿主提供的四组临时 lore 数组；本函数会原地插入探针或执行普通过滤。
  */
 export async function onWorldinfoEntriesLoaded(lores: LoreEntries) {
+    if (!useDataStore().settings.兼容性.额外模型解析非阻塞) {
+        await filterEntries(lores);
+        return;
+    }
+
     const requests = getPendingWorldinfoRequests();
     const main_context = await createEntryFilterContext(false);
     if (

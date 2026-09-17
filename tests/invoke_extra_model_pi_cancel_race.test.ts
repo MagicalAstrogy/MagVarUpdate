@@ -117,6 +117,7 @@ describe('Pi generation lifecycle and cancellation', () => {
 
     test('cancels a delayed worldinfo lookup after another Pi request wins', async () => {
         const store = useDataStore();
+        store.settings.兼容性.额外模型解析非阻塞 = true;
         store.should_enable = true;
         await nextTick();
         store.settings.更新方式 = '额外模型解析';
