@@ -198,15 +198,53 @@ describe('onMessageReceived 请求闭包中的临时渲染监听', () => {
         await onMessageReceived(3);
         await emitRendered(2);
         expect(mockInvoke).toHaveBeenCalledTimes(2);
-        expect(setChatMessages).not.toHaveBeenCalled();
+        expect(setChatMessages).toHaveBeenNthCalledWith(
+            1,
+            [{ message_id: 2, message: MESSAGE_TEXT + '\n\n' + UPDATE_RESULT }],
+            { refresh: 'none' }
+        );
         await emitRendered(3);
-        expect(setChatMessages).toHaveBeenCalledWith(
+        expect(setChatMessages).toHaveBeenNthCalledWith(
+            2,
             [{ message_id: 3, message: '下一条回复的正文\n\n' + UPDATE_RESULT }],
             { refresh: 'none' }
         );
+        expect(mockHandleVariables.mock.calls).toEqual([[2], [3]]);
     });
 
-    test.each(['切换聊天', '编辑', '切换 swipe', '替换消息', '删除', '追加消息'] as const)(
+    test('手动重试允许解析非末尾楼层', async () => {
+        await onMessageReceived(1, { force: true });
+        expect(mockInvoke).toHaveBeenCalledTimes(1);
+        expect(setChatMessages).toHaveBeenCalledWith(
+            [{ message_id: 1, message: MESSAGE_TEXT + '\n\n' + UPDATE_RESULT }],
+            { refresh: 'none' }
+        );
+        expect(mockHandleVariables).toHaveBeenCalledWith(1);
+    });
+
+    test.each(['编辑', '追加消息'] as const)('解析期间%s，仍写回目标楼层', async change => {
+        const pending = Promise.withResolvers<string | null>();
+        mockInvoke.mockReturnValueOnce(pending.promise);
+        await onMessageReceived(2);
+        const rendered = emitRendered();
+        if (change === '编辑') {
+            SillyTavern.chat[2].mes = '编辑后的回复正文';
+        } else {
+            SillyTavern.chat.push(createMessage('下一条回复的正文'));
+        }
+        pending.resolve(UPDATE_RESULT);
+        await rendered;
+        expect(setChatMessages).toHaveBeenCalledWith(
+            [{ message_id: 2, message: MESSAGE_TEXT + '\n\n' + UPDATE_RESULT }],
+            { refresh: 'none' }
+        );
+        expect(mockHandleVariables).toHaveBeenCalledWith(2);
+        if (change === '追加消息') {
+            expect(SillyTavern.chat[3].mes).toBe('下一条回复的正文');
+        }
+    });
+
+    test.each(['切换聊天', '切换 swipe', '替换消息', '删除'] as const)(
         '解析期间%s，丢弃过期结果',
         async change => {
             const pending = Promise.withResolvers<string | null>();
@@ -217,9 +255,6 @@ describe('onMessageReceived 请求闭包中的临时渲染监听', () => {
                 case '切换聊天':
                     jest.mocked(SillyTavern.getCurrentChatId).mockReturnValue('chat-2');
                     break;
-                case '编辑':
-                    SillyTavern.chat[2].mes = '编辑后的回复正文';
-                    break;
                 case '切换 swipe':
                     SillyTavern.chat[2].swipe_id = 1;
                     break;
@@ -228,9 +263,6 @@ describe('onMessageReceived 请求闭包中的临时渲染监听', () => {
                     break;
                 case '删除':
                     SillyTavern.chat.pop();
-                    break;
-                case '追加消息':
-                    SillyTavern.chat.push(createMessage());
                     break;
             }
             pending.resolve(UPDATE_RESULT);
