@@ -97,9 +97,13 @@ export async function onMessageReceived(
         if (!isCurrentMessage()) {
             return;
         }
-        const updated_content =
-            result === null ? message_content : message_content.trimEnd() + '\n\n' + result;
         if (result !== null) {
+            // 等待期间正文可能变化，拼接前重新读取，避免覆盖最新内容。
+            const latest_message = getChatMessages(message_id).at(-1);
+            if (!latest_message) {
+                return;
+            }
+            const updated_content = latest_message.message.trimEnd() + '\n\n' + result;
             await setChatMessages([{ message_id, message: updated_content }], { refresh: 'none' });
         } else if (request_source !== '更多') {
             toastr.error(

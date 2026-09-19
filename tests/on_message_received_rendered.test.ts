@@ -222,27 +222,32 @@ describe('onMessageReceived 请求闭包中的临时渲染监听', () => {
         expect(mockHandleVariables).toHaveBeenCalledWith(1);
     });
 
-    test.each(['编辑', '追加消息'] as const)('解析期间%s，仍写回目标楼层', async change => {
-        const pending = Promise.withResolvers<string | null>();
-        mockInvoke.mockReturnValueOnce(pending.promise);
-        await onMessageReceived(2);
-        const rendered = emitRendered();
-        if (change === '编辑') {
-            SillyTavern.chat[2].mes = '编辑后的回复正文';
-        } else {
-            SillyTavern.chat.push(createMessage('下一条回复的正文'));
+    test.each(['编辑', '追加消息'] as const)(
+        '解析期间%s，仍基于最新正文写回目标楼层',
+        async change => {
+            const pending = Promise.withResolvers<string | null>();
+            mockInvoke.mockReturnValueOnce(pending.promise);
+            await onMessageReceived(2);
+            const rendered = emitRendered();
+            if (change === '编辑') {
+                SillyTavern.chat[2].mes = '编辑后的回复正文';
+            } else {
+                SillyTavern.chat.push(createMessage('下一条回复的正文'));
+            }
+            pending.resolve(UPDATE_RESULT);
+            await rendered;
+            const expected_content = change === '编辑' ? '编辑后的回复正文' : MESSAGE_TEXT;
+            expect(setChatMessages).toHaveBeenCalledWith(
+                [{ message_id: 2, message: expected_content + '\n\n' + UPDATE_RESULT }],
+                { refresh: 'none' }
+            );
+            expect(SillyTavern.chat[2].mes).toBe(expected_content + '\n\n' + UPDATE_RESULT);
+            expect(mockHandleVariables).toHaveBeenCalledWith(2);
+            if (change === '追加消息') {
+                expect(SillyTavern.chat[3].mes).toBe('下一条回复的正文');
+            }
         }
-        pending.resolve(UPDATE_RESULT);
-        await rendered;
-        expect(setChatMessages).toHaveBeenCalledWith(
-            [{ message_id: 2, message: MESSAGE_TEXT + '\n\n' + UPDATE_RESULT }],
-            { refresh: 'none' }
-        );
-        expect(mockHandleVariables).toHaveBeenCalledWith(2);
-        if (change === '追加消息') {
-            expect(SillyTavern.chat[3].mes).toBe('下一条回复的正文');
-        }
-    });
+    );
 
     test.each(['切换聊天', '切换 swipe', '替换消息', '删除'] as const)(
         '解析期间%s，丢弃过期结果',
