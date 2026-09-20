@@ -6,7 +6,7 @@ import { initExportedEvents } from '@/function/exported_events';
 import { initGlobals } from '@/function/global';
 import { initInitvar } from '@/function/initvar';
 import { initNotification } from '@/function/notification';
-import { initRequest } from '@/function/request';
+import { initRequest, initWorldinfoFilter } from '@/function/request';
 import { initResponse } from '@/function/update';
 import { tr } from '@/i18n';
 import { initPanel } from '@/panel';
@@ -37,6 +37,7 @@ $(async () => {
     stop_list.push(initPanel());
     stop_list.push(initButtons());
     stop_list.push(initGlobals());
+    stop_list.push(initWorldinfoFilter());
 
     let chat_level_stop_list: Stop[] = [];
     let current_chat_id = SillyTavern.getCurrentChatId();

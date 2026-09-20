@@ -67,6 +67,7 @@ describe('request-scoped worldinfo filtering', () => {
         store.should_enable = true;
         await nextTick();
         store.settings.更新方式 = '额外模型解析';
+        store.settings.兼容性.额外模型解析非阻塞 = true;
         store.runtimes.is_during_extra_analysis = true;
         store.settings.额外模型解析配置.模型来源 = '与插头相同';
         store.settings.额外模型解析配置.应答格式 = '聊天消息';
@@ -89,6 +90,69 @@ describe('request-scoped worldinfo filtering', () => {
         releases.push(await registerWorldinfoRequest(id, store.settings.额外模型解析配置));
         return getPendingWorldinfoRequests().find(request => request.generation_id === id)!;
     }
+
+    test('blocking mode does not register requests, inject markers, or install marker listeners', async () => {
+        const store = useDataStore();
+        store.settings.兼容性.额外模型解析非阻塞 = false;
+        const config: GenerateConfig = {
+            generation_id: 'blocking',
+            overrides: { char_description: 'original' },
+        };
+        const stop = await registerWorldinfoRequest('blocking', store.settings.额外模型解析配置);
+        expect(getPendingWorldinfoRequests()).toEqual([]);
+        expect(withWorldinfoRequestMarker(config)).toBe(config);
+        expect(getLorebookEntries).not.toHaveBeenCalled();
+        expect(eventMakeFirst).not.toHaveBeenCalled();
+        stop();
+    });
+
+    test.each([false, true])(
+        'blocking mode filters entirely at load using extra-analysis phase %s without registration',
+        async is_extra_analysis => {
+            const store = useDataStore();
+            store.settings.兼容性.额外模型解析非阻塞 = false;
+            store.runtimes.is_during_extra_analysis = is_extra_analysis;
+            store.settings.额外模型解析配置.世界书条目白名单正则 = '^A$';
+            const loaded = lores();
+            await onWorldinfoEntriesLoaded(loaded);
+            expect(loaded.characterLore.map(candidate => candidate.comment)).toEqual(
+                is_extra_analysis ? ['[mvu_update]', 'A'] : ['[mvu_plot]', 'A', 'B']
+            );
+            expect(loaded.characterLore.every(candidate => candidate.world === 'character')).toBe(
+                true
+            );
+            // 本轮加载已完成过滤；切换全局阶段或非阻塞选项不能在扫描完成时重新解释它。
+            const scan = scanData(loaded);
+            const before = structuredClone(scan);
+            store.settings.兼容性.额外模型解析非阻塞 = true;
+            store.runtimes.is_during_extra_analysis = !is_extra_analysis;
+            await onWorldinfoScanDone(scan);
+            expect(scan).toEqual(before);
+        }
+    );
+
+    test('an in-flight nonblocking scan keeps its snapshot when blocking mode is selected', async () => {
+        const request = await register('in-flight', '^A$');
+        const loaded = lores();
+        await onWorldinfoEntriesLoaded(loaded);
+        const scan = scanData(loaded, request.marker);
+        const store = useDataStore();
+        store.settings.兼容性.额外模型解析非阻塞 = false;
+        store.runtimes.is_during_extra_analysis = false;
+        await onWorldinfoScanDone(scan);
+        expect(scan.sortedEntries.map(candidate => candidate.comment)).toEqual([
+            '[mvu_update]',
+            'A',
+        ]);
+
+        const next_loaded = lores();
+        await onWorldinfoEntriesLoaded(next_loaded);
+        expect(next_loaded.characterLore.map(candidate => candidate.comment)).toEqual([
+            '[mvu_plot]',
+            'A',
+            'B',
+        ]);
+    });
 
     test('decorates only the matching request configuration without changing the caller or global data', async () => {
         const request = await register('A');

@@ -23,6 +23,7 @@ describe('extra model concurrent request cancellation', () => {
         store.should_enable = true;
         await nextTick();
         store.settings.更新方式 = '额外模型解析';
+        store.settings.兼容性.额外模型解析非阻塞 = true;
         store.settings.额外模型解析配置.应答格式 = '聊天消息';
         store.settings.额外模型解析配置.模型来源 = '与插头相同';
         store.settings.额外模型解析配置.请求方式 = '同时请求多次';

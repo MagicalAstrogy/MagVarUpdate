@@ -80,7 +80,8 @@ async function createRequestFilterContext(
 /**
  * 为单次额外变量分析登记独立标记和过滤策略快照。
  *
- * 仅在 MVU 与额外分析开关均开启时登记；首个请求安装消息清理监听器，
+ * 仅在 MVU、额外分析和非阻塞选项均开启时登记；阻塞模式完全在条目加载时过滤。
+ * 首个请求安装消息清理监听器，
  * 最后一个请求释放时卸载。策略在请求开始时保存，不随之后的面板修改变化。
  *
  * @param generation_id 本次生成的唯一编号，与传给酒馆助手的编号一致。
@@ -95,7 +96,13 @@ export async function registerWorldinfoRequest(
     signal?: AbortSignal
 ): Promise<() => void> {
     const store = useDataStore();
-    if (!store.should_enable || !store.runtimes.is_during_extra_analysis) return () => {};
+    if (
+        !store.should_enable ||
+        !store.runtimes.is_during_extra_analysis ||
+        !store.settings.兼容性.额外模型解析非阻塞
+    ) {
+        return () => {};
+    }
     const filter_context = await createRequestFilterContext(request_settings, signal);
     signal?.throwIfAborted();
     if (pending_requests.has(generation_id)) {

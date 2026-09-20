@@ -34,17 +34,15 @@ export async function onMessageReceived(
         return;
     }
 
-    // 每次调用独立捕获目标；等待期间聊天切换、重新生成、切换 swipe 或编辑均使其失效。
+    // 每次调用独立捕获目标身份；内容变化或追加后续消息不使其失效。
     const chat_id = SillyTavern.getCurrentChatId();
     const chat_message = SillyTavern.chat[message_id];
     const swipe_id = chat_message?.swipe_id;
-    const isCurrentMessage = (expected_content = message_content) =>
+    const isCurrentMessage = () =>
         !signal?.aborted &&
         SillyTavern.getCurrentChatId() === chat_id &&
-        SillyTavern.chat.length - 1 === message_id &&
         SillyTavern.chat[message_id] === chat_message &&
-        chat_message?.swipe_id === swipe_id &&
-        getChatMessages(message_id).at(-1)?.message === expected_content;
+        chat_message?.swipe_id === swipe_id;
 
     if (
         store.effective_settings.更新方式 === '随AI输出' ||
@@ -99,9 +97,13 @@ export async function onMessageReceived(
         if (!isCurrentMessage()) {
             return;
         }
-        const updated_content =
-            result === null ? message_content : message_content.trimEnd() + '\n\n' + result;
         if (result !== null) {
+            // 等待期间正文可能变化，拼接前重新读取，避免覆盖最新内容。
+            const latest_message = getChatMessages(message_id).at(-1);
+            if (!latest_message) {
+                return;
+            }
+            const updated_content = latest_message.message.trimEnd() + '\n\n' + result;
             await setChatMessages([{ message_id, message: updated_content }], { refresh: 'none' });
         } else if (request_source !== '更多') {
             toastr.error(
@@ -109,7 +111,7 @@ export async function onMessageReceived(
                 tr('runtime.extraModel.updateFailedTitle')
             );
         }
-        if (isCurrentMessage(updated_content)) {
+        if (isCurrentMessage()) {
             await handleVariablesInMessage(message_id);
         }
     }
