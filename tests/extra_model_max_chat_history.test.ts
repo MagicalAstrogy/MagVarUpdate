@@ -68,10 +68,10 @@ describe('extra model max chat history', () => {
     });
 
     test('keeps a request-scoped reminder before the preset tail', async () => {
-        await generateExtraModel({ prompt_tail: 'INCREMENTAL_USER_FOCUS' });
+        await generateExtraModel({ user_input: 'INCREMENTAL_USER_FOCUS' });
 
         const config = (globalThis as any).generateRaw.mock.calls[0][0];
-        expect(config.user_input).toContain('INCREMENTAL_USER_FOCUS');
+        expect(config.user_input).toBe('INCREMENTAL_USER_FOCUS');
         expect(config.ordered_prompts.at(-2)).toBe('user_input');
         expect(config.ordered_prompts.at(-1).content).not.toBe('INCREMENTAL_USER_FOCUS');
     });

@@ -42,12 +42,12 @@ import { tr } from '@/i18n';
 import { useDataStore } from '@/store';
 import { normalizeBaseURL, isJsonPatch } from '@/util';
 import {
-    cleanStructuredUpdate,
     findUpdateMarkupBlocks,
     isJsonSafe,
+    parseStructuredUpdate,
     scanUpdateMarkup,
 } from './structured_update';
-import { literalYamlify, parseString, uuidv4 } from '@util/common';
+import { literalYamlify, uuidv4 } from '@util/common';
 import { compare } from 'compare-versions';
 import { klona } from 'klona';
 import YAML from 'yaml';
@@ -299,8 +299,6 @@ export interface ExtraModelInvocationOptions {
     task_suffix?: string;
     /** Override the short user message sent to the extra model. */
     user_input?: string;
-    /** Legacy reminder option, appended to user_input without moving the preset tail. */
-    prompt_tail?: string;
     /** Validate and optionally normalize each attempt before the retry strategy accepts it. */
     validate_result?: (result: string) => string;
 }
@@ -524,6 +522,89 @@ export async function generateExtraModel(
 }
 
 /**
+ * 提取、校验并规范化额外模型回复中的变量更新内容。
+ * 发现补丁但校验失败时抛出异常；未识别到有效更新时返回 null，由调用方报告对应来源的错误。
+ * 此处只做格式与 JSON 安全性检查；增量操作限制及当前状态校验仍由 validate_result 完成。
+ */
+export function parseAndValidateExtraModelResult(
+    result: string,
+    { require_single_update = false }: { require_single_update?: boolean } = {}
+): string | null {
+    // 1. 定位更新块：忽略思考区中的示例和结构化数据字符串里的字面标签。
+    // 优先选最后一个闭合块；没有闭合块时兼容最后一个未闭合块，没有包装时检查整段回复。
+    const updates = findUpdateMarkupBlocks(result, 'update');
+    // 单块限制也适用于没有 JSONPatch 标签、直接包含 JSON/JSON5/YAML 或旧指令的更新块。
+    if (require_single_update && updates.length > 1) {
+        throw new Error('增量校正返回了多个更新块');
+    }
+    const update = updates.filter(block => block.closed).at(-1) ?? updates.at(-1);
+    let body = update ? result.slice(update.contentStart, update.contentEnd) : result;
+    let hasUpdateBody = !!update;
+    // 2. 查找补丁：选中的更新块没有完整 JSONPatch 时，再检查整段回复，
+    // 兼容模型先输出空或无效的更新包装、随后才给出完整补丁的情况。
+    let patches = findUpdateMarkupBlocks(body, 'patch');
+    if (!patches.some(block => block.closed) && update) {
+        patches = findUpdateMarkupBlocks(result, 'patch');
+        if (patches.some(block => block.closed)) {
+            body = result;
+            hasUpdateBody = false;
+        }
+    }
+    if (patches.length) {
+        // 3. 检查补丁边界：任何未闭合补丁都拒绝；启用单块限制时要求恰好一个 JSONPatch。
+        if (patches.some(block => !block.closed)) throw new Error('JSONPatch 标签未闭合');
+        if (require_single_update && patches.length !== 1) {
+            throw new Error('增量校正返回了多个更新块');
+        }
+        // 4. 检查补丁内容：去掉代码围栏后解析 JSON/JSON5/YAML，检查操作数组的基本结构，
+        // 并拒绝 NaN、Infinity、循环引用等无法安全表示为 JSON 的值；不在此执行操作。
+        for (const block of patches) {
+            const value = parseStructuredUpdate(body.slice(block.contentStart, block.contentEnd));
+            if (!isJsonPatch(value) || !isJsonSafe(value))
+                throw new Error('JSONPatch 内容不合法或包含非有限值');
+        }
+        // 5. 统一包装标签，保留补丁原文。补丁来自真实更新块时，保留块内分析和混合旧指令；
+        // 从整段回复兜底提取时只保留补丁，避免把周围的剧情或示例一起交给后续处理。
+        let patchText = '';
+        let cursor = 0;
+        for (const block of patches) {
+            if (hasUpdateBody) patchText += body.slice(cursor, block.start);
+            else if (patchText) patchText += '\n';
+            patchText += `<JSONPatch>${body.slice(block.contentStart, block.contentEnd)}</JSONPatch>`;
+            cursor = block.end;
+        }
+        if (hasUpdateBody) patchText += body.slice(cursor);
+        return `<UpdateVariable>${patchText}</UpdateVariable>`;
+    }
+    // 6. 无补丁标签时兼容旧脚本：仅在排除思考区、字符串和注释后的文本中识别指令。
+    // 返回时保留参数原文，但去掉思考区内容；这里只识别指令形式，不验证执行结果。
+    const scanned = scanUpdateMarkup(body);
+    const visible = scanned.visible;
+    if (
+        /_\.(?:set|insert|assign|remove|unset|delete|add)\s*\([\s\S]*?\)\s*;/.test(
+            scanned.structural
+        )
+    ) {
+        return `<UpdateVariable>${visible}</UpdateVariable>`;
+    }
+    // 7. 无旧指令时尝试无 JSONPatch 标签的结构化输出（裸回复或更新块内的 JSON/JSON5/YAML）：
+    // 解析整个剩余内容（允许代码围栏），
+    // 先检查 JSON 安全性，再提取补丁数组或含 json_patch 等字段的对象，转为统一更新块。
+    let structured;
+    try {
+        structured = parseStructuredUpdate(visible);
+    } catch {
+        // 解析失败时不接受该回复，最终返回 null。
+    }
+    if (structured !== undefined && isJsonSafe(structured)) {
+        const formatted = extractFromFormattedOutput(visible);
+        if (formatted) return formatted;
+    }
+    // 8. 所有格式均未识别成功，交由调用方生成普通来源或 Pi 来源对应的错误。
+    return null;
+}
+
+/**
  * 执行一次内部解析，登记请求级世界书策略并验证变量更新块；由外层初始化生成状态。
  * Pi 尝试从世界书读取前登记，取消标记贯穿提示词捕获和实际请求，结束时统一释放。
  *
@@ -566,67 +647,10 @@ async function invokeExtraModel(
             options
         );
 
-        // Fallbacks are shared by ordinary parsing and incremental repair. Reasoning examples
-        // are ignored only outside structured data, preserving literal tags in payload strings.
-        const updates = findUpdateMarkupBlocks(result, 'update');
-        const update = updates.filter(block => block.closed).at(-1) ?? updates.at(-1);
-        let body = update ? result.slice(update.contentStart, update.contentEnd) : result;
-        let hasUpdateBody = !!update;
-        let patches = findUpdateMarkupBlocks(body, 'patch');
-        if (!patches.some(block => block.closed) && update) {
-            // A valid patch can follow an empty or invalid update wrapper.
-            patches = findUpdateMarkupBlocks(result, 'patch');
-            if (patches.some(block => block.closed)) {
-                body = result;
-                hasUpdateBody = false;
-            }
-        }
-        if (patches.length) {
-            if (patches.some(block => !block.closed)) throw new Error('JSONPatch 标签未闭合');
-            if (options.validate_result && (patches.length !== 1 || updates.length > 1)) {
-                throw new Error('增量校正返回了多个更新块');
-            }
-            for (const block of patches) {
-                const value = parseString(
-                    cleanStructuredUpdate(body.slice(block.contentStart, block.contentEnd))
-                );
-                if (!isJsonPatch(value) || !isJsonSafe(value))
-                    throw new Error('JSONPatch 内容不合法或包含非有限值');
-            }
-            // Preserve analysis and mixed legacy commands inside a real update block. A fallback
-            // patch outside that block must not import surrounding story/reasoning as commands.
-            let patchText = '';
-            let cursor = 0;
-            for (const block of patches) {
-                if (hasUpdateBody) patchText += body.slice(cursor, block.start);
-                else if (patchText) patchText += '\n';
-                patchText += `<JSONPatch>${body.slice(block.contentStart, block.contentEnd)}</JSONPatch>`;
-                cursor = block.end;
-            }
-            if (hasUpdateBody) patchText += body.slice(cursor);
-            return `<UpdateVariable>${patchText}</UpdateVariable>`;
-        }
-        const scanned = scanUpdateMarkup(body);
-        const visible = scanned.visible;
-        // Legacy script commands remain supported, but never use examples from Think/Analysis.
-        if (
-            /_\.(?:set|insert|assign|remove|unset|delete|add)\s*\([\s\S]*?\)\s*;/.test(
-                scanned.structural
-            )
-        ) {
-            return `<UpdateVariable>${visible}</UpdateVariable>`;
-        }
-        // No JSONPatch wrapper: parse the whole remaining structured block (JSON/JSON5/YAML).
-        let structured;
-        try {
-            structured = parseString(cleanStructuredUpdate(visible));
-        } catch {
-            /* handled below */
-        }
-        if (structured !== undefined && isJsonSafe(structured)) {
-            const formatted = extractFromFormattedOutput(visible);
-            if (formatted) return formatted;
-        }
+        const update = parseAndValidateExtraModelResult(result, {
+            require_single_update: !!options.validate_result,
+        });
+        if (update !== null) return update;
         if (pi_preflight) {
             throw await createPiProtocolError();
         }
@@ -784,9 +808,7 @@ async function requestReply(
     }
 
     const config: GenerateRawConfig = withWorldinfoRequestMarker({
-        user_input: [options.user_input ?? '遵循<must>指令', options.prompt_tail?.trim()]
-            .filter(Boolean)
-            .join('\n'),
+        user_input: options.user_input ?? '遵循<must>指令',
         max_chat_history: request_settings.max_chat_history,
         should_stream: request_settings.兼容假流式,
         generation_id,

@@ -270,7 +270,6 @@ describe('invoke extra model through Pi', () => {
                     task: 'INCREMENTAL_REPAIR_TASK',
                     task_suffix: 'INCREMENTAL_REPAIR_CONSTRAINTS',
                     user_input: 'INCREMENTAL_REPAIR_INPUT',
-                    prompt_tail: 'INCREMENTAL_REPAIR_FOCUS',
                 })
             ).resolves.toBe(VALID_UPDATE);
 
@@ -278,7 +277,7 @@ describe('invoke extra model through Pi', () => {
                 route === '使用当前预设' ? mockCaptureGeneratePrompt : mockCaptureGenerateRawPrompt;
             expect(capture).toHaveBeenCalledTimes(1);
             const config = capture.mock.calls[0][0];
-            expect(config.user_input).toBe('INCREMENTAL_REPAIR_INPUT\nINCREMENTAL_REPAIR_FOCUS');
+            expect(config.user_input).toBe('INCREMENTAL_REPAIR_INPUT');
             expect(JSON.stringify(config)).toContain(
                 'INCREMENTAL_REPAIR_TASK\\nINCREMENTAL_REPAIR_CONSTRAINTS'
             );

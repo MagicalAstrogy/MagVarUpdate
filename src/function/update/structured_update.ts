@@ -1,3 +1,6 @@
+import { parseString } from '@util/common';
+import { parse as parseJson5 } from 'json5';
+
 /** Shared boundary scanner for update replies and persisted floor text.
  * Offsets always refer to the original UTF-16 string; payload text is never rewritten.
  */
@@ -189,6 +192,17 @@ export function cleanStructuredUpdate(input: string): string {
         .replace(/^```(?:json5?|ya?ml)?\s*/i, '')
         .replace(/\s*```$/, '')
         .trim();
+}
+
+/** 优先识别 JSON/JSON5（含前置注释），再沿用 YAML 和残缺 JSON 的兼容解析。 */
+export function parseStructuredUpdate(input: string): unknown {
+    const content = cleanStructuredUpdate(input);
+    try {
+        // YAML 可能把以 // 或 /* 开头的合法 JSON5 当成普通字符串，不能优先接受该结果。
+        return parseJson5(content);
+    } catch {
+        return parseString(content);
+    }
 }
 
 /** Check before JSON.stringify: YAML aliases can be cyclic, and JSON5 admits non-finite values. */

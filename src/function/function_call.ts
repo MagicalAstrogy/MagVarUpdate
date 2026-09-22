@@ -3,7 +3,11 @@ import { tr } from '@/i18n';
 import { useDataStore } from '@/store';
 import { getLastValidVariable, isJsonPatch } from '@/util';
 import { parseString } from '@util/common';
-import { cleanStructuredUpdate, isJsonSafe } from './update/structured_update';
+import {
+    cleanStructuredUpdate,
+    isJsonSafe,
+    parseStructuredUpdate,
+} from './update/structured_update';
 
 /**
  * 最终的变量更新机制实际上是专门generate 一个新的请求，那个请求会通过 tool_call 直接更新变量。
@@ -401,7 +405,7 @@ function normalizeJsonPatchPayload(input: unknown): string | null {
     input_str = stripLeadingTagBlock(input_str, 'Analyze');
     input_str = stripOuterTagBlock(input_str, 'json_?patch');
 
-    const parsed = parseString(input_str);
+    const parsed = parseStructuredUpdate(input_str);
     if (!isJsonPatch(parsed) || !isJsonSafe(parsed)) {
         return null;
     }
@@ -499,7 +503,7 @@ export function extractFromFormattedOutput(result: string | GenerateToolCallResu
     }
 
     try {
-        const parsed = parseString(cleanStructuredPayload(content));
+        const parsed = parseStructuredUpdate(content);
         const patch_source = isJsonPatch(parsed)
             ? parsed
             : (_.get(parsed, 'json_patch') ??
