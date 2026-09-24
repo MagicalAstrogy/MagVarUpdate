@@ -1674,7 +1674,20 @@ export async function handleVariablesInMessage(message_id: number) {
         };
         await eventEmit(variable_events.BEFORE_MESSAGE_UPDATE, context);
 
-        let new_message_content = context.message_content;
+        // The listeners above were awaited, so another extension may have edited this message while
+        // they ran, and setChatMessages replaces the whole text. When no listener changed the text it
+        // was handed, MVU's own edits are applied to the message as it is NOW, read in the same
+        // synchronous step as the write, so nothing written meanwhile is reverted. A listener that did
+        // change it keeps the documented contract: its version is what gets written.
+        const listener_edited = context.message_content !== latest_chat_message.message;
+        const current_message = (getChatMessages(message_id).at(-1) ?? latest_chat_message).message;
+        if (listener_edited && current_message !== latest_chat_message.message) {
+            console.warn(
+                `[MVU] message ${message_id} was edited while BEFORE_MESSAGE_UPDATE listeners ran; ` +
+                    'the version a listener returned is written over that edit.'
+            );
+        }
+        let new_message_content = listener_edited ? context.message_content : current_message;
         if (!new_message_content.includes('<StatusPlaceHolderImpl/>')) {
             new_message_content += '\n\n<StatusPlaceHolderImpl/>';
         }
@@ -1687,7 +1700,7 @@ export async function handleVariablesInMessage(message_id: number) {
 
         // Persist event-driven text changes before awaiting any variable writes. Do not include a
         // message field when the text is unchanged, since setChatMessages replaces the whole text.
-        if (new_message_content !== latest_chat_message.message) {
+        if (new_message_content !== current_message) {
             await setChatMessages([{ message_id: message_id, message: new_message_content }], {
                 refresh: 'none',
             });

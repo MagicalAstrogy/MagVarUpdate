@@ -225,7 +225,6 @@ async function onVariableUpdatedCall(args: any): Promise<string> {
         return '';
     }
 
-    let message_content = chat_message.message.trimEnd();
     const variables = getLastValidVariable(message_id + 1);
     if (!_.has(variables, 'stat_data')) {
         return '';
@@ -237,6 +236,11 @@ async function onVariableUpdatedCall(args: any): Promise<string> {
     }
     await replaceVariables(variables, { type: 'message', message_id: message_id });
 
+    // updateVariables() and replaceVariables() were awaited, so another extension may have edited this
+    // message meanwhile, and setChatMessages replaces the whole text. Append to the message as it is
+    // NOW, the same way the extra-model path does (on_message_received.ts), so nothing written in
+    // between is reverted.
+    let message_content = (getChatMessages(message_id).at(-1) ?? chat_message).message.trimEnd();
     message_content += `\n\n<UpdateVariable>\n<Analysis>${args.analysis}</Analysis></Analysis>${args.delta}\n</UpdateVariable>`;
 
     if (chat_message.role !== 'user' && !message_content.includes('<StatusPlaceHolderImpl/>')) {
