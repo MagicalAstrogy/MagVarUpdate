@@ -10,6 +10,7 @@ import { useDataStore } from '@/store';
 import { assertVWD, variable_events, VariableData } from '@/variable_def';
 import _ from 'lodash';
 import { handleVariablesInCallback } from '@/function/exported_events';
+import { tr } from '@/i18n';
 
 type MvuData = any;
 type FunctionTestOptions = { mvuZod?: boolean };
@@ -711,6 +712,7 @@ export function registerFunctionTests({ mvuZod = false }: FunctionTestOptions = 
             jest.clearAllMocks();
             (globalThis as any)._ = _;
             (globalThis as any).YAML = { parse: JSON.parse };
+            (globalThis as any).toastr = { warning: jest.fn() };
             (globalThis as any).replaceVariables = jest.fn().mockResolvedValue(undefined);
             (globalThis as any).insertOrAssignVariables = jest.fn().mockResolvedValue(undefined);
             (globalThis as any).updateVariablesWith = jest.fn().mockResolvedValue(undefined);
@@ -849,6 +851,7 @@ export function registerFunctionTests({ mvuZod = false }: FunctionTestOptions = 
                 'variables:message',
                 'message:affected',
             ]);
+            expect(toastr.warning).not.toHaveBeenCalled();
         });
 
         nativeTest('事件未修改已有占位符的消息时只应在变量写入后刷新', async () => {
@@ -896,6 +899,149 @@ export function registerFunctionTests({ mvuZod = false }: FunctionTestOptions = 
                 (globalThis as any).updateVariablesWith.mock.invocationCallOrder[0]
             ).toBeLessThan((globalThis as any).setChatMessages.mock.invocationCallOrder[0]);
         });
+
+        // Another extension edits the message while a BEFORE_MESSAGE_UPDATE listener is still awaited.
+        // setChatMessages replaces the whole text, so writing the text the listeners were handed would
+        // silently revert that edit.
+        const mockMessageWithConcurrentEdit = (initial: string) => {
+            const state = { current: initial };
+            (globalThis as any).getChatMessages = jest.fn(() => [
+                { message: state.current, role: 'assistant' },
+            ]);
+            (globalThis as any).SillyTavern = {
+                chat: [
+                    {
+                        swipe_id: 0,
+                        variables: [
+                            {
+                                stat_data: { health: 100 },
+                                display_data: {},
+                                delta_data: {},
+                                schema: mockSchema,
+                            },
+                        ],
+                    },
+                ],
+            };
+            (globalThis as any).getVariables = jest.fn().mockReturnValue({
+                stat_data: { health: 100 },
+                display_data: {},
+                delta_data: {},
+                schema: mockSchema,
+            });
+            return state;
+        };
+
+        nativeTest('事件期间其他扩展对消息的修改不应被覆盖', async () => {
+            useDataStore().settings.兼容性.更新到聊天变量 = false;
+
+            const message = '模型回复正文';
+            const edited = '模型回复正文\n\n<img src="another-extension.png">';
+            const state = mockMessageWithConcurrentEdit(message);
+            (globalThis as any).eventOn(variable_events.BEFORE_MESSAGE_UPDATE, async () => {
+                await Promise.resolve();
+                state.current = edited;
+            });
+
+            await handleVariablesInMessage(0);
+
+            expect((globalThis as any).setChatMessages).toHaveBeenNthCalledWith(
+                1,
+                [{ message_id: 0, message: `${edited}\n\n<StatusPlaceHolderImpl/>` }],
+                { refresh: 'none' }
+            );
+            expect(toastr.warning).not.toHaveBeenCalled();
+        });
+
+        nativeTest('事件期间写入的内容已包含占位符时不应再写入正文', async () => {
+            useDataStore().settings.兼容性.更新到聊天变量 = false;
+
+            const state = mockMessageWithConcurrentEdit('模型回复正文');
+            const edited = '模型回复正文\n\n<StatusPlaceHolderImpl/>\n\n其他扩展追加的内容';
+            (globalThis as any).eventOn(variable_events.BEFORE_MESSAGE_UPDATE, async () => {
+                await Promise.resolve();
+                state.current = edited;
+            });
+
+            await handleVariablesInMessage(0);
+
+            expect((globalThis as any).setChatMessages).toHaveBeenCalledTimes(1);
+            expect((globalThis as any).setChatMessages).toHaveBeenCalledWith([{ message_id: 0 }], {
+                refresh: 'affected',
+            });
+        });
+
+        nativeTest('监听器修改了正文时仍写入监听器的版本，并对被覆盖的修改弹出警告', async () => {
+            useDataStore().settings.兼容性.更新到聊天变量 = false;
+
+            const message = '模型回复正文';
+            const state = mockMessageWithConcurrentEdit(message);
+            (globalThis as any).eventOn(
+                variable_events.BEFORE_MESSAGE_UPDATE,
+                async (context: { message_content: string }) => {
+                    await Promise.resolve();
+                    state.current = `${message}\n\n其他扩展追加的内容`;
+                    context.message_content += '\n监听器追加内容';
+                }
+            );
+
+            await handleVariablesInMessage(0);
+
+            expect((globalThis as any).setChatMessages).toHaveBeenNthCalledWith(
+                1,
+                [
+                    {
+                        message_id: 0,
+                        message: `${message}\n监听器追加内容\n\n<StatusPlaceHolderImpl/>`,
+                    },
+                ],
+                { refresh: 'none' }
+            );
+            expect(toastr.warning).toHaveBeenCalledTimes(1);
+            expect(toastr.warning).toHaveBeenCalledWith(
+                tr('runtime.variableUpdate.messageOverwritten', { messageId: 0 }),
+                tr('runtime.variableUpdate.messageOverwrittenTitle'),
+                { timeOut: 10000 }
+            );
+        });
+
+        nativeTest.each([false, true])(
+            '监听器返回当前正文时不应误报覆盖（已有占位符：%s）',
+            async hasPlaceholder => {
+                useDataStore().settings.兼容性.更新到聊天变量 = false;
+
+                const state = mockMessageWithConcurrentEdit('模型回复正文');
+                const edited =
+                    '模型回复正文\n\n其他扩展追加的内容' +
+                    (hasPlaceholder ? '\n\n<StatusPlaceHolderImpl/>' : '');
+                (globalThis as any).eventOn(
+                    variable_events.BEFORE_MESSAGE_UPDATE,
+                    async (context: { message_content: string }) => {
+                        await Promise.resolve();
+                        state.current = edited;
+                        context.message_content = edited;
+                    }
+                );
+
+                await handleVariablesInMessage(0);
+
+                expect(toastr.warning).not.toHaveBeenCalled();
+                if (hasPlaceholder) {
+                    expect((globalThis as any).setChatMessages).toHaveBeenCalledTimes(1);
+                } else {
+                    expect((globalThis as any).setChatMessages).toHaveBeenCalledTimes(2);
+                    expect((globalThis as any).setChatMessages).toHaveBeenNthCalledWith(
+                        1,
+                        [{ message_id: 0, message: `${edited}\n\n<StatusPlaceHolderImpl/>` }],
+                        { refresh: 'none' }
+                    );
+                }
+                expect((globalThis as any).setChatMessages).toHaveBeenLastCalledWith(
+                    [{ message_id: 0 }],
+                    { refresh: 'affected' }
+                );
+            }
+        );
 
         nativeTest('应该保留chat级别变量的其他属性，只更新必要的字段', async () => {
             //这个用例同时会测试更新到聊天变量的有效性，下面预期同时更新楼层和聊天变量。

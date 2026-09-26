@@ -830,6 +830,15 @@ export const runtimeMessages = defineMessages({
         'zh-CN': '错误详情：{detail}',
         en: 'Error details: {detail}',
     },
+    'runtime.variableUpdate.messageOverwrittenTitle': {
+        'zh-CN': '[MVU]消息内容被覆盖',
+        en: '[MVU] Message content overwritten',
+    },
+    'runtime.variableUpdate.messageOverwritten': {
+        'zh-CN':
+            '第 {messageId} 层消息中其他插件的修改被覆盖，可尝试重新运行相关插件对此楼层的解析。',
+        en: "Changes another plugin made to message #{messageId} were overwritten. Try rerunning that plugin's analysis for this message.",
+    },
     'runtime.variableUpdate.setPathMissing': {
         'zh-CN': 'stat_data 中不存在路径“{path}”，已跳过 set 命令。{reason}',
         en: "Path '{path}' does not exist in stat_data; the set command was skipped. {reason}",
