@@ -1681,10 +1681,15 @@ export async function handleVariablesInMessage(message_id: number) {
         // change it keeps the documented contract: its version is what gets written.
         const listener_edited = context.message_content !== latest_chat_message.message;
         const current_message = (getChatMessages(message_id).at(-1) ?? latest_chat_message).message;
-        if (listener_edited && current_message !== latest_chat_message.message) {
-            console.warn(
-                `[MVU] message ${message_id} was edited while BEFORE_MESSAGE_UPDATE listeners ran; ` +
-                    'the version a listener returned is written over that edit.'
+        const overwrites_edit =
+            listener_edited &&
+            current_message !== latest_chat_message.message &&
+            context.message_content !== current_message;
+        if (overwrites_edit) {
+            toastr.warning(
+                tr('runtime.variableUpdate.messageOverwritten', { messageId: message_id }),
+                tr('runtime.variableUpdate.messageOverwrittenTitle'),
+                { timeOut: 10000 }
             );
         }
         let new_message_content = listener_edited ? context.message_content : current_message;
