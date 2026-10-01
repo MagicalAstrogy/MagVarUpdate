@@ -435,22 +435,21 @@ describe('Pi payload transform', () => {
         ['openai-codex-responses', 'max_output_tokens'],
         ['anthropic-messages', 'max_tokens'],
         ['mistral-conversations', 'maxTokens'],
-    ] as const)(
-        'allows excluding %s output limit %s while preserving override protection',
-        (api, field) => {
-            const input = { model: 'test-model', [field]: 4096 };
+    ] as const)('allows excluding and overriding %s output limit %s', (api, field) => {
+        const input = { model: 'test-model', [field]: 4096 };
 
-            expect(transformPiPayload(input, { api, customExcludeBody: [field] })).toEqual({
-                model: 'test-model',
-            });
-            expect(input[field]).toBe(4096);
-            expect(() =>
-                transformPiPayload(input, { api, customIncludeBody: { [field]: 1 } })
-            ).toThrow(`cannot override protected field '${field}'`);
-        }
-    );
+        expect(transformPiPayload(input, { api, customExcludeBody: [field] })).toEqual({
+            model: 'test-model',
+        });
+        expect(input[field]).toBe(4096);
+        expect(transformPiPayload(input, { api, customIncludeBody: { [field]: 1 } })).toEqual({
+            model: 'test-model',
+            [field]: 1,
+        });
+        expect(input[field]).toBe(4096);
+    });
 
-    test('allows excluding Google output limit without losing live request state', () => {
+    test('allows excluding and overriding Google output limit without losing live request state', () => {
         const controller = new AbortController();
         const input = {
             model: 'gemini',
@@ -474,12 +473,13 @@ describe('Pi payload transform', () => {
         });
         expect(result.config.abortSignal).toBe(controller.signal);
         expect(input.config.maxOutputTokens).toBe(4096);
-        expect(() =>
+        expect(
             transformPiPayload(input, {
                 api: 'google-generative-ai',
                 customIncludeBody: { config: { maxOutputTokens: 1 } },
             })
-        ).toThrow("cannot override protected field 'config.maxOutputTokens'");
+        ).toEqual({ ...input, config: { ...input.config, maxOutputTokens: 1 } });
+        expect(input.config.maxOutputTokens).toBe(4096);
     });
 
     test('maps only API-supported sampling fields', () => {
@@ -516,17 +516,5 @@ describe('Pi payload transform', () => {
             frequencyPenalty: 0.2,
             presencePenalty: -0.1,
         });
-    });
-
-    test('protects the Mistral camelCase output limit field', () => {
-        expect(() =>
-            transformPiPayload(
-                { model: 'mistral-large-latest', messages: [], maxTokens: 4096 },
-                {
-                    api: 'mistral-conversations',
-                    customIncludeBody: { maxTokens: 1 },
-                }
-            )
-        ).toThrow("cannot override protected field 'maxTokens'");
     });
 });
