@@ -26,6 +26,15 @@ export type PiPayloadTransformOptions = {
     };
 };
 
+// 输出上限允许从请求体排除，附加字段仍不能覆盖这些运行时配置。
+const EXCLUDABLE_TOKEN_LIMIT_FIELDS = new Set([
+    'max_tokens',
+    'max_completion_tokens',
+    'max_output_tokens',
+    'maxTokens',
+    'maxOutputTokens',
+]);
+
 const PROTECTED_FIELDS = new Set([
     '__proto__',
     'constructor',
@@ -87,7 +96,7 @@ function applyCustomFields(
     // the top-level payload here; user-supplied include values are cloned individually below.
     const result = { ...payload };
     for (const name of exclude) {
-        if (PROTECTED_FIELDS.has(name)) {
+        if (PROTECTED_FIELDS.has(name) && !EXCLUDABLE_TOKEN_LIMIT_FIELDS.has(name)) {
             throw new Error(`More source custom body cannot exclude protected field '${name}'`);
         }
         delete result[name];
@@ -114,7 +123,10 @@ function googleConfigField(path: string): string {
 
 /** 阻止自定义配置覆盖或删除由运行时管理的 Google 核心字段。 */
 function assertGoogleConfigFieldAllowed(field: string, operation: 'override' | 'exclude'): void {
-    if (GOOGLE_PROTECTED_CONFIG_FIELDS.has(field)) {
+    if (
+        GOOGLE_PROTECTED_CONFIG_FIELDS.has(field) &&
+        !(operation === 'exclude' && EXCLUDABLE_TOKEN_LIMIT_FIELDS.has(field))
+    ) {
         throw new Error(
             `More source custom body cannot ${operation} protected field 'config.${field}'`
         );

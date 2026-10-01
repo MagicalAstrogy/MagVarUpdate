@@ -428,6 +428,60 @@ describe('Pi payload transform', () => {
         ).toThrow("cannot override protected field '__proto__'");
     });
 
+    test.each([
+        ['openai-completions', 'max_tokens'],
+        ['openai-completions', 'max_completion_tokens'],
+        ['openai-responses', 'max_output_tokens'],
+        ['openai-codex-responses', 'max_output_tokens'],
+        ['anthropic-messages', 'max_tokens'],
+        ['mistral-conversations', 'maxTokens'],
+    ] as const)(
+        'allows excluding %s output limit %s while preserving override protection',
+        (api, field) => {
+            const input = { model: 'test-model', [field]: 4096 };
+
+            expect(transformPiPayload(input, { api, customExcludeBody: [field] })).toEqual({
+                model: 'test-model',
+            });
+            expect(input[field]).toBe(4096);
+            expect(() =>
+                transformPiPayload(input, { api, customIncludeBody: { [field]: 1 } })
+            ).toThrow(`cannot override protected field '${field}'`);
+        }
+    );
+
+    test('allows excluding Google output limit without losing live request state', () => {
+        const controller = new AbortController();
+        const input = {
+            model: 'gemini',
+            contents: [],
+            config: {
+                abortSignal: controller.signal,
+                maxOutputTokens: 4096,
+                temperature: 0.4,
+            },
+        };
+
+        const result = transformPiPayload(input, {
+            api: 'google-generative-ai',
+            customExcludeBody: ['config.maxOutputTokens'],
+        }) as { config: Record<string, unknown> };
+
+        expect(result).toEqual({
+            model: 'gemini',
+            contents: [],
+            config: { abortSignal: controller.signal, temperature: 0.4 },
+        });
+        expect(result.config.abortSignal).toBe(controller.signal);
+        expect(input.config.maxOutputTokens).toBe(4096);
+        expect(() =>
+            transformPiPayload(input, {
+                api: 'google-generative-ai',
+                customIncludeBody: { config: { maxOutputTokens: 1 } },
+            })
+        ).toThrow("cannot override protected field 'config.maxOutputTokens'");
+    });
+
     test('maps only API-supported sampling fields', () => {
         const sampling = {
             topP: 0.8,
