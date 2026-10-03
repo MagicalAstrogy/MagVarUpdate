@@ -2,9 +2,7 @@ import {
     buildIncrementalRepairTask,
     buildIncrementalRepairPromptTail,
     collectIncrementalStateChanges,
-    extractLatestUpdateVariableBlock,
     mergeIncrementalRepairBlock,
-    mergeIncrementalRepairMetadata,
     normalizeAndValidateIncrementalRepairResult,
     normalizeIncrementalRepairBlock,
     validateIncrementalRepairAgainstState,
@@ -97,14 +95,6 @@ describe('incremental extra-model repair', () => {
         expect(merged).toContain('"path":"/hp"');
     });
 
-    test('extracts the last complete update block', () => {
-        const message =
-            '<UpdateVariable>first</UpdateVariable>正文<UpdateVariable>second</UpdateVariable>';
-        expect(extractLatestUpdateVariableBlock(message)).toBe(
-            '<UpdateVariable>second</UpdateVariable>'
-        );
-    });
-
     test('rejects non-idempotent and internal-path commands', () => {
         const delta = extractCommands(
             '<JSONPatch>[{"op":"delta","path":"/hp","value":-5}]</JSONPatch>'
@@ -195,25 +185,6 @@ describe('incremental extra-model repair', () => {
                 }
             )
         ).toBeNull();
-    });
-
-    test('merges repair metadata without dropping the original floor records', () => {
-        const applied = {
-            display_data: { hp: '72->64 (json_patch)', infection: 30 },
-            delta_data: { hp: '72->64 (json_patch)' },
-        };
-        mergeIncrementalRepairMetadata(
-            {
-                display_data: { hp: '100->72 (json_patch)', infection: '0->30 (json_patch)' },
-                delta_data: { hp: '100->72 (json_patch)', infection: '0->30 (json_patch)' },
-            },
-            applied,
-            '<JSONPatch>[{"op":"replace","path":"/hp","value":64}]</JSONPatch>'
-        );
-        expect(applied).toEqual({
-            display_data: { hp: '72->64 (json_patch)', infection: '0->30 (json_patch)' },
-            delta_data: { hp: '72->64 (json_patch)', infection: '0->30 (json_patch)' },
-        });
     });
 
     test('allows independent top-level inserts and rejects overlapping or indexed array edits', () => {

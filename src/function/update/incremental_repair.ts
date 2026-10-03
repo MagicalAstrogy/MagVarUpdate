@@ -252,17 +252,6 @@ export function buildIncrementalRepairPromptTail(user_direction: string = ''): s
 }
 
 /**
- * 提取最后一个闭合更新块；不存在闭合块时兼容最后一个未闭合块。
- * @param message 待扫描的消息正文。
- * @returns 保留原始标签及内容的更新块；未找到时返回空字符串。
- */
-export function extractLatestUpdateVariableBlock(message: string): string {
-    const blocks = findUpdateMarkupBlocks(message, 'update');
-    const block = blocks.filter(block => block.closed).at(-1) ?? blocks.at(-1);
-    return block ? message.slice(block.start, block.end) : '';
-}
-
-/**
  * 剥离更新块的外层标签，保留待合并的内部内容。
  * @param block 使用兼容更新标签包裹的文本。
  * @returns 去除外层标签及首尾空白后的内容。
@@ -636,40 +625,6 @@ export function verifyIncrementalRepairApplied(
         }
     }
     return null;
-}
-
-/**
- * 合并校正产生的显示与差量记录，保留原楼层中未涉及路径的元数据。
- * @param original_data 校正前的变量及元数据。
- * @param applied_data 校正后的变量及元数据；其 delta_data 和 display_data 会被原地更新。
- * @param repair_block 用于定位本次改动路径的补丁块。
- */
-export function mergeIncrementalRepairMetadata(
-    original_data: Record<string, any>,
-    applied_data: Record<string, any>,
-    repair_block: string
-) {
-    const merged_delta = klona(original_data.delta_data ?? {});
-    const merged_display = klona(original_data.display_data ?? applied_data.display_data ?? {});
-    const patch = parseIncrementalRepairPatch(repair_block) ?? [];
-    /** 读取生成记录；空路径对应 updateVariables 使用的空字符串键。 */
-    const readMetadata = (source: unknown, path: string[]) => {
-        if (!_.isObject(source)) return undefined;
-        return path.length === 0 ? _.get(source, ['']) : _.get(source, path);
-    };
-
-    for (const operation of patch) {
-        const target_path = jsonPointerSegments(operation.path);
-        if (!target_path) continue;
-        // updateVariables 将对象插入记录在父路径；移到新增键上，避免覆盖兄弟字段的已有记录。
-        const generated_path = operation.op === 'insert' ? target_path.slice(0, -1) : target_path;
-        const delta_value = readMetadata(applied_data.delta_data, generated_path);
-        const display_value = readMetadata(applied_data.display_data, generated_path);
-        if (delta_value !== undefined) _.set(merged_delta, target_path, klona(delta_value));
-        if (display_value !== undefined) _.set(merged_display, target_path, klona(display_value));
-    }
-    applied_data.delta_data = merged_delta;
-    applied_data.display_data = merged_display;
 }
 
 /**
