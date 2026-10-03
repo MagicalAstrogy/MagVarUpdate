@@ -40,7 +40,13 @@ import {
 import type { PiExtraModelSettings, PiRuntimePreflight } from '@/function/update/pi/runtime';
 import { tr } from '@/i18n';
 import { useDataStore } from '@/store';
-import { normalizeBaseURL } from '@/util';
+import { normalizeBaseURL, isJsonPatch } from '@/util';
+import {
+    findUpdateMarkupBlocks,
+    isJsonSafe,
+    parseStructuredUpdate,
+    scanUpdateMarkup,
+} from './structured_update';
 import { literalYamlify, uuidv4 } from '@util/common';
 import { compare } from 'compare-versions';
 import { klona } from 'klona';
@@ -286,11 +292,27 @@ async function unsetExtraAnalysisStates() {
 
 let is_analysis_in_progress = false;
 
+export interface ExtraModelInvocationOptions {
+    /** 替换内置完整更新任务，保留对已有调用方的兼容。 */
+    task?: string;
+    /** 在选定任务末尾追加约束；未指定 task 时保留内置更新任务。 */
+    task_suffix?: string;
+    /** 替换发给额外模型的简短用户提示。 */
+    user_input?: string;
+    /** 在重试策略接受结果前同步或异步校验并可选地规范化；抛错表示本次尝试失败。 */
+    validate_result?: (result: string) => string | Promise<string>;
+}
+
 /**
  * 根据串行或并发策略调用额外模型，统一管理请求状态、重试和停止操作。
  * Pi 设置预检与请求快照在策略开始前完成，取消及不可重试错误会终止后续尝试。
+ * @param options 任务及用户输入覆盖项；结果校验器可通过抛错让本次尝试进入失败处理。
+ * @returns 首个被接受的更新块；正在解析、策略接收到手动取消或旧来源尝试耗尽时返回 null。
+ * @throws Pi 预检失败、不可重试错误或 Pi 尝试耗尽后保留的最后一次错误。
  */
-export async function invokeExtraModelWithStrategy(): Promise<string | null> {
+export async function invokeExtraModelWithStrategy(
+    options: ExtraModelInvocationOptions = {}
+): Promise<string | null> {
     const batch_id = generateRandomHeader();
     if (is_analysis_in_progress) {
         return null;
@@ -308,13 +330,17 @@ export async function invokeExtraModelWithStrategy(): Promise<string | null> {
         /** 执行并记录一次额外模型尝试，使错误处理和活动请求清理使用同一请求编号。 */
         const recordedInvoke = async (generation_id?: string, signal?: AbortSignal) => {
             try {
-                return await invokeExtraModel(
+                const result = await invokeExtraModel(
                     generation_id,
                     batch_id,
                     pi_preflight,
                     request_settings,
-                    signal
+                    signal,
+                    options
                 );
+                // 等待试执行完成，使异步校验失败也进入下方错误记录及重试处理。
+                // 并发请求只有通过完整校验后才参与成功结果的竞争。
+                return options.validate_result ? await options.validate_result(result) : result;
             } catch (e) {
                 if (signal?.aborted && !pi_preflight) throw e;
                 const localized_error = localizePiError(e);
@@ -472,8 +498,15 @@ export async function invokeExtraModelWithStrategy(): Promise<string | null> {
     }
 }
 
-/** 执行一次额外模型解析，按需建立生成状态，并在结束后恢复界面状态。 */
-export async function generateExtraModel(): Promise<string | null> {
+/**
+ * 执行一次额外模型解析，按需建立生成状态，并在结束后恢复界面状态。
+ * @param options 任务及用户输入覆盖项；validate_result 由策略入口执行，此单次入口不调用它。
+ * @returns 包含有效更新内容的文本块。
+ * @throws 配置、生成或回复解析失败时抛出本地化错误。
+ */
+export async function generateExtraModel(
+    options: ExtraModelInvocationOptions = {}
+): Promise<string | null> {
     let did_set_extra_analysis_states = false;
     const request_settings = getRequestSettings();
     try {
@@ -481,7 +514,14 @@ export async function generateExtraModel(): Promise<string | null> {
         did_set_extra_analysis_states = true;
         const pi_preflight = await preparePiRuntimePreflight(request_settings);
         const generation_id = pi_preflight ? uuidv4() : undefined;
-        return await invokeExtraModel(generation_id, undefined, pi_preflight, request_settings);
+        return await invokeExtraModel(
+            generation_id,
+            undefined,
+            pi_preflight,
+            request_settings,
+            undefined,
+            options
+        );
     } catch (error) {
         throw localizePiError(error);
     } finally {
@@ -489,6 +529,94 @@ export async function generateExtraModel(): Promise<string | null> {
             await unsetExtraAnalysisStates();
         }
     }
+}
+
+/**
+ * 提取、校验并规范化额外模型回复中的变量更新内容。
+ * 发现补丁但校验失败时抛出异常；未识别到有效更新时返回 null，由调用方报告对应来源的错误。
+ * 此处只做格式与 JSON 安全性检查；增量操作限制及当前状态校验仍由 validate_result 完成。
+ * @param result 已按应答格式提取的模型回复。
+ * @param options 解析约束选项。
+ * @param options.require_single_update 是否限制为单个更新块及单个补丁块，默认 false。
+ * @returns 统一包装的更新块；所有兼容格式都无法识别时返回 null。
+ * @throws {Error} 补丁未闭合、内容非法或违反单块限制。
+ */
+export function parseAndValidateExtraModelResult(
+    result: string,
+    { require_single_update = false }: { require_single_update?: boolean } = {}
+): string | null {
+    // 1. 定位更新块：忽略思考区中的示例和结构化数据字符串里的字面标签。
+    // 优先选最后一个闭合块；没有闭合块时兼容最后一个未闭合块，没有包装时检查整段回复。
+    const updates = findUpdateMarkupBlocks(result, 'update');
+    // 单块限制也适用于没有 JSONPatch 标签、直接包含 JSON/JSON5/YAML 或旧指令的更新块。
+    if (require_single_update && updates.length > 1) {
+        throw new Error('增量校正返回了多个更新块');
+    }
+    const update = updates.filter(block => block.closed).at(-1) ?? updates.at(-1);
+    let body = update ? result.slice(update.contentStart, update.contentEnd) : result;
+    let hasUpdateBody = !!update;
+    // 2. 查找补丁：选中的更新块没有完整 JSONPatch 时，再检查整段回复，
+    // 兼容模型先输出空或无效的更新包装、随后才给出完整补丁的情况。
+    let patches = findUpdateMarkupBlocks(body, 'patch');
+    if (!patches.some(block => block.closed) && update) {
+        patches = findUpdateMarkupBlocks(result, 'patch');
+        if (patches.some(block => block.closed)) {
+            body = result;
+            hasUpdateBody = false;
+        }
+    }
+    if (patches.length) {
+        // 3. 检查补丁边界：任何未闭合补丁都拒绝；启用单块限制时要求恰好一个 JSONPatch。
+        if (patches.some(block => !block.closed)) throw new Error('JSONPatch 标签未闭合');
+        if (require_single_update && patches.length !== 1) {
+            throw new Error('增量校正返回了多个更新块');
+        }
+        // 4. 检查补丁内容：去掉代码围栏后解析 JSON/JSON5/YAML，检查操作数组的基本结构，
+        // 并拒绝 NaN、Infinity、循环引用等无法安全表示为 JSON 的值；不在此执行操作。
+        for (const block of patches) {
+            const value = parseStructuredUpdate(body.slice(block.contentStart, block.contentEnd));
+            if (!isJsonPatch(value) || !isJsonSafe(value))
+                throw new Error('JSONPatch 内容不合法或包含非有限值');
+        }
+        // 5. 统一包装标签，保留补丁原文。补丁来自真实更新块时，保留块内分析和混合旧指令；
+        // 从整段回复兜底提取时只保留补丁，避免把周围的剧情或示例一起交给后续处理。
+        let patchText = '';
+        let cursor = 0;
+        for (const block of patches) {
+            if (hasUpdateBody) patchText += body.slice(cursor, block.start);
+            else if (patchText) patchText += '\n';
+            patchText += `<JSONPatch>${body.slice(block.contentStart, block.contentEnd)}</JSONPatch>`;
+            cursor = block.end;
+        }
+        if (hasUpdateBody) patchText += body.slice(cursor);
+        return `<UpdateVariable>${patchText}</UpdateVariable>`;
+    }
+    // 6. 无补丁标签时兼容旧脚本：仅在排除思考区、字符串和注释后的文本中识别指令。
+    // 返回时保留参数原文，但去掉思考区内容；这里只识别指令形式，不验证执行结果。
+    const scanned = scanUpdateMarkup(body);
+    const visible = scanned.visible;
+    if (
+        /_\.(?:set|insert|assign|remove|unset|delete|add)\s*\([\s\S]*?\)\s*;/.test(
+            scanned.structural
+        )
+    ) {
+        return `<UpdateVariable>${visible}</UpdateVariable>`;
+    }
+    // 7. 无旧指令时尝试无 JSONPatch 标签的结构化输出（裸回复或更新块内的 JSON/JSON5/YAML）：
+    // 解析整个剩余内容（允许代码围栏），
+    // 先检查 JSON 安全性，再提取补丁数组或含 json_patch 等字段的对象，转为统一更新块。
+    let structured;
+    try {
+        structured = parseStructuredUpdate(visible);
+    } catch {
+        // 解析失败时不接受该回复，最终返回 null。
+    }
+    if (structured !== undefined && isJsonSafe(structured)) {
+        const formatted = extractFromFormattedOutput(visible);
+        if (formatted) return formatted;
+    }
+    // 8. 所有格式均未识别成功，交由调用方生成普通来源或 Pi 来源对应的错误。
+    return null;
 }
 
 /**
@@ -500,6 +628,7 @@ export async function generateExtraModel(): Promise<string | null> {
  * @param pi_preflight 本次 Pi 请求的预检结果，旧来源不传入。
  * @param request_settings 世界书过滤与模型调用共用的本次配置快照。
  * @param signal 并发批次的取消信号，阻止登记较慢的调用在批次结束后启动生成。
+ * @param options 本次调用的任务、输入覆盖及增量结果校验选项。
  * @returns 包含有效更新命令的 UpdateVariable 文本块。
  */
 async function invokeExtraModel(
@@ -507,7 +636,8 @@ async function invokeExtraModel(
     batch_id?: string,
     pi_preflight?: PiRuntimePreflight,
     request_settings = useDataStore().settings.额外模型解析配置,
-    signal?: AbortSignal
+    signal?: AbortSignal,
+    options: ExtraModelInvocationOptions = {}
 ): Promise<string> {
     generation_id ??= uuidv4();
     const pi_attempt =
@@ -528,37 +658,14 @@ async function invokeExtraModel(
             batch_id,
             pi_preflight,
             request_settings,
-            pi_attempt?.signal
+            pi_attempt?.signal,
+            options
         );
 
-        const tag = _([...result.matchAll(/<(update(?:variable)?|variableupdate)>/gi)]).last()?.[1];
-        if (!tag) {
-            if (pi_preflight) {
-                throw await createPiProtocolError();
-            }
-            throw new Error(
-                literalYamlify({
-                    [tr('runtime.extraModel.updateTagMissing')]: result,
-                })
-            );
-        }
-
-        const start_index = result.lastIndexOf(`<${tag}>`);
-        const end_index = result.indexOf(`</${tag}>`, start_index);
-        const update_block = result.slice(
-            start_index + 2 + tag.length,
-            end_index === -1 ? undefined : end_index
-        );
-
-        const fn_call_match =
-            /_\.(?:set|insert|assign|remove|unset|delete|add)\s*\([\s\S]*?\)\s*;/.test(
-                update_block
-            );
-        const json_patch_match = /json_?patch/i.test(update_block);
-        if (fn_call_match || json_patch_match) {
-            return `<UpdateVariable>${update_block}</UpdateVariable>`;
-        }
-
+        const update = parseAndValidateExtraModelResult(result, {
+            require_single_update: !!options.validate_result,
+        });
+        if (update !== null) return update;
         if (pi_preflight) {
             throw await createPiProtocolError();
         }
@@ -693,13 +800,22 @@ function normalizeGenerateResultByResponseFormat(
 /**
  * 按本轮设置快照组装预设、世界书、工具及应答格式，并分派到对应生成链路。
  * Pi 请求必须带有预检结果，不能回退到旧来源发送。
+ * @param generation_id 本次生成编号，用于关联提示词与请求生命周期。
+ * @param batch_id 同批重试共享的随机提示词头部。
+ * @param pi_preflight Pi 运行时预检结果，旧来源不传入。
+ * @param request_settings 本次请求使用的配置快照。
+ * @param pi_signal Pi 请求的取消信号。
+ * @param options 自定义任务、附加约束及用户输入；结果校验由外层策略负责。
+ * @returns 按应答格式提取后的回复文本。
+ * @throws 配置、生成或严格应答格式检查失败时传播异常。
  */
 async function requestReply(
     generation_id?: string,
     batch_id?: string,
     pi_preflight?: PiRuntimePreflight,
     request_settings = useDataStore().settings.额外模型解析配置,
-    pi_signal?: AbortSignal
+    pi_signal?: AbortSignal,
+    options: ExtraModelInvocationOptions = {}
 ): Promise<string> {
     const store = useDataStore();
     const is_pi_request = pi_preflight !== undefined;
@@ -715,7 +831,7 @@ async function requestReply(
     }
 
     const config: GenerateRawConfig = withWorldinfoRequestMarker({
-        user_input: '遵循<must>指令',
+        user_input: options.user_input ?? '遵循<must>指令',
         max_chat_history: request_settings.max_chat_history,
         should_stream: request_settings.兼容假流式,
         generation_id,
@@ -753,7 +869,11 @@ async function requestReply(
         }
     }
 
-    let task = decoded_extra_model_task;
+    // 先组装任务语义，再附加当前应答格式契约，使自定义校正任务仍遵循统一输出协议。
+    let task = options.task ?? decoded_extra_model_task;
+    if (options.task_suffix) {
+        task += `\n${options.task_suffix}`;
+    }
     if (response_format === '工具调用') {
         task += `\n use \`${MVU_TOOL_DEFINITION.function.name}\` tool to update variables.`;
         if (!is_pi_request) {

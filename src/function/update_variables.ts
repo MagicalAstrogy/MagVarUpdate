@@ -18,6 +18,11 @@ import {
     variable_events,
 } from '@/variable_def';
 import { parseString } from '@util/common';
+import {
+    cleanStructuredUpdate,
+    findUpdateMarkupBlocks,
+    scanUpdateMarkup,
+} from './update/structured_update';
 import JSON5 from 'json5';
 import { klona } from 'klona';
 import * as math from 'mathjs';
@@ -340,7 +345,7 @@ type CommandNames = 'set' | 'insert' | 'assign' | 'remove' | 'unset' | 'delete' 
  */
 // 接口定义：用于统一不同命令的结构
 // 新增：Command 接口，比 SetCommand 更通用
-interface Command {
+export interface Command {
     type: CommandNames;
     full_match: string;
     args: string[];
@@ -422,7 +427,7 @@ function extractJsonPatch(patch: any): Command[] {
 }
 
 /**
- * 从输入文本中提取所有 _.set() 调用
+ * 从输入文本中提取 JSONPatch 和兼容的脚本式变量更新命令。
  *
  * 问题背景：
  * 原本使用正则表达式 /_\.set\(([\s\S]*?)\);/ 来匹配，但这种非贪婪匹配会在遇到
@@ -431,20 +436,22 @@ function extractJsonPatch(patch: any): Command[] {
  * 会在 "comment") 处错误地结束匹配
  *
  * 解决方案：
- * 使用状态机方法，通过计数括号配对来准确找到 _.set() 调用的结束位置
+ * 使用状态机方法，通过计数括号配对来准确找到 _.set() 调用的结束位置。
+ * 补丁边界通过共享扫描器识别；旧命令扫描排除补丁和思考区，防止数据被重复执行。
+ * @param inputText 包含变量更新内容的原始文本。
+ * @returns 按原文位置排序的统一命令列表，无法解析的补丁块会被跳过。
  */
 // 将 extractSetCommands 扩展为 extractCommands 以支持多种命令
 export function extractCommands(inputText: string): Command[] {
     // TODO: 应该按照消息中更新命令出现的顺序来排列 json_patch 和自定义命令
     const results: (Command & { $index: number })[] = _.concat(
-        [
-            ...inputText.matchAll(
-                /<(json_?patch)>(?:\s*```.*)?((?:(?!<json_?patch>)[\s\S])*?)(?:```\s*)?<\/\1>/gim
-            ),
-        ]
-            .map(match => ({
-                index: match.index ?? 0,
-                string: match[2].trim(),
+        findUpdateMarkupBlocks(inputText, 'patch')
+            .filter(block => block.closed)
+            .map(block => ({
+                index: block.start,
+                string: cleanStructuredUpdate(
+                    inputText.slice(block.contentStart, block.contentEnd)
+                ),
             }))
             .flatMap(({ index, string }): (Command & { $index: number })[] => {
                 try {
@@ -464,11 +471,18 @@ export function extractCommands(inputText: string): Command[] {
             })
     );
 
+    // 用等长空格遮蔽补丁和思考区，保留原文偏移以读取真正命令的参数。
+    // JSONPatch 中看似脚本的字符串是数据，不能再作为旧命令执行一次。
+    const legacy_chars = scanUpdateMarkup(inputText).visible.split('');
+    for (const block of findUpdateMarkupBlocks(inputText, 'patch')) {
+        legacy_chars.fill(' ', block.start, block.end);
+    }
+    const legacy_text = legacy_chars.join('');
     let i = 0;
     while (i < inputText.length) {
         // 循环处理整个输入文本，直到找不到更多命令
         // 使用正则匹配 _.set(、_.assign(、_.remove( 或 _.add(，重构后支持多种命令
-        const setMatch = inputText
+        const setMatch = legacy_text
             .substring(i)
             .match(/_\.(set|insert|assign|remove|unset|delete|add)\(/);
         if (!setMatch || setMatch.index === undefined) {
@@ -820,9 +834,17 @@ function isNullOrWhiteSpace(str: string): boolean {
     return str == null || str.trim().length === 0;
 }
 
+/**
+ * 执行变量更新，并可选收集原生执行器和 MVU Zod 报告的错误。
+ * @param current_message_content 包含变量更新命令的消息正文。
+ * @param variables 原地更新的变量数据。
+ * @param errors 错误收集数组；传入时追加本次错误并关闭对应的 toastr 提示，不清空已有内容。
+ * @returns 变量状态是否发生变化，不表示所有命令均成功。
+ */
 export async function updateVariables(
     current_message_content: string,
-    variables: MvuData
+    variables: MvuData,
+    errors?: string[]
 ): Promise<boolean> {
     // 拷贝一份变量，用于提供给 variable_ended
     const variables_before_update: MvuData = klona(variables);
@@ -850,6 +872,7 @@ export async function updateVariables(
         const command = current_command?.full_match ?? tr('runtime.variableUpdate.unknownCommand');
         const title = tr('runtime.variableUpdate.errorTitle', { command });
         console.warn(`${title}\n${content}`);
+        errors?.push(`${title}\n${content}`);
         error_info = {
             command,
             content,
@@ -879,7 +902,9 @@ export async function updateVariables(
         variable_events.COMMAND_PARSED + '_for_zod',
         variables,
         commands,
-        current_message_content
+        current_message_content,
+        // 只在收集模式传入回调，未传 errors 时让 Zod 保持原有通知行为。
+        errors === undefined ? undefined : (error_info: string) => errors.push(error_info)
     );
     //允许 MVU zod 在处理完所有 COMMAND_PARSED 后清理 commands
     await eventEmit(
@@ -1628,7 +1653,7 @@ export async function updateVariables(
         variables,
         variables_before_update
     );
-    if (error_info && useDataStore().settings.通知.变量更新出错) {
+    if (errors === undefined && error_info && useDataStore().settings.通知.变量更新出错) {
         toastr.warning(
             tr('runtime.variableUpdate.errorDetail', {
                 detail: _.escape(error_info.content),
