@@ -820,9 +820,17 @@ function isNullOrWhiteSpace(str: string): boolean {
     return str == null || str.trim().length === 0;
 }
 
+/**
+ * 执行变量更新，并可选收集原生执行器和 MVU Zod 报告的错误。
+ * @param current_message_content 包含变量更新命令的消息正文。
+ * @param variables 原地更新的变量数据。
+ * @param errors 错误收集数组；传入时追加本次错误并关闭对应的 toastr 提示，不清空已有内容。
+ * @returns 变量状态是否发生变化，不表示所有命令均成功。
+ */
 export async function updateVariables(
     current_message_content: string,
-    variables: MvuData
+    variables: MvuData,
+    errors?: string[]
 ): Promise<boolean> {
     // 拷贝一份变量，用于提供给 variable_ended
     const variables_before_update: MvuData = klona(variables);
@@ -850,6 +858,7 @@ export async function updateVariables(
         const command = current_command?.full_match ?? tr('runtime.variableUpdate.unknownCommand');
         const title = tr('runtime.variableUpdate.errorTitle', { command });
         console.warn(`${title}\n${content}`);
+        errors?.push(`${title}\n${content}`);
         error_info = {
             command,
             content,
@@ -879,7 +888,9 @@ export async function updateVariables(
         variable_events.COMMAND_PARSED + '_for_zod',
         variables,
         commands,
-        current_message_content
+        current_message_content,
+        // 只在收集模式传入回调，未传 errors 时让 Zod 保持原有通知行为。
+        errors === undefined ? undefined : (error_info: string) => errors.push(error_info)
     );
     //允许 MVU zod 在处理完所有 COMMAND_PARSED 后清理 commands
     await eventEmit(
@@ -1628,7 +1639,7 @@ export async function updateVariables(
         variables,
         variables_before_update
     );
-    if (error_info && useDataStore().settings.通知.变量更新出错) {
+    if (errors === undefined && error_info && useDataStore().settings.通知.变量更新出错) {
         toastr.warning(
             tr('runtime.variableUpdate.errorDetail', {
                 detail: _.escape(error_info.content),
