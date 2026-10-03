@@ -1,7 +1,6 @@
-import { updateVariables } from '@/function/update_variables';
 import { tr } from '@/i18n';
 import { useDataStore } from '@/store';
-import { getLastValidVariable, isJsonPatch } from '@/util';
+import { isJsonPatch } from '@/util';
 import { parseString } from '@util/common';
 import {
     cleanStructuredUpdate,
@@ -217,61 +216,10 @@ async function _onStoryEndCall(_args: any): Promise<string> {
 }
 */
 
-async function onVariableUpdatedCall(args: any): Promise<string> {
-    if (!args?.delta) return '';
-    let message_id = getLastMessageId();
-    let chat_message = getChatMessages(message_id).at(-1);
-    if (chat_message && chat_message.role === 'system') {
-        //移动到前一条，说明这一条是用来显示 mvu 更新的
-        message_id -= 1;
-        chat_message = getChatMessages(message_id).at(-1);
-    }
-    if (!chat_message) {
-        return '';
-    }
-
-    let message_content = chat_message.message.trimEnd();
-    const variables = getLastValidVariable(message_id + 1);
-    if (!_.has(variables, 'stat_data')) {
-        return '';
-    }
-
-    const has_variable_modified = await updateVariables(args.delta, variables);
-    if (has_variable_modified && useDataStore().effective_settings.兼容性.更新到聊天变量) {
-        await replaceVariables(variables, { type: 'chat' });
-    }
-    await replaceVariables(variables, { type: 'message', message_id: message_id });
-
-    message_content += `\n\n<UpdateVariable>\n<Analysis>${args.analysis}</Analysis></Analysis>${args.delta}\n</UpdateVariable>`;
-
-    if (chat_message.role !== 'user' && !message_content.includes('<StatusPlaceHolderImpl/>')) {
-        //同时追加 PlaceHolder。
-        await setChatMessages(
-            [
-                {
-                    message_id: message_id,
-                    message: message_content + '\n\n<StatusPlaceHolderImpl/>',
-                },
-            ],
-            {
-                refresh: 'affected',
-            }
-        );
-    } else {
-        //只追加新增的 UpdateVaraible 块
-        await setChatMessages(
-            [
-                {
-                    message_id: message_id,
-                    message: message_content,
-                },
-            ],
-            {
-                refresh: 'affected',
-            }
-        );
-    }
-    return JSON.stringify(variables.delta_data);
+// generate() returns tool calls for extractFromToolCall() to parse and never runs this action.
+// Keep the no-op callback because registration still supplies the tool definition.
+async function onVariableUpdatedCall(): Promise<string> {
+    return '';
 }
 
 export function registerFunction() {

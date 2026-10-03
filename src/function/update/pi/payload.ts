@@ -42,10 +42,6 @@ const PROTECTED_FIELDS = new Set([
     'tool_choice',
     'toolChoice',
     'toolConfig',
-    'max_tokens',
-    'max_completion_tokens',
-    'max_output_tokens',
-    'maxTokens',
 ]);
 
 const GOOGLE_PROTECTED_CONFIG_FIELDS = new Set([
@@ -55,7 +51,6 @@ const GOOGLE_PROTECTED_CONFIG_FIELDS = new Set([
     'abortSignal',
     'automaticFunctionCalling',
     'httpOptions',
-    'maxOutputTokens',
     'responseJsonSchema',
     'responseMimeType',
     'responseSchema',
