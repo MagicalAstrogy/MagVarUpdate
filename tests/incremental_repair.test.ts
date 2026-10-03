@@ -6,7 +6,6 @@ import {
     normalizeAndValidateIncrementalRepairResult,
     normalizeIncrementalRepairBlock,
     validateIncrementalRepairAgainstState,
-    validateIncrementalRepairBlock,
     validateIncrementalRepairCommands,
     verifyIncrementalRepairApplied,
 } from '@/function/update/incremental_repair';
@@ -108,27 +107,9 @@ describe('incremental extra-model repair', () => {
 
         const nestedInsert =
             '<JSONPatch>[{"op":"insert","path":"/player/$internal","value":true}]</JSONPatch>';
-        expect(validateIncrementalRepairBlock(nestedInsert)).toContain('禁止修改 MVU 内部路径');
         expect(validateIncrementalRepairCommands(extractCommands(nestedInsert))).toContain(
             '禁止修改 MVU 内部路径'
         );
-    });
-
-    test('requires exactly one conservative JSON patch block', () => {
-        expect(validateIncrementalRepairBlock("_.set('hp', 72);")).toContain('一个 JSONPatch');
-        expect(
-            validateIncrementalRepairBlock(
-                '<JSONPatch>[{"op":"delta","path":"/hp","value":-5}]</JSONPatch>'
-            )
-        ).toContain('不接受 delta');
-        expect(
-            validateIncrementalRepairBlock('<JSONPatch>[{"op":"replace","path":"/hp"}]</JSONPatch>')
-        ).toContain('缺少 value');
-        expect(
-            validateIncrementalRepairBlock(
-                '<JSONPatch>[{"op":"replace","path":"/hp","value":72}]</JSONPatch>'
-            )
-        ).toBeNull();
     });
 
     test('accepts absolute replacements and removals', () => {
@@ -143,12 +124,26 @@ describe('incremental extra-model repair', () => {
             normalizeAndValidateIncrementalRepairResult(
                 '<UpdateVariable><JSONPatch>[{"op":"delta","path":"/hp","value":-5}]</JSONPatch></UpdateVariable>'
             )
-        ).toThrow('不接受 delta');
+        ).toThrow('绝对值 replace');
         expect(
             normalizeAndValidateIncrementalRepairResult(
                 '<UpdateVariable><JSONPatch>[]</JSONPatch></UpdateVariable>'
             )
         ).toContain('<JSONPatch>');
+    });
+
+    test('accepts the normal update add alias while retaining incremental state checks', () => {
+        const patch = normalizeAndValidateIncrementalRepairResult(
+            '<JSONPatch>[{"op":"add","path":"/item","value":"key"}]</JSONPatch>'
+        );
+        expect(extractCommands(patch)).toEqual([
+            expect.objectContaining({ type: 'insert', reason: 'json_patch' }),
+        ]);
+        expect(validateIncrementalRepairAgainstState(patch, {})).toBeNull();
+        expect(validateIncrementalRepairAgainstState(patch, { item: 'key' })).toContain(
+            'insert 目标已经存在'
+        );
+        expect(verifyIncrementalRepairApplied(patch, {}, { item: 'key' })).toBeNull();
     });
 
     test('preflights targets and confirms every operation took effect', () => {

@@ -36,7 +36,7 @@ const PERSISTED_MVU_KEYS = [
 
 type PersistedMvuSnapshot = Partial<Record<(typeof PERSISTED_MVU_KEYS)[number], unknown>>;
 type IncrementalRepairOperation = {
-    op: 'replace' | 'insert' | 'remove';
+    op: 'replace' | 'insert' | 'add' | 'remove';
     path: string;
     value?: unknown;
 };
@@ -265,7 +265,7 @@ function extractUpdateBlockInner(block: string): string {
 
 /**
  * 解析唯一且闭合的补丁块，并检查操作数组结构与 JSON 序列化安全性。
- * 此处不限制操作种类；增量操作白名单由后续校验负责。
+ * 操作数组结构沿用正常更新的 isJsonPatch 检查，增量命令及状态约束由后续校验负责。
  * @param repair_block 待解析的增量校正回复。
  * @returns 补丁操作数组（允许为空）；解析失败、块数量错误或值不安全时返回 null。
  */
@@ -409,52 +409,14 @@ export function validateIncrementalRepairCommands(commands: Command[]): string |
 }
 
 /**
- * 校验原始补丁的块数量、操作白名单、具体路径和受保护字段。
- * @param repair_block 待检查的校正更新块。
- * @returns 首个校验错误；合法补丁（包括空数组）返回 null。
- */
-export function validateIncrementalRepairBlock(repair_block: string): string | null {
-    const matches = findUpdateMarkupBlocks(repair_block, 'patch');
-    if (matches.length !== 1) return '必须且只能返回一个 JSONPatch 补丁块';
-
-    const patch = parseIncrementalRepairPatch(repair_block);
-    if (!patch) return 'JSONPatch 内容无法解析或不是合法操作数组';
-
-    for (const operation of patch) {
-        const operation_name = String(operation.op);
-        if (!['replace', 'insert', 'remove'].includes(operation_name)) {
-            return `增量校正不接受 ${operation_name} 操作`;
-        }
-        if (!operation.path || operation.path === '/' || !operation.path.startsWith('/')) {
-            return `增量校正路径必须是具体的 JSON Pointer：${operation.path ?? ''}`;
-        }
-        if (forbiddenPointerPath(operation.path)) {
-            return `禁止修改 MVU 内部路径：${operation.path}`;
-        }
-        if (containsProtectedPayloadKey(operation.value)) {
-            return `补丁值包含内部或原型字段：${operation.path}`;
-        }
-        if (
-            (operation_name === 'replace' || operation_name === 'insert') &&
-            !Object.prototype.hasOwnProperty.call(operation, 'value')
-        ) {
-            return `${operation_name} 操作缺少 value`;
-        }
-    }
-    return null;
-}
-
-/**
  * 规范化并校验一次模型回复，供重试策略判断本次结果是否可以接受。
  * @param repair_block 模型返回的校正更新块。
- * @returns 已通过块级和命令级检查的标准更新块，允许空补丁。
+ * @returns 已规范化并通过命令级检查的标准更新块，允许空补丁。
  * @throws {Error} 回复无法规范化或不满足增量校正约束。
  */
 export function normalizeAndValidateIncrementalRepairResult(repair_block: string): string {
     const normalized = normalizeIncrementalRepairBlock(repair_block);
     if (!normalized) throw new Error('JSONPatch 内容无法解析或数量不正确');
-    const block_error = validateIncrementalRepairBlock(normalized);
-    if (block_error) throw new Error(block_error);
     const commands = extractCommands(normalized);
     if (commands.length === 0 && EMPTY_JSON_PATCH_RE.test(normalized)) return normalized;
     if (commands.length === 0) throw new Error('JSONPatch 中没有可执行的增量操作');
@@ -465,8 +427,8 @@ export function normalizeAndValidateIncrementalRepairResult(repair_block: string
 
 /**
  * 以当前状态检查补丁目标、重复操作及值转换，不修改传入的状态。
- * 调用前应先通过块级校验；本方法进一步检查路径冲突和集合操作语义。
- * @param repair_block 已通过格式及操作白名单校验的更新块。
+ * 调用前应先完成补丁解析与命令级校验；本方法进一步检查路径冲突和集合操作语义。
+ * @param repair_block 已完成结构化解析与命令级校验的更新块。
  * @param stat_data 当前楼已结算的变量状态。
  * @param strict_set 是否按普通数组处理 [值, 描述] 包装，默认 false。
  * @returns 首个状态校验错误；通过时返回 null。
@@ -1074,11 +1036,6 @@ export async function runIncrementalExtraModelRepair() {
                 'JSONPatch 内容无法解析或数量不正确',
                 tr('runtime.incrementalRepair.title')
             );
-            return;
-        }
-        const block_error = validateIncrementalRepairBlock(normalized_repair_block);
-        if (block_error) {
-            toastr.warning(_.escape(block_error), tr('runtime.incrementalRepair.title'));
             return;
         }
 
