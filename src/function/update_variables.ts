@@ -427,7 +427,7 @@ function extractJsonPatch(patch: any): Command[] {
 }
 
 /**
- * 从输入文本中提取所有 _.set() 调用
+ * 从输入文本中提取 JSONPatch 和兼容的脚本式变量更新命令。
  *
  * 问题背景：
  * 原本使用正则表达式 /_\.set\(([\s\S]*?)\);/ 来匹配，但这种非贪婪匹配会在遇到
@@ -436,7 +436,10 @@ function extractJsonPatch(patch: any): Command[] {
  * 会在 "comment") 处错误地结束匹配
  *
  * 解决方案：
- * 使用状态机方法，通过计数括号配对来准确找到 _.set() 调用的结束位置
+ * 使用状态机方法，通过计数括号配对来准确找到 _.set() 调用的结束位置。
+ * 补丁边界通过共享扫描器识别；旧命令扫描排除补丁和思考区，防止数据被重复执行。
+ * @param inputText 包含变量更新内容的原始文本。
+ * @returns 按原文位置排序的统一命令列表，无法解析的补丁块会被跳过。
  */
 // 将 extractSetCommands 扩展为 extractCommands 以支持多种命令
 export function extractCommands(inputText: string): Command[] {
@@ -468,8 +471,8 @@ export function extractCommands(inputText: string): Command[] {
             })
     );
 
-    // Hide structured blocks and reasoning from the legacy-command finder while keeping offsets.
-    // A script-looking string inside JSONPatch is data, not a second command to execute.
+    // 用等长空格遮蔽补丁和思考区，保留原文偏移以读取真正命令的参数。
+    // JSONPatch 中看似脚本的字符串是数据，不能再作为旧命令执行一次。
     const legacy_chars = scanUpdateMarkup(inputText).visible.split('');
     for (const block of findUpdateMarkupBlocks(inputText, 'patch')) {
         legacy_chars.fill(' ', block.start, block.end);

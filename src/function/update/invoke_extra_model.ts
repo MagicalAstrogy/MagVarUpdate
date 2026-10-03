@@ -293,19 +293,22 @@ async function unsetExtraAnalysisStates() {
 let is_analysis_in_progress = false;
 
 export interface ExtraModelInvocationOptions {
-    /** Override the built-in full variable-update task. Kept for existing callers. */
+    /** 替换内置完整更新任务，保留对已有调用方的兼容。 */
     task?: string;
-    /** Append task-specific constraints while retaining the built-in update task. */
+    /** 在选定任务末尾追加约束；未指定 task 时保留内置更新任务。 */
     task_suffix?: string;
-    /** Override the short user message sent to the extra model. */
+    /** 替换发给额外模型的简短用户提示。 */
     user_input?: string;
-    /** Validate and optionally normalize each attempt before the retry strategy accepts it. */
+    /** 在重试策略接受结果前校验并可选地规范化；抛错表示本次尝试失败。 */
     validate_result?: (result: string) => string;
 }
 
 /**
  * 根据串行或并发策略调用额外模型，统一管理请求状态、重试和停止操作。
  * Pi 设置预检与请求快照在策略开始前完成，取消及不可重试错误会终止后续尝试。
+ * @param options 任务及用户输入覆盖项；结果校验器可通过抛错让本次尝试进入失败处理。
+ * @returns 首个被接受的更新块；正在解析、策略接收到手动取消或旧来源尝试耗尽时返回 null。
+ * @throws Pi 预检失败、不可重试错误或 Pi 尝试耗尽后保留的最后一次错误。
  */
 export async function invokeExtraModelWithStrategy(
     options: ExtraModelInvocationOptions = {}
@@ -335,6 +338,7 @@ export async function invokeExtraModelWithStrategy(
                     signal,
                     options
                 );
+                // 在策略接受结果前校验，使非法补丁参与同一套重试处理，也避免它赢得并发竞争。
                 return options.validate_result ? options.validate_result(result) : result;
             } catch (e) {
                 if (signal?.aborted && !pi_preflight) throw e;
@@ -493,7 +497,12 @@ export async function invokeExtraModelWithStrategy(
     }
 }
 
-/** 执行一次额外模型解析，按需建立生成状态，并在结束后恢复界面状态。 */
+/**
+ * 执行一次额外模型解析，按需建立生成状态，并在结束后恢复界面状态。
+ * @param options 任务及用户输入覆盖项；validate_result 由策略入口执行，此单次入口不调用它。
+ * @returns 包含有效更新内容的文本块。
+ * @throws 配置、生成或回复解析失败时抛出本地化错误。
+ */
 export async function generateExtraModel(
     options: ExtraModelInvocationOptions = {}
 ): Promise<string | null> {
@@ -525,6 +534,11 @@ export async function generateExtraModel(
  * 提取、校验并规范化额外模型回复中的变量更新内容。
  * 发现补丁但校验失败时抛出异常；未识别到有效更新时返回 null，由调用方报告对应来源的错误。
  * 此处只做格式与 JSON 安全性检查；增量操作限制及当前状态校验仍由 validate_result 完成。
+ * @param result 已按应答格式提取的模型回复。
+ * @param options 解析约束选项。
+ * @param options.require_single_update 是否限制为单个更新块及单个补丁块，默认 false。
+ * @returns 统一包装的更新块；所有兼容格式都无法识别时返回 null。
+ * @throws {Error} 补丁未闭合、内容非法或违反单块限制。
  */
 export function parseAndValidateExtraModelResult(
     result: string,
@@ -785,6 +799,14 @@ function normalizeGenerateResultByResponseFormat(
 /**
  * 按本轮设置快照组装预设、世界书、工具及应答格式，并分派到对应生成链路。
  * Pi 请求必须带有预检结果，不能回退到旧来源发送。
+ * @param generation_id 本次生成编号，用于关联提示词与请求生命周期。
+ * @param batch_id 同批重试共享的随机提示词头部。
+ * @param pi_preflight Pi 运行时预检结果，旧来源不传入。
+ * @param request_settings 本次请求使用的配置快照。
+ * @param pi_signal Pi 请求的取消信号。
+ * @param options 自定义任务、附加约束及用户输入；结果校验由外层策略负责。
+ * @returns 按应答格式提取后的回复文本。
+ * @throws 配置、生成或严格应答格式检查失败时传播异常。
  */
 async function requestReply(
     generation_id?: string,
@@ -846,6 +868,7 @@ async function requestReply(
         }
     }
 
+    // 先组装任务语义，再附加当前应答格式契约，使自定义校正任务仍遵循统一输出协议。
     let task = options.task ?? decoded_extra_model_task;
     if (options.task_suffix) {
         task += `\n${options.task_suffix}`;

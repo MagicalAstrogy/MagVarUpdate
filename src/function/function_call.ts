@@ -387,10 +387,21 @@ function stripLeadingTagBlock(input: string, tagPattern: string): string {
     return match ? input.slice(match[0].length).trim() : input.trim();
 }
 
+/**
+ * 清理结构化负载外层围栏，复用模型回复解析的边界规则。
+ * @param input 待清理的补丁文本。
+ * @returns 去除外层围栏及首尾空白后的负载。
+ */
 function cleanStructuredPayload(input: string): string {
     return cleanStructuredUpdate(input);
 }
 
+/**
+ * 将补丁数组或带兼容包装的文本转换为标准 JSON。
+ * @param input 补丁数组，或 JSON/JSON5/YAML 格式的补丁文本。
+ * @returns 格式化的补丁 JSON；类型、结构或 JSON 安全性不符合要求时返回 null。
+ * @throws 文本无法被结构化解析器处理时传播解析异常。
+ */
 function normalizeJsonPatchPayload(input: unknown): string | null {
     if (isJsonPatch(input)) {
         return isJsonSafe(input) ? JSON.stringify(input, null, 2) : null;
@@ -425,6 +436,12 @@ function formatJsonPatchUpdate(analysis: unknown, json_patch: string): string {
     ].join('\n');
 }
 
+/**
+ * 提取首批工具调用中最后一次 MVU 调用，规范化其 delta 为更新块。
+ * 合法空补丁同样有效；非补丁文本仅在匹配旧更新命令时兼容接收。
+ * @param tool_calls 模型返回的工具调用批次。
+ * @returns 规范化的更新块；未找到 MVU 调用或参数无效时返回 null。
+ */
 export function extractFromToolCall(tool_calls: ToolCallBatches | undefined): string | null {
     if (!tool_calls) {
         return null;
@@ -447,6 +464,7 @@ export function extractFromToolCall(tool_calls: ToolCallBatches | undefined): st
 
     try {
         const json = parseString(content);
+        // 空补丁 [] 也是合法的无修改结果，不能再按字符串最小长度过滤。
         if (typeof json.delta === 'string' && json.delta.trim().length > 0) {
             let result = '';
             result += `<UpdateVariable>\n`;
@@ -496,6 +514,11 @@ export function extractFromToolCall(tool_calls: ToolCallBatches | undefined): st
     return null;
 }
 
+/**
+ * 从格式化回复中提取补丁数组或兼容字段，并转换为统一更新块。
+ * @param result 文本回复或包含 content 的工具调用生成结果。
+ * @returns 带分析内容及标准 JSONPatch 的更新块；内容缺失或校验失败时返回 null。
+ */
 export function extractFromFormattedOutput(result: string | GenerateToolCallResult): string | null {
     const content = typeof result === 'string' ? result : result.content;
     if (!content) {
