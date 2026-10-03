@@ -1,6 +1,7 @@
 import { runIncrementalExtraModelRepair } from '@/function/update/incremental_repair';
 import { invokeExtraModelWithStrategy } from '@/function/update/invoke_extra_model';
 import { useDataStore } from '@/store';
+import { variable_events } from '@/variable_def';
 
 jest.mock('@/function/is_extra_model_supported', () => ({
     isExtraModelSupported: async () => true,
@@ -83,5 +84,60 @@ describe('incremental repair input cancellation', () => {
         });
         await runIncrementalExtraModelRepair();
         expect(invokeExtraModelWithStrategy).not.toHaveBeenCalled();
+    });
+
+    test('validates each model attempt against the latest complete variable context', async () => {
+        (SillyTavern.callGenericPopup as jest.Mock).mockResolvedValue('');
+        const patch = '<JSONPatch>[{"op":"replace","path":"/hp","value":80}]</JSONPatch>';
+        const trialSchemas: unknown[] = [];
+        eventOn(variable_events.VARIABLE_UPDATE_STARTED, variables => {
+            trialSchemas.push(variables.schema.strictSet);
+        });
+        jest.mocked(invokeExtraModelWithStrategy).mockImplementation(async options => {
+            const latest = {
+                ...getVariables({ type: 'message', message_id: 1 }),
+                schema: { strictSet: true },
+            };
+            (getVariables as jest.Mock).mockReturnValue(latest);
+            await expect(options!.validate_result!(patch)).resolves.toContain('<JSONPatch>');
+            expect(latest).toEqual({ stat_data: { hp: 72 }, schema: { strictSet: true } });
+            return null;
+        });
+
+        await runIncrementalExtraModelRepair();
+
+        expect(trialSchemas).toEqual([true]);
+    });
+
+    test('does not preview a result if live state changes while trial callbacks are awaited', async () => {
+        (SillyTavern.callGenericPopup as jest.Mock).mockResolvedValue('');
+        jest.mocked(invokeExtraModelWithStrategy).mockResolvedValue(
+            '<JSONPatch>[{"op":"replace","path":"/hp","value":80}]</JSONPatch>'
+        );
+        let signalStarted!: () => void;
+        let finishTrial!: () => void;
+        const started = new Promise<void>(resolve => {
+            signalStarted = resolve;
+        });
+        const waiting = new Promise<void>(resolve => {
+            finishTrial = resolve;
+        });
+        eventOn(variable_events.VARIABLE_UPDATE_STARTED, async () => {
+            signalStarted();
+            await waiting;
+        });
+
+        const run = runIncrementalExtraModelRepair();
+        await started;
+        getVariables({ type: 'message', message_id: 1 }).stat_data.hp = 71;
+        finishTrial();
+        await run;
+
+        expect(SillyTavern.callGenericPopup).toHaveBeenCalledTimes(1);
+        expect(toastr.warning).toHaveBeenCalledWith(
+            expect.stringContaining('等待期间'),
+            expect.any(String)
+        );
+        expect(getVariables({ type: 'message', message_id: 1 }).stat_data.hp).toBe(71);
     });
 });

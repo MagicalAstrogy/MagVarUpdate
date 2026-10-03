@@ -297,7 +297,7 @@ describe('invoke extra model through Pi', () => {
         '同时请求多次',
         '先请求一次, 失败后再同时请求多次',
     ] as const)(
-        'validates incremental repairs before accepting a Pi result with %s',
+        'awaits incremental repair validation before accepting a Pi result with %s',
         async strategy => {
             const store = configurePiSource();
             store.settings.额外模型解析配置.请求方式 = strategy;
@@ -307,7 +307,8 @@ describe('invoke extra model through Pi', () => {
             mockRunPiRequest
                 .mockResolvedValueOnce('<UpdateVariable><JSONPatch>[]</JSONPatch></UpdateVariable>')
                 .mockResolvedValueOnce(valid_patch);
-            const validate_result = jest.fn((result: string) => {
+            const validate_result = jest.fn(async (result: string) => {
+                await Promise.resolve();
                 if (result.includes('[]'))
                     throw new Error('repair did not correct the missing value');
                 return `<!-- validated -->${result}`;
@@ -324,6 +325,25 @@ describe('invoke extra model through Pi', () => {
             for (const [config] of mockCaptureGenerateRawPrompt.mock.calls) {
                 expect(JSON.stringify(config)).toContain('INCREMENTAL_REPAIR_TASK');
             }
+            expect(store.runtimes.is_during_extra_analysis).toBe(false);
+        }
+    );
+
+    test.each(['依次请求，失败后重试', '同时请求多次'] as const)(
+        'preserves the final async validation error after %s attempts fail',
+        async strategy => {
+            const store = configurePiSource();
+            store.settings.额外模型解析配置.请求方式 = strategy;
+            store.settings.额外模型解析配置.请求次数 = 2;
+            const error = new Error('trial update failed');
+            const validate_result = jest.fn(async () => {
+                await Promise.resolve();
+                throw error;
+            });
+            jest.spyOn(console, 'error').mockImplementation(() => {});
+
+            await expect(invokeExtraModelWithStrategy({ validate_result })).rejects.toBe(error);
+            expect(validate_result).toHaveBeenCalledTimes(2);
             expect(store.runtimes.is_during_extra_analysis).toBe(false);
         }
     );

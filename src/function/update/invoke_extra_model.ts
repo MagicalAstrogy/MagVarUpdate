@@ -299,8 +299,8 @@ export interface ExtraModelInvocationOptions {
     task_suffix?: string;
     /** 替换发给额外模型的简短用户提示。 */
     user_input?: string;
-    /** 在重试策略接受结果前校验并可选地规范化；抛错表示本次尝试失败。 */
-    validate_result?: (result: string) => string;
+    /** 在重试策略接受结果前同步或异步校验并可选地规范化；抛错表示本次尝试失败。 */
+    validate_result?: (result: string) => string | Promise<string>;
 }
 
 /**
@@ -338,8 +338,9 @@ export async function invokeExtraModelWithStrategy(
                     signal,
                     options
                 );
-                // 在策略接受结果前校验，使非法补丁参与同一套重试处理，也避免它赢得并发竞争。
-                return options.validate_result ? options.validate_result(result) : result;
+                // 等待试执行完成，使异步校验失败也进入下方错误记录及重试处理。
+                // 并发请求只有通过完整校验后才参与成功结果的竞争。
+                return options.validate_result ? await options.validate_result(result) : result;
             } catch (e) {
                 if (signal?.aborted && !pi_preflight) throw e;
                 const localized_error = localizePiError(e);

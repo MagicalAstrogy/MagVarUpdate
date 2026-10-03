@@ -110,7 +110,7 @@ describe('extra model max chat history', () => {
         );
     });
 
-    test('retries when request-scoped result validation rejects an attempt', async () => {
+    test('retries when asynchronous result validation rejects an attempt', async () => {
         const store = useDataStore();
         store.settings.额外模型解析配置.请求方式 = '依次请求，失败后重试';
         store.settings.额外模型解析配置.请求次数 = 2;
@@ -120,7 +120,8 @@ describe('extra model max chat history', () => {
             .mockResolvedValueOnce(
                 '<UpdateVariable><JSONPatch>[{"op":"replace","path":"/hp","value":72}]</JSONPatch></UpdateVariable>'
             );
-        const validate_result = jest.fn((result: string) => {
+        const validate_result = jest.fn(async (result: string) => {
+            await Promise.resolve();
             if (result.includes('[]')) throw new Error('invalid attempt');
             return result;
         });

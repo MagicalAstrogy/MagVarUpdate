@@ -11,7 +11,7 @@ import {
 import { tr } from '@/i18n';
 import { useDataStore } from '@/store';
 import { getLastValidVariable, isJsonPatch } from '@/util';
-import { isMvuData, isValueWithDescription } from '@/variable_def';
+import { isMvuData, type MvuData } from '@/variable_def';
 import { parseString } from '@util/common';
 import { cleanStructuredUpdate, findUpdateMarkupBlocks, isJsonSafe } from './structured_update';
 import { klona } from 'klona';
@@ -314,21 +314,6 @@ function forbiddenPointerPath(path: string): boolean {
 }
 
 /**
- * 递归检查补丁值，阻止借助对象整体替换写入受保护字段。
- * @param value 补丁携带的值，调用前应已通过 JSON 安全性检查。
- * @returns 任意嵌套对象包含内部或原型字段时返回 true。
- */
-function containsProtectedPayloadKey(value: unknown): boolean {
-    if (Array.isArray(value)) return value.some(containsProtectedPayloadKey);
-    if (!_.isPlainObject(value)) return false;
-    return Object.entries(value as Record<string, unknown>).some(
-        ([key, child]) =>
-            ['$internal', '$meta', '__proto__', 'prototype', 'constructor'].includes(key) ||
-            containsProtectedPayloadKey(child)
-    );
-}
-
-/**
  * 将可解析的单个补丁统一为标准更新标签和 JSON 文本。
  * @param repair_block 包含补丁的原始回复。
  * @returns 标准更新块；解析或基础结构检查失败时返回 null。
@@ -426,87 +411,22 @@ export function normalizeAndValidateIncrementalRepairResult(repair_block: string
 }
 
 /**
- * 以当前状态检查补丁目标、重复操作及值转换，不修改传入的状态。
- * 调用前应先完成补丁解析与命令级校验；本方法进一步检查路径冲突和集合操作语义。
+ * 在最新变量的深拷贝上试执行校正，复用正常更新及其回调的实际执行规则。
+ * 仅接受没有原生或 MVU Zod 错误且变量发生变化的结果，不修改传入的变量上下文。
  * @param repair_block 已完成结构化解析与命令级校验的更新块。
- * @param stat_data 当前楼已结算的变量状态。
- * @param strict_set 是否按普通数组处理 [值, 描述] 包装，默认 false。
- * @returns 首个状态校验错误；通过时返回 null。
+ * @param variables 当前楼最新的完整变量数据，包含 schema 及回调所需的上下文。
+ * @returns 执行错误或无实际变化的说明；试执行成功时返回 null。
+ * @throws 更新器或回调抛出的异常，交由调用方的重试或错误处理流程接收。
  */
-export function validateIncrementalRepairAgainstState(
+export async function validateIncrementalRepairAgainstState(
     repair_block: string,
-    stat_data: Record<string, unknown>,
-    strict_set = false
-): string | null {
-    const patch = parseIncrementalRepairPatch(repair_block);
-    if (!patch) return 'JSONPatch 内容无法解析';
-    for (const operation of patch) {
-        if (containsProtectedPayloadKey(operation.value))
-            return `补丁值包含内部或原型字段：${operation.path}`;
-    }
-    const targets: string[][] = [];
-    for (const operation of patch) {
-        const segments = jsonPointerSegments(operation.path);
-        if (!segments) return `无效路径：${operation.path}`;
-        if (forbiddenPointerPath(operation.path))
-            return `禁止修改内部或原型路径：${operation.path}`;
-        // 拒绝同一路径及祖先/后代路径组合，使每项校正都能独立针对当前快照验证。
-        if (
-            targets.some(target => {
-                const length = Math.min(target.length, segments.length);
-                return target.slice(0, length).every((part, index) => part === segments[index]);
-            })
-        )
-            return `补丁包含重复或相互覆盖的路径：${operation.path}`;
-        targets.push(segments);
-        // 数组内部路径不参与增量操作，避免索引移动导致后续操作目标改变。
-        for (let index = 1; index < segments.length; index++) {
-            if (Array.isArray(_.get(stat_data, segments.slice(0, index)))) {
-                return `数组需要使用 replace 整体校正：${operation.path}`;
-            }
-        }
-        if (operation.op === 'replace' || operation.op === 'remove') {
-            if (!_.has(stat_data, segments)) return `目标路径不存在：${operation.path}`;
-            if (operation.op === 'replace') {
-                const current_value = _.get(stat_data, segments);
-                // 与更新器的非 strictSet 语义对齐：[值, 描述] 只比较实际值及其数值转换结果。
-                const is_described =
-                    !strict_set &&
-                    isValueWithDescription(current_value) &&
-                    !Array.isArray(current_value[0]);
-                if (is_described && isValueWithDescription(operation.value)) {
-                    return `带描述变量只能替换实际值，不能替换 [值, 描述] 包装：${operation.path}`;
-                }
-                const effective_value = is_described ? current_value[0] : current_value;
-                const requested_value =
-                    typeof effective_value === 'number' &&
-                    (is_described ? operation.value !== null : typeof operation.value === 'string')
-                        ? Number(operation.value)
-                        : operation.value;
-                if (typeof requested_value === 'number' && !Number.isFinite(requested_value)) {
-                    return `数值目标不能转换为有限数值：${operation.path}`;
-                }
-                if (_.isEqual(effective_value, requested_value)) {
-                    return `目标已经是请求值，请省略重复替换：${operation.path}`;
-                }
-            }
-            continue;
-        }
-        const parent_segments = segments.slice(0, -1);
-        const key = segments.at(-1)!;
-        const parent = parent_segments.length === 0 ? stat_data : _.get(stat_data, parent_segments);
-        if (Array.isArray(parent)) {
-            if (key !== '-' && (!/^\d+$/.test(key) || Number(key) > parent.length)) {
-                return `数组插入位置无效：${operation.path}`;
-            }
-        } else if (_.isPlainObject(parent)) {
-            if (Object.prototype.hasOwnProperty.call(parent, key)) {
-                return `insert 目标已经存在，请使用 replace：${operation.path}`;
-            }
-        } else {
-            return `insert 的父级不是可写集合：${operation.path}`;
-        }
-    }
+    variables: MvuData
+): Promise<string | null> {
+    const trial_variables = klona(variables);
+    const errors: string[] = [];
+    const is_modified = await updateVariables(repair_block, trial_variables, errors);
+    if (errors.length > 0) return errors.join('\n');
+    if (!is_modified) return tr('runtime.incrementalRepair.noEffectiveChanges');
     return null;
 }
 
@@ -966,7 +886,6 @@ export async function runIncrementalExtraModelRepair() {
             return;
         }
 
-        let original_data = klona(current_variables);
         const original_chat_variables = getVariables({ type: 'chat' });
         const update_chat_variables = store.effective_settings.兼容性.更新到聊天变量;
         let original_message_snapshot = snapshotPersistedMvuData(current_variables);
@@ -999,18 +918,24 @@ export async function runIncrementalExtraModelRepair() {
             );
             return;
         }
+        /** 每次试执行都读取最新变量，并在异步回调结束后重新确认校正目标未改变。 */
+        const validateAgainstLatestState = async (block: string): Promise<string | null> => {
+            if (!anchorStillMatches(anchor)) return tr('runtime.incrementalRepair.sourceChanged');
+            const latest_variables = getVariables({ type: 'message', message_id });
+            if (!isMvuData(latest_variables)) return tr('runtime.incrementalRepair.sourceChanged');
+            const error = await validateIncrementalRepairAgainstState(block, latest_variables);
+            if (!anchorStillMatches(anchor)) return tr('runtime.incrementalRepair.sourceChanged');
+            return error;
+        };
+
         const user_direction = direction_result.slice(0, 500);
         const repair_block = await invokeExtraModelWithStrategy({
             task: buildIncrementalRepairTask(changes),
             user_input: buildIncrementalRepairPromptTail(user_direction),
-            // 将格式和当前状态校验放入每次尝试中，非法回复触发策略重试，而非直接进入预览。
-            validate_result: result => {
+            // 试执行错误或无实际变化都使本次尝试失败；策略等待异步校验后才接受回复。
+            validate_result: async result => {
                 const normalized = normalizeAndValidateIncrementalRepairResult(result);
-                const state_error = validateIncrementalRepairAgainstState(
-                    normalized,
-                    original_data.stat_data,
-                    original_data.schema?.strictSet ?? false
-                );
+                const state_error = await validateAgainstLatestState(normalized);
                 if (state_error) throw new Error(state_error);
                 return normalized;
             },
@@ -1059,11 +984,7 @@ export async function runIncrementalExtraModelRepair() {
             toastr.warning(_.escape(command_error), tr('runtime.incrementalRepair.title'));
             return;
         }
-        const state_error = validateIncrementalRepairAgainstState(
-            normalized_repair_block,
-            original_data.stat_data,
-            original_data.schema?.strictSet ?? false
-        );
+        const state_error = await validateAgainstLatestState(normalized_repair_block);
         if (state_error) {
             toastr.warning(_.escape(state_error), tr('runtime.incrementalRepair.title'));
             return;
@@ -1101,7 +1022,7 @@ export async function runIncrementalExtraModelRepair() {
             );
             return;
         }
-        original_data = klona(latest_message_variables);
+        const original_data = klona(latest_message_variables);
         original_message_snapshot = snapshotPersistedMvuData(latest_message_variables);
         original_chat_snapshot = snapshotPersistedMvuData(latest_chat_variables);
 
