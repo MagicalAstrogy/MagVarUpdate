@@ -11,7 +11,7 @@ import type {
     UserMessage,
 } from '@earendil-works/pi-ai';
 
-/** Pi Context 无法表达的系统消息，交由请求载荷 hook 在原位置恢复。 */
+/** 需要按酒馆原始位置保留的系统消息，交由请求载荷 hook 在原位置恢复。 */
 export type PiLateSystemMessage = {
     sourceIndex: number;
     /** 插在转换后第几条普通消息之前；等于 messages.length 表示位于末尾。 */
@@ -581,7 +581,7 @@ function addNamePrefix(content: PiInputContent[], name: string | undefined): PiI
 }
 
 /** 将历史工具参数解析为普通对象，拒绝无效 JSON 或非对象参数。 */
-function parseToolArguments(argumentsValue: string, sourceIndex: number): Record<string, unknown> {
+function parseToolArguments(argumentsValue: string, sourceIndex: number): ToolCall['arguments'] {
     let parsed: unknown;
     try {
         parsed = JSON.parse(argumentsValue);
@@ -599,7 +599,8 @@ function parseToolArguments(argumentsValue: string, sourceIndex: number): Record
             sourceIndex
         );
     }
-    return parsed;
+    // JSON.parse 已排除非 JSON 值，且上方校验保证参数是对象而非数组或标量。
+    return parsed as ToolCall['arguments'];
 }
 
 /** 校验历史工具调用标识和参数，并转换为 Pi 工具调用块。 */

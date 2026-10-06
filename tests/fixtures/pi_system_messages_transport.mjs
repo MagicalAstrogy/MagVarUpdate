@@ -100,18 +100,22 @@ async function capture(api, input, { baseline = false, nonStreaming = false } = 
         api === 'openai-codex-responses'
             ? `e30.${Buffer.from(JSON.stringify({ 'https://api.openai.com/auth': { chatgpt_account_id: 'test-account' } })).toString('base64url')}.signature`
             : 'test-api-key';
-    const stream = adapters[api].stream(model, bridge?.context ?? adapted.context, {
-        apiKey: token,
-        maxTokens: 128,
-        maxRetries: 0,
-        transport: 'sse',
-        cacheRetention: 'none',
-        fetch: nonStreaming ? createPiNonStreamingFetch(api, send) : send,
-        onPayload: payload => {
-            const transformed = transformPiPayload(payload, { api });
-            return bridge ? bridge.restore(transformed) : transformed;
-        },
-    });
+    const stream = adapters[api].stream(
+        model,
+        gateway.normalizeContext(bridge?.context ?? adapted.context),
+        {
+            apiKey: token,
+            maxTokens: 128,
+            maxRetries: 0,
+            transport: 'sse',
+            cacheRetention: 'none',
+            fetch: nonStreaming ? createPiNonStreamingFetch(api, send) : send,
+            onPayload: payload => {
+                const transformed = transformPiPayload(payload, { api });
+                return bridge ? bridge.restore(transformed) : transformed;
+            },
+        }
+    );
     const result = await stream.result();
     assert.equal(
         calls,

@@ -179,7 +179,7 @@ try {
     }
     function run(api, fetch, signal) {
         return adapters[api]
-            .stream(model(api), context, {
+            .stream(model(api), gateway.normalizeContext(context), {
                 apiKey: 'test-api-key',
                 fetch,
                 signal,

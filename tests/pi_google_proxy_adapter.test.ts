@@ -114,6 +114,16 @@ jest.mock('@/function/update/pi/pi_gateway', () => {
         clampThinkingLevel: jest.fn((_model: unknown, level: string) =>
             level === 'xhigh' || level === 'max' ? 'high' : level
         ),
+        collapseSystemMessages: jest.fn(context => context),
+        getCurrentSystemPrompt: jest.fn(messages =>
+            messages
+                .filter((message: { role: string }) => message.role === 'system')
+                .map((message: { content: string }) => message.content)
+                .join('\n\n')
+        ),
+        getCurrentTools: jest.fn(messages =>
+            messages.flatMap((message: { toolsAdded?: unknown[] }) => message.toolsAdded ?? [])
+        ),
         convertGoogleMessages: jest.fn(() => [
             {
                 role: 'user',
@@ -172,14 +182,15 @@ import {
     createSillyTavernProxyFetch,
     resetSillyTavernProxyStatusForTests,
 } from '@/function/update/pi/sillytavern_proxy';
+import { clampThinkingLevel, resolveGoogleThinkingLevel } from '@/function/update/pi/pi_gateway';
 import type {
     AssistantMessage,
     AssistantMessageEvent,
     AssistantMessageEventStream,
-    Context,
     FetchFunction,
     Model,
     ProviderStreams,
+    TranscriptContext,
 } from '@/function/update/pi/pi_gateway';
 
 class FallbackHeaders {
@@ -272,20 +283,26 @@ const MODEL: Model<'google-generative-ai'> = {
     maxTokens: 65_536,
 };
 
-const CONTEXT: Context = {
-    systemPrompt: 'system',
-    messages: [{ role: 'user', content: 'hello', timestamp: 1 }],
-    tools: [
+const CONTEXT = {
+    messages: [
         {
-            name: 'mvu_update',
-            description: 'Update variables',
-            parameters: {
-                type: 'object',
-                properties: { value: { type: 'string' } },
-            },
+            role: 'system',
+            content: 'system',
+            timestamp: 0,
+            toolsAdded: [
+                {
+                    name: 'mvu_update',
+                    description: 'Update variables',
+                    parameters: {
+                        type: 'object',
+                        properties: { value: { type: 'string' } },
+                    },
+                },
+            ],
         },
+        { role: 'user', content: 'hello', timestamp: 1 },
     ],
-};
+} as TranscriptContext;
 
 function encodeChunks(text: string, widths: readonly number[]): Uint8Array[] {
     const encoded = new TextEncoder().encode(text);
@@ -617,6 +634,23 @@ describe('Google proxy-aware adapter', () => {
     });
 
     // 代理组合与隔离：完整 SSE 地址正确编码，并发客户端互不覆盖传输实现。
+    test('disables thinking when Pi clamps the requested level to off', async () => {
+        const api = createGoogleProxyAwareApi(createUpstream().api);
+        jest.mocked(clampThinkingLevel).mockReturnValueOnce('off');
+        const fetch_impl = jest.fn().mockResolvedValue(completedTextResponse('clamped'));
+        const { result } = await collect(
+            api.streamSimple(MODEL, CONTEXT, {
+                apiKey: 'test-key',
+                fetch: fetch_impl,
+                reasoning: 'high',
+            })
+        );
+        expect(result.stopReason).toBe('stop');
+        const body = JSON.parse(fetch_impl.mock.calls[0][1].body);
+        expect(body.generationConfig.thinkingConfig).toEqual({ thinkingLevel: 'MINIMAL' });
+        expect(resolveGoogleThinkingLevel).not.toHaveBeenCalled();
+    });
+
     test('encodes the complete Google SSE URL when composed with the SillyTavern proxy', async () => {
         const upstream = createUpstream();
         const api = createGoogleProxyAwareApi(upstream.api);

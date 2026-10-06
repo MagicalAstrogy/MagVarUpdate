@@ -12,9 +12,13 @@ smoke 覆盖；34 来源与 Proxy 路由的最终全仓测试、lint、声明构
 
 ## 依赖版本与 ESM 加载
 
-当前使用 `@earendil-works/pi-ai@0.85.1` 和
+当前使用 `@earendil-works/pi-ai@1.0.0` 和
 `@google/genai@2.21.0`。Pi 的间接依赖沿用其发布版本声明（包括 Anthropic SDK
-0.123.0 和 Pi 内部的 Google SDK 1.52.0），不强行替换上游依赖。
+0.124.0 和 Google SDK 2.21.0），不强行替换上游依赖。
+
+Pi 1.x 在 provider 边界将 `Context.systemPrompt` 和 `Context.tools` 规范化为 transcript
+中的系统消息。Google 自定义传输适配器从该消息序列读取提示词和工具；直接调用 adapter 的测试也先调用
+`normalizeContext()`。酒馆中途 system 消息仍沿用现有的按原位置恢复机制。
 
 生产构建通过 jsDelivr 的版本化 `+esm` 地址加载 Pi、模型目录、各 API adapter 和直接使用的 Google
 SDK，第三方实现不再打入 MVU。Webpack 从 `package.json`
@@ -168,7 +172,7 @@ fetch，而原本就通过 SillyTavern 模型状态接口读取 OpenAI 结构目
 “更多”默认发送非流式请求，勾选“兼容假流式”后才发送流式请求；两种模式都等完整回复后再更新变量。OpenAI
 Codex 的账号接口要求 `stream: true`，该来源的开关显示为固定开启。
 
-Pi 0.85.1 的 `complete()` 仍通过流式 HTTP 实现，因此普通应答由 `non_streaming_fetch.ts`
+Pi 1.0.0 的 `complete()` 仍通过流式 HTTP 实现，因此普通应答由 `non_streaming_fetch.ts`
 适配：保留 Pi 的鉴权和请求构建，在 HTTP 层发送 `stream: false`（Google 使用
 `generateContent`），再将完整 JSON 应答转换为 Pi 解析器可读取的事件。该转换在收到完整应答后进行，保持工具调用、结束原因和取消信号，并与 Proxy 组合；OAuth 和模型列表请求不受影响。
 

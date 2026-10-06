@@ -14,6 +14,25 @@ function context(text: string): Context {
 
 // 输入预算：文本与图片按保守规则计数，扣除回复和安全余量后再决定能否发送。
 describe('Pi token preflight', () => {
+    test.each([
+        { content: '界'.repeat(2000) },
+        { content: [{ type: 'text' as const, text: '界'.repeat(2000) }] },
+        { sections: { rules: '界'.repeat(2000) } },
+        {
+            toolsAdded: [
+                { name: 'update', description: '界'.repeat(2000), parameters: { type: 'object' } },
+            ],
+        },
+    ])('includes transcript system instructions and tools in the budget: %p', fields => {
+        const input: Context = {
+            messages: [
+                { role: 'system', content: '', timestamp: 0, ...fields },
+                { role: 'user', content: 'short user', timestamp: 1 },
+            ],
+        };
+        expect(() => assertPiTokenBudget(input, 1024, 256)).toThrow(/estimated .* limit/);
+    });
+
     test('counts preserved system text even though it is absent from the Pi message array', () => {
         const adapted = toPiContext([
             { role: 'user', content: 'short user' },

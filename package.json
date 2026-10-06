@@ -38,7 +38,7 @@
     ],
     "private": true,
     "dependencies": {
-        "@earendil-works/pi-ai": "0.85.1",
+        "@earendil-works/pi-ai": "1.0.0",
         "@google/genai": "2.21.0",
         "compare-versions": "^6.1.1",
         "corepack": "^0.32.0",

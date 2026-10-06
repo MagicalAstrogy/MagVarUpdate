@@ -130,6 +130,17 @@ function assertPiImageInputBudget(context: Context): void {
 /** 按消息角色估算文本、思考、工具参数和图片，并计入消息结构开销。 */
 function estimateMessageTokens(message: Message): number {
     let tokens = 6;
+    if (message.role === 'system') {
+        tokens += estimateTextTokens(
+            typeof message.content === 'string'
+                ? message.content
+                : message.content.map(block => block.text).join('')
+        );
+        for (const value of [message.sections, message.toolsAdded, message.toolsRemoved]) {
+            if (value) tokens += estimateTextTokens(JSON.stringify(value));
+        }
+        return tokens;
+    }
     if (message.role === 'user') {
         if (typeof message.content === 'string') {
             return tokens + estimateTextTokens(message.content);
