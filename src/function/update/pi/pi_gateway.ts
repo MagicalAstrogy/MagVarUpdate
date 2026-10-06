@@ -9,9 +9,13 @@ export {
     Type,
     calculateCost,
     clampThinkingLevel,
+    collapseSystemMessages,
     createAssistantMessageEventStream,
     createModels,
     createProvider,
+    getCurrentSystemPrompt,
+    getCurrentTools,
+    normalizeContext,
 } from '@earendil-works/pi-ai';
 
 export type {
@@ -55,6 +59,7 @@ export type {
     Tool,
     ToolCall,
     ToolChoice,
+    TranscriptContext,
     Usage,
     UserMessage,
 } from '@earendil-works/pi-ai';

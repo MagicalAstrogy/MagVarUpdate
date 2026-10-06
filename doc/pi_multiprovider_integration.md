@@ -12,9 +12,13 @@ smoke 覆盖；34 来源与 Proxy 路由的最终全仓测试、lint、声明构
 
 ## 依赖版本与 ESM 加载
 
-当前使用 `@earendil-works/pi-ai@0.85.1` 和
+当前使用 `@earendil-works/pi-ai@1.0.0` 和
 `@google/genai@2.21.0`。Pi 的间接依赖沿用其发布版本声明（包括 Anthropic SDK
-0.123.0 和 Pi 内部的 Google SDK 1.52.0），不强行替换上游依赖。
+0.124.0 和 Google SDK 2.21.0），不强行替换上游依赖。
+
+Pi 1.x 在 provider 边界将 `Context.systemPrompt` 和 `Context.tools` 规范化为 transcript
+中的系统消息。Google 自定义传输适配器从该消息序列读取提示词和工具；直接调用 adapter 的测试也先调用
+`normalizeContext()`。酒馆中途 system 消息仍沿用现有的按原位置恢复机制。
 
 生产构建通过 jsDelivr 的版本化 `+esm` 地址加载 Pi、模型目录、各 API adapter 和直接使用的 Google
 SDK，第三方实现不再打入 MVU。Webpack 从 `package.json`
@@ -162,13 +166,19 @@ fetch，而原本就通过 SillyTavern 模型状态接口读取 OpenAI 结构目
 4. 填写模型 ID，也可以从 Pi 内置模型目录选择；“获取模型列表”会按当前来源/API/认证请求上游可见模型。
 5. 设置 `contextWindow` 和现有“最大回复 token 数”。
 6. 如果当前路由标有 `(Proxy)`，先确认 SillyTavern 已启用 Proxy 且来源下方没有 Proxy 警告。
-7. 在来源上方选择破限方案、应答格式和“兼容假流式”，并按需调整采样参数。
+7. 在来源上方选择破限方案、应答格式和“兼容假流式”，并按需调整高级参数中的采样参数和“思考等级”。
 8. 在“模型来源”顶部的“API 方案”中保存配置，或选择已有方案。
+
+高级参数中的“思考等级”支持默认、关闭／最低、minimal、low、medium、high、xhigh 和 max，随 Pi API 方案保存。
+默认（包括旧配置）保留原始请求行为；显式选择时由 Pi 的 simple adapter 按模型能力映射等级，部分模型无法完全关闭思考。
+目录外模型或自定义端点按协议转换等级；OpenAI/Mistral 会原样尝试 xhigh/max，是否接受由服务端决定，Google/预算式思考仍按协议映射。思考与回答的共享 token 预算不会突破配置的回复上限。
+开启思考会禁用不兼容的采样参数；Anthropic 不支持同时强制工具调用，预算式思考至少需要 2048 回复 token。
+自定义请求体覆盖保持原有优先级。
 
 “更多”默认发送非流式请求，勾选“兼容假流式”后才发送流式请求；两种模式都等完整回复后再更新变量。OpenAI
 Codex 的账号接口要求 `stream: true`，该来源的开关显示为固定开启。
 
-Pi 0.85.1 的 `complete()` 仍通过流式 HTTP 实现，因此普通应答由 `non_streaming_fetch.ts`
+Pi 1.0.0 的 `complete()` 仍通过流式 HTTP 实现，因此普通应答由 `non_streaming_fetch.ts`
 适配：保留 Pi 的鉴权和请求构建，在 HTTP 层发送 `stream: false`（Google 使用
 `generateContent`），再将完整 JSON 应答转换为 Pi 解析器可读取的事件。该转换在收到完整应答后进行，保持工具调用、结束原因和取消信号，并与 Proxy 组合；OAuth 和模型列表请求不受影响。
 
@@ -201,7 +211,7 @@ API 方案通过 `backend` 区分两类快照：
 
 - `backend: 'custom'`：保存原有自定义 API 字段。
 - `backend: 'pi'`：保存结构完整的 Pi 连接快照，包括 provider、API、认证方式、endpoint、`useProxy`、model、
-  `contextWindow`、`customHeaders`、`customIncludeBody`、`customExcludeBody` 和 OAuth 凭证引用 `credentialIds`。
+  `contextWindow`、`thinkingLevel`、`customHeaders`、`customIncludeBody`、`customExcludeBody` 和 OAuth 凭证引用 `credentialIds`。
 
 旧方案没有 `backend` 时按 `custom`
 迁移。保存、另存、切换和删除 Pi 方案时会深拷贝连接字段并保留未知字段，避免响应式对象共享或前向兼容数据丢失。

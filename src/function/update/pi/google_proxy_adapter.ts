@@ -9,9 +9,12 @@ import {
     buildBaseOptions,
     calculateCost,
     clampThinkingLevel,
+    collapseSystemMessages,
     convertGoogleMessages,
     convertGoogleTools,
     createAssistantMessageEventStream,
+    getCurrentSystemPrompt,
+    getCurrentTools,
     isGoogleThinkingPart,
     mapGoogleStopReason,
     resolveGoogleFunctionCallingMode,
@@ -22,7 +25,6 @@ import {
     type Api,
     type AssistantMessage,
     type AssistantMessageEventStream,
-    type Context,
     type FetchFunction,
     type GoogleApiThinkingLevel,
     type Model,
@@ -35,6 +37,7 @@ import {
     type ThinkingBudgets,
     type ThinkingContent,
     type ToolCall,
+    type TranscriptContext,
 } from './pi_gateway';
 
 /**
@@ -237,10 +240,14 @@ function createClient(
 /** 将 Pi 上下文、工具、采样和思考配置转换为 Google 生成参数，并保留取消信号。 */
 function buildParams(
     model: Model<'google-generative-ai'>,
-    context: Context,
+    context: TranscriptContext,
     options: GoogleProxyOptions = {}
 ): GenerateContentParameters {
-    const contents = convertGoogleMessages(model, context);
+    // Pi 1.x 将系统提示词和工具声明放进 transcript；Google 使用折叠后的系统消息。
+    const normalized_context = collapseSystemMessages(context);
+    const contents = convertGoogleMessages(model, normalized_context);
+    const system_prompt = getCurrentSystemPrompt(normalized_context.messages);
+    const tools = getCurrentTools(normalized_context.messages);
     const generation_config: GenerateContentConfig = {};
     if (options.temperature !== undefined) {
         generation_config.temperature = options.temperature;
@@ -250,17 +257,13 @@ function buildParams(
     }
 
     const supports_strict_mode = supportsGoogleStrictToolSampling(model.id);
-    const function_calling_mode = context.tools?.length
-        ? resolveGoogleFunctionCallingMode(context.tools, options.toolChoice, supports_strict_mode)
+    const function_calling_mode = tools.length
+        ? resolveGoogleFunctionCallingMode(tools, options.toolChoice, supports_strict_mode)
         : undefined;
     const config: GenerateContentConfig = {
         ...(Object.keys(generation_config).length === 0 ? {} : generation_config),
-        ...(context.systemPrompt
-            ? { systemInstruction: sanitizeSurrogates(context.systemPrompt) }
-            : {}),
-        ...(context.tools?.length
-            ? { tools: convertGoogleTools(context.tools, false, supports_strict_mode) }
-            : {}),
+        ...(system_prompt ? { systemInstruction: sanitizeSurrogates(system_prompt) } : {}),
+        ...(tools.length ? { tools: convertGoogleTools(tools, false, supports_strict_mode) } : {}),
         ...(function_calling_mode === undefined
             ? {}
             : { toolConfig: { functionCallingConfig: { mode: function_calling_mode } } }),
@@ -301,7 +304,7 @@ let tool_call_counter = 0;
  */
 function streamWithInjectedFetch(
     model: Model<'google-generative-ai'>,
-    context: Context,
+    context: TranscriptContext,
     options: GoogleProxyOptions,
     fetch_impl: FetchFunction
 ): AssistantMessageEventStream {
@@ -447,8 +450,7 @@ function streamWithInjectedFetch(
                                 type: 'toolCall',
                                 id: tool_call_id,
                                 name: part.functionCall.name || '',
-                                arguments:
-                                    (part.functionCall.args as Record<string, unknown>) ?? {},
+                                arguments: (part.functionCall.args as ToolCall['arguments']) ?? {},
                                 ...(part.thoughtSignature
                                     ? { thoughtSignature: part.thoughtSignature }
                                     : {}),
@@ -638,7 +640,7 @@ function getGoogleBudget(
 /** 将 Pi 简化选项解析为模型适用的思考等级或预算，再复用注入传输的流实现。 */
 function streamSimpleWithInjectedFetch(
     model: Model<'google-generative-ai'>,
-    context: Context,
+    context: TranscriptContext,
     options: SimpleStreamOptions,
     fetch_impl: FetchFunction
 ): AssistantMessageEventStream {
@@ -660,6 +662,14 @@ function streamSimpleWithInjectedFetch(
     }
 
     const clamped_reasoning = clampThinkingLevel(model, options.reasoning);
+    if (clamped_reasoning === 'off') {
+        return streamWithInjectedFetch(
+            model,
+            context,
+            { ...base, thinking: { enabled: false } },
+            fetch_impl
+        );
+    }
     const resolved_level = resolveGoogleThinkingLevel(model, clamped_reasoning);
     if (isGemini3ProModel(model) || isGemini3FlashModel(model) || isGemma4Model(model)) {
         return streamWithInjectedFetch(

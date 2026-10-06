@@ -1,3 +1,4 @@
+import { normalizePiThinkingLevel, type PiThinkingLevel } from './pi/thinking_setting';
 import { tr } from '@/i18n';
 import {
     getPiProviderTargetDefinition,
@@ -47,6 +48,7 @@ export type ExtraModelPiConnectionFields = {
     authType: string;
     endpoint: string;
     useProxy: boolean;
+    thinkingLevel?: PiThinkingLevel;
     model: string;
     contextWindow: number | string;
     customHeaders: string;
@@ -148,6 +150,7 @@ function clonePiConnectionFields(
     // Profiles saved before this option existed, and malformed imported values, must retain the
     // direct-transport default rather than becoming enabled through truthiness coercion.
     cloned.useProxy = cloned.useProxy === true;
+    cloned.thinkingLevel = normalizePiThinkingLevel(cloned.thinkingLevel);
     const context_window = normalizeExtraModelPiProfileContextWindow(cloned.contextWindow);
     if (context_window !== undefined) {
         cloned.contextWindow = context_window;
@@ -290,6 +293,7 @@ function clearPiConnectionFields(pi: ExtraModelPiSettings): ExtraModelPiSettings
         authType: 'api_key',
         endpoint: '',
         useProxy: false,
+        thinkingLevel: 'default',
         model: '',
         contextWindow: 0,
         credentials: klona(cloned.credentials),

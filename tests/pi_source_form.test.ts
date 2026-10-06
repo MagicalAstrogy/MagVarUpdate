@@ -450,6 +450,24 @@ describe('Pi source form helpers', () => {
         expect(
             resolvePiSourceCapabilities(openai, 'openai-responses', '', catalogModel)
         ).toMatchObject({ tools: true, structuredOutput: true, jsonObjectOutput: true });
+        expect(
+            resolvePiSourceCapabilities(openai, 'openai-responses', '', catalogModel, 'high')
+        ).toMatchObject({
+            temperature: true,
+            sampling: { topP: true },
+        });
+        expect(
+            resolvePiSourceCapabilities(
+                openai,
+                'openai-responses',
+                'https://proxy.example/v1',
+                catalogModel,
+                'high'
+            )
+        ).toMatchObject({
+            temperature: false,
+            sampling: { topP: false },
+        });
         for (const endpoint of [
             'https://proxy.example/v1',
             'http://proxy.example/v1',

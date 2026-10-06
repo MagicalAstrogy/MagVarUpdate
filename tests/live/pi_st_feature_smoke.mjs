@@ -43,14 +43,21 @@ const trace = label => {
 };
 
 /** 连接准备：在浏览器中设置本次 Pi 来源、协议及所需应答选项。 */
-async function configurePi(webDriver, provider, responseFormat, apiOverride, streaming = false) {
+async function configurePi(
+    webDriver,
+    provider,
+    responseFormat,
+    apiOverride,
+    streaming = false,
+    thinkingLevel = 'default'
+) {
     trace(`configure:${provider}:${responseFormat}:start`);
     const definition = PROVIDERS[provider];
     assertFeature(definition, `unknown-provider-${provider}`);
     const api = apiOverride ?? definition.api;
     const result = await webDriver.executeAsync(
         `
-        const [scriptName, provider, api, model, responseFormat, streaming] = arguments;
+        const [scriptName, provider, api, model, responseFormat, streaming, thinkingLevel] = arguments;
         const done = arguments[arguments.length - 1];
         (async () => {
             const iframe = [...document.querySelectorAll('iframe')].find(frame =>
@@ -109,6 +116,7 @@ async function configurePi(webDriver, provider, responseFormat, apiOverride, str
                 const contextInput = contextField?.querySelector('input[type="number"]');
                 if (!contextInput) throw new Error('context-window');
                 setInput(contextInput, '');
+                choose(['default', 'off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'], thinkingLevel);
                 choose(['聊天消息', '工具调用', '格式化输出'], responseFormat);
                 const streamingField = candidateDocuments
                     .flatMap(owner => [...owner.querySelectorAll('.mvu-field')])
@@ -142,7 +150,15 @@ async function configurePi(webDriver, provider, responseFormat, apiOverride, str
             }
         })();
         `,
-        [activeScriptName, provider, api, definition.model, responseFormat, streaming],
+        [
+            activeScriptName,
+            provider,
+            api,
+            definition.model,
+            responseFormat,
+            streaming,
+            thinkingLevel,
+        ],
         30_000
     );
     assertFeature(
@@ -1067,6 +1083,7 @@ export async function runPiStFeatureSmoke({
                     signalPresent: Boolean(signal),
                     authOk,
                     hasTool: Boolean(toolName),
+                    thinkingBudget: body.generationConfig?.thinkingConfig?.thinkingBudget,
                     requiredToolChoice: api === 'openai-responses'
                         ? body.tool_choice === 'required'
                         : api === 'anthropic-messages'
@@ -1265,6 +1282,17 @@ export async function runPiStFeatureSmoke({
                 textResult.lastRequest?.hasTool === false &&
                 textResult.lastRequest?.streaming === streaming;
         }
+    }
+
+    for (const level of ['high', 'off']) {
+        await configurePi(webDriver, 'google', '工具调用', undefined, false, level);
+        const thought = await invokeRetry(webDriver, `thinking-${level}`);
+        checks[`googleThinking${level}`] =
+            thought.providerRequests === 1 &&
+            thought.lastRequest?.requiredToolChoice === true &&
+            (level === 'off'
+                ? thought.lastRequest?.thinkingBudget === 0
+                : thought.lastRequest?.thinkingBudget > 0);
     }
 
     for (const provider of ['openai', 'anthropic', 'google']) {

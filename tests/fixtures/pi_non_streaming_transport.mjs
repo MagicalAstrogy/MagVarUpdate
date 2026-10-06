@@ -43,6 +43,9 @@ try {
     const { createGoogleProxyAwareApi } = await import(
         moduleUrl(resolve(root, 'src/function/update/pi/google_proxy_adapter.ts'))
     );
+    const { preparePiThinkingModel, resolvePiThinkingLevel } = await import(
+        moduleUrl(resolve(root, 'src/function/update/pi/thinking.ts'))
+    );
     const adapters = {
         'openai-completions': gateway.openAICompletionsApi(),
         'openai-responses': gateway.openAIResponsesApi(),
@@ -179,7 +182,7 @@ try {
     }
     function run(api, fetch, signal) {
         return adapters[api]
-            .stream(model(api), context, {
+            .stream(model(api), gateway.normalizeContext(context), {
                 apiKey: 'test-api-key',
                 fetch,
                 signal,
@@ -238,6 +241,133 @@ try {
         assert.equal(result.usage.output, 10);
         assert.equal(sent, 1);
     }
+
+    // Explicit thinking uses the real simple adapters, preserving native required/named choices.
+    for (const [api, fixture] of Object.entries(fixtures)) {
+        for (const reasoning of ['high', undefined]) {
+            current_case = `${api}: simple thinking ${reasoning ?? 'off'} and native tool choice`;
+            const thinkingModel = {
+                ...model(api),
+                reasoning: true,
+                ...(api.startsWith('openai-')
+                    ? { thinkingLevelMap: { off: 'none', high: 'high' } }
+                    : {}),
+            };
+            const toolChoice =
+                api === 'google-generative-ai'
+                    ? 'any'
+                    : api === 'anthropic-messages'
+                      ? 'auto'
+                      : 'required';
+            let sent;
+            const result = await adapters[api]
+                .streamSimple(thinkingModel, gateway.normalizeContext(context), {
+                    apiKey: 'test-api-key',
+                    reasoning,
+                    toolChoice,
+                    maxTokens: 4096,
+                    maxRetries: 0,
+                    fetch: createPiNonStreamingFetch(api, async (input, init) => {
+                        sent = await new Request(input, init).json();
+                        return Response.json(fixture);
+                    }),
+                })
+                .result();
+            assert.equal(result.stopReason, 'toolUse', result.errorMessage);
+            if (api === 'openai-completions') {
+                assert.equal(sent.reasoning_effort, reasoning ?? 'none');
+                assert.equal(sent.tool_choice, 'required');
+            } else if (api === 'openai-responses') {
+                assert.equal(sent.reasoning.effort, reasoning ?? 'none');
+                assert.equal(sent.tool_choice, 'required');
+            } else if (api === 'anthropic-messages') {
+                assert.equal(sent.thinking.type, reasoning ? 'enabled' : 'disabled');
+                assert.equal(sent.tool_choice.type, 'auto');
+                assert.ok(sent.max_tokens <= 4096);
+                if (reasoning) assert.ok(sent.thinking.budget_tokens <= sent.max_tokens - 1024);
+            } else if (api === 'google-generative-ai') {
+                assert.equal(
+                    sent.generationConfig.thinkingConfig.thinkingBudget,
+                    reasoning ? -1 : 0
+                );
+                assert.equal(sent.toolConfig.functionCallingConfig.mode, 'ANY');
+            } else {
+                assert.equal(sent.prompt_mode, reasoning ? 'reasoning' : undefined);
+                assert.equal(sent.tool_choice, 'required');
+            }
+        }
+    }
+
+    for (const api of ['openai-completions', 'openai-responses', 'mistral-conversations']) {
+        current_case = `${api}: named tools survive simple thinking options`;
+        const toolChoice =
+            api === 'openai-responses'
+                ? { type: 'function', name: 'update' }
+                : { type: 'function', function: { name: 'update' } };
+        let sent;
+        const result = await adapters[api]
+            .streamSimple({ ...model(api), reasoning: true }, gateway.normalizeContext(context), {
+                apiKey: 'test-api-key',
+                reasoning: 'high',
+                toolChoice,
+                maxTokens: 4096,
+                maxRetries: 0,
+                fetch: createPiNonStreamingFetch(api, async (input, init) => {
+                    sent = await new Request(input, init).json();
+                    return Response.json(fixtures[api]);
+                }),
+            })
+            .result();
+        assert.equal(result.stopReason, 'toolUse', result.errorMessage);
+        assert.deepEqual(sent.tool_choice, toolChoice);
+    }
+
+    // Catalog capabilities gate thinking; dynamic effort protocols preserve extended levels
+    // through BOTH MVU resolution and the real SDK's second clamp.
+    for (const api of ['openai-completions', 'openai-responses', 'mistral-conversations']) {
+        for (const requested of ['xhigh', 'max']) {
+            current_case = `${api}: dynamic ${requested} reaches the wire unchanged`;
+            const original = model(api);
+            const dynamic = preparePiThinkingModel(original, false, requested);
+            const reasoning = resolvePiThinkingLevel(requested, dynamic);
+            assert.equal(reasoning, requested);
+            assert.equal(original.reasoning, false);
+            assert.equal(original.thinkingLevelMap, undefined);
+            assert.equal(resolvePiThinkingLevel(requested, original), 'off');
+            assert.equal(
+                resolvePiThinkingLevel(requested, { ...original, reasoning: true }),
+                'high'
+            );
+            let sent;
+            const result = await adapters[api]
+                .streamSimple(dynamic, gateway.normalizeContext(context), {
+                    apiKey: 'test-api-key',
+                    reasoning,
+                    toolChoice: 'required',
+                    maxTokens: 4096,
+                    maxRetries: 0,
+                    fetch: createPiNonStreamingFetch(api, async (input, init) => {
+                        sent = await new Request(input, init).json();
+                        return Response.json(fixtures[api]);
+                    }),
+                })
+                .result();
+            assert.equal(result.stopReason, 'toolUse', result.errorMessage);
+            assert.equal(
+                api === 'openai-responses' ? sent.reasoning.effort : sent.reasoning_effort,
+                requested
+            );
+            assert.equal(sent.tool_choice, 'required');
+        }
+    }
+    current_case = 'Google extended levels retain the protocol mapping';
+    assert.equal(
+        resolvePiThinkingLevel(
+            'max',
+            preparePiThinkingModel(model('google-generative-ai'), false, 'max')
+        ),
+        'high'
+    );
 
     // 代理组合：非流式改写与酒馆代理共同工作，认证头和 JSON 请求体仍被保留。
     current_case = 'proxy composition uses non-streaming HTTP and retains auth';

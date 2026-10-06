@@ -23,6 +23,19 @@ describe('settings unknown field passthrough', () => {
         expect(store.settings.兼容性.额外模型解析非阻塞).toBe(true);
     });
 
+    test('persists thinking level and defaults malformed imported levels', async () => {
+        const store = useDataStore();
+        store.settings.额外模型解析配置.pi.thinkingLevel = 'high';
+        await nextTick();
+        store._reload_settings();
+        expect(store.settings.额外模型解析配置.pi.thinkingLevel).toBe('high');
+        (
+            globalThis as any
+        ).SillyTavern.extensionSettings.mvu_settings.额外模型解析配置.pi.thinkingLevel = 'invalid';
+        store._reload_settings();
+        expect(store.settings.额外模型解析配置.pi.thinkingLevel).toBe('default');
+    });
+
     // Pi 默认值与快照：保留旧来源默认行为，剔除方案中误放的凭证，残缺快照不补成完整连接。
     test('provides fail-closed pi defaults without changing the legacy model source', () => {
         const store = useDataStore();
@@ -34,6 +47,7 @@ describe('settings unknown field passthrough', () => {
             authType: 'api_key',
             endpoint: '',
             useProxy: false,
+            thinkingLevel: 'default',
             model: '',
             contextWindow: 0,
             credentialIds: {},

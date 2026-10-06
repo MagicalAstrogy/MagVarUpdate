@@ -289,6 +289,16 @@
                     </div>
                 </Field>
 
+                <Field v-if="is_pi_source" :label="t('panel.source.pi.thinkingLevel')">
+                    <template #label-suffix>
+                        <HelpIcon :help="t('panel.source.pi.thinkingLevelHelp')" />
+                    </template>
+                    <Select
+                        v-model="store.settings.额外模型解析配置.pi.thinkingLevel"
+                        :options="pi_thinking_options"
+                    />
+                </Field>
+
                 <Field :label="t('panel.source.maxTokens')">
                     <input
                         v-model.number="store.settings.额外模型解析配置.最大回复token数"
@@ -509,6 +519,7 @@ import {
     type PiProviderDefinition,
     type PiWireApi,
 } from '@/function/update/pi/provider_registry';
+import { PI_THINKING_LEVELS } from '@/function/update/pi/thinking_setting';
 import { useMvuI18n } from '@/i18n';
 import Checkbox from '@/panel/component/Checkbox.vue';
 import Detail from '@/panel/component/Detail.vue';
@@ -845,6 +856,12 @@ const pi_token_errors = computed(() =>
           )
         : []
 );
+const pi_thinking_options = computed(() =>
+    PI_THINKING_LEVELS.map(value => ({
+        value,
+        label: t(`panel.source.pi.thinking.${value}`),
+    }))
+);
 const selected_pi_capabilities = computed(() => {
     const provider = selected_pi_provider.value;
     if (!provider) {
@@ -854,7 +871,8 @@ const selected_pi_capabilities = computed(() => {
         provider,
         store.settings.额外模型解析配置.pi.api as PiWireApi,
         store.settings.额外模型解析配置.pi.endpoint,
-        selected_catalog_model.value
+        selected_catalog_model.value,
+        store.settings.额外模型解析配置.pi.thinkingLevel
     );
 });
 const temperature_disabled = computed(

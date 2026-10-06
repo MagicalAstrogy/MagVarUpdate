@@ -147,12 +147,12 @@ async function main() {
     };
     const stream =
         scenario === 'tool'
-            ? api.stream(model, context, {
+            ? api.stream(model, gateway.normalizeContext(context), {
                   ...options,
                   toolChoice: 'any',
                   thinking: { enabled: false },
               })
-            : api.streamSimple(model, context, options);
+            : api.streamSimple(model, gateway.normalizeContext(context), options);
     const eventTypes = [];
     for await (const event of stream) eventTypes.push(event.type);
     const result = await stream.result();
