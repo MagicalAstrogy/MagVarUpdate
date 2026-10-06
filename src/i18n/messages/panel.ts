@@ -608,6 +608,47 @@ export const panelMessages = defineMessages({
         'zh-CN': '格式化输出',
         en: 'Structured output',
     },
+    'panel.source.pi.thinkingLevel': {
+        'zh-CN': '思考等级',
+        en: 'Thinking level',
+    },
+    'panel.source.pi.thinkingLevelHelp': {
+        'zh-CN':
+            '默认保持现有请求行为；其他等级按模型能力映射，部分模型无法完全关闭思考。未知模型会尝试发送所选等级，支持情况以服务端为准。Anthropic 开启思考时不支持强制工具调用，旧模型至少需要 2048 回复 token。自定义请求体覆盖仍优先。',
+        en: 'Default preserves existing requests. Other levels are mapped to model capabilities; some models cannot fully disable thinking. Unknown models attempt the selected level subject to server support. Anthropic thinking cannot force tool calls; older models need at least 2048 reply tokens. Custom body overrides take precedence.',
+    },
+    'panel.source.pi.thinking.default': {
+        'zh-CN': '默认（保持原行为）',
+        en: 'Default (unchanged behavior)',
+    },
+    'panel.source.pi.thinking.off': {
+        'zh-CN': '关闭 / 最低',
+        en: 'Off / minimum',
+    },
+    'panel.source.pi.thinking.minimal': {
+        'zh-CN': '极低',
+        en: 'Minimal',
+    },
+    'panel.source.pi.thinking.low': {
+        'zh-CN': '低',
+        en: 'Low',
+    },
+    'panel.source.pi.thinking.medium': {
+        'zh-CN': '中',
+        en: 'Medium',
+    },
+    'panel.source.pi.thinking.high': {
+        'zh-CN': '高',
+        en: 'High',
+    },
+    'panel.source.pi.thinking.xhigh': {
+        'zh-CN': '极高',
+        en: 'Extra high',
+    },
+    'panel.source.pi.thinking.max': {
+        'zh-CN': '最高',
+        en: 'Maximum',
+    },
     'panel.source.pi.contextWindow': {
         'zh-CN': '上下文窗口',
         en: 'Context window',

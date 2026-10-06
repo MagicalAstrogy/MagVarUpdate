@@ -656,7 +656,7 @@ function verifiedCatalogModel(
 export function resolvePiCapabilities(
     definition: PiProviderDefinition,
     api: PiWireApi,
-    options: { model?: Model<Api>; catalogHit: boolean }
+    options: { model?: Model<Api>; catalogHit: boolean; thinkingLevel?: string }
 ): Readonly<PiApiCapabilities> | undefined {
     const registered = definition.apiCapabilities[api];
     if (!registered) {
@@ -665,6 +665,8 @@ export function resolvePiCapabilities(
 
     const catalogModel = verifiedCatalogModel(definition, api, options);
     const samplingModel = catalogModel ?? options.model;
+    const thinkingEnabled =
+        options.thinkingLevel !== undefined && !['default', 'off'].includes(options.thinkingLevel);
     const anthropicSamplingAllowed =
         definition.key !== 'anthropic' ||
         catalogModel === undefined ||
@@ -683,7 +685,10 @@ export function resolvePiCapabilities(
         !catalogModel ||
         !GOOGLE_NO_SAMPLING_MODEL_IDS.has(catalogModel.id);
     const samplingAllowed =
-        anthropicSamplingAllowed && openAISamplingAllowed && googleSamplingAllowed;
+        anthropicSamplingAllowed &&
+        openAISamplingAllowed &&
+        googleSamplingAllowed &&
+        !(thinkingEnabled && (api === 'anthropic-messages' || definition.key === 'openai'));
     const streamingAllowed =
         definition.key !== 'openai' ||
         !catalogModel ||

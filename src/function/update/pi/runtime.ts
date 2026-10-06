@@ -1,3 +1,8 @@
+import {
+    normalizePiThinkingLevel,
+    isPiThinkingEnabled,
+    type PiThinkingLevel,
+} from './thinking_setting';
 import type { MvuSettings } from '@/store';
 import { installPiAbortSignalPolyfills } from './abort_signal';
 import {
@@ -20,6 +25,7 @@ import { createPiNonStreamingFetch } from './non_streaming_fetch';
 import { isPiStreamingRequired } from './provider_target';
 import { createPiPayloadTransform, transformPiPayload, type PiJsonSchema } from './payload';
 import {
+    clampThinkingLevel,
     createModels,
     createProvider,
     type Api,
@@ -28,6 +34,7 @@ import {
     type AuthContext,
     type CredentialStore,
     type FetchFunction,
+    type SimpleStreamOptions,
     type ProviderAuth,
     type ProviderHeaders,
     type Tool,
@@ -144,6 +151,7 @@ export interface PiRuntimePreflight {
     readonly fetch?: FetchFunction;
     readonly useCorsProxy: boolean;
     readonly streaming: boolean;
+    readonly thinkingLevel: PiThinkingLevel;
 }
 
 /** 可选的 Pi 进度监听，运行时不会向此回调转发未经处理的错误事件。 */
@@ -317,13 +325,17 @@ function cloneJsonSchema(schema: PiJsonSchema | undefined): PiJsonSchema | undef
 }
 
 /** 解析当前模型的可信协议能力，注册信息缺失时终止配置预检。 */
-function capabilityFor(resolution: ResolvedPiModel): Readonly<PiApiCapabilities> {
+function capabilityFor(
+    resolution: ResolvedPiModel,
+    thinkingLevel: PiThinkingLevel
+): Readonly<PiApiCapabilities> {
     const capability = resolvePiCapabilities(
         resolution.definition,
         resolution.model.api as PiWireApi,
         {
             model: resolution.model,
             catalogHit: resolution.catalogHit,
+            thinkingLevel,
         }
     );
     if (!capability) {
@@ -459,7 +471,10 @@ export async function assertPiRuntimeConfiguration(
     const settings = requireSettings(input.settings);
     const resolution = resolvePiModelFromExtraModelSettings(settings);
     const responseFormat = resolveResponseFormat(settings, input.responseFormat);
-    const capabilities = capabilityFor(resolution);
+    const thinkingLevel = normalizePiThinkingLevel(
+        isPlainObject(settings.pi) ? settings.pi.thinkingLevel : undefined
+    );
+    const capabilities = capabilityFor(resolution, thinkingLevel);
     const streaming =
         settings['兼容假流式'] === true || isPiStreamingRequired(resolution.model.api);
     if (streaming && !capabilities.streaming) {
@@ -520,6 +535,27 @@ export async function assertPiRuntimeConfiguration(
             error instanceof Error ? error.message : 'More source tool configuration is invalid'
         );
     }
+    if (isPiThinkingEnabled(thinkingLevel) && resolution.model.api === 'anthropic-messages') {
+        if (toolChoice !== undefined && toolChoice !== 'auto' && toolChoice !== 'none') {
+            throw new PiRuntimeError(
+                'invalid_configuration',
+                'Anthropic thinking does not support forced tool calls. Use chat/structured output or turn thinking off.'
+            );
+        }
+        if (
+            !(
+                resolution.model.compat &&
+                'forceAdaptiveThinking' in resolution.model.compat &&
+                resolution.model.compat.forceAdaptiveThinking === true
+            ) &&
+            resolution.effectiveMaxTokens < 2048
+        ) {
+            throw new PiRuntimeError(
+                'invalid_configuration',
+                'Anthropic budget-based thinking requires at least 2048 max reply tokens.'
+            );
+        }
+    }
     const jsonSchema = prepareJsonSchema(responseFormat, input.jsonSchema);
     const credentialStore = input.credentialStore ?? getPiCredentialStore(piSettings);
     await assertOAuthCredential(resolution, credentialStore, input.signal);
@@ -544,6 +580,7 @@ export async function assertPiRuntimeConfiguration(
         fetch: input.fetch,
         useCorsProxy,
         streaming,
+        thinkingLevel,
     });
     validatePayloadConfiguration(preflight);
     return preflight;
@@ -876,7 +913,32 @@ export async function runPiRequest(
             // error code. Check the instance-only SDK seam before entering that boundary.
             assertGoogleProxyAdapterCompatible();
         }
-        const stream = models.stream(preflight.resolution.model, systemMessages.context, options);
+        let stream;
+        if (preflight.thinkingLevel === 'default') {
+            stream = models.stream(preflight.resolution.model, systemMessages.context, options);
+        } else {
+            const model = {
+                ...preflight.resolution.model,
+                // An explicit setting opts unknown/custom-endpoint models into reasoning.
+                reasoning: preflight.resolution.catalogHit
+                    ? preflight.resolution.model.reasoning
+                    : true,
+                // The shared answer/thinking budget must stay inside the preflight reservation.
+                maxTokens: preflight.resolution.effectiveMaxTokens,
+            };
+            const level =
+                preflight.thinkingLevel === 'off'
+                    ? 'off'
+                    : clampThinkingLevel(model, preflight.thinkingLevel);
+            // Pi 1.0's simple adapters forward native toolChoice unchanged, although the public
+            // simple type only declares auto/none. Keep required/named choices from our resolver.
+            // Real-adapter transport tests cover this compatibility boundary.
+            const simpleOptions = {
+                ...options,
+                reasoning: level === 'off' ? undefined : level,
+            } as SimpleStreamOptions;
+            stream = models.streamSimple(model, systemMessages.context, simpleOptions);
+        }
 
         for await (const event of stream) {
             // Provider error events can contain raw response bodies, request headers, or echoed

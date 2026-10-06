@@ -65,6 +65,23 @@ describe('extra model api profiles', () => {
         (globalThis as any).SillyTavern.extensionSettings = {};
     });
 
+    test('saves thinking level with a Pi profile, detects edits and restores legacy defaults', () => {
+        const config = {
+            ...base_config,
+            模型来源: '更多' as const,
+            pi: { ...base_pi_settings, thinkingLevel: 'high' as const },
+        };
+        const saved = saveAsNewExtraModelApiProfile(config, 'Thinking');
+        expect(saved.api方案列表[0].pi?.thinkingLevel).toBe('high');
+        expect(isActiveExtraModelApiProfileDirty(saved)).toBe(false);
+        saved.pi!.thinkingLevel = 'low';
+        expect(isActiveExtraModelApiProfileDirty(saved)).toBe(true);
+        const restored = selectExtraModelApiProfile(saved, 'Thinking');
+        expect(restored.pi?.thinkingLevel).toBe('high');
+        delete restored.api方案列表[0].pi!.thinkingLevel;
+        expect(selectExtraModelApiProfile(restored, 'Thinking').pi?.thinkingLevel).toBe('default');
+    });
+
     const request_options: ExtraModelApiRequestFields = {
         破限方案: '使用其他预设',
         其他预设名称: '变量预设',

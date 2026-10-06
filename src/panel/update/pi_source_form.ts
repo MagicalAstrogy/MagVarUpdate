@@ -217,7 +217,8 @@ export function resolvePiSourceCapabilities(
     definition: PiProviderDefinition,
     api: PiWireApi,
     endpoint: string,
-    catalog_model?: Model<Api>
+    catalog_model?: Model<Api>,
+    thinkingLevel?: string
 ): Readonly<PiApiCapabilities> | undefined {
     const effective_catalog_model = isPiEndpointCatalogCompatible(definition, endpoint, api)
         ? catalog_model
@@ -225,6 +226,7 @@ export function resolvePiSourceCapabilities(
     return resolvePiCapabilities(definition, api, {
         model: effective_catalog_model,
         catalogHit: effective_catalog_model !== undefined,
+        thinkingLevel,
     });
 }
 

@@ -9,6 +9,7 @@ import {
     hasActiveCharacterSettingsOverride,
     hasOwnCharacterSettingsOverride,
 } from '@/function/character_override/schema';
+import { PI_THINKING_LEVELS } from '@/function/update/pi/thinking_setting';
 import { is_jest_environment } from '@/jest';
 import { registerAsUniqueScript } from '@util/script';
 import { klona } from 'klona';
@@ -54,6 +55,7 @@ const ExtraModelPiProfileSnapshot = z
             .pipe(z.enum(['api_key', 'oauth'])),
         endpoint: z.string().trim(),
         useProxy: z.boolean().catch(false).default(false),
+        thinkingLevel: z.enum(PI_THINKING_LEVELS).catch('default').default('default'),
         model: z.string().trim(),
         contextWindow: ExtraModelPiProfileContextWindow,
         customHeaders: z.string(),
@@ -76,6 +78,7 @@ const ExtraModelPiSettings = z
         authType: z.string().trim().default('api_key'),
         endpoint: z.string().trim().default(''),
         useProxy: z.boolean().catch(false).default(false),
+        thinkingLevel: z.enum(PI_THINKING_LEVELS).catch('default').default('default'),
         model: z.string().trim().default(''),
         contextWindow: ExtraModelPiContextWindow,
         credentialIds: z.record(z.string(), z.string()).optional().catch({}),

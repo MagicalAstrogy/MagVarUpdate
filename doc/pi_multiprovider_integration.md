@@ -166,8 +166,14 @@ fetch，而原本就通过 SillyTavern 模型状态接口读取 OpenAI 结构目
 4. 填写模型 ID，也可以从 Pi 内置模型目录选择；“获取模型列表”会按当前来源/API/认证请求上游可见模型。
 5. 设置 `contextWindow` 和现有“最大回复 token 数”。
 6. 如果当前路由标有 `(Proxy)`，先确认 SillyTavern 已启用 Proxy 且来源下方没有 Proxy 警告。
-7. 在来源上方选择破限方案、应答格式和“兼容假流式”，并按需调整采样参数。
+7. 在来源上方选择破限方案、应答格式和“兼容假流式”，并按需调整高级参数中的采样参数和“思考等级”。
 8. 在“模型来源”顶部的“API 方案”中保存配置，或选择已有方案。
+
+高级参数中的“思考等级”支持默认、关闭／最低、minimal、low、medium、high、xhigh 和 max，随 Pi API 方案保存。
+默认（包括旧配置）保留原始请求行为；显式选择时由 Pi 的 simple adapter 按模型能力映射等级，部分模型无法完全关闭思考。
+目录外模型或自定义端点会尝试启用所选等级，实际支持由服务端决定。思考与回答的共享 token 预算不会突破配置的回复上限。
+开启思考会禁用不兼容的采样参数；Anthropic 不支持同时强制工具调用，预算式思考至少需要 2048 回复 token。
+自定义请求体覆盖保持原有优先级。
 
 “更多”默认发送非流式请求，勾选“兼容假流式”后才发送流式请求；两种模式都等完整回复后再更新变量。OpenAI
 Codex 的账号接口要求 `stream: true`，该来源的开关显示为固定开启。
@@ -205,7 +211,7 @@ API 方案通过 `backend` 区分两类快照：
 
 - `backend: 'custom'`：保存原有自定义 API 字段。
 - `backend: 'pi'`：保存结构完整的 Pi 连接快照，包括 provider、API、认证方式、endpoint、`useProxy`、model、
-  `contextWindow`、`customHeaders`、`customIncludeBody`、`customExcludeBody` 和 OAuth 凭证引用 `credentialIds`。
+  `contextWindow`、`thinkingLevel`、`customHeaders`、`customIncludeBody`、`customExcludeBody` 和 OAuth 凭证引用 `credentialIds`。
 
 旧方案没有 `backend` 时按 `custom`
 迁移。保存、另存、切换和删除 Pi 方案时会深拷贝连接字段并保留未知字段，避免响应式对象共享或前向兼容数据丢失。

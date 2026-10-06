@@ -239,6 +239,86 @@ try {
         assert.equal(sent, 1);
     }
 
+    // Explicit thinking uses the real simple adapters, preserving native required/named choices.
+    for (const [api, fixture] of Object.entries(fixtures)) {
+        for (const reasoning of ['high', undefined]) {
+            current_case = `${api}: simple thinking ${reasoning ?? 'off'} and native tool choice`;
+            const thinkingModel = {
+                ...model(api),
+                reasoning: true,
+                ...(api.startsWith('openai-')
+                    ? { thinkingLevelMap: { off: 'none', high: 'high' } }
+                    : {}),
+            };
+            const toolChoice =
+                api === 'google-generative-ai'
+                    ? 'any'
+                    : api === 'anthropic-messages'
+                      ? 'auto'
+                      : 'required';
+            let sent;
+            const result = await adapters[api]
+                .streamSimple(thinkingModel, gateway.normalizeContext(context), {
+                    apiKey: 'test-api-key',
+                    reasoning,
+                    toolChoice,
+                    maxTokens: 4096,
+                    maxRetries: 0,
+                    fetch: createPiNonStreamingFetch(api, async (input, init) => {
+                        sent = await new Request(input, init).json();
+                        return Response.json(fixture);
+                    }),
+                })
+                .result();
+            assert.equal(result.stopReason, 'toolUse', result.errorMessage);
+            if (api === 'openai-completions') {
+                assert.equal(sent.reasoning_effort, reasoning ?? 'none');
+                assert.equal(sent.tool_choice, 'required');
+            } else if (api === 'openai-responses') {
+                assert.equal(sent.reasoning.effort, reasoning ?? 'none');
+                assert.equal(sent.tool_choice, 'required');
+            } else if (api === 'anthropic-messages') {
+                assert.equal(sent.thinking.type, reasoning ? 'enabled' : 'disabled');
+                assert.equal(sent.tool_choice.type, 'auto');
+                assert.ok(sent.max_tokens <= 4096);
+                if (reasoning) assert.ok(sent.thinking.budget_tokens <= sent.max_tokens - 1024);
+            } else if (api === 'google-generative-ai') {
+                assert.equal(
+                    sent.generationConfig.thinkingConfig.thinkingBudget,
+                    reasoning ? -1 : 0
+                );
+                assert.equal(sent.toolConfig.functionCallingConfig.mode, 'ANY');
+            } else {
+                assert.equal(sent.prompt_mode, reasoning ? 'reasoning' : undefined);
+                assert.equal(sent.tool_choice, 'required');
+            }
+        }
+    }
+
+    for (const api of ['openai-completions', 'openai-responses', 'mistral-conversations']) {
+        current_case = `${api}: named tools survive simple thinking options`;
+        const toolChoice =
+            api === 'openai-responses'
+                ? { type: 'function', name: 'update' }
+                : { type: 'function', function: { name: 'update' } };
+        let sent;
+        const result = await adapters[api]
+            .streamSimple({ ...model(api), reasoning: true }, gateway.normalizeContext(context), {
+                apiKey: 'test-api-key',
+                reasoning: 'high',
+                toolChoice,
+                maxTokens: 4096,
+                maxRetries: 0,
+                fetch: createPiNonStreamingFetch(api, async (input, init) => {
+                    sent = await new Request(input, init).json();
+                    return Response.json(fixtures[api]);
+                }),
+            })
+            .result();
+        assert.equal(result.stopReason, 'toolUse', result.errorMessage);
+        assert.deepEqual(sent.tool_choice, toolChoice);
+    }
+
     // 代理组合：非流式改写与酒馆代理共同工作，认证头和 JSON 请求体仍被保留。
     current_case = 'proxy composition uses non-streaming HTTP and retains auth';
     let proxy_requests = 0;

@@ -42,6 +42,7 @@ jest.mock('@/function/update/pi/pi_gateway', () => {
     });
 
     return {
+        clampThinkingLevel: jest.fn((model, level) => (model.reasoning ? level : 'off')),
         createModels: jest.fn(),
         createProvider: jest.fn(input => input),
         OPENAI_MODELS: {
@@ -638,14 +639,71 @@ describe('pi runtime preflight', () => {
 describe('pi runtime execution', () => {
     const setProvider = jest.fn();
     const stream = jest.fn();
+    const streamSimple = jest.fn();
 
     beforeEach(() => {
         jest.clearAllMocks();
         clearPiRequestControllers();
-        jest.mocked(createModels).mockReturnValue({ setProvider, stream } as never);
+        jest.mocked(createModels).mockReturnValue({ setProvider, stream, streamSimple } as never);
     });
 
     afterEach(() => clearPiRequestControllers());
+
+    test.each(['high', 'off'] as const)(
+        'sends explicit %s thinking through simple adapters and keeps the forced tool choice',
+        async thinkingLevel => {
+            streamSimple.mockReturnValue(fakeStream(assistant([{ type: 'text', text: 'done' }])));
+            const preflight = await assertPiRuntimeConfiguration({
+                settings: makeSettings({
+                    pi: { model: 'custom-reasoner', contextWindow: 128_000, thinkingLevel },
+                }),
+                responseFormat: '工具调用',
+                tools: [TOOL],
+                credentialStore: makeCredentialStore(),
+            });
+            expect(preflight.thinkingLevel).toBe(thinkingLevel);
+            if (thinkingLevel === 'high') {
+                expect(preflight.temperature).toBeUndefined();
+                expect(preflight.capabilities.sampling.topP).toBe(false);
+            }
+            await runPiRequest({
+                preflight,
+                generationId: `thinking-${thinkingLevel}`,
+                messages: [{ role: 'user', content: 'Update' }],
+            });
+            expect(stream).not.toHaveBeenCalled();
+            expect(streamSimple).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    reasoning: true,
+                    maxTokens: preflight.resolution.effectiveMaxTokens,
+                }),
+                expect.anything(),
+                expect.objectContaining({
+                    reasoning: thinkingLevel === 'off' ? undefined : 'high',
+                    toolChoice: 'required',
+                })
+            );
+        }
+    );
+
+    test('rejects Anthropic thinking with forced tools before dispatch', async () => {
+        await expect(
+            assertPiRuntimeConfiguration({
+                settings: makeSettings({
+                    pi: {
+                        provider: 'anthropic',
+                        api: 'anthropic-messages',
+                        model: 'claude-legacy',
+                        thinkingLevel: 'high',
+                    },
+                }),
+                responseFormat: '工具调用',
+                tools: [TOOL],
+                credentialStore: makeCredentialStore(),
+            })
+        ).rejects.toThrow('does not support forced tool calls');
+        expect(streamSimple).not.toHaveBeenCalled();
+    });
 
     test('restores native system roles with separate hook state for concurrent requests sharing preflight', async () => {
         const sent: unknown[] = [];
