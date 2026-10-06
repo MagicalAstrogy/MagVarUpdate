@@ -421,10 +421,18 @@ SSE 在流结束后合并输出，中断或读取失败时保留已收到的正�
   Schema 格式化输出；三家 AbortSignal；Pi 与 ST 主 chat-completion
   transport 并发时的 prompt/stop 隔离；以及“自定义”和“与插头相同”各一次旧链路回归。两条旧链路使用同一非空确定性更新，并精确比较最终正文、UpdateVariable、`stat_data`、`display_data`
   和
-  `delta_data`。最近一次终态为 14 次 capture、14 次 Provider 协议请求、2 次 Legacy 请求和 4 次状态请求，fetch、临时 profile 与进程均完成清理。该 runner 还通过真实
+  `delta_data`。流式与非流式文本分别验证，最近一次终态为 18 次 capture、18 次 Provider 协议请求、2 次 Legacy 请求和 4 次状态请求，fetch、临时 profile 与进程均完成清理。该 runner 还通过真实
   `#send_but`/`#mes_stop` 路径验证“Pi 等待时隐藏发送按钮 → 酒馆停止按钮取消 Pi
   → 恢复发送 → 发起并停止下一轮主聊天”的顺序，并检查后续聊天的 prompt。主聊天 pending 后再点额外解析重试因最后楼层为 user 而按产品语义 no-op，并被明确记录。runner 使用浏览器内 mock
   Provider 响应，因此不验证真实 TLS/CORS、账号权限、配额、上游响应或服务端取消。
+- `yarn test:pi:st-configured-live`
+  使用隔离的真实 ST/Firefox 实例和当前生产 bundle，向本地配置的 API 发送真实请求，不替换模型响应。覆盖当前预设、其他预设、内置破限三条路径，以及文本、工具调用、JSON
+  Schema、JSON Object 和取消场景；四组协议均配置时共 40 项。配置沿用 `api_settings.env`（可用
+  `MVU_PI_API_SETTINGS_FILE` 指定），Google 使用 `GEMINI_API_KEY`，未设置时可读取本地
+  `GEMINI_KEY_FILE.txt`。缺少凭据的协议不运行；`MVU_PI_ST_CONFIGURED_CASE`
+  可按场景 ID 子串筛选，多个子串用逗号分隔。密钥仅在实际请求的 fetch 边界注入，界面使用占位值；报告对错误信息脱敏，写入已忽略的
+  `coverage/pi-st-final/configured-cases.json`。本集合只通过上述显式命令启动，默认 `yarn test` /
+  `yarn test:coverage` 排除 `tests/live/`，不会执行它；凭据文件及测试报告不得提交。
 - `update:pi:st-prompt-fixtures`
   在隔离真实浏览器中同时捕获 Legacy 与 Pi 的当前预设、其他预设、内置破限三条 prompt 路径，并生成带版本/产物 provenance 的回归 fixtures。三路分别为 12/11/15 条 messages，逐路 JSON 完全一致且没有允许差异或 normalization；覆盖宏、prompt-only 正则、角色卡、世界书过滤与深度、历史裁剪、注入和
   `filterPrompts`。这三条“聊天消息”fixtures 均未出现历史工具消息，因此首版不额外扩大该回归范围。

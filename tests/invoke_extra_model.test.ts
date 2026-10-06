@@ -8,6 +8,403 @@ import {
     MVU_FUNCTION_NAME,
     MVU_JSON_PATCH_RESPONSE_SCHEMA,
 } from '@/function/function_call';
+import { parseAndValidateExtraModelResult } from '@/function/update/invoke_extra_model';
+import { extractCommands } from '@/function/update_variables';
+import YAML from 'yaml';
+
+/**
+ * 默认回复解析覆盖四种包装、三种结构化语法、两种数据形态及三种代码围栏，共 72 项组合。
+ * 同时验证字符串/注释中的标签、思考区、JSON 安全性和多块选择行为。
+ * 增量校正以 updateVariables 试执行为准；本解析器仅为无法直接提取命令的回复保留格式兼容。
+ */
+describe('parseAndValidateExtraModelResult', () => {
+    // parseString 在宿主中使用全局 YAML；此处注入真实解析器，并在本组用例结束后恢复。
+    const originalYaml = Object.getOwnPropertyDescriptor(globalThis, 'YAML');
+    beforeAll(() => {
+        Object.defineProperty(globalThis, 'YAML', { configurable: true, value: YAML });
+    });
+    afterAll(() => {
+        if (originalYaml) Object.defineProperty(globalThis, 'YAML', originalYaml);
+        else Reflect.deleteProperty(globalThis, 'YAML');
+    });
+
+    const patch = '[{"op":"replace","path":"/hp","value":72}]';
+    const patchBlock = `<JSONPatch>${patch}</JSONPatch>`;
+    const updateBlock = `<UpdateVariable>${patchBlock}</UpdateVariable>`;
+
+    test.each(['[Scene]', '# Scene', '- Scene', 'Scene: rainy', '[12:00]'])(
+        'recognizes explicit update wrappers after narrative beginning with %s',
+        header => {
+            for (const wrapper of ['UpdateVariable', 'VariableUpdate', 'Update']) {
+                const block = `<${wrapper}>${patchBlock}</${wrapper}>`;
+                const input = `${header}\nAlice's smile brightened.\n${block}`;
+                expect(parseAndValidateExtraModelResult(input)).toBe(updateBlock);
+                expect(extractCommands(input)).toEqual(extractCommands(patchBlock));
+            }
+        }
+    );
+
+    test.each(['[Scene]', '# Scene', '- Scene'])(
+        'preserves the existing unwrapped behavior after %s',
+        header => {
+            expect(extractCommands(`${header}\nAlice's smile brightened.\n${patchBlock}`)).toEqual(
+                []
+            );
+        }
+    );
+
+    // 输入矩阵见本组测试上方的块注释。
+    // 四种包装 × 三种语法 × 数组/对象 × 无围栏/匿名围栏/语言围栏。
+    const wrappers = [
+        { name: 'bare', tagged: false, wrap: (text: string) => text },
+        {
+            name: 'update',
+            tagged: false,
+            wrap: (text: string) => `<UpdateVariable>\n${text}\n</UpdateVariable>`,
+        },
+        {
+            name: 'patch',
+            tagged: true,
+            wrap: (text: string) => `<JSONPatch>\n${text}\n</JSONPatch>`,
+        },
+        {
+            name: 'update+patch',
+            tagged: true,
+            wrap: (text: string) =>
+                `<UpdateVariable>\n<JSONPatch>\n${text}\n</JSONPatch>\n</UpdateVariable>`,
+        },
+    ];
+    const formats = [
+        {
+            name: 'json',
+            array: patch,
+            object: `{"analysis":"checked","json_patch":${patch}}`,
+        },
+        {
+            name: 'json5',
+            array: "// JSON5 comment\n[{op: 'replace', path: '/hp', value: 72,},]",
+            object: "/* JSON5 comment */\n{analysis: 'checked', json_patch: [{op: 'replace', path: '/hp', value: 72,},],}",
+        },
+        {
+            name: 'yaml',
+            array: '# YAML comment\n- op: replace\n  path: /hp\n  value: 72',
+            object: 'analysis: checked\njson_patch:\n  - op: replace\n    path: /hp\n    value: 72',
+        },
+    ];
+    const structuredCases = formats.flatMap(format =>
+        (['array', 'object'] as const).flatMap(shape =>
+            ['none', 'anonymous', 'language'].map(fence => ({
+                name: `${format.name}/${shape}/${fence}`,
+                shape,
+                text:
+                    fence === 'none'
+                        ? format[shape]
+                        : `\`\`\`${fence === 'language' ? format.name : ''}\n${format[shape]}\n\`\`\``,
+            }))
+        )
+    );
+    const normalizedUpdate = (analysis: string, operations: unknown[]) =>
+        [
+            '<UpdateVariable>',
+            '<Analyze>',
+            analysis,
+            '</Analyze>',
+            '<JSONPatch>',
+            JSON.stringify(operations, null, 2),
+            '</JSONPatch>',
+            '</UpdateVariable>',
+        ].join('\n');
+
+    describe.each(wrappers)('structured matrix / $name', wrapper => {
+        test.each(structuredCases)('$name', ({ shape, text }) => {
+            const parse = () => parseAndValidateExtraModelResult(wrapper.wrap(text));
+            if (wrapper.tagged && shape === 'object') {
+                // 显式 JSONPatch 标签只接受操作数组，不能再套一层 json_patch 对象。
+                expect(parse).toThrow('JSONPatch 内容不合法或包含非有限值');
+            } else if (wrapper.tagged) {
+                // 已有补丁标签：只统一外层包装，补丁及代码围栏原文不变。
+                const expected =
+                    wrapper.name === 'patch'
+                        ? `<UpdateVariable>${wrapper.wrap(text)}</UpdateVariable>`
+                        : wrapper.wrap(text);
+                expect(parse()).toBe(expected);
+            } else {
+                // 无补丁标签（包括 UpdateVariable 内直接放 YAML/JSON5）：转为标准 JSON 补丁。
+                expect(parse()).toBe(
+                    normalizedUpdate(shape === 'object' ? 'checked' : '', [
+                        { op: 'replace', path: '/hp', value: 72 },
+                    ])
+                );
+            }
+        });
+
+        test.each([
+            { name: 'JSON missing op', text: '[{"path":"/hp","value":72}]' },
+            { name: 'JSON5 NaN', text: "[{op:'replace', path:'/hp', value:NaN}]" },
+            { name: 'JSON5 Infinity', text: "[{op:'replace', path:'/hp', value:-Infinity}]" },
+            { name: 'YAML missing path', text: '- op: replace\n  value: 72' },
+            { name: 'YAML NaN', text: '- op: replace\n  path: /hp\n  value: .nan' },
+            { name: 'YAML Infinity', text: '- op: replace\n  path: /hp\n  value: .inf' },
+            { name: 'YAML cycle', text: '- &loop\n  op: replace\n  path: /hp\n  value: *loop' },
+        ])('rejects $name', ({ text }) => {
+            const parse = () => parseAndValidateExtraModelResult(wrapper.wrap(text));
+            if (wrapper.tagged) expect(parse).toThrow('JSONPatch 内容不合法或包含非有限值');
+            else expect(parse()).toBeNull();
+        });
+
+        test('legacy commands require a body without JSONPatch tags', () => {
+            const command = "_.set('hp', 72);";
+            const parse = () => parseAndValidateExtraModelResult(wrapper.wrap(command));
+            if (wrapper.tagged) expect(parse).toThrow('JSONPatch 内容不合法或包含非有限值');
+            else
+                expect(parse()).toBe(
+                    wrapper.name === 'bare'
+                        ? `<UpdateVariable>${command}</UpdateVariable>`
+                        : wrapper.wrap(command)
+                );
+        });
+    });
+
+    // 对象字段别名及字符串化补丁也必须经过真实解析，而非只验证输出里出现标签。
+    test.each(['json_patch', 'jsonPatch', 'patch', 'delta'])(
+        'accepts the %s field in wrapped JSON5 and YAML objects',
+        field => {
+            for (const text of [
+                `{analyze: 'checked', ${field}: [{op: 'replace', path: '/hp', value: 72}]}`,
+                `analyze: checked\n${field}:\n  - op: replace\n    path: /hp\n    value: 72`,
+                JSON.stringify({ analyze: 'checked', [field]: patch }),
+            ]) {
+                expect(parseAndValidateExtraModelResult(wrappers[1].wrap(text))).toBe(
+                    normalizedUpdate('checked', [{ op: 'replace', path: '/hp', value: 72 }])
+                );
+            }
+        }
+    );
+
+    // 默认解析在多个直接结构化更新块中选取最后一个闭合块。
+    test.each(formats)('multiple direct $name updates', format => {
+        const first = wrappers[1].wrap('[]');
+        const last = wrappers[1].wrap(format.object);
+        expect(parseAndValidateExtraModelResult(first + '\n' + last)).toBe(
+            normalizedUpdate('checked', [{ op: 'replace', path: '/hp', value: 72 }])
+        );
+    });
+
+    const literal = '</JSONPatch><UpdateVariable><Think>literal</Think></UpdateVariable>';
+    describe.each(wrappers)('data boundaries / $name', wrapper => {
+        test.each([
+            {
+                name: 'JSON5 quotes, escaped apostrophe and comments',
+                text:
+                    `/* <UpdateVariable><JSONPatch>fake</JSONPatch></UpdateVariable> */\n` +
+                    `[{op:'replace', path:'/template', value:'it\\'s ${literal}',},]`,
+                value: `it's ${literal}`,
+            },
+            {
+                name: 'YAML single quotes and escaped apostrophe',
+                text: `- op: replace\n  path: /template\n  value: 'it''s ${literal}'`,
+                value: `it's ${literal}`,
+            },
+            {
+                name: 'YAML double quotes',
+                text: `- op: replace\n  path: /template\n  value: "${literal}"`,
+                value: literal,
+            },
+            {
+                name: 'YAML plain scalar and comment',
+                text:
+                    `# <UpdateVariable><JSONPatch>fake</JSONPatch></UpdateVariable>\n` +
+                    `- op: replace\n  path: /template\n  value: prefix ${literal}`,
+                value: `prefix ${literal}`,
+            },
+            {
+                name: 'YAML literal block scalar',
+                text: `- op: replace\n  path: /template\n  value: |-\n    ${literal}\n    second line`,
+                value: `${literal}\nsecond line`,
+            },
+            {
+                name: 'YAML folded block scalar',
+                text: `- op: replace\n  path: /template\n  value: >-\n    ${literal}\n    second line`,
+                value: `${literal} second line`,
+            },
+        ])('preserves $name', ({ text, value }) => {
+            const result = parseAndValidateExtraModelResult(wrapper.wrap(text));
+            expect(result).toBe(
+                wrapper.tagged
+                    ? wrapper.name === 'patch'
+                        ? `<UpdateVariable>${wrapper.wrap(text)}</UpdateVariable>`
+                        : wrapper.wrap(text)
+                    : normalizedUpdate('', [{ op: 'replace', path: '/template', value }])
+            );
+        });
+    });
+
+    test('accepts non-cyclic YAML aliases inside a fenced update block', () => {
+        const response = wrappers[1].wrap(
+            '```yml\n- &change\n  op: replace\n  path: /hp\n  value: 72\n- *change\n```'
+        );
+        expect(parseAndValidateExtraModelResult(response)).toBe(
+            normalizedUpdate('', [
+                { op: 'replace', path: '/hp', value: 72 },
+                { op: 'replace', path: '/hp', value: 72 },
+            ])
+        );
+    });
+
+    test.each(formats)('accepts $name in a CRLF update block after reasoning examples', format => {
+        const response = wrappers[1]
+            .wrap(`<Analysis>_.set('wrong', 0);</Analysis>\n${format.array}`)
+            .replace(/\n/g, '\r\n');
+        expect(parseAndValidateExtraModelResult(response)).toBe(
+            normalizedUpdate('', [{ op: 'replace', path: '/hp', value: 72 }])
+        );
+    });
+
+    // 更新块边界：兼容别名、缺失包装和未闭合外层，但优先使用最后一个完整更新块。
+    test.each(['UpdateVariable', 'VariableUpdate', 'update', 'UPDATEVARIABLE'])(
+        'normalizes the %s wrapper and patch tag aliases',
+        tag => {
+            expect(
+                parseAndValidateExtraModelResult(
+                    `<${tag}><json_patch>${patch}</JSON_Patch></${tag}>`
+                )
+            ).toBe(updateBlock);
+        }
+    );
+
+    test('prefers the last complete update over earlier and trailing incomplete blocks', () => {
+        const response =
+            '<UpdateVariable><JSONPatch>[]</JSONPatch></UpdateVariable>' +
+            updateBlock +
+            '<UpdateVariable>unfinished';
+
+        expect(parseAndValidateExtraModelResult(response)).toBe(updateBlock);
+    });
+
+    test('accepts an incomplete outer wrapper when its patch is complete', () => {
+        expect(parseAndValidateExtraModelResult(`<UpdateVariable>${patchBlock}`)).toBe(updateBlock);
+    });
+
+    test.each([
+        '',
+        '<UpdateVariable></UpdateVariable>',
+        '<UpdateVariable>invalid</UpdateVariable>',
+    ])('extracts a fallback patch without importing surrounding prose: %s', prefix => {
+        expect(
+            parseAndValidateExtraModelResult(`${prefix}\n剧情正文\n${patchBlock}\n后续说明`)
+        ).toBe(updateBlock);
+    });
+
+    test('ignores update examples in reasoning before and after the actual result', () => {
+        const example = '<UpdateVariable><JSONPatch>[]</JSONPatch></UpdateVariable>';
+        expect(
+            parseAndValidateExtraModelResult(
+                `<Think>${example}</Think>${updateBlock}<Analysis>${example}</Analysis>`
+            )
+        ).toBe(updateBlock);
+    });
+
+    test('preserves literal tags in patch strings without treating them as block boundaries', () => {
+        const value = '</JSONPatch><UpdateVariable><Think>literal</Think></UpdateVariable>';
+        const payload = JSON.stringify([{ op: 'replace', path: '/template', value }]);
+        const response = `<UpdateVariable><JSONPatch>${payload}</JSONPatch></UpdateVariable>`;
+
+        expect(parseAndValidateExtraModelResult(response)).toBe(response);
+    });
+
+    // 默认回复校验：拒绝不完整标签、无效结构和不安全的值。
+    test.each([
+        '<JSONPatch>[]',
+        '<UpdateVariable><JSONPatch>[]</UpdateVariable>',
+        `${patchBlock}<JSONPatch>[]`,
+    ])('rejects unclosed patch tags: %s', response => {
+        expect(() => parseAndValidateExtraModelResult(response)).toThrow('JSONPatch 标签未闭合');
+    });
+
+    test.each([
+        '{}',
+        '[{"path":"/hp","value":72}]',
+        '[{"op":"replace","path":42,"value":72}]',
+        '[{"op":"replace","path":"/hp","value":NaN}]',
+        '[{"op":"replace","path":"/hp","value":Infinity}]',
+        '\n- &loop\n  op: replace\n  path: /hp\n  value: *loop\n',
+    ])('rejects invalid or JSON-unsafe patch content: %s', payload => {
+        expect(() => parseAndValidateExtraModelResult(`<JSONPatch>${payload}</JSONPatch>`)).toThrow(
+            'JSONPatch 内容不合法或包含非有限值'
+        );
+    });
+
+    test('retains parseString recovery of a truncated empty array', () => {
+        expect(parseAndValidateExtraModelResult('<JSONPatch>[</JSONPatch>')).toBe(
+            '<UpdateVariable><JSONPatch>[</JSONPatch></UpdateVariable>'
+        );
+    });
+
+    test('accepts an empty patch as a no-op', () => {
+        expect(parseAndValidateExtraModelResult('<JSONPatch>[]</JSONPatch>')).toBe(
+            '<UpdateVariable><JSONPatch>[]</JSONPatch></UpdateVariable>'
+        );
+    });
+
+    test('keeps multiple patches and mixed legacy content inside an ordinary update block', () => {
+        const response =
+            `<UpdateVariable><Analysis>检查结果</Analysis>${patchBlock}` +
+            "_.set('other', 1);<json_patch>[]</json_patch></UpdateVariable>";
+
+        expect(parseAndValidateExtraModelResult(response)).toBe(
+            response.replace('<json_patch>[]</json_patch>', '<JSONPatch>[]</JSONPatch>')
+        );
+    });
+
+    test('joins fallback patches without retaining intervening prose', () => {
+        expect(parseAndValidateExtraModelResult(`${patchBlock}\n剧情\n${patchBlock}`)).toBe(
+            `<UpdateVariable>${patchBlock}\n${patchBlock}</UpdateVariable>`
+        );
+    });
+
+    // 旧脚本兼容：真实指令可以通过，思考区、字符串和注释里的示例不能触发成功。
+    test.each(['set', 'insert', 'assign', 'remove', 'unset', 'delete', 'add'])(
+        'accepts a legacy _.%s command',
+        method => {
+            const command = `_.${method}('hp', 72);`;
+            expect(parseAndValidateExtraModelResult(command)).toBe(
+                `<UpdateVariable>${command}</UpdateVariable>`
+            );
+        }
+    );
+
+    test('removes reasoning examples while preserving actual legacy command arguments', () => {
+        const command = "_.set('template', '<Think>literal</Think>');";
+        const result = parseAndValidateExtraModelResult(
+            `<UpdateVariable><Think>_.set('wrong', 1);</Think>\n${command}</UpdateVariable>`
+        );
+
+        expect(result).toContain(command);
+        expect(result).not.toContain('wrong');
+    });
+
+    test.each([
+        "<Think>_.set('hp', 72);</Think>",
+        "<Analysis>_.set('hp', 72);</Analysis>",
+        '<Think><JSONPatch>[]</JSONPatch></Think>',
+        JSON.stringify({ example: "_.set('hp', 72);" }),
+        "/* _.set('hp', 72); */",
+        "// _.set('hp', 72);",
+    ])('does not accept commands or patches that only appear in examples: %s', response => {
+        expect(parseAndValidateExtraModelResult(response)).toBeNull();
+    });
+
+    test.each([
+        '',
+        '没有需要更新的内容',
+        '<UpdateVariable>提到了 json_patch，但没有指令</UpdateVariable>',
+        '{"unrelated":true}',
+        '[{"op":"replace","path":"/hp","value":NaN}]',
+        '- &loop\n  op: replace\n  path: /hp\n  value: *loop',
+    ])('returns null when no valid update can be extracted: %s', response => {
+        expect(parseAndValidateExtraModelResult(response)).toBeNull();
+    });
+});
 
 type ToolCallBatches = Array<
     Array<{
@@ -68,6 +465,14 @@ describe('extractFromToolCall', () => {
         const args = JSON.stringify({ delta: '1234', analysis: 'short' });
         const toolCalls = makeToolCalls(args);
         expect(extractFromToolCall(toolCalls)).toBeNull();
+    });
+
+    test('accepts an empty JSONPatch array as a no-op', () => {
+        const args = JSON.stringify({ delta: '[]', analysis: 'no changes' });
+        const toolCalls = makeToolCalls(args);
+        const result = extractFromToolCall(toolCalls);
+        expect(result).toContain('<JSONPatch>');
+        expect(result).toContain('[]');
     });
 
     // 有效结果与标签边界：选择正确调用，保留补丁值中的字面标签。

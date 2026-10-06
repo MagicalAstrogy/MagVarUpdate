@@ -23,6 +23,7 @@
         "test:pi:st-server-cancel": "node tests/live/run_pi_st_server_cancel_smoke.mjs",
         "test:pi:st-features": "node tests/live/run_pi_st_feature_smoke.mjs",
         "test:pi:st-live": "node tests/live/run_pi_st_openrouter_browser_smoke.mjs",
+        "test:pi:st-configured-live": "node tests/live/run_pi_st_configured_live_smoke.mjs",
         "update:pi:st-prompt-fixtures": "node tests/live/run_pi_st_prompt_fixtures.mjs",
         "test:watch": "jest --watch",
         "test:coverage": "jest --coverage --json --outputFile=test-results.json --coverageReporters=json-summary --coverageReporters=text --coverageReporters=lcov"

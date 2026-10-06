@@ -5,6 +5,9 @@ import {
 import { MVU_TOOL_DEFINITION } from '@/function/function_call';
 import { MIN_FUNCTION_CALLING_TAVERN_HELPER_VERSION } from '@/function/is_function_calling_supported';
 import { useDataStore } from '@/store';
+import { validateIncrementalRepairAgainstState } from '@/function/update/incremental_repair';
+import { type MvuData } from '@/variable_def';
+import YAML from 'yaml';
 
 const RANDOM_HEADER_PATTERN = /^[0-9a-f]{8}\n[0-9a-f]{8}\n[0-9a-f]{8}\n[0-9a-f]{8}$/i;
 
@@ -36,6 +39,172 @@ describe('extra model max chat history', () => {
                 max_chat_history: 42,
             })
         );
+    });
+
+    test('allows a request-scoped task and user input override', async () => {
+        await generateExtraModel({
+            task: 'CUSTOM_INCREMENTAL_REPAIR_TASK',
+            user_input: 'CUSTOM_INCREMENTAL_REPAIR_INPUT',
+        });
+
+        const config = (globalThis as any).generateRaw.mock.calls[0][0];
+        expect(config.user_input).toBe('CUSTOM_INCREMENTAL_REPAIR_INPUT');
+        expect(config.ordered_prompts).toContainEqual({
+            role: 'system',
+            content: 'CUSTOM_INCREMENTAL_REPAIR_TASK',
+        });
+    });
+
+    test('appends a request-scoped suffix to the built-in task', async () => {
+        await generateExtraModel({ task_suffix: 'INCREMENTAL_ONLY_SUFFIX' });
+
+        const config = (globalThis as any).generateRaw.mock.calls[0][0];
+        const task_prompt = config.ordered_prompts.find(
+            (prompt: unknown) =>
+                typeof prompt === 'object' &&
+                prompt !== null &&
+                'content' in prompt &&
+                typeof prompt.content === 'string' &&
+                prompt.content.includes('INCREMENTAL_ONLY_SUFFIX')
+        );
+        expect(task_prompt).toBeDefined();
+    });
+
+    test('keeps a request-scoped reminder before the preset tail', async () => {
+        await generateExtraModel({ user_input: 'INCREMENTAL_USER_FOCUS' });
+
+        const config = (globalThis as any).generateRaw.mock.calls[0][0];
+        expect(config.user_input).toBe('INCREMENTAL_USER_FOCUS');
+        expect(config.ordered_prompts.at(-2)).toBe('user_input');
+        expect(config.ordered_prompts.at(-1).content).not.toBe('INCREMENTAL_USER_FOCUS');
+    });
+
+    test('accepts a bare JSONPatch for ordinary extra-model requests', async () => {
+        (globalThis as any).generateRaw.mockResolvedValueOnce(
+            '<JSONPatch>[{"op":"replace","path":"/hp","value":72}]</JSONPatch>'
+        );
+
+        const result = await generateExtraModel();
+
+        expect(result).toBe(
+            '<UpdateVariable><JSONPatch>[{"op":"replace","path":"/hp","value":72}]</JSONPatch></UpdateVariable>'
+        );
+    });
+
+    test('normalizes a bare structured JSON response without a repair option', async () => {
+        (globalThis as any).generateRaw.mockResolvedValueOnce(
+            '{"analysis":"checked","json_patch":[{"op":"replace","path":"/hp","value":72}]}'
+        );
+
+        const result = await generateExtraModel();
+
+        expect(result).toContain('<UpdateVariable>');
+        expect(result).toContain('<JSONPatch>');
+        expect(result).toContain('"path": "/hp"');
+    });
+
+    test.each([generateExtraModel, invokeExtraModelWithStrategy])(
+        'lets the custom validator handle unfiltered replies with %p',
+        async invoke => {
+            useDataStore().settings.通知.额外模型解析中 = false;
+            const response = '<JSONPatch>invalid</JSONPatch>' + "_.set('hp', 80);";
+            (globalThis as any).generateRaw.mockResolvedValueOnce(response);
+            const validate_result = jest.fn(async (result: string) => {
+                await Promise.resolve();
+                return result;
+            });
+            await expect(invoke({ validate_result })).resolves.toBe(response);
+            expect(validate_result).toHaveBeenCalledTimes(1);
+            expect(validate_result).toHaveBeenCalledWith(response);
+        }
+    );
+
+    describe('preserves previously accepted reply formats for trial validation', () => {
+        const originalYaml = Object.getOwnPropertyDescriptor(globalThis, 'YAML');
+        beforeAll(() =>
+            Object.defineProperty(globalThis, 'YAML', { configurable: true, value: YAML })
+        );
+        afterAll(() => {
+            if (originalYaml) Object.defineProperty(globalThis, 'YAML', originalYaml);
+            else Reflect.deleteProperty(globalThis, 'YAML');
+        });
+        const formats = [
+            {
+                name: 'json',
+                array: '[{"op":"replace","path":"/hp","value":80}]',
+                object: '{"json_patch":[{"op":"replace","path":"/hp","value":80}]}',
+            },
+            {
+                name: 'json5',
+                array: "[{op:'replace',path:'/hp',value:80,}]",
+                object: "{json_patch:[{op:'replace',path:'/hp',value:80,}],}",
+            },
+            {
+                name: 'yaml',
+                array: '- op: replace\n  path: /hp\n  value: 80',
+                object: 'json_patch:\n  - op: replace\n    path: /hp\n    value: 80',
+            },
+        ];
+        const cases = formats.flatMap(format =>
+            (['array', 'object'] as const).flatMap(shape =>
+                ['none', 'anonymous', 'language'].flatMap(fence =>
+                    (shape === 'array'
+                        ? ['bare', 'update', 'patch', 'update+patch']
+                        : ['bare', 'update']
+                    ).map(wrapper => {
+                        let response =
+                            fence === 'none'
+                                ? format[shape]
+                                : `\`\`\`${fence === 'language' ? format.name : ''}\n${format[shape]}\n\`\`\``;
+                        if (wrapper.includes('patch'))
+                            response = `<JSONPatch>\n${response}\n</JSONPatch>`;
+                        if (wrapper.includes('update'))
+                            response = `<UpdateVariable>\n${response}\n</UpdateVariable>`;
+                        return { name: `${format.name}/${shape}/${fence}/${wrapper}`, response };
+                    })
+                )
+            )
+        );
+        test.each(cases)('$name remains accepted', async ({ response }) => {
+            const variables: MvuData = {
+                stat_data: { hp: 72 },
+                initialized_lorebooks: {},
+                schema: { type: 'object', properties: {} },
+            };
+            (globalThis as any).generateRaw.mockResolvedValueOnce(response);
+            const validate_result = jest.fn(async (result: string) => {
+                const error = await validateIncrementalRepairAgainstState(result, variables);
+                if (error) throw new Error(error);
+                return result;
+            });
+            const accepted = await generateExtraModel({ validate_result });
+            expect(accepted).not.toBeNull();
+            expect(validate_result).toHaveBeenCalledTimes(1);
+            expect(variables.stat_data).toEqual({ hp: 72 });
+        });
+    });
+
+    test('retries when asynchronous result validation rejects an attempt', async () => {
+        const store = useDataStore();
+        store.settings.额外模型解析配置.请求方式 = '依次请求，失败后重试';
+        store.settings.额外模型解析配置.请求次数 = 2;
+        store.settings.通知.额外模型解析中 = false;
+        (globalThis as any).generateRaw
+            .mockResolvedValueOnce('<UpdateVariable><JSONPatch>[]</JSONPatch></UpdateVariable>')
+            .mockResolvedValueOnce(
+                '<UpdateVariable><JSONPatch>[{"op":"replace","path":"/hp","value":72}]</JSONPatch></UpdateVariable>'
+            );
+        const validate_result = jest.fn(async (result: string) => {
+            await Promise.resolve();
+            if (result.includes('[]')) throw new Error('invalid attempt');
+            return result;
+        });
+
+        const result = await invokeExtraModelWithStrategy({ validate_result });
+
+        expect((globalThis as any).generateRaw).toHaveBeenCalledTimes(2);
+        expect(validate_result).toHaveBeenCalledTimes(2);
+        expect(result).toContain('"value":72');
     });
 
     test.each(['聊天消息', '格式化输出'] as const)(
