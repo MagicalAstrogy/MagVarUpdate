@@ -3,13 +3,9 @@ import {
     buildIncrementalRepairPromptTail,
     collectIncrementalStateChanges,
     mergeIncrementalRepairBlock,
-    normalizeAndValidateIncrementalRepairResult,
-    normalizeIncrementalRepairBlock,
     validateIncrementalRepairAgainstState,
-    validateIncrementalRepairCommands,
-    verifyIncrementalRepairApplied,
 } from '@/function/update/incremental_repair';
-import { extractCommands } from '@/function/update_variables';
+import { extractCommands, updateVariables } from '@/function/update_variables';
 import { useDataStore } from '@/store';
 import { type MvuData, variable_events } from '@/variable_def';
 import { klona } from 'klona';
@@ -83,16 +79,6 @@ describe('incremental extra-model repair', () => {
         );
     });
 
-    test('normalizes fenced and aliased patch output before persistence', () => {
-        expect(
-            normalizeIncrementalRepairBlock(
-                '<VariableUpdate><json_patch>```json\n[{"op":"replace","path":"/hp","value":72}]\n```</json_patch></VariableUpdate>'
-            )
-        ).toBe(
-            '<UpdateVariable>\n<JSONPatch>\n[\n  {\n    "op": "replace",\n    "path": "/hp",\n    "value": 72\n  }\n]\n</JSONPatch>\n</UpdateVariable>'
-        );
-    });
-
     test('canonicalizes a compatible existing update wrapper while merging', () => {
         const merged = mergeIncrementalRepairBlock(
             '<VariableUpdate>\n<JSONPatch>[]</JSONPatch>\n</VariableUpdate>',
@@ -103,48 +89,8 @@ describe('incremental extra-model repair', () => {
         expect(merged).toContain('"path":"/hp"');
     });
 
-    test('rejects non-idempotent and internal-path commands', () => {
-        const delta = extractCommands(
-            '<JSONPatch>[{"op":"delta","path":"/hp","value":-5}]</JSONPatch>'
-        );
-        expect(validateIncrementalRepairCommands(delta)).toContain('绝对值 replace');
-
-        const internal = extractCommands(
-            '<JSONPatch>[{"op":"replace","path":"/$internal/busy","value":true}]</JSONPatch>'
-        );
-        expect(validateIncrementalRepairCommands(internal)).toContain('禁止修改 MVU 内部路径');
-
-        const nestedInsert =
-            '<JSONPatch>[{"op":"insert","path":"/player/$internal","value":true}]</JSONPatch>';
-        expect(validateIncrementalRepairCommands(extractCommands(nestedInsert))).toContain(
-            '禁止修改 MVU 内部路径'
-        );
-    });
-
-    test('accepts absolute replacements and removals', () => {
-        const commands = extractCommands(
-            '<JSONPatch>[{"op":"replace","path":"/hp","value":72},{"op":"remove","path":"/bad"}]</JSONPatch>'
-        );
-        expect(validateIncrementalRepairCommands(commands)).toBeNull();
-    });
-
-    test('normalizes and validates a response before request strategy acceptance', () => {
-        expect(() =>
-            normalizeAndValidateIncrementalRepairResult(
-                '<UpdateVariable><JSONPatch>[{"op":"delta","path":"/hp","value":-5}]</JSONPatch></UpdateVariable>'
-            )
-        ).toThrow('绝对值 replace');
-        expect(
-            normalizeAndValidateIncrementalRepairResult(
-                '<UpdateVariable><JSONPatch>[]</JSONPatch></UpdateVariable>'
-            )
-        ).toContain('<JSONPatch>');
-    });
-
     test('accepts the normal update add alias and rejects a no-op', async () => {
-        const patch = normalizeAndValidateIncrementalRepairResult(
-            '<JSONPatch>[{"op":"add","path":"/item","value":"key"}]</JSONPatch>'
-        );
+        const patch = '<JSONPatch>[{"op":"add","path":"/item","value":"key"}]</JSONPatch>';
         expect(extractCommands(patch)).toEqual([
             expect.objectContaining({ type: 'insert', reason: 'json_patch' }),
         ]);
@@ -154,48 +100,6 @@ describe('incremental extra-model repair', () => {
         await expect(
             validateIncrementalRepairAgainstState(patch, createVariables({ item: 'key' }))
         ).resolves.toContain('没有产生实际变化');
-        expect(verifyIncrementalRepairApplied(patch, {}, { item: 'key' })).toBeNull();
-    });
-
-    test('preflights targets and confirms every operation took effect', async () => {
-        const patch =
-            '<UpdateVariable><JSONPatch>[{"op":"replace","path":"/hp","value":72},{"op":"replace","path":"/inventory","value":["key"]}]</JSONPatch></UpdateVariable>';
-        await expect(
-            validateIncrementalRepairAgainstState(
-                patch,
-                createVariables({ hp: 100, inventory: [] })
-            )
-        ).resolves.toBeNull();
-        await expect(
-            validateIncrementalRepairAgainstState(patch, createVariables({ inventory: [] }))
-        ).resolves.toContain('hp');
-        expect(
-            verifyIncrementalRepairApplied(
-                patch,
-                { hp: 100, inventory: [] },
-                { hp: 72, inventory: ['key'] }
-            )
-        ).toBeNull();
-        expect(
-            verifyIncrementalRepairApplied(
-                patch,
-                { hp: 100, inventory: [] },
-                { hp: 72, inventory: [] }
-            )
-        ).toContain('替换操作未完整生效');
-    });
-
-    test('verifies the effective value while preserving a value description', () => {
-        const patch = '<JSONPatch>[{"op":"replace","path":"/hp","value":72}]</JSONPatch>';
-        expect(
-            verifyIncrementalRepairApplied(
-                patch,
-                { hp: [100, 'current HP'] },
-                {
-                    hp: [72, 'current HP'],
-                }
-            )
-        ).toBeNull();
     });
 
     test('uses normal execution for inserts, indexed array edits and sequential overlapping paths', async () => {
@@ -256,6 +160,24 @@ describe('incremental repair trial execution', () => {
         expect(trial?.initialized_lorebooks.book).toEqual(['trial-only']);
         expect(variables).toEqual(original);
         expect(toastr.warning).not.toHaveBeenCalled();
+    });
+
+    test.each([
+        "_.set('hp', 80);",
+        '<JSONPatch>[{"op":"delta","path":"/hp","value":8}]</JSONPatch>',
+        '<JSONPatch>[{"op":"unknown","path":"/hp"},{"op":"replace","path":"/hp","value":80}]</JSONPatch>',
+        '<JSONPatch>not a patch</JSONPatch><JSONPatch>[{"op":"replace","path":"/hp","value":80}]</JSONPatch>',
+        '<JSONPatch>[]</JSONPatch>' + "_.set('hp', 80);",
+        '<UpdateVariable><JSONPatch>[{"op":"replace","path":"/hp","value":75}]</JSONPatch></UpdateVariable><UpdateVariable><JSONPatch>[{"op":"replace","path":"/hp","value":80}]</JSONPatch></UpdateVariable>',
+    ])('uses executor parsing and persists the same accepted commands: %s', async result => {
+        const variables = createVariables({ hp: 72 });
+        await expect(validateIncrementalRepairAgainstState(result, variables)).resolves.toBeNull();
+        expect(variables.stat_data.hp).toBe(72);
+        const replayed = createVariables({ hp: 72 });
+        const errors: string[] = [];
+        await updateVariables(mergeIncrementalRepairBlock('story', result), replayed, errors);
+        expect(errors).toEqual([]);
+        expect(replayed.stat_data.hp).toBe(80);
     });
 
     test('rejects partial success when the normal executor reports any errors', async () => {

@@ -4,6 +4,7 @@ import {
     MVU_JSON_PATCH_RESPONSE_SCHEMA,
     MVU_TOOL_DEFINITION,
 } from '@/function/function_call';
+import { extractCommands } from '@/function/update_variables';
 import { MIN_FUNCTION_CALLING_TAVERN_HELPER_VERSION } from '@/function/is_function_calling_supported';
 import claude_head from '@/prompts/claude_head.txt?raw';
 import claude_tail from '@/prompts/claude_tail.txt?raw';
@@ -299,7 +300,7 @@ export interface ExtraModelInvocationOptions {
     task_suffix?: string;
     /** 替换发给额外模型的简短用户提示。 */
     user_input?: string;
-    /** 在重试策略接受结果前同步或异步校验并可选地规范化；抛错表示本次尝试失败。 */
+    /** 接管应答格式提取后的文本校验，替代默认更新块解析；返回接受的文本，抛错使尝试失败。 */
     validate_result?: (result: string) => string | Promise<string>;
 }
 
@@ -330,7 +331,7 @@ export async function invokeExtraModelWithStrategy(
         /** 执行并记录一次额外模型尝试，使错误处理和活动请求清理使用同一请求编号。 */
         const recordedInvoke = async (generation_id?: string, signal?: AbortSignal) => {
             try {
-                const result = await invokeExtraModel(
+                return await invokeExtraModel(
                     generation_id,
                     batch_id,
                     pi_preflight,
@@ -338,9 +339,6 @@ export async function invokeExtraModelWithStrategy(
                     signal,
                     options
                 );
-                // 等待试执行完成，使异步校验失败也进入下方错误记录及重试处理。
-                // 并发请求只有通过完整校验后才参与成功结果的竞争。
-                return options.validate_result ? await options.validate_result(result) : result;
             } catch (e) {
                 if (signal?.aborted && !pi_preflight) throw e;
                 const localized_error = localizePiError(e);
@@ -500,7 +498,7 @@ export async function invokeExtraModelWithStrategy(
 
 /**
  * 执行一次额外模型解析，按需建立生成状态，并在结束后恢复界面状态。
- * @param options 任务及用户输入覆盖项；validate_result 由策略入口执行，此单次入口不调用它。
+ * @param options 任务、用户输入及可选的应答校验器，与重试策略使用相同校验路径。
  * @returns 包含有效更新内容的文本块。
  * @throws 配置、生成或回复解析失败时抛出本地化错误。
  */
@@ -534,24 +532,15 @@ export async function generateExtraModel(
 /**
  * 提取、校验并规范化额外模型回复中的变量更新内容。
  * 发现补丁但校验失败时抛出异常；未识别到有效更新时返回 null，由调用方报告对应来源的错误。
- * 此处只做格式与 JSON 安全性检查；增量操作限制及当前状态校验仍由 validate_result 完成。
+ * 此处用于未提供自定义校验器的请求，只做格式与 JSON 安全性检查。
  * @param result 已按应答格式提取的模型回复。
- * @param options 解析约束选项。
- * @param options.require_single_update 是否限制为单个更新块及单个补丁块，默认 false。
  * @returns 统一包装的更新块；所有兼容格式都无法识别时返回 null。
- * @throws {Error} 补丁未闭合、内容非法或违反单块限制。
+ * @throws {Error} 补丁未闭合或内容非法。
  */
-export function parseAndValidateExtraModelResult(
-    result: string,
-    { require_single_update = false }: { require_single_update?: boolean } = {}
-): string | null {
+export function parseAndValidateExtraModelResult(result: string): string | null {
     // 1. 定位更新块：忽略思考区中的示例和结构化数据字符串里的字面标签。
     // 优先选最后一个闭合块；没有闭合块时兼容最后一个未闭合块，没有包装时检查整段回复。
     const updates = findUpdateMarkupBlocks(result, 'update');
-    // 单块限制也适用于没有 JSONPatch 标签、直接包含 JSON/JSON5/YAML 或旧指令的更新块。
-    if (require_single_update && updates.length > 1) {
-        throw new Error('增量校正返回了多个更新块');
-    }
     const update = updates.filter(block => block.closed).at(-1) ?? updates.at(-1);
     let body = update ? result.slice(update.contentStart, update.contentEnd) : result;
     let hasUpdateBody = !!update;
@@ -566,11 +555,8 @@ export function parseAndValidateExtraModelResult(
         }
     }
     if (patches.length) {
-        // 3. 检查补丁边界：任何未闭合补丁都拒绝；启用单块限制时要求恰好一个 JSONPatch。
+        // 3. 检查补丁边界：任何未闭合补丁都拒绝。
         if (patches.some(block => !block.closed)) throw new Error('JSONPatch 标签未闭合');
-        if (require_single_update && patches.length !== 1) {
-            throw new Error('增量校正返回了多个更新块');
-        }
         // 4. 检查补丁内容：去掉代码围栏后解析 JSON/JSON5/YAML，检查操作数组的基本结构，
         // 并拒绝 NaN、Infinity、循环引用等无法安全表示为 JSON 的值；不在此执行操作。
         for (const block of patches) {
@@ -629,7 +615,7 @@ export function parseAndValidateExtraModelResult(
  * @param request_settings 世界书过滤与模型调用共用的本次配置快照。
  * @param signal 并发批次的取消信号，阻止登记较慢的调用在批次结束后启动生成。
  * @param options 本次调用的任务、输入覆盖及增量结果校验选项。
- * @returns 包含有效更新命令的 UpdateVariable 文本块。
+ * @returns 自定义校验器接受的文本，或默认解析得到的 UpdateVariable 文本块。
  */
 async function invokeExtraModel(
     generation_id?: string,
@@ -662,9 +648,21 @@ async function invokeExtraModel(
             options
         );
 
-        const update = parseAndValidateExtraModelResult(result, {
-            require_single_update: !!options.validate_result,
-        });
+        if (options.validate_result) {
+            // 执行器能识别命令时保留完整原文，不额外拒绝混合内容或多个更新块。
+            // 无命令时沿用原有格式适配，保持裸 JSON/JSON5/YAML 等已支持的回复仍可用。
+            let update = result;
+            if (extractCommands(substitudeMacros(result)).length === 0) {
+                try {
+                    update = parseAndValidateExtraModelResult(result) ?? result;
+                } catch {
+                    // 格式适配失败仍交给执行器决定，不把适配层变成额外拒绝条件。
+                }
+            }
+            // 显式等待异步校验，使失败进入同一套请求错误记录、取消及重试处理。
+            return await options.validate_result(update);
+        }
+        const update = parseAndValidateExtraModelResult(result);
         if (update !== null) return update;
         if (pi_preflight) {
             throw await createPiProtocolError();

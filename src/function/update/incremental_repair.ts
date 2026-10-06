@@ -1,31 +1,14 @@
 import { isExtraModelSupported } from '@/function/is_extra_model_supported';
 import { isFunctionCallingSupported } from '@/function/is_function_calling_supported';
 import { invokeExtraModelWithStrategy } from '@/function/update/invoke_extra_model';
-import {
-    Command,
-    extractCommands,
-    parseCommandValue,
-    trimQuotesAndBackslashes,
-    updateVariables,
-} from '@/function/update_variables';
+import { type Command, extractCommands, updateVariables } from '@/function/update_variables';
 import { tr } from '@/i18n';
 import { useDataStore } from '@/store';
-import { getLastValidVariable, isJsonPatch } from '@/util';
+import { getLastValidVariable } from '@/util';
 import { isMvuData, type MvuData } from '@/variable_def';
-import { parseString } from '@util/common';
-import { cleanStructuredUpdate, findUpdateMarkupBlocks, isJsonSafe } from './structured_update';
+import { findUpdateMarkupBlocks } from './structured_update';
 import { klona } from 'klona';
 
-const EMPTY_JSON_PATCH_RE =
-    /<json_?patch\b[^>]*>\s*(?:```[^\n]*\s*)?\[\s*\](?:\s*```)?\s*<\/json_?patch\s*>/i;
-const FORBIDDEN_ROOT_PATHS = new Set([
-    '$internal',
-    '$meta',
-    'schema',
-    'display_data',
-    'delta_data',
-    'initialized_lorebooks',
-]);
 const PERSISTED_MVU_KEYS = [
     'initialized_lorebooks',
     'stat_data',
@@ -35,11 +18,6 @@ const PERSISTED_MVU_KEYS = [
 ] as const;
 
 type PersistedMvuSnapshot = Partial<Record<(typeof PERSISTED_MVU_KEYS)[number], unknown>>;
-type IncrementalRepairOperation = {
-    op: 'replace' | 'insert' | 'add' | 'remove';
-    path: string;
-    value?: unknown;
-};
 
 export interface IncrementalStateChange {
     path: string;
@@ -108,21 +86,6 @@ export function collectIncrementalStateChanges(
 
     visit(before, after, '');
     return changes;
-}
-
-/**
- * 将实际状态差异格式化为确认弹窗中的逐行文本。
- * @param changes 需要展示的状态变化。
- * @returns 包含路径和前后值的文本；无变化时返回占位说明。
- */
-function formatStateChanges(changes: IncrementalStateChange[]): string {
-    if (changes.length === 0) return '（本楼尚无已落地变化）';
-    return changes
-        .map(
-            change =>
-                `${change.path}: ${JSON.stringify(change.before)} -> ${JSON.stringify(change.after)}`
-        )
-        .join('\n');
 }
 
 /**
@@ -264,72 +227,10 @@ function extractUpdateBlockInner(block: string): string {
 }
 
 /**
- * 解析唯一且闭合的补丁块，并检查操作数组结构与 JSON 序列化安全性。
- * 操作数组结构沿用正常更新的 isJsonPatch 检查，增量命令及状态约束由后续校验负责。
- * @param repair_block 待解析的增量校正回复。
- * @returns 补丁操作数组（允许为空）；解析失败、块数量错误或值不安全时返回 null。
- */
-function parseIncrementalRepairPatch(repair_block: string): IncrementalRepairOperation[] | null {
-    const blocks = findUpdateMarkupBlocks(repair_block, 'patch');
-    if (blocks.length !== 1 || !blocks[0].closed) return null;
-    try {
-        const patch = parseString(
-            cleanStructuredUpdate(repair_block.slice(blocks[0].contentStart, blocks[0].contentEnd))
-        );
-        return isJsonSafe(patch) && isJsonPatch(patch)
-            ? (patch as IncrementalRepairOperation[])
-            : null;
-    } catch {
-        return null;
-    }
-}
-
-/**
- * 拆分并解码增量校正使用的 JSON Pointer 路径。
- * @param path 以斜杠开头的具体变量路径。
- * @returns 解码后的路径片段；缺少前导斜杠或路径仅为 / 时返回 null。
- */
-function jsonPointerSegments(path: string): string[] | null {
-    if (!path.startsWith('/') || path === '/') return null;
-    return path
-        .slice(1)
-        .split('/')
-        .map(segment => segment.replace(/~1/g, '/').replace(/~0/g, '~'));
-}
-
-/**
- * 检查路径是否指向内部数据或包含原型相关字段。
- * @param path 原始 JSON Pointer 路径。
- * @returns 路径不可用或命中受保护字段时返回 true。
- */
-function forbiddenPointerPath(path: string): boolean {
-    const segments = jsonPointerSegments(path);
-    return (
-        !segments ||
-        FORBIDDEN_ROOT_PATHS.has(segments[0]) ||
-        segments.some(segment =>
-            ['$internal', '$meta', '__proto__', 'prototype', 'constructor'].includes(segment)
-        )
-    );
-}
-
-/**
- * 将可解析的单个补丁统一为标准更新标签和 JSON 文本。
- * @param repair_block 包含补丁的原始回复。
- * @returns 标准更新块；解析或基础结构检查失败时返回 null。
- */
-export function normalizeIncrementalRepairBlock(repair_block: string): string | null {
-    const patch = parseIncrementalRepairPatch(repair_block);
-    return patch
-        ? `<UpdateVariable>\n<JSONPatch>\n${JSON.stringify(patch, null, 2)}\n</JSONPatch>\n</UpdateVariable>`
-        : null;
-}
-
-/**
  * 将校正内容追加到消息的最后一个更新块中，没有更新块时在正文末尾新增。
- * 保留原更新命令在前，使整楼重放时先执行原更新，再执行绝对值校正。
+ * 保留原更新命令在前，使整楼重放时先执行原更新，再执行校正。
  * @param message 校正前的完整消息正文。
- * @param repair_block 已规范化的校正更新块。
+ * @param repair_block 已通过副本试执行的更新文本。
  * @returns 合并后的完整正文；校正内容为空时返回原文。
  */
 export function mergeIncrementalRepairBlock(message: string, repair_block: string): string {
@@ -348,72 +249,9 @@ export function mergeIncrementalRepairBlock(message: string, repair_block: strin
 }
 
 /**
- * 读取转换后命令的目标路径并去除参数包装。
- * @param command 已提取的变量更新命令。
- * @returns 清理后的路径字符串。
- */
-function commandPath(command: Command): string {
-    return trimQuotesAndBackslashes(command.args[0] ?? '').trim();
-}
-
-/**
- * 从原始补丁操作中恢复 JSON Pointer，避免使用转换后命令的路径语义。
- * @param command 已提取的变量更新命令。
- * @returns 原始目标路径；非补丁命令、解析失败或缺少路径时返回 null。
- */
-function commandJsonPointer(command: Command): string | null {
-    if (command.reason !== 'json_patch') return null;
-    try {
-        const operation = JSON.parse(command.full_match);
-        return typeof operation.path === 'string' ? operation.path : null;
-    } catch {
-        return null;
-    }
-}
-
-/**
- * 检查转换后的命令仍满足增量约束，拒绝脚本命令、相对更新及内部路径。
- * @param commands 从规范化更新块提取的命令。
- * @returns 首个校验错误；通过时返回 null。
- */
-export function validateIncrementalRepairCommands(commands: Command[]): string | null {
-    for (const command of commands) {
-        if (command.reason !== 'json_patch') {
-            return '增量校正仅接受 JSONPatch，不接受脚本式更新命令';
-        }
-        if (command.type === 'add' || command.type === 'move') {
-            return `增量校正不接受 ${command.type} 操作，请改用绝对值 replace`;
-        }
-        const pointer = commandJsonPointer(command);
-        if (!pointer) return 'JSONPatch 操作缺少原始目标路径';
-        if (forbiddenPointerPath(pointer)) return `禁止修改 MVU 内部路径：${pointer}`;
-        const path = commandPath(command);
-        if (!path && command.type !== 'insert') return '存在空变量路径';
-    }
-    return null;
-}
-
-/**
- * 规范化并校验一次模型回复，供重试策略判断本次结果是否可以接受。
- * @param repair_block 模型返回的校正更新块。
- * @returns 已规范化并通过命令级检查的标准更新块，允许空补丁。
- * @throws {Error} 回复无法规范化或不满足增量校正约束。
- */
-export function normalizeAndValidateIncrementalRepairResult(repair_block: string): string {
-    const normalized = normalizeIncrementalRepairBlock(repair_block);
-    if (!normalized) throw new Error('JSONPatch 内容无法解析或数量不正确');
-    const commands = extractCommands(normalized);
-    if (commands.length === 0 && EMPTY_JSON_PATCH_RE.test(normalized)) return normalized;
-    if (commands.length === 0) throw new Error('JSONPatch 中没有可执行的增量操作');
-    const command_error = validateIncrementalRepairCommands(commands);
-    if (command_error) throw new Error(command_error);
-    return normalized;
-}
-
-/**
  * 在最新变量的深拷贝上试执行校正，复用正常更新及其回调的实际执行规则。
  * 仅接受没有原生或 MVU Zod 错误且变量发生变化的结果，不修改传入的变量上下文。
- * @param repair_block 已完成结构化解析与命令级校验的更新块。
+ * @param repair_block 模型返回的更新文本，解析和操作规则全部由 updateVariables 决定。
  * @param variables 当前楼最新的完整变量数据，包含 schema 及回调所需的上下文。
  * @returns 执行错误或无实际变化的说明；试执行成功时返回 null。
  * @throws 更新器或回调抛出的异常，交由调用方的重试或错误处理流程接收。
@@ -431,113 +269,15 @@ export async function validateIncrementalRepairAgainstState(
 }
 
 /**
- * 核对整楼重放后的实际结果，确认每项校正都已完整落地。
- * 调用前应已完成补丁及目标路径校验；此处只核对结果，不执行更新。
- * @param repair_block 已校验的校正更新块。
- * @param before_stat_data 校正前当前楼的变量状态。
- * @param after_stat_data 合并正文并重放后的变量状态。
- * @param strict_set 是否禁止解包带描述变量，默认 false。
- * @returns 首个未完整生效的操作说明；全部匹配时返回 null。
- */
-export function verifyIncrementalRepairApplied(
-    repair_block: string,
-    before_stat_data: Record<string, unknown>,
-    after_stat_data: Record<string, unknown>,
-    strict_set = false
-): string | null {
-    const patch = parseIncrementalRepairPatch(repair_block);
-    if (!patch) return 'JSONPatch 内容无法解析';
-    for (const operation of patch) {
-        const segments = jsonPointerSegments(operation.path)!;
-        if (operation.op === 'remove') {
-            if (_.has(after_stat_data, segments)) return `删除操作未生效：${operation.path}`;
-            continue;
-        }
-        if (operation.op === 'insert') {
-            const parent_segments = segments.slice(0, -1);
-            const before_parent =
-                parent_segments.length === 0
-                    ? before_stat_data
-                    : _.get(before_stat_data, parent_segments);
-            const after_parent =
-                parent_segments.length === 0
-                    ? after_stat_data
-                    : _.get(after_stat_data, parent_segments);
-            if (Array.isArray(before_parent)) {
-                const key = segments.at(-1)!;
-                const index = key === '-' ? before_parent.length : Number(key);
-                if (
-                    !Array.isArray(after_parent) ||
-                    after_parent.length !== before_parent.length + 1 ||
-                    !(_.isPlainObject(operation.value) && _.isPlainObject(after_parent[index])
-                        ? _.isMatch(after_parent[index], operation.value as Record<string, unknown>)
-                        : _.isEqual(after_parent[index], operation.value))
-                ) {
-                    return `插入操作未完整生效：${operation.path}`;
-                }
-                continue;
-            }
-        }
-        const before_value = _.get(before_stat_data, segments);
-        const after_value = _.get(after_stat_data, segments);
-        const effective_after_value =
-            !strict_set &&
-            Array.isArray(before_value) &&
-            before_value.length === 2 &&
-            !Array.isArray(before_value[0]) &&
-            typeof before_value[1] === 'string' &&
-            Array.isArray(after_value) &&
-            after_value.length === 2 &&
-            typeof after_value[1] === 'string'
-                ? after_value[0]
-                : after_value;
-        const expected_value = operation.value;
-        // insert 可能由 schema 补充默认字段，只要求请求字段匹配；replace 必须与目标值完全一致。
-        const value_matches =
-            operation.op === 'insert' &&
-            _.isPlainObject(expected_value) &&
-            _.isPlainObject(effective_after_value)
-                ? _.isMatch(
-                      effective_after_value as Record<string, unknown>,
-                      expected_value as Record<string, unknown>
-                  )
-                : _.isEqual(effective_after_value, expected_value);
-        if (!_.has(after_stat_data, segments) || !value_matches) {
-            return `${operation.op === 'replace' ? '替换' : '插入'}操作未完整生效：${operation.path}`;
-        }
-    }
-    return null;
-}
-
-/**
- * 为单项校正生成预览 HTML，对路径和值进行转义。
- * @param command 已校验的校正命令。
- * @returns 展示动作、目标路径及新值的列表项 HTML。
- */
-function commandPreview(command: Command): string {
-    const path = _.escape(commandJsonPointer(command) ?? commandPath(command));
-    const action_labels: Partial<Record<Command['type'], string>> = {
-        set: '改为',
-        insert: '新增',
-        delete: '删除',
-    };
-    const action = action_labels[command.type];
-    if (command.type === 'delete') return `<li><code>${path}</code>：${action}</li>`;
-    const raw_value = command.type === 'insert' ? command.args.at(-1) : command.args[1];
-    const value = _.escape(JSON.stringify(parseCommandValue(raw_value ?? '')));
-    return `<li><code>${path}</code>：${action ?? command.type} <code>${value}</code></li>`;
-}
-
-/**
- * 生成应用校正前的确认内容，展示操作列表和原始补丁。
- * @param commands 已校验且待确认的命令。
- * @param repair_block 已规范化的补丁文本。
+ * 生成应用校正前的确认内容，展示提取器识别的命令原文和完整更新文本。
+ * @param commands 按普通更新流程提取的命令，仅用于预览。
+ * @param repair_block 已通过试执行的更新文本。
  * @returns 可用于确认弹窗的 HTML，动态补丁内容已转义。
  */
 function buildPreviewHtml(commands: Command[], repair_block: string): string {
     return `<h3>${tr('runtime.incrementalRepair.previewTitle')}</h3>
 <p>${tr('runtime.incrementalRepair.previewDescription', { count: commands.length })}</p>
-<ol>${commands.map(commandPreview).join('')}</ol>
+<ol>${commands.map(command => `<li><code>${_.escape(command.full_match)}</code></li>`).join('')}</ol>
 <details><summary>${tr('runtime.incrementalRepair.showRawPatch')}</summary><pre style="white-space:pre-wrap;overflow-wrap:anywhere">${_.escape(repair_block)}</pre></details>`;
 }
 
@@ -831,7 +571,7 @@ async function offerUndo(
 
 /**
  * 执行末楼增量校正：采集用户方向、请求并校验补丁、预览后重放整楼并提交。
- * 异步边界后检查目标是否变化；实际结果被规则修改时再次确认，成功后提供撤销。
+ * 解析与执行遵循 updateVariables；异步边界后检查目标是否变化，成功后提供撤销。
  * 同一时刻只允许一次流程，错误通过日志及提示报告，并在退出时释放运行标记。
  * @returns 本次校正流程完成或提前退出后兑现的 Promise。
  */
@@ -934,10 +674,9 @@ export async function runIncrementalExtraModelRepair() {
             user_input: buildIncrementalRepairPromptTail(user_direction),
             // 试执行错误或无实际变化都使本次尝试失败；策略等待异步校验后才接受回复。
             validate_result: async result => {
-                const normalized = normalizeAndValidateIncrementalRepairResult(result);
-                const state_error = await validateAgainstLatestState(normalized);
+                const state_error = await validateAgainstLatestState(result);
                 if (state_error) throw new Error(state_error);
-                return normalized;
+                return result;
             },
         });
         if (repair_block === null) {
@@ -955,43 +694,16 @@ export async function runIncrementalExtraModelRepair() {
             return;
         }
 
-        const normalized_repair_block = normalizeIncrementalRepairBlock(repair_block);
-        if (!normalized_repair_block) {
-            toastr.warning(
-                'JSONPatch 内容无法解析或数量不正确',
-                tr('runtime.incrementalRepair.title')
-            );
-            return;
-        }
-
-        const commands = extractCommands(normalized_repair_block);
-        if (commands.length === 0 && EMPTY_JSON_PATCH_RE.test(normalized_repair_block)) {
-            toastr.info(
-                tr('runtime.incrementalRepair.noChanges'),
-                tr('runtime.incrementalRepair.title')
-            );
-            return;
-        }
-        if (commands.length === 0) {
-            toastr.warning(
-                tr('runtime.incrementalRepair.invalidPatch'),
-                tr('runtime.incrementalRepair.title')
-            );
-            return;
-        }
-        const command_error = validateIncrementalRepairCommands(commands);
-        if (command_error) {
-            toastr.warning(_.escape(command_error), tr('runtime.incrementalRepair.title'));
-            return;
-        }
-        const state_error = await validateAgainstLatestState(normalized_repair_block);
+        const state_error = await validateAgainstLatestState(repair_block);
         if (state_error) {
             toastr.warning(_.escape(state_error), tr('runtime.incrementalRepair.title'));
             return;
         }
 
+        // 与执行器一样先替换宏再提取命令；预览展示原始命令，不再自行解释补丁操作或参数。
+        const commands = extractCommands(substitudeMacros(repair_block));
         const confirmation = await SillyTavern.callGenericPopup(
-            buildPreviewHtml(commands, normalized_repair_block),
+            buildPreviewHtml(commands, repair_block),
             SillyTavern.POPUP_TYPE.CONFIRM,
             '',
             {
@@ -1035,10 +747,7 @@ export async function runIncrementalExtraModelRepair() {
         }
         // 先将校正合入完整正文，再从上一楼重放一次，确保持久化文本与最终状态一致。
         // 若在已结算的当前楼快照上再运行整楼生命周期钩子，会重复结算。
-        const repaired_content = mergeIncrementalRepairBlock(
-            anchor.message_content,
-            normalized_repair_block
-        );
+        const repaired_content = mergeIncrementalRepairBlock(anchor.message_content, repair_block);
         const applied_data = klona(previous_variables);
         // 当前楼新增的世界书初始化记录无法从上一楼恢复，必须保留；
         // 等待期间外部更新的 schema 也要在重放前合入，使执行遵循最新规则。
@@ -1048,6 +757,7 @@ export async function runIncrementalExtraModelRepair() {
         rebaseMetadataRefreshes(anchor.message_variables, original_message_snapshot, applied_data, [
             'schema',
         ]);
+        // 整楼重放沿用已有更新行为；原正文的历史错误不作为新增的拒绝条件。
         await updateVariables(repaired_content, applied_data);
         if (
             !anchorStillMatches(anchor) ||
@@ -1064,49 +774,6 @@ export async function runIncrementalExtraModelRepair() {
             'display_data',
             'delta_data',
         ]);
-        if (!isJsonSafe(applied_data.stat_data)) {
-            throw new Error('整楼重算产生了非 JSON 安全的变量值，已拒绝写入');
-        }
-        const application_error = verifyIncrementalRepairApplied(
-            normalized_repair_block,
-            original_data.stat_data,
-            applied_data.stat_data,
-            applied_data.schema?.strictSet ?? false
-        );
-        if (application_error) {
-            // schema 转换和楼层结算钩子可能合法地改变模型值，因此展示实际差异再次确认。
-            // 不重复运行钩子，也不静默丢弃可能相互依赖的操作。
-            const actual_changes = collectIncrementalStateChanges(
-                original_data.stat_data,
-                applied_data.stat_data
-            );
-            const normalized_confirmation = await SillyTavern.callGenericPopup(
-                '<h3>确认整楼重算结果</h3><p>' +
-                    _.escape(application_error) +
-                    '</p><p>变量规则或结算事件改变了模型提出的值。以下是最终实际变化；确认后同时写回完整更新块与此状态。</p><pre style="white-space:pre-wrap;overflow-wrap:anywhere">' +
-                    _.escape(formatStateChanges(actual_changes)) +
-                    '</pre>',
-                SillyTavern.POPUP_TYPE.CONFIRM,
-                '',
-                {
-                    okButton: tr('runtime.incrementalRepair.applyButton'),
-                    cancelButton: tr('runtime.incrementalRepair.cancelButton'),
-                    allowVerticalScrolling: true,
-                    wide: true,
-                }
-            );
-            if (normalized_confirmation !== SillyTavern.POPUP_RESULT.AFFIRMATIVE) return;
-        }
-        if (
-            !anchorStillMatches(anchor) ||
-            !_.isEqual(getLastValidVariable(message_id), previous_variables)
-        ) {
-            toastr.warning(
-                tr('runtime.incrementalRepair.sourceChanged'),
-                tr('runtime.incrementalRepair.title')
-            );
-            return;
-        }
         const applied_snapshot = snapshotPersistedMvuData(applied_data);
         const applied_chat_snapshot = klona(applied_snapshot);
         rebaseMetadataRefreshes(

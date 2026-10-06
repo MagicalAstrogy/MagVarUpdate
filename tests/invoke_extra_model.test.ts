@@ -12,77 +12,9 @@ import { parseAndValidateExtraModelResult } from '@/function/update/invoke_extra
 import YAML from 'yaml';
 
 /**
- * # 额外模型回复解析用例矩阵
- *
- * 对应 `parseAndValidateExtraModelResult()`，用例位于
- * `tests/invoke_extra_model.test.ts`。此函数接收模型回复文本，输出统一的 `<UpdateVariable>` 文本、返回
- * `null`，或抛出校验错误。它检查格式和 JSON 安全性，不执行变量操作，也不代替增量校正的业务校验。
- *
- * ## 包装与内容矩阵
- *
- * `U` 表示 `<UpdateVariable>…</UpdateVariable>`；`P` 表示
- * `<JSONPatch>…</JSONPatch>`。数组指 MVU 操作数组；对象指包含补丁字段的对象，不是任意变量快照。
- *
- * | 内容                                   | 裸回复                   | U 内直接放内容       | P 内放内容               | U → P → 内容 |
- * | -------------------------------------- | ------------------------ | -------------------- | ------------------------ | ------------ |
- * | JSON 操作数组                          | 接受并转成标准 JSON 补丁 | 同左                 | 接受，保留补丁原文       | 同左         |
- * | JSON5 操作数组                         | 接受并转成标准 JSON 补丁 | 同左                 | 接受，保留补丁原文       | 同左         |
- * | YAML 操作数组                          | 接受并转成标准 JSON 补丁 | 同左                 | 接受，保留补丁原文       | 同左         |
- * | JSON 补丁对象                          | 接受并提取补丁及分析字段 | 同左                 | 抛错，P 内必须是操作数组 | 同左         |
- * | JSON5 补丁对象                         | 接受并提取补丁及分析字段 | 同左                 | 抛错，P 内必须是操作数组 | 同左         |
- * | YAML 补丁对象                          | 接受并提取补丁及分析字段 | 同左                 | 抛错，P 内必须是操作数组 | 同左         |
- * | 旧脚本 `_.set(...)` 等                 | 接受并补 U 包装          | 接受，去掉思考区内容 | 抛错                     | 抛错         |
- * | 普通说明或无补丁字段的对象             | 返回 null                | 返回 null            | 抛错                     | 抛错         |
- * | 非有限数值、循环引用或无效操作数组结构 | 返回 null                | 返回 null            | 抛错                     | 抛错         |
- *
- * 核心结构化矩阵按以下维度交叉执行，共 144 项：
- *
- * - 四种包装：裸回复、U、P、U → P。
- * - 三种语法：JSON、JSON5、YAML。
- * - 两种数据形态：操作数组、补丁对象。
- * - 三种围栏：无围栏、匿名代码围栏、对应语言代码围栏。
- * - 两种模式：普通模式、`require_single_update: true`。
- *
- * 断言同时检查接受或拒绝的结果，以及完整返回文本。已有 P 标签时保留原文；没有 P 标签时（包括 U 内直接放 YAML/JSON5）转换为标准 JSON 补丁。
- *
- * ## 语法及字段边界
- *
- * | 维度         | 用例                                                           | 预期                                 |
- * | ------------ | -------------------------------------------------------------- | ------------------------------------ |
- * | JSON5 特性   | 单引号、无引号键、尾逗号、前置行注释和块注释                   | 接受；注释不能被 YAML 优先解析成文本 |
- * | YAML 字符串  | 单引号及双单引号转义、双引号、普通标量、`\|-` 和 `>-` 多行标量 | 保留实际字符串值                     |
- * | 数据中的标签 | 字符串中出现 U、P、Think 标签                                  | 不识别为更新或思考区边界             |
- * | 注释中的标签 | JSON5/YAML 注释中出现伪更新标签                                | 不参与更新块计数                     |
- * | YAML 引用    | 非循环别名、循环别名                                           | 前者接受，后者拒绝                   |
- * | 数值安全     | JSON5 的 NaN/Infinity、YAML 的 .nan/.inf                       | 拒绝                                 |
- * | 对象补丁字段 | json_patch、jsonPatch、patch、delta                            | 提取操作数组；也支持字符串化的补丁   |
- * | 分析字段     | analysis、analyze                                              | 放入规范输出的 Analyze 块            |
- * | 换行和围栏   | LF、CRLF、匿名围栏、json/json5/yaml/yml 围栏                   | 接受                                 |
- * | 空补丁       | `[]`                                                           | 接受，表示无操作                     |
- *
- * YAML 内容和 XML 闭合标签采用独立行。若把 `</JSONPatch>`
- * 接在 YAML 普通标量的同一行，扫描器可能将其视为标量内容，不属于本矩阵承诺的包装形式。
- *
- * ## 选择、回退与单块模式
- *
- * | 情形                             | 普通模式                       | 单块模式                             |
- * | -------------------------------- | ------------------------------ | ------------------------------------ |
- * | 一个更新块，直接含数组或补丁对象 | 接受 JSON/JSON5/YAML           | 同左                                 |
- * | 多个更新块                       | 优先最后一个闭合块             | 抛错，含直接结构化内容的更新块也一样 |
- * | 没有闭合 U，但有完整 P           | 可兼容最后一个未闭合 U         | 若只有一个 U/P，可以通过基础校验     |
- * | 存在未闭合 P                     | 抛错                           | 抛错                                 |
- * | 一个 U 内含多个 P                | 接受并保留                     | 抛错                                 |
- * | 空或无效 U 后面跟完整 P          | 从全文回退提取 P               | 仍受单块数量限制                     |
- * | P 外围有剧情或说明               | 兜底时只返回 P                 | 同左                                 |
- * | 真正的 U 内混合 P、分析和旧指令  | 保留块内内容                   | 操作是否允许仍由后续业务校验决定     |
- * | 思考区中的示例                   | 忽略，不参与更新计数或指令识别 | 同左                                 |
- * | 仅字符串或注释中出现旧指令       | 不因此判为成功                 | 同左                                 |
- *
- * 兼容边界：`parseString` 仍可能修复残缺 JSON，例如把 `[` 解析为
- * `[]`。存在 P 标签时保留的是原始补丁文本，基础校验通过不代表已重新序列化该文本。 `isJsonPatch`
- * 只检查数组、操作对象、op/path 等基本字段类型；未知操作、缺少 value、路径存在性、幂等性和业务规则不由此函数完整验证。
- *
- * 本次矩阵发现并修复：JSON5 前置注释被优先按 YAML 解析；无 P 标签的更新块绕过单块数量检查。
+ * 默认回复解析覆盖四种包装、三种结构化语法、两种数据形态及三种代码围栏，共 72 项组合。
+ * 同时验证字符串/注释中的标签、思考区、JSON 安全性和多块选择行为。
+ * 增量校正以 updateVariables 试执行为准；本解析器仅为无法直接提取命令的回复保留格式兼容。
  */
 describe('parseAndValidateExtraModelResult', () => {
     // parseString 在宿主中使用全局 YAML；此处注入真实解析器，并在本组用例结束后恢复。
@@ -100,7 +32,7 @@ describe('parseAndValidateExtraModelResult', () => {
     const updateBlock = `<UpdateVariable>${patchBlock}</UpdateVariable>`;
 
     // 输入矩阵见本组测试上方的块注释。
-    // 四种包装 × 三种语法 × 数组/对象 × 无围栏/匿名围栏/语言围栏 × 普通/单块模式。
+    // 四种包装 × 三种语法 × 数组/对象 × 无围栏/匿名围栏/语言围栏。
     const wrappers = [
         { name: 'bare', tagged: false, wrap: (text: string) => text },
         {
@@ -139,17 +71,14 @@ describe('parseAndValidateExtraModelResult', () => {
     ];
     const structuredCases = formats.flatMap(format =>
         (['array', 'object'] as const).flatMap(shape =>
-            ['none', 'anonymous', 'language'].flatMap(fence =>
-                [false, true].map(require_single_update => ({
-                    name: `${format.name}/${shape}/${fence}/${require_single_update ? 'single' : 'ordinary'}`,
-                    shape,
-                    require_single_update,
-                    text:
-                        fence === 'none'
-                            ? format[shape]
-                            : `\`\`\`${fence === 'language' ? format.name : ''}\n${format[shape]}\n\`\`\``,
-                }))
-            )
+            ['none', 'anonymous', 'language'].map(fence => ({
+                name: `${format.name}/${shape}/${fence}`,
+                shape,
+                text:
+                    fence === 'none'
+                        ? format[shape]
+                        : `\`\`\`${fence === 'language' ? format.name : ''}\n${format[shape]}\n\`\`\``,
+            }))
         )
     );
     const normalizedUpdate = (analysis: string, operations: unknown[]) =>
@@ -165,9 +94,8 @@ describe('parseAndValidateExtraModelResult', () => {
         ].join('\n');
 
     describe.each(wrappers)('structured matrix / $name', wrapper => {
-        test.each(structuredCases)('$name', ({ shape, text, require_single_update }) => {
-            const parse = () =>
-                parseAndValidateExtraModelResult(wrapper.wrap(text), { require_single_update });
+        test.each(structuredCases)('$name', ({ shape, text }) => {
+            const parse = () => parseAndValidateExtraModelResult(wrapper.wrap(text));
             if (wrapper.tagged && shape === 'object') {
                 // 显式 JSONPatch 标签只接受操作数组，不能再套一层 json_patch 对象。
                 expect(parse).toThrow('JSONPatch 内容不合法或包含非有限值');
@@ -231,16 +159,13 @@ describe('parseAndValidateExtraModelResult', () => {
         }
     );
 
-    // 无 JSONPatch 标签时，多块规则仍应适用于更新块里的数组和对象。
+    // 默认解析在多个直接结构化更新块中选取最后一个闭合块。
     test.each(formats)('multiple direct $name updates', format => {
         const first = wrappers[1].wrap('[]');
         const last = wrappers[1].wrap(format.object);
         expect(parseAndValidateExtraModelResult(first + '\n' + last)).toBe(
             normalizedUpdate('checked', [{ op: 'replace', path: '/hp', value: 72 }])
         );
-        expect(() =>
-            parseAndValidateExtraModelResult(first + '\n' + last, { require_single_update: true })
-        ).toThrow('增量校正返回了多个更新块');
     });
 
     const literal = '</JSONPatch><UpdateVariable><Think>literal</Think></UpdateVariable>';
@@ -281,9 +206,7 @@ describe('parseAndValidateExtraModelResult', () => {
                 value: `${literal} second line`,
             },
         ])('preserves $name', ({ text, value }) => {
-            const result = parseAndValidateExtraModelResult(wrapper.wrap(text), {
-                require_single_update: true,
-            });
+            const result = parseAndValidateExtraModelResult(wrapper.wrap(text));
             expect(result).toBe(
                 wrapper.tagged
                     ? wrapper.name === 'patch'
@@ -354,8 +277,7 @@ describe('parseAndValidateExtraModelResult', () => {
         const example = '<UpdateVariable><JSONPatch>[]</JSONPatch></UpdateVariable>';
         expect(
             parseAndValidateExtraModelResult(
-                `<Think>${example}</Think>${updateBlock}<Analysis>${example}</Analysis>`,
-                { require_single_update: true }
+                `<Think>${example}</Think>${updateBlock}<Analysis>${example}</Analysis>`
             )
         ).toBe(updateBlock);
     });
@@ -365,12 +287,10 @@ describe('parseAndValidateExtraModelResult', () => {
         const payload = JSON.stringify([{ op: 'replace', path: '/template', value }]);
         const response = `<UpdateVariable><JSONPatch>${payload}</JSONPatch></UpdateVariable>`;
 
-        expect(parseAndValidateExtraModelResult(response, { require_single_update: true })).toBe(
-            response
-        );
+        expect(parseAndValidateExtraModelResult(response)).toBe(response);
     });
 
-    // 补丁校验：拒绝不完整标签、无效结构和不安全的值，单块模式额外拒绝歧义更新。
+    // 默认回复校验：拒绝不完整标签、无效结构和不安全的值。
     test.each([
         '<JSONPatch>[]',
         '<UpdateVariable><JSONPatch>[]</UpdateVariable>',
@@ -398,22 +318,10 @@ describe('parseAndValidateExtraModelResult', () => {
         );
     });
 
-    test('accepts an empty patch as a no-op in single-update mode', () => {
-        expect(
-            parseAndValidateExtraModelResult('<JSONPatch>[]</JSONPatch>', {
-                require_single_update: true,
-            })
-        ).toBe('<UpdateVariable><JSONPatch>[]</JSONPatch></UpdateVariable>');
-    });
-
-    test.each([
-        `<UpdateVariable>${patchBlock}${patchBlock}</UpdateVariable>`,
-        `${updateBlock}${updateBlock}`,
-        `<UpdateVariable>${patchBlock}${updateBlock}`,
-    ])('rejects multiple patches or update wrappers in single-update mode: %s', response => {
-        expect(() =>
-            parseAndValidateExtraModelResult(response, { require_single_update: true })
-        ).toThrow('增量校正返回了多个更新块');
+    test('accepts an empty patch as a no-op', () => {
+        expect(parseAndValidateExtraModelResult('<JSONPatch>[]</JSONPatch>')).toBe(
+            '<UpdateVariable><JSONPatch>[]</JSONPatch></UpdateVariable>'
+        );
     });
 
     test('keeps multiple patches and mixed legacy content inside an ordinary update block', () => {

@@ -5,6 +5,9 @@ import {
 import { MVU_TOOL_DEFINITION } from '@/function/function_call';
 import { MIN_FUNCTION_CALLING_TAVERN_HELPER_VERSION } from '@/function/is_function_calling_supported';
 import { useDataStore } from '@/store';
+import { validateIncrementalRepairAgainstState } from '@/function/update/incremental_repair';
+import { type MvuData } from '@/variable_def';
+import YAML from 'yaml';
 
 const RANDOM_HEADER_PATTERN = /^[0-9a-f]{8}\n[0-9a-f]{8}\n[0-9a-f]{8}\n[0-9a-f]{8}$/i;
 
@@ -100,14 +103,85 @@ describe('extra model max chat history', () => {
         expect(result).toContain('"path": "/hp"');
     });
 
-    test('rejects multiple or restarted update wrappers in incremental mode', async () => {
-        (globalThis as any).generateRaw.mockResolvedValueOnce(
-            '<UpdateVariable><JSONPatch>[]</JSONPatch><UpdateVariable><JSONPatch>[]</JSONPatch></UpdateVariable>'
-        );
+    test.each([generateExtraModel, invokeExtraModelWithStrategy])(
+        'lets the custom validator handle unfiltered replies with %p',
+        async invoke => {
+            useDataStore().settings.通知.额外模型解析中 = false;
+            const response = '<JSONPatch>invalid</JSONPatch>' + "_.set('hp', 80);";
+            (globalThis as any).generateRaw.mockResolvedValueOnce(response);
+            const validate_result = jest.fn(async (result: string) => {
+                await Promise.resolve();
+                return result;
+            });
+            await expect(invoke({ validate_result })).resolves.toBe(response);
+            expect(validate_result).toHaveBeenCalledTimes(1);
+            expect(validate_result).toHaveBeenCalledWith(response);
+        }
+    );
 
-        await expect(generateExtraModel({ validate_result: result => result })).rejects.toThrow(
-            '返回了多个'
+    describe('preserves previously accepted reply formats for trial validation', () => {
+        const originalYaml = Object.getOwnPropertyDescriptor(globalThis, 'YAML');
+        beforeAll(() =>
+            Object.defineProperty(globalThis, 'YAML', { configurable: true, value: YAML })
         );
+        afterAll(() => {
+            if (originalYaml) Object.defineProperty(globalThis, 'YAML', originalYaml);
+            else Reflect.deleteProperty(globalThis, 'YAML');
+        });
+        const formats = [
+            {
+                name: 'json',
+                array: '[{"op":"replace","path":"/hp","value":80}]',
+                object: '{"json_patch":[{"op":"replace","path":"/hp","value":80}]}',
+            },
+            {
+                name: 'json5',
+                array: "[{op:'replace',path:'/hp',value:80,}]",
+                object: "{json_patch:[{op:'replace',path:'/hp',value:80,}],}",
+            },
+            {
+                name: 'yaml',
+                array: '- op: replace\n  path: /hp\n  value: 80',
+                object: 'json_patch:\n  - op: replace\n    path: /hp\n    value: 80',
+            },
+        ];
+        const cases = formats.flatMap(format =>
+            (['array', 'object'] as const).flatMap(shape =>
+                ['none', 'anonymous', 'language'].flatMap(fence =>
+                    (shape === 'array'
+                        ? ['bare', 'update', 'patch', 'update+patch']
+                        : ['bare', 'update']
+                    ).map(wrapper => {
+                        let response =
+                            fence === 'none'
+                                ? format[shape]
+                                : `\`\`\`${fence === 'language' ? format.name : ''}\n${format[shape]}\n\`\`\``;
+                        if (wrapper.includes('patch'))
+                            response = `<JSONPatch>\n${response}\n</JSONPatch>`;
+                        if (wrapper.includes('update'))
+                            response = `<UpdateVariable>\n${response}\n</UpdateVariable>`;
+                        return { name: `${format.name}/${shape}/${fence}/${wrapper}`, response };
+                    })
+                )
+            )
+        );
+        test.each(cases)('$name remains accepted', async ({ response }) => {
+            const variables: MvuData = {
+                stat_data: { hp: 72 },
+                initialized_lorebooks: {},
+                schema: { type: 'object', properties: {} },
+            };
+            (globalThis as any).generateRaw.mockResolvedValueOnce(response);
+            const validate_result = jest.fn(async (result: string) => {
+                const error = await validateIncrementalRepairAgainstState(result, variables);
+                if (error) throw new Error(error);
+                return result;
+            });
+            const accepted = await generateExtraModel({ validate_result });
+            expect(accepted).not.toBeNull();
+            expect(validate_result).toHaveBeenCalledTimes(1);
+            expect(variables.stat_data).toEqual({ hp: 72 });
+        });
     });
 
     test('retries when asynchronous result validation rejects an attempt', async () => {

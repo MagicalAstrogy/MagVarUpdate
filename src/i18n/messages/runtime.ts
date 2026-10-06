@@ -175,14 +175,6 @@ export const runtimeMessages = defineMessages({
         'zh-CN': '等待期间聊天、楼层、回复版本或变量已经变化，本次结果已作废',
         en: 'The chat, floor, reply version, or variables changed while waiting; this result was discarded',
     },
-    'runtime.incrementalRepair.noChanges': {
-        'zh-CN': '模型核验通过，没有需要补充或纠正的变量',
-        en: 'The model found no missing or incorrect variables',
-    },
-    'runtime.incrementalRepair.invalidPatch': {
-        'zh-CN': '模型没有返回可识别的增量校正命令，未修改变量',
-        en: 'The model returned no recognizable incremental repair commands',
-    },
     'runtime.incrementalRepair.noEffectiveChanges': {
         'zh-CN': '校正补丁没有产生实际变化，未写入正文或变量',
         en: 'The repair patch made no effective changes and was not written',
