@@ -78,6 +78,42 @@ describe('incremental repair executor integration', () => {
         expect(SillyTavern.chatMetadata.variables).toEqual(originalChatVariables);
     });
 
+    test.each([
+        '<Think>unfinished',
+        '<JSONPatch>[{"op":"replace","path":"/hp","value":999}]',
+        '<UpdateVariable><JSONPatch>[{"value":"unfinished',
+        '"unfinished',
+        '/*unfinished',
+    ])(
+        'appends outside unfinished original boundaries and restores them on undo: %s',
+        async tail => {
+            const original = "_.set('hp', 75);\n" + tail;
+            SillyTavern.chat[1].mes = original;
+            SillyTavern.chat[1].swipes![0] = original;
+            const originalMessage = klona(SillyTavern.chat[1]);
+            const reply =
+                '<UpdateVariable><JSONPatch>[{"op":"delta","path":"/hp","value":5}]</JSONPatch></UpdateVariable>';
+            jest.mocked(invokeExtraModelWithStrategy).mockImplementation(async options =>
+                options!.validate_result!(reply)
+            );
+
+            await runIncrementalExtraModelRepair();
+
+            expect(toastr.error).not.toHaveBeenCalled();
+            expect(SillyTavern.chat[1].mes.startsWith(original)).toBe(true);
+            expect(
+                SillyTavern.chat[1].mes.endsWith(
+                    '<JSONPatch>[{"op":"delta","path":"/hp","value":5}]</JSONPatch>'
+                )
+            ).toBe(true);
+            expect(SillyTavern.chat[1].variables![0].stat_data.hp).toBe(80);
+            const undo = (toastr.success as jest.Mock).mock.calls[0][2].onclick;
+            await undo();
+            expect(SillyTavern.chat[1]).toEqual(originalMessage);
+            expect(SillyTavern.chatMetadata.variables.stat_data.hp).toBe(75);
+        }
+    );
+
     test('retains acceptance when the original floor reports an unrelated replay error', async () => {
         SillyTavern.chat[1].mes += "\n_.set('missing', 1);";
         eventOn(

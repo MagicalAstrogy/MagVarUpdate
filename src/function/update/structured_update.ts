@@ -1,6 +1,9 @@
 import { parseString } from '@util/common';
 import { parse as parseJson5 } from 'json5';
 
+/** 标记因追加校正而补齐的旧残缺补丁，避免宽松解析器将原本忽略的内容修复成命令。 */
+const INCOMPLETE_PATCH_MARKER = '<!-- mvu:discard-incomplete-json-patch -->';
+
 /** 更新块在原文中的 UTF-16 区间，所有结束偏移均不包含对应位置的字符。 */
 export interface UpdateMarkupBlock {
     start: number;
@@ -8,13 +11,15 @@ export interface UpdateMarkupBlock {
     contentStart: number;
     contentEnd: number;
     closed: boolean;
+    /** 已补齐标签但仍应忽略的旧残缺补丁；其内部原有的闭合补丁单独提取。 */
+    discarded?: boolean;
 }
 
 /**
  * 扫描更新标签，同时屏蔽思考区和结构化数据中的标签字面量。
  * 所有偏移均对应原始 UTF-16 字符串；扫描只生成视图，不改写原始负载。
  * @param input 模型回复或已持久化的楼层正文。
- * @returns structural 屏蔽字符串和注释等数据，visible 仅隐藏思考区，tokens 记录真实标签。
+ * @returns structural/visible 为等长扫描视图，tokens 记录真实标签，tail 保留末尾未闭合状态。
  */
 export function scanUpdateMarkup(input: string) {
     // 通过等长空格屏蔽数据而不删除字符，让两个扫描视图与原文共用切片偏移。
@@ -172,14 +177,19 @@ export function scanUpdateMarkup(input: string) {
             }
         }
     }
-    return { structural: structural.join(''), visible: visible.join(''), tokens };
+    return {
+        structural: structural.join(''),
+        visible: visible.join(''),
+        tokens,
+        tail: { quote, blockComment, reasoning: ignored },
+    };
 }
 
 /**
  * 按标签类型配对更新块，忽略字符串、注释和思考区中的伪标签。
  * @param input 待扫描的原始文本。
  * @param kind patch 表示 JSONPatch，update 表示兼容的变量更新标签。
- * @returns 按起始位置排序的区间；未闭合块延伸至文末并标记 closed 为 false。
+ * @returns 按起始位置排序的区间；未闭合块标记 closed=false，补齐但保持忽略的旧补丁标记 discarded。
  */
 export function findUpdateMarkupBlocks(
     input: string,
@@ -192,14 +202,73 @@ export function findUpdateMarkupBlocks(
         if (!token.closing) stack.push({ start: token.start, contentStart: token.end });
         else {
             const opening = stack.pop();
-            if (opening)
-                blocks.push({ ...opening, contentEnd: token.start, end: token.end, closed: true });
+            if (opening) {
+                blocks.push({
+                    ...opening,
+                    contentEnd: token.start,
+                    end: token.end,
+                    closed: true,
+                    ...(kind === 'patch' && input.startsWith(INCOMPLETE_PATCH_MARKER, token.end)
+                        ? { discarded: true }
+                        : {}),
+                });
+            }
         }
     }
     // 保留未闭合块供调用方决定兼容或拒绝，避免扫描阶段默默丢失截断回复。
     for (const opening of stack)
         blocks.push({ ...opening, contentEnd: input.length, end: input.length, closed: false });
     return blocks.sort((a, b) => a.start - b.start);
+}
+
+/**
+ * 为正文末尾生成边界闭合文本，让随后追加的补丁从独立的扫描上下文开始。
+ * 仅追加字符；按现有扫描器的状态闭合字符串、块注释、思考区、更新标签和代码围栏。
+ * @param input 原始正文，不会被裁剪或改写。
+ * @returns 含起始换行的闭合文本；没有未闭合结构时只返回换行。
+ */
+export function closeUpdateMarkup(input: string): string {
+    // 先加换行结束 // 和 YAML # 行注释，也消费字符串末尾的反斜杠转义。
+    const scanned = scanUpdateMarkup(`${input}\n`);
+    let suffix = '\n';
+    if (scanned.tail.quote) suffix += scanned.tail.quote + '\n';
+    if (scanned.tail.blockComment) suffix += '*/\n';
+    for (const name of [...scanned.tail.reasoning].reverse()) suffix += `</${name}>\n`;
+
+    const openings: typeof scanned.tokens = [];
+    for (const token of scanned.tokens) {
+        if (!token.closing) openings.push(token);
+        else {
+            // 与 findUpdateMarkupBlocks 一致，按兼容标签类别配对，不把数据中的标签当作结构。
+            const index = openings.findLastIndex(opening => opening.name === token.name);
+            if (index >= 0) openings.splice(index, 1);
+        }
+    }
+    const endings = openings.map(opening => {
+        const tag = input.slice(opening.start, opening.end).match(/^<\s*([^\s/>]+)/)![1];
+        // 只补标签会让 parseString 将旧残缺内容修复成命令；显式标记继续忽略该旧块。
+        const marker = opening.name === 'patch' ? INCOMPLETE_PATCH_MARKER : '';
+        return { start: opening.start, text: `</${tag}>${marker}\n` };
+    });
+
+    // 围栏只在未被屏蔽的行上识别，避免补丁字符串、YAML 块标量或思考区里的 ``` 干扰。
+    // 把真实标签视为行边界，兼容 <JSONPatch>```json 和 ```</JSONPatch>，同时保留原文偏移。
+    const fence_view = scanned.structural.split('');
+    for (const token of scanned.tokens) fence_view.fill('\n', token.start, token.end);
+    let fence: { start: number; delimiter: string } | undefined;
+    for (const match of fence_view.join('').matchAll(/^[ \t]{0,3}(`{3,}|~{3,})([^\r\n]*)$/gm)) {
+        if (!fence) fence = { start: match.index, delimiter: match[1] };
+        else if (
+            match[1][0] === fence.delimiter[0] &&
+            match[1].length >= fence.delimiter.length &&
+            !match[2].trim()
+        )
+            fence = undefined;
+    }
+    if (fence) endings.push({ start: fence.start, text: `${fence.delimiter}\n` });
+    // 补丁内的围栏先于补丁闭合，包住整个更新块的外层围栏则最后闭合。
+    for (const ending of endings.sort((a, b) => b.start - a.start)) suffix += ending.text;
+    return suffix;
 }
 
 /**

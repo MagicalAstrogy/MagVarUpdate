@@ -446,7 +446,7 @@ export function extractCommands(inputText: string): Command[] {
     // TODO: 应该按照消息中更新命令出现的顺序来排列 json_patch 和自定义命令
     const results: (Command & { $index: number })[] = _.concat(
         findUpdateMarkupBlocks(inputText, 'patch')
-            .filter(block => block.closed)
+            .filter(block => block.closed && !block.discarded)
             .map(block => ({
                 index: block.start,
                 string: cleanStructuredUpdate(

@@ -6,7 +6,7 @@ import { tr } from '@/i18n';
 import { useDataStore } from '@/store';
 import { getLastValidVariable } from '@/util';
 import { isMvuData, type MvuData } from '@/variable_def';
-import { findUpdateMarkupBlocks } from './structured_update';
+import { closeUpdateMarkup, findUpdateMarkupBlocks } from './structured_update';
 import { klona } from 'klona';
 
 const PERSISTED_MVU_KEYS = [
@@ -215,37 +215,30 @@ export function buildIncrementalRepairPromptTail(user_direction: string = ''): s
 }
 
 /**
- * 剥离更新块的外层标签，保留待合并的内部内容。
- * @param block 使用兼容更新标签包裹的文本。
- * @returns 去除外层标签及首尾空白后的内容。
+ * 补齐原文末尾的未闭合边界后，追加独立的校正补丁，保留原文的所有字符及命令顺序。
+ *
+ * 原文兼容形态：裸脚本、多行脚本、单个或多个 JSONPatch、脚本与补丁混排，
+ * JSON/JSON5/YAML 补丁及其代码围栏、UpdateVariable/VariableUpdate/Update 包装，
+ * 多个或嵌套包装、标签大小写/属性、剧情文本、闭合思考区及数据中的标签字面量。
+ * 未闭合 UpdateVariable 不影响提取，但仍在新补丁前补齐；行注释用换行结束，
+ * 字符串、块注释、思考标签、残缺 JSONPatch 和围栏则由共享扫描器的尾部状态闭合。
+ * 原本被忽略的残缺补丁保持不可执行，不通过补齐其 JSON 数据激活旧操作。
+ *
+ * @param message 校正前的完整正文。
+ * @param repair_block 已通过副本试执行的更新文本；JSONPatch 保留为独立块，兼容脚本原样追加。
+ * @returns 原文、必要闭合文本及校正内容；校正内容为空时返回原文。
  */
-function extractUpdateBlockInner(block: string): string {
-    return block
-        .replace(/^<(?:update(?:variable)?|variableupdate)\b[^>]*>/i, '')
-        .replace(/<\/(?:update(?:variable)?|variableupdate)\s*>\s*$/i, '')
-        .trim();
-}
-
-/**
- * 将校正内容追加到消息的最后一个更新块中，没有更新块时在正文末尾新增。
- * 保留原更新命令在前，使整楼重放时先执行原更新，再执行校正。
- * @param message 校正前的完整消息正文。
- * @param repair_block 已通过副本试执行的更新文本。
- * @returns 合并后的完整正文；校正内容为空时返回原文。
- */
-export function mergeIncrementalRepairBlock(message: string, repair_block: string): string {
-    const repair_inner = extractUpdateBlockInner(repair_block);
-    if (!repair_inner) return message;
-
-    const blocks = findUpdateMarkupBlocks(message, 'update');
-    const target = blocks.at(-1);
-    if (target) {
-        const original_inner = message.slice(target.contentStart, target.contentEnd).trim();
-        const merged = `<UpdateVariable>\n${original_inner}\n\n${repair_inner}\n</UpdateVariable>`;
-        return message.slice(0, target.start) + merged + message.slice(target.end);
+export function appendIncrementalRepairBlock(message: string, repair_block: string): string {
+    let content = repair_block.trim();
+    if (!content) return message;
+    const wrappers = findUpdateMarkupBlocks(content, 'update');
+    const outer = wrappers.length === 1 ? wrappers[0] : undefined;
+    if (outer?.closed && outer.start === 0 && outer.end === content.length) {
+        // 仅移除校正回复完整的外层包装，使 JSONPatch 直接追加在原文底部。
+        // 不修改原文标签，也不重新解析补丁数组或把兼容脚本转换成 JSONPatch。
+        content = content.slice(outer.contentStart, outer.contentEnd).trim();
     }
-
-    return `${message.trimEnd()}\n\n<UpdateVariable>\n${repair_inner}\n</UpdateVariable>`;
+    return content ? `${message}${closeUpdateMarkup(message)}\n${content}` : message;
 }
 
 /**
@@ -745,9 +738,9 @@ export async function runIncrementalExtraModelRepair() {
             );
             return;
         }
-        // 先将校正合入完整正文，再从上一楼重放一次，确保持久化文本与最终状态一致。
+        // 先闭合原文残留边界并在底部追加校正，再从上一楼重放一次，保持正文与状态一致。
         // 若在已结算的当前楼快照上再运行整楼生命周期钩子，会重复结算。
-        const repaired_content = mergeIncrementalRepairBlock(anchor.message_content, repair_block);
+        const repaired_content = appendIncrementalRepairBlock(anchor.message_content, repair_block);
         const applied_data = klona(previous_variables);
         // 当前楼新增的世界书初始化记录无法从上一楼恢复，必须保留；
         // 等待期间外部更新的 schema 也要在重放前合入，使执行遵循最新规则。

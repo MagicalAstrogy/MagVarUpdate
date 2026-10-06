@@ -2,7 +2,7 @@ import {
     buildIncrementalRepairTask,
     buildIncrementalRepairPromptTail,
     collectIncrementalStateChanges,
-    mergeIncrementalRepairBlock,
+    appendIncrementalRepairBlock,
     validateIncrementalRepairAgainstState,
 } from '@/function/update/incremental_repair';
 import { extractCommands, updateVariables } from '@/function/update_variables';
@@ -48,7 +48,7 @@ describe('incremental extra-model repair', () => {
         expect(buildIncrementalRepairPromptTail()).toContain('用户未补充方向');
     });
 
-    test('merges repair content into the last existing update block', () => {
+    test('appends a standalone repair after the complete original message', () => {
         const message = [
             '剧情正文',
             '<UpdateVariable>',
@@ -61,31 +61,36 @@ describe('incremental extra-model repair', () => {
             '<JSONPatch>[{"op":"replace","path":"/infection","value":10}]</JSONPatch>',
             '</UpdateVariable>',
         ].join('\n');
-        const merged = mergeIncrementalRepairBlock(message, repair);
+        const merged = appendIncrementalRepairBlock(message, repair);
 
         expect(merged.match(/<UpdateVariable>/g)).toHaveLength(1);
         expect(merged).toContain("_.set('hp', 100, 72);//受伤");
         expect(merged).toContain('"path":"/infection"');
-        expect(merged.endsWith('尾注')).toBe(true);
+        expect(merged.startsWith(message + '\n\n')).toBe(true);
+        expect(
+            merged.endsWith(
+                '<JSONPatch>[{"op":"replace","path":"/infection","value":10}]</JSONPatch>'
+            )
+        ).toBe(true);
     });
 
-    test('creates one update block when the message has none', () => {
-        const merged = mergeIncrementalRepairBlock(
+    test('appends only the repair payload when the message has no update wrapper', () => {
+        const merged = appendIncrementalRepairBlock(
             '剧情正文',
             '<UpdateVariable><JSONPatch>[]</JSONPatch></UpdateVariable>'
         );
-        expect(merged).toBe(
-            '剧情正文\n\n<UpdateVariable>\n<JSONPatch>[]</JSONPatch>\n</UpdateVariable>'
-        );
+        expect(merged).toBe('剧情正文\n\n<JSONPatch>[]</JSONPatch>');
     });
 
-    test('canonicalizes a compatible existing update wrapper while merging', () => {
-        const merged = mergeIncrementalRepairBlock(
+    test('preserves the compatible original wrapper while appending a new patch', () => {
+        const merged = appendIncrementalRepairBlock(
             '<VariableUpdate>\n<JSONPatch>[]</JSONPatch>\n</VariableUpdate>',
             '<UpdateVariable><JSONPatch>[{"op":"replace","path":"/hp","value":72}]</JSONPatch></UpdateVariable>'
         );
-        expect(merged.match(/<UpdateVariable>/g)).toHaveLength(1);
-        expect(merged).not.toContain('<VariableUpdate>');
+        expect(merged).not.toContain('<UpdateVariable>');
+        expect(
+            merged.startsWith('<VariableUpdate>\n<JSONPatch>[]</JSONPatch>\n</VariableUpdate>\n\n')
+        ).toBe(true);
         expect(merged).toContain('"path":"/hp"');
     });
 
@@ -175,7 +180,7 @@ describe('incremental repair trial execution', () => {
         expect(variables.stat_data.hp).toBe(72);
         const replayed = createVariables({ hp: 72 });
         const errors: string[] = [];
-        await updateVariables(mergeIncrementalRepairBlock('story', result), replayed, errors);
+        await updateVariables(appendIncrementalRepairBlock('story', result), replayed, errors);
         expect(errors).toEqual([]);
         expect(replayed.stat_data.hp).toBe(80);
     });
