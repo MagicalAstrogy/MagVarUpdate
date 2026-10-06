@@ -114,6 +114,58 @@ describe('incremental repair executor integration', () => {
         }
     );
 
+    test('writes only replayed metadata and restores the latest pre-repair snapshots on undo', async () => {
+        const previous = SillyTavern.chat[0].variables![0] as MvuData;
+        previous.schema.strictSet = false;
+        previous.initialized_lorebooks = { existing: [] };
+        const current = SillyTavern.chat[1].variables![0] as MvuData;
+        current.stat_data.current_floor_only = 'worldbook value';
+        current.initialized_lorebooks = { existing: [], new_book: ['worldbook value'] };
+        SillyTavern.chatMetadata.variables = klona(current);
+
+        let originalMessage: (typeof SillyTavern.chat)[number] | undefined;
+        let originalChatVariables: MvuData | undefined;
+        (SillyTavern.callGenericPopup as jest.Mock)
+            .mockReset()
+            .mockResolvedValueOnce('')
+            .mockImplementationOnce(async () => {
+                // 等待确认期间刷新的元数据用于并发比较和撤销，但不能覆盖重放结果。
+                current.schema.strictSet = true;
+                current.display_data = { hp: 'message display refresh' };
+                current.delta_data = { hp: 'message delta refresh' };
+                const chat = SillyTavern.chatMetadata.variables as MvuData;
+                chat.schema.strictSet = true;
+                chat.display_data = { hp: 'chat display refresh' };
+                chat.delta_data = { hp: 'chat delta refresh' };
+                chat.initialized_lorebooks.chat_only = [];
+                originalMessage = klona(SillyTavern.chat[1]);
+                originalChatVariables = klona(chat);
+                return 1;
+            });
+        jest.mocked(invokeExtraModelWithStrategy).mockImplementation(async options =>
+            options!.validate_result!("_.set('hp', 80);")
+        );
+
+        await runIncrementalExtraModelRepair();
+
+        expect(toastr.error).not.toHaveBeenCalled();
+        const applied = SillyTavern.chat[1].variables![0] as MvuData;
+        expect(applied.stat_data).toEqual({ hp: 80 });
+        expect(applied.initialized_lorebooks).toEqual({ existing: [] });
+        expect(applied.schema.strictSet).toBe(false);
+        expect(applied.schema.properties).not.toHaveProperty('current_floor_only');
+        expect(applied.display_data?.hp).toContain('75->80');
+        expect(applied.delta_data?.hp).toContain('75->80');
+        expect(SillyTavern.chatMetadata.variables).toEqual(applied);
+        expect(previous.stat_data).toEqual({ hp: 72 });
+        expect(previous.initialized_lorebooks).toEqual({ existing: [] });
+
+        const undo = (toastr.success as jest.Mock).mock.calls[0][2].onclick;
+        await undo();
+        expect(SillyTavern.chat[1]).toEqual(originalMessage);
+        expect(SillyTavern.chatMetadata.variables).toEqual(originalChatVariables);
+    });
+
     test('retains acceptance when the original floor reports an unrelated replay error', async () => {
         SillyTavern.chat[1].mes += "\n_.set('missing', 1);";
         eventOn(

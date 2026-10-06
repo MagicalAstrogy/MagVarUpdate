@@ -310,56 +310,6 @@ function persistedSnapshotMatches(
 }
 
 /**
- * 将等待期间发生的元数据变化覆盖到重放结果，原地更新目标快照。
- * 未变化的字段保留重放值；对象按键递归合并，删除、数组及类型变化整体覆盖。
- * @param baseline 发起校正时的元数据快照。
- * @param latest 准备应用校正时读取的最新快照。
- * @param target 接收元数据变化的重放结果。
- * @param keys 允许覆盖的持久化字段，默认排除 stat_data。
- */
-function rebaseMetadataRefreshes(
-    baseline: PersistedMvuSnapshot,
-    latest: PersistedMvuSnapshot,
-    target: PersistedMvuSnapshot,
-    keys: (typeof PERSISTED_MVU_KEYS)[number][] = [
-        'schema',
-        'display_data',
-        'delta_data',
-        'initialized_lorebooks',
-    ]
-) {
-    /** 仅将基线之后发生的变化递归覆盖到重放值上，未变化的键保留重放结果。 */
-    const overlay = (before: unknown, after: unknown, replayed: unknown): unknown => {
-        if (_.isEqual(before, after)) return replayed;
-        if (!_.isPlainObject(before) || !_.isPlainObject(after) || !_.isPlainObject(replayed))
-            return klona(after);
-        const result = { ...(replayed as Record<string, unknown>) };
-        const old = before as Record<string, unknown>;
-        const current = after as Record<string, unknown>;
-        for (const key of new Set([...Object.keys(old), ...Object.keys(current)])) {
-            const had = Object.prototype.hasOwnProperty.call(old, key);
-            const has = Object.prototype.hasOwnProperty.call(current, key);
-            if (had === has && _.isEqual(old[key], current[key])) continue;
-            if (!has) delete result[key];
-            else
-                Object.defineProperty(result, key, {
-                    value: had ? overlay(old[key], current[key], result[key]) : klona(current[key]),
-                    writable: true,
-                    enumerable: true,
-                    configurable: true,
-                });
-        }
-        return result;
-    };
-    for (const key of keys) {
-        if (_.has(baseline, key) === _.has(latest, key) && _.isEqual(baseline[key], latest[key]))
-            continue;
-        if (!_.has(latest, key)) delete target[key];
-        else target[key] = overlay(baseline[key], latest[key], target[key]);
-    }
-}
-
-/**
  * 仅比较实际变量状态，用于允许等待期间发生无关的元数据刷新。
  * @param source 当前变量对象。
  * @param expected 请求锚点中的快照。
@@ -402,7 +352,7 @@ function anchorStillMatches(anchor: RepairAnchor): boolean {
     if (!anchorIdentityStillMatches(anchor)) return false;
     const current_variables = getVariables({ type: 'message', message_id: anchor.message_id });
     if (!isMvuData(current_variables)) return false;
-    // 等待期间 MVU 或其他扩展可能刷新派生元数据，应用前会合并这些变化。
+    // 等待期间允许刷新派生元数据；提交和撤销比较最新快照，写入值以整楼重放结果为准。
     // 此处仅因 stat_data 改变而使结果失效；提交时仍需比较完整快照。
     if (!statDataMatchesSnapshot(current_variables, anchor.message_variables)) return false;
     if (anchor.update_chat_variables) {
@@ -716,7 +666,7 @@ export async function runIncrementalExtraModelRepair() {
             return;
         }
 
-        // 接纳等待期间的派生元数据刷新，并将最新完整快照用于提交前比较及撤销。
+        // 记录最新完整快照用于提交前比较及撤销，不把当前楼的元数据覆盖到重放结果。
         // 后续若再有并发写入，commitRepair 会拒绝覆盖。
         const latest_message_variables = getVariables({ type: 'message', message_id });
         const latest_chat_variables = getVariables({ type: 'chat' });
@@ -727,7 +677,6 @@ export async function runIncrementalExtraModelRepair() {
             );
             return;
         }
-        const original_data = klona(latest_message_variables);
         original_message_snapshot = snapshotPersistedMvuData(latest_message_variables);
         original_chat_snapshot = snapshotPersistedMvuData(latest_chat_variables);
 
@@ -742,14 +691,8 @@ export async function runIncrementalExtraModelRepair() {
         // 若在已结算的当前楼快照上再运行整楼生命周期钩子，会重复结算。
         const repaired_content = appendIncrementalRepairBlock(anchor.message_content, repair_block);
         const applied_data = klona(previous_variables);
-        // 当前楼新增的世界书初始化记录无法从上一楼恢复，必须保留；
-        // 等待期间外部更新的 schema 也要在重放前合入，使执行遵循最新规则。
-        if (_.has(original_data, 'initialized_lorebooks')) {
-            applied_data.initialized_lorebooks = klona(original_data.initialized_lorebooks);
-        } else _.unset(applied_data, 'initialized_lorebooks');
-        rebaseMetadataRefreshes(anchor.message_variables, original_message_snapshot, applied_data, [
-            'schema',
-        ]);
+        // 全部字段以上一楼快照和重放结果为准，包括 schema、显示/差量数据及初始化记录。
+        // 当前楼新增的世界书变量不会凭空保留，对应初始化记录也应回退，供后续楼层重新初始化。
         // 整楼重放沿用已有更新行为；原正文的历史错误不作为新增的拒绝条件。
         await updateVariables(repaired_content, applied_data);
         if (
@@ -762,18 +705,7 @@ export async function runIncrementalExtraModelRepair() {
             );
             return;
         }
-        rebaseMetadataRefreshes(anchor.message_variables, original_message_snapshot, applied_data, [
-            'schema',
-            'display_data',
-            'delta_data',
-        ]);
         const applied_snapshot = snapshotPersistedMvuData(applied_data);
-        const applied_chat_snapshot = klona(applied_snapshot);
-        rebaseMetadataRefreshes(
-            anchor.chat_variables,
-            original_chat_snapshot,
-            applied_chat_snapshot
-        );
         commitRepair(
             anchor,
             anchor.message_content,
@@ -781,7 +713,7 @@ export async function runIncrementalExtraModelRepair() {
             original_message_snapshot,
             original_chat_snapshot,
             applied_snapshot,
-            applied_chat_snapshot
+            applied_snapshot
         );
         await saveAndRefreshRepair(anchor);
 
@@ -790,7 +722,7 @@ export async function runIncrementalExtraModelRepair() {
             original_message_snapshot,
             original_chat_snapshot,
             applied_snapshot,
-            applied_chat_snapshot,
+            applied_snapshot,
             repaired_content
         );
     } catch (error) {
