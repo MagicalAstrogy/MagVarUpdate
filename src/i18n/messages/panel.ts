@@ -614,8 +614,8 @@ export const panelMessages = defineMessages({
     },
     'panel.source.pi.thinkingLevelHelp': {
         'zh-CN':
-            '默认保持现有请求行为；其他等级按模型能力映射，部分模型无法完全关闭思考。未知模型会尝试发送所选等级，支持情况以服务端为准。Anthropic 开启思考时不支持强制工具调用，旧模型至少需要 2048 回复 token。自定义请求体覆盖仍优先。',
-        en: 'Default preserves existing requests. Other levels are mapped to model capabilities; some models cannot fully disable thinking. Unknown models attempt the selected level subject to server support. Anthropic thinking cannot force tool calls; older models need at least 2048 reply tokens. Custom body overrides take precedence.',
+            '默认保持现有请求行为；其他等级按模型能力映射，部分模型无法完全关闭思考。未知模型按协议转换所选等级；OpenAI/Mistral 的极高、最高会原样尝试，Google/预算式思考仍按协议映射。Anthropic 开启思考时不支持强制工具调用，旧模型至少需要 2048 回复 token。自定义请求体覆盖仍优先。',
+        en: 'Default preserves existing requests. Other levels are mapped to model capabilities; some models cannot fully disable thinking. Unknown models use protocol-specific mappings: OpenAI/Mistral attempt xhigh/max unchanged, while Google and budget-based thinking use protocol mappings. Anthropic thinking cannot force tool calls; older models need at least 2048 reply tokens. Custom body overrides take precedence.',
     },
     'panel.source.pi.thinking.default': {
         'zh-CN': '默认（保持原行为）',

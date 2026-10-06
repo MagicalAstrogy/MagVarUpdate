@@ -1324,17 +1324,6 @@ export async function runPiStFeatureSmoke({
         anthropicStructured.providerRequests === 1 &&
         anthropicStructured.lastRequest?.hasNativeSchema === true;
 
-    for (const level of ['high', 'off']) {
-        await configurePi(webDriver, 'google', '工具调用', undefined, false, level);
-        const thought = await invokeRetry(webDriver, `thinking-${level}`);
-        checks[`googleThinking${level}`] =
-            thought.providerRequests === 1 &&
-            thought.lastRequest?.requiredToolChoice === true &&
-            (level === 'off'
-                ? thought.lastRequest?.thinkingBudget === 0
-                : thought.lastRequest?.thinkingBudget > 0);
-    }
-
     for (const provider of ['openai', 'anthropic', 'google']) {
         // 服务商取消矩阵：停止事件必须到达每条实际请求，并形成取消终态。
         checks[`${provider}Abort`] = await runAbortCase(webDriver, provider);

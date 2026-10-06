@@ -1,3 +1,5 @@
+import { resolvePiThinkingLevel } from './thinking';
+import { isPiThinkingEnabled } from './thinking_setting';
 import {
     ANT_LING_MODELS,
     ANTHROPIC_MODELS,
@@ -665,8 +667,9 @@ export function resolvePiCapabilities(
 
     const catalogModel = verifiedCatalogModel(definition, api, options);
     const samplingModel = catalogModel ?? options.model;
-    const thinkingEnabled =
-        options.thinkingLevel !== undefined && !['default', 'off'].includes(options.thinkingLevel);
+    const thinkingEnabled = isPiThinkingEnabled(
+        resolvePiThinkingLevel(options.thinkingLevel, catalogModel)
+    );
     const anthropicSamplingAllowed =
         definition.key !== 'anthropic' ||
         catalogModel === undefined ||

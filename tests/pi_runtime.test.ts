@@ -33,7 +33,7 @@ jest.mock('@/function/update/pi/pi_gateway', () => {
                     : provider === 'opencode'
                       ? 'https://opencode.ai/zen/v1'
                       : 'https://chatgpt.com/backend-api',
-        reasoning: false,
+        reasoning: id === 'claude-legacy',
         input,
         cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
         contextWindow,
@@ -649,7 +649,7 @@ describe('pi runtime execution', () => {
 
     afterEach(() => clearPiRequestControllers());
 
-    test.each(['high', 'off'] as const)(
+    test.each(['high', 'off', 'xhigh', 'max'] as const)(
         'sends explicit %s thinking through simple adapters and keeps the forced tool choice',
         async thinkingLevel => {
             streamSimple.mockReturnValue(fakeStream(assistant([{ type: 'text', text: 'done' }])));
@@ -679,12 +679,44 @@ describe('pi runtime execution', () => {
                 }),
                 expect.anything(),
                 expect.objectContaining({
-                    reasoning: thinkingLevel === 'off' ? undefined : 'high',
+                    reasoning: thinkingLevel === 'off' ? undefined : thinkingLevel,
                     toolChoice: 'required',
                 })
             );
         }
     );
+
+    test.each([
+        { provider: 'openai', api: 'openai-responses', model: 'gpt-known' },
+        { provider: 'anthropic', api: 'anthropic-messages', model: 'claude-known' },
+    ])('clamps non-reasoning $provider before validation and dispatch', async target => {
+        streamSimple.mockReturnValue(fakeStream(assistant([{ type: 'text', text: 'done' }])));
+        const preflight = await assertPiRuntimeConfiguration({
+            settings: makeSettings({ pi: { ...target, thinkingLevel: 'high' } }),
+            responseFormat: '工具调用',
+            tools: [TOOL],
+            credentialStore: makeCredentialStore(),
+        });
+        expect(preflight.thinkingLevel).toBe('off');
+        expect(preflight.resolution.effectiveMaxTokens).toBe(1024);
+        if (target.provider === 'openai') {
+            expect(preflight.temperature).toBe(0.7);
+            expect(preflight.sampling.topP).toBe(0.8);
+        }
+        await runPiRequest({
+            preflight,
+            generationId: `non-thinking-${target.provider}`,
+            messages: [{ role: 'user', content: 'Update' }],
+        });
+        expect(streamSimple).toHaveBeenCalledWith(
+            expect.objectContaining({ reasoning: false }),
+            expect.anything(),
+            expect.objectContaining({
+                reasoning: undefined,
+                toolChoice: target.provider === 'openai' ? 'required' : 'any',
+            })
+        );
+    });
 
     test('rejects Anthropic thinking with forced tools before dispatch', async () => {
         await expect(

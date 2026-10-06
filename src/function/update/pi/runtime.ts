@@ -3,6 +3,7 @@ import {
     isPiThinkingEnabled,
     type PiThinkingLevel,
 } from './thinking_setting';
+import { preparePiThinkingModel, resolvePiThinkingLevel } from './thinking';
 import type { MvuSettings } from '@/store';
 import { installPiAbortSignalPolyfills } from './abort_signal';
 import {
@@ -25,7 +26,6 @@ import { createPiNonStreamingFetch } from './non_streaming_fetch';
 import { isPiStreamingRequired } from './provider_target';
 import { createPiPayloadTransform, transformPiPayload, type PiJsonSchema } from './payload';
 import {
-    clampThinkingLevel,
     createModels,
     createProvider,
     type Api,
@@ -471,9 +471,16 @@ export async function assertPiRuntimeConfiguration(
     const settings = requireSettings(input.settings);
     const resolution = resolvePiModelFromExtraModelSettings(settings);
     const responseFormat = resolveResponseFormat(settings, input.responseFormat);
-    const thinkingLevel = normalizePiThinkingLevel(
+    const requestedThinkingLevel = normalizePiThinkingLevel(
         isPlainObject(settings.pi) ? settings.pi.thinkingLevel : undefined
     );
+    resolution.model = preparePiThinkingModel(
+        resolution.model,
+        resolution.catalogHit,
+        requestedThinkingLevel
+    );
+    // Validation, sampling and dispatch must all use the same effective level.
+    const thinkingLevel = resolvePiThinkingLevel(requestedThinkingLevel, resolution.model);
     const capabilities = capabilityFor(resolution, thinkingLevel);
     const streaming =
         settings['兼容假流式'] === true || isPiStreamingRequired(resolution.model.api);
@@ -919,23 +926,15 @@ export async function runPiRequest(
         } else {
             const model = {
                 ...preflight.resolution.model,
-                // An explicit setting opts unknown/custom-endpoint models into reasoning.
-                reasoning: preflight.resolution.catalogHit
-                    ? preflight.resolution.model.reasoning
-                    : true,
                 // The shared answer/thinking budget must stay inside the preflight reservation.
                 maxTokens: preflight.resolution.effectiveMaxTokens,
             };
-            const level =
-                preflight.thinkingLevel === 'off'
-                    ? 'off'
-                    : clampThinkingLevel(model, preflight.thinkingLevel);
             // Pi 1.0's simple adapters forward native toolChoice unchanged, although the public
             // simple type only declares auto/none. Keep required/named choices from our resolver.
             // Real-adapter transport tests cover this compatibility boundary.
             const simpleOptions = {
                 ...options,
-                reasoning: level === 'off' ? undefined : level,
+                reasoning: preflight.thinkingLevel === 'off' ? undefined : preflight.thinkingLevel,
             } as SimpleStreamOptions;
             stream = models.streamSimple(model, systemMessages.context, simpleOptions);
         }
