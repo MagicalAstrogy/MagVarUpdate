@@ -29,6 +29,7 @@ const slashRunnerManifest = path.join(
 const FEATURE_SMOKE_MODE = process.env.MVU_PI_ST_FEATURE_SMOKE === '1';
 const SERVER_CANCEL_SMOKE_MODE = process.env.MVU_PI_ST_SERVER_CANCEL_SMOKE === '1';
 const OAUTH_SMOKE_MODE = process.env.MVU_PI_ST_OAUTH_SMOKE === '1';
+const CONFIGURED_LIVE_MODE = process.env.MVU_PI_ST_CONFIGURED_LIVE_SMOKE === '1';
 const TEMP_PREFIX = OAUTH_SMOKE_MODE
     ? 'mvu-pi-st-oauth-'
     : SERVER_CANCEL_SMOKE_MODE
@@ -760,6 +761,13 @@ async function main() {
         // selected character and session intact: this smoke validates the request/cancel boundary,
         // while the broader prompt-fixture suite owns worldbook parity as a separate concern.
 
+        if (CONFIGURED_LIVE_MODE) {
+            const { preparePiStConfiguredLivePresets } = await import(
+                './pi_st_configured_live_smoke.mjs'
+            );
+            await preparePiStConfiguredLivePresets({ webDriver });
+        }
+
         // 产物加载：安装本地 MVU 产物，确认脚本入口与界面已可用。
         phase = 'load-artifact';
         const artifactUrl = `http://127.0.0.1:${artifactPort}/bundle.js?sha=${artifactHashBefore.slice(0, 12)}`;
@@ -879,6 +887,20 @@ async function main() {
                 scriptName: SCRIPT_NAME,
                 artifactBundleRequests: artifact.getBundleRequests(),
                 artifactHashStable: sha256(await readFile(artifactPath)) === artifactHashBefore,
+                firefoxProfileTemporary: profileTemporary,
+                embeddedScriptsRejected: popupCounts.rejectedScripts,
+            });
+        } else if (CONFIGURED_LIVE_MODE) {
+            phase = 'configured-live-smoke';
+            const { runPiStConfiguredLiveSmoke } = await import(
+                './pi_st_configured_live_smoke.mjs'
+            );
+            result = await runPiStConfiguredLiveSmoke({
+                webDriver,
+                scriptName: SCRIPT_NAME,
+                artifactHash: artifactHashBefore,
+                browserVersion: createdSession?.capabilities?.browserVersion,
+                artifactBundleRequests: artifact.getBundleRequests(),
                 firefoxProfileTemporary: profileTemporary,
                 embeddedScriptsRejected: popupCounts.rejectedScripts,
             });

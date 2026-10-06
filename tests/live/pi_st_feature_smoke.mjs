@@ -43,14 +43,14 @@ const trace = label => {
 };
 
 /** 连接准备：在浏览器中设置本次 Pi 来源、协议及所需应答选项。 */
-async function configurePi(webDriver, provider, responseFormat, apiOverride) {
+async function configurePi(webDriver, provider, responseFormat, apiOverride, streaming = false) {
     trace(`configure:${provider}:${responseFormat}:start`);
     const definition = PROVIDERS[provider];
     assertFeature(definition, `unknown-provider-${provider}`);
     const api = apiOverride ?? definition.api;
     const result = await webDriver.executeAsync(
         `
-        const [scriptName, provider, api, model, responseFormat] = arguments;
+        const [scriptName, provider, api, model, responseFormat, streaming] = arguments;
         const done = arguments[arguments.length - 1];
         (async () => {
             const iframe = [...document.querySelectorAll('iframe')].find(frame =>
@@ -83,9 +83,9 @@ async function configurePi(webDriver, provider, responseFormat, apiOverride) {
             try {
                 choose(['与插头相同', '自定义', '更多'], '更多');
                 await tick();
-                choose(['openai', 'openai-codex', 'anthropic', 'google'], provider);
-                await tick();
-                choose([api], api);
+                // 来源控件合并了服务商、协议和认证方式；通过实际选项完成切换。
+                const sourceChoice = JSON.stringify([provider, api, 'api_key']);
+                const providerSelect = choose([sourceChoice], sourceChoice);
                 await tick();
 
                 const grid = candidateDocuments.flatMap(owner => [...owner.querySelectorAll('.mvu-field-grid')]).find(candidate =>
@@ -110,6 +110,15 @@ async function configurePi(webDriver, provider, responseFormat, apiOverride) {
                 if (!contextInput) throw new Error('context-window');
                 setInput(contextInput, '');
                 choose(['聊天消息', '工具调用', '格式化输出'], responseFormat);
+                const streamingField = candidateDocuments
+                    .flatMap(owner => [...owner.querySelectorAll('.mvu-field')])
+                    .find(field => /pseudo-streaming compatibility|兼容假流式/i.test(
+                        field.querySelector('.mvu-field__label')?.textContent || ''
+                    ));
+                const streamingInput = streamingField?.querySelector('input[type="checkbox"]');
+                if (!streamingInput) throw new Error('streaming-control');
+                streamingInput.checked = streaming;
+                streamingInput.dispatchEvent(new streamingInput.ownerDocument.defaultView.Event('change', { bubbles: true }));
                 await tick();
 
                 const source = candidateDocuments.flatMap(owner => [...owner.querySelectorAll('select')]).find(candidate =>
@@ -122,6 +131,8 @@ async function configurePi(webDriver, provider, responseFormat, apiOverride) {
                     ok: source?.value === '更多' && format?.value === responseFormat,
                     provider,
                     api,
+                    providerSelected: providerSelect.value === sourceChoice,
+                    streaming: streamingInput.checked,
                     modelValue: modelInput?.value,
                     keyPresent: Boolean(keyInput?.value),
                     endpointEmpty: !endpointInput || endpointInput.value === '',
@@ -131,7 +142,7 @@ async function configurePi(webDriver, provider, responseFormat, apiOverride) {
             }
         })();
         `,
-        [activeScriptName, provider, api, definition.model, responseFormat],
+        [activeScriptName, provider, api, definition.model, responseFormat, streaming],
         30_000
     );
     assertFeature(
@@ -139,6 +150,8 @@ async function configurePi(webDriver, provider, responseFormat, apiOverride) {
         `configure-${provider}-${responseFormat}-${result?.stage ?? 'failed'}`
     );
     assertFeature(result.api === api, `configure-api-${provider}`);
+    assertFeature(result.providerSelected, `configure-provider-${provider}`);
+    assertFeature(result.streaming === streaming, `configure-streaming-${provider}`);
     assertFeature(result.modelValue === definition.model, `configure-model-${provider}`);
     assertFeature(result.keyPresent, `configure-key-${provider}`);
     assertFeature(result.endpointEmpty, `configure-endpoint-${provider}`);
@@ -242,7 +255,9 @@ async function runAbortCase(webDriver, provider) {
         `
         const done = arguments[arguments.length - 1];
         const state = window.__mvuFeatureSmoke;
-        Promise.resolve().then(() => state.stopHandler());
+        const stopButton = document.querySelector('#mes_stop');
+        const nativeStopVisible = Boolean(stopButton?.getClientRects().length);
+        stopButton?.click();
         Promise.race([
             state.pendingInvocation,
             new Promise(resolve => setTimeout(() => resolve({ settled: false }), 10000)),
@@ -252,6 +267,8 @@ async function runAbortCase(webDriver, provider) {
                 invocation,
                 signalAborted: pending?.signal?.aborted === true,
                 abortObserved: pending?.abortObserved === true,
+                nativeStopVisible,
+                generationIdle: document.body.dataset.generating !== 'true',
             });
         });
         `,
@@ -259,6 +276,10 @@ async function runAbortCase(webDriver, provider) {
         15_000
     );
     assertFeature(stopped?.invocation?.settled, `abort-invocation-unsettled-${provider}`);
+    assertFeature(
+        stopped.nativeStopVisible && stopped.generationIdle,
+        `abort-native-lifecycle-${provider}`
+    );
     assertFeature(stopped.signalAborted && stopped.abortObserved, `abort-signal-${provider}`);
     return true;
 }
@@ -307,7 +328,7 @@ async function configureLegacy(webDriver, source) {
     assertFeature(result?.ok, `legacy-configure-${source}`);
 }
 
-/** 并发隔离：同时运行主生成和 Pi 更新，验证提示词及停止操作互不串用。 */
+/** 并发隔离：通过宿主按编号停止 Pi 捕获，确认独立主传输的提示词和信号不受影响。 */
 async function runConcurrency(webDriver) {
     await configurePi(webDriver, 'openai', '聊天消息');
     const setup = await webDriver.executeAsync(
@@ -349,9 +370,16 @@ async function runConcurrency(webDriver) {
             state.mainPromptHasPiTask = false;
             state.piPromptHasMainMarker = false;
             stage = 'generate';
-            state.mainInvocation = context.sendGenerationRequest('normal', {
-                prompt: [{ role: 'user', content: mainPromptMarker }],
-            }).then(
+            // 捕获提示词会重建 ST 的全局控制器。独立传输使用宿主支持的显式 signal；
+            // 原生发送/停止按钮的完整生命周期由 runSendButtonLifecycle 单独验证。
+            state.mainController = new AbortController();
+            state.mainInvocation = context.ChatCompletionService.sendRequest({
+                stream: false,
+                messages: [{ role: 'user', content: mainPromptMarker }],
+                model: mainModel,
+                chat_completion_source: context.chatCompletionSettings.chat_completion_source,
+                custom_url: context.chatCompletionSettings.custom_url,
+            }, false, state.mainController.signal).then(
                 () => ({ settled: true, rejected: false }),
                 () => ({ settled: true, rejected: true })
             );
@@ -445,18 +473,18 @@ async function runConcurrency(webDriver) {
         `
         const done = arguments[arguments.length - 1];
         const state = window.__mvuFeatureSmoke;
-        const context = window.SillyTavern.getContext();
-        Promise.resolve().then(() => state.stopHandler());
+        const piStoppedById = state.stopPiById();
         setTimeout(async () => {
             const piAborted = state.pendingProvider?.signal?.aborted === true;
             const mainAliveAfterPiStop = state.mainPending?.signal?.aborted === false;
-            context.stopGeneration();
+            state.mainController.abort();
             const settled = await Promise.race([
                 Promise.all([state.mainInvocation, state.piInvocation]).then(() => true),
                 new Promise(resolve => setTimeout(() => resolve(false), 10000)),
             ]);
             done({
                 settled,
+                piStoppedById,
                 piAborted,
                 mainAliveAfterPiStop,
                 mainAbortedAfterOwnStop: state.mainPending?.signal?.aborted === true,
@@ -472,6 +500,7 @@ async function runConcurrency(webDriver) {
         15_000
     );
     assertFeature(evidence?.settled, 'concurrency-unsettled');
+    assertFeature(evidence.piStoppedById, 'concurrency-pi-id-not-stopped');
     assertFeature(evidence.piAborted, 'concurrency-pi-not-aborted');
     assertFeature(evidence.mainAliveAfterPiStop, 'concurrency-pi-stop-hit-main');
     assertFeature(evidence.mainAbortedAfterOwnStop, 'concurrency-main-not-aborted');
@@ -755,11 +784,17 @@ async function runSendButtonLifecycle(webDriver) {
             const state = window.__mvuFeatureSmoke;
             const context = window.SillyTavern.getContext();
             const delay = milliseconds => new Promise(resolve => setTimeout(resolve, milliseconds));
-            await Promise.resolve(state.stopHandler());
+            // Pi 已由原生按钮停止。主聊天的最后一楼是 user，此时重试应直接返回。
+            const providerCountBeforeRetry = state.providerRequests.length;
+            const captureCountBeforeRetry = state.captureRequests;
+            await state.retryHandler();
             await delay(100);
+            const retryWhileMainPendingNoOp =
+                state.providerRequests.length === providerCountBeforeRetry &&
+                state.captureRequests === captureCountBeforeRetry;
             const piPending = state.pendingProvider;
             const piAborted = piPending?.signal?.aborted === true && piPending?.abortObserved === true;
-            const mainAliveAfterPiStop =
+            const mainAliveAfterIgnoredRetry =
                 state.sendMainPending?.signal?.aborted === false &&
                 state.sendMainPending?.abortObserved === false;
             const providerCountBeforeMainStop = state.providerRequests.length;
@@ -801,7 +836,8 @@ async function runSendButtonLifecycle(webDriver) {
             done({
                 piInvocation,
                 piAborted,
-                mainAliveAfterPiStop,
+                mainAliveAfterIgnoredRetry,
+                retryWhileMainPendingNoOp,
                 mainAbortedAfterOwnStop:
                     state.sendMainPending?.signal?.aborted === true &&
                     state.sendMainPending?.abortObserved === true,
@@ -831,7 +867,8 @@ async function runSendButtonLifecycle(webDriver) {
         `send-button-pi-unsettled-${evidence?.errorName ?? 'none'}-${evidence?.errorCode ?? 'none'}`
     );
     assertFeature(evidence.piAborted, 'send-button-pi-not-aborted');
-    assertFeature(evidence.mainAliveAfterPiStop, 'send-button-pi-stop-hit-main');
+    assertFeature(evidence.mainAliveAfterIgnoredRetry, 'send-button-retry-hit-main');
+    assertFeature(evidence.retryWhileMainPendingNoOp, 'send-button-retry-dispatched-pi');
     assertFeature(
         evidence.stopButtonPresent && evidence.stopButtonVisible,
         'send-button-main-stop-missing'
@@ -870,17 +907,18 @@ export async function runPiStFeatureSmoke({
             );
             if (!iframe?.contentWindow) return { ok: false, stage: 'iframe' };
             const retryEvent = iframe.contentWindow.getButtonEvent('重试额外模型解析');
-            const stopEvent = iframe.contentWindow.getButtonEvent('停止“更多”额外模型解析');
             const retryHandlers = context.eventSource?.events?.[retryEvent];
-            const stopHandlers = context.eventSource?.events?.[stopEvent];
-            if (!retryHandlers?.length || !stopHandlers?.length) return { ok: false, stage: 'handlers' };
+            if (!retryHandlers?.length) return { ok: false, stage: 'retry-handler' };
+            if (typeof iframe.contentWindow.stopGenerationById !== 'function') {
+                return { ok: false, stage: 'stop-generation-api' };
+            }
 
             const state = {
                 originalTopFetch: window.fetch,
                 originalFrameFetch: iframe.contentWindow.fetch,
                 frame: iframe.contentWindow,
                 retryHandler: retryHandlers.at(-1),
-                stopHandler: stopHandlers.at(-1),
+                stopPiById: () => iframe.contentWindow.stopGenerationById(state.piGenerationId),
                 scenario: 'idle',
                 injectImage: false,
                 providerRequests: [],
@@ -944,6 +982,9 @@ export async function runPiStFeatureSmoke({
                     return Promise.reject(abortError(window));
                 }
                 if (state.scenario === 'concurrency') {
+                    const promptText = JSON.stringify(body.messages ?? []);
+                    state.mainPromptSeen = promptText.includes(state.mainPromptMarker);
+                    state.mainPromptHasPiTask = promptText.includes('<must>');
                     state.mainModelMatches = body.model === state.mainModel;
                     state.mainSourceCustom = body.chat_completion_source === 'custom';
                     state.mainPending = { signal, abortObserved: false };
@@ -982,7 +1023,7 @@ export async function runPiStFeatureSmoke({
                 if (url.hostname === 'api.openai.com' && url.pathname.endsWith('/responses')) api = 'openai-responses';
                 else if (url.hostname === 'api.openai.com' && url.pathname.endsWith('/chat/completions')) api = 'openai-completions';
                 else if (url.hostname === 'api.anthropic.com' && url.pathname.endsWith('/messages')) api = 'anthropic-messages';
-                else if (url.hostname === 'generativelanguage.googleapis.com' && url.pathname.includes(':streamGenerateContent')) api = 'google-generative-ai';
+                else if (url.hostname === 'generativelanguage.googleapis.com' && /:(streamGenerateContent|generateContent)$/.test(url.pathname)) api = 'google-generative-ai';
                 if (!api) {
                     if (sameOrigin) {
                         return state.originalFrameFetch.call(iframe.contentWindow, input, init);
@@ -1020,6 +1061,9 @@ export async function runPiStFeatureSmoke({
                     scenario: state.scenario,
                     provider,
                     api,
+                    streaming: api === 'google-generative-ai'
+                        ? url.pathname.endsWith(':streamGenerateContent')
+                        : body.stream === true,
                     signalPresent: Boolean(signal),
                     authOk,
                     hasTool: Boolean(toolName),
@@ -1058,6 +1102,12 @@ export async function runPiStFeatureSmoke({
                     const item = wantsTool
                         ? { type: 'function_call', id: 'fc_1', call_id: 'call_1', name: toolName, arguments: args, status: 'completed' }
                         : { type: 'message', id: 'msg_1', role: 'assistant', status: 'completed', content: [{ type: 'output_text', text: wantsStructured ? structuredText : outputText, annotations: [] }] };
+                    if (!request.streaming) {
+                        return jsonResponse(iframe.contentWindow, {
+                            id: 'resp_1', status: 'completed', output: [item],
+                            usage: { input_tokens: 1, output_tokens: 1, total_tokens: 2 },
+                        });
+                    }
                     return sse(iframe.contentWindow, [
                         dataLine({ type: 'response.created', response: { id: 'resp_1', status: 'in_progress' } }),
                         dataLine({ type: 'response.output_item.added', output_index: 0, item }),
@@ -1067,6 +1117,19 @@ export async function runPiStFeatureSmoke({
                     ]);
                 }
                 if (api === 'openai-completions') {
+                    if (!request.streaming) {
+                        return jsonResponse(iframe.contentWindow, {
+                            id: 'chatcmpl_1',
+                            choices: [{
+                                index: 0,
+                                message: wantsTool
+                                    ? { role: 'assistant', content: null, tool_calls: [{ id: 'call_1', type: 'function', function: { name: toolName, arguments: args } }] }
+                                    : { role: 'assistant', content: wantsStructured ? structuredText : outputText },
+                                finish_reason: wantsTool ? 'tool_calls' : 'stop',
+                            }],
+                            usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
+                        });
+                    }
                     const delta = wantsTool
                         ? { tool_calls: [{ index: 0, id: 'call_1', type: 'function', function: { name: toolName, arguments: args } }] }
                         : { content: outputText };
@@ -1077,6 +1140,16 @@ export async function runPiStFeatureSmoke({
                     ]);
                 }
                 if (api === 'anthropic-messages') {
+                    if (!request.streaming) {
+                        return jsonResponse(iframe.contentWindow, {
+                            id: 'msg_1', type: 'message', role: 'assistant', model: body.model,
+                            content: [wantsTool
+                                ? { type: 'tool_use', id: 'toolu_1', name: toolName, input: JSON.parse(args) }
+                                : { type: 'text', text: wantsStructured ? structuredText : outputText }],
+                            stop_reason: wantsTool ? 'tool_use' : 'end_turn',
+                            usage: { input_tokens: 1, output_tokens: 1 },
+                        });
+                    }
                     const block = wantsTool
                         ? { type: 'tool_use', id: 'toolu_1', name: toolName, input: {} }
                         : { type: 'text', text: '' };
@@ -1095,11 +1168,14 @@ export async function runPiStFeatureSmoke({
                 const part = wantsTool
                     ? { functionCall: { id: 'call_1', name: toolName, args: { analysis: 'mock', delta: '[    ]' } } }
                     : { text: wantsStructured ? structuredText : outputText };
-                return sse(iframe.contentWindow, [dataLine({
+                const googleResponse = {
                     responseId: 'resp_1',
                     candidates: [{ content: { role: 'model', parts: [part] }, finishReason: 'STOP' }],
                     usageMetadata: { promptTokenCount: 1, candidatesTokenCount: 1, totalTokenCount: 2 },
-                })]);
+                };
+                return request.streaming
+                    ? sse(iframe.contentWindow, [dataLine(googleResponse)])
+                    : jsonResponse(iframe.contentWindow, googleResponse);
             };
 
             const readyEvent = helper.tavern_events?.CHAT_COMPLETION_SETTINGS_READY || 'chat_completion_settings_ready';
@@ -1119,6 +1195,7 @@ export async function runPiStFeatureSmoke({
                     return;
                 }
                 if (typeof data?.model !== 'string' || !data.model.startsWith(capturePrefix)) return;
+                state.piGenerationId = decodeURIComponent(data.model.slice(capturePrefix.length));
                 if (state.scenario === 'concurrency') {
                     state.piPromptHasMainMarker = text.includes(state.mainPromptMarker);
                 }
@@ -1176,14 +1253,18 @@ export async function runPiStFeatureSmoke({
         { provider: 'anthropic', api: 'anthropic-messages', name: 'anthropicText' },
         { provider: 'google', api: 'google-generative-ai', name: 'googleText' },
     ]) {
-        await configurePi(webDriver, testCase.provider, '聊天消息', testCase.api);
-        const textResult = await invokeRetry(webDriver, `text-${testCase.api}`);
-        checks[testCase.name] =
-            textResult.providerRequests === 1 &&
-            textResult.lastRequest?.provider === testCase.provider &&
-            textResult.lastRequest?.api === testCase.api &&
-            textResult.lastRequest?.authOk === true &&
-            textResult.lastRequest?.hasTool === false;
+        for (const streaming of [false, true]) {
+            await configurePi(webDriver, testCase.provider, '聊天消息', testCase.api, streaming);
+            const mode = streaming ? 'Streaming' : 'NonStreaming';
+            const textResult = await invokeRetry(webDriver, `text-${testCase.api}-${mode}`);
+            checks[`${testCase.name}${mode}`] =
+                textResult.providerRequests === 1 &&
+                textResult.lastRequest?.provider === testCase.provider &&
+                textResult.lastRequest?.api === testCase.api &&
+                textResult.lastRequest?.authOk === true &&
+                textResult.lastRequest?.hasTool === false &&
+                textResult.lastRequest?.streaming === streaming;
+        }
     }
 
     for (const provider of ['openai', 'anthropic', 'google']) {
@@ -1352,7 +1433,8 @@ export async function runPiStFeatureSmoke({
         sendButtonConcurrency.piPromptHasPiTask;
     checks.sendButtonStopIsolation =
         sendButtonConcurrency.piAborted &&
-        sendButtonConcurrency.mainAliveAfterPiStop &&
+        sendButtonConcurrency.mainAliveAfterIgnoredRetry &&
+        sendButtonConcurrency.retryWhileMainPendingNoOp &&
         sendButtonConcurrency.mainAbortedAfterOwnStop &&
         sendButtonConcurrency.mainStopDidNotDispatchProvider;
     checks.sendButtonLifecycle =
@@ -1413,12 +1495,12 @@ export async function runPiStFeatureSmoke({
         diagnostics: {
             sendButtonLifecycleOrder: 'pi-provider-native-stop-before-next-send-button',
             retryAfterPendingMain:
-                'not used: after send, the pending user message is the last chat floor, so retry-extra-model settles without dispatching a Pi request',
+                'verified: retry-extra-model settles without dispatching a Pi request or stopping the pending main generation when the last chat floor is a user message',
         },
         limitations: [
             'No real provider account, TLS/CORS, quota, entitlement, or server-side cancellation was exercised.',
             'OAuth authorization, token refresh against a real provider, and provider acceptance remain release-manual checks.',
-            'The full SillyTavern send-button prompt path and the lower-level production chat-completion transport entry were both exercised against browser-local protocol mocks.',
+            'The full SillyTavern send-button prompt path and ChatCompletionService with an explicit independent AbortSignal were both exercised against browser-local protocol mocks.',
         ],
     };
 }

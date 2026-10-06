@@ -7,6 +7,8 @@ module.exports = {
     },
     roots: ['<rootDir>/src', '<rootDir>/tests'],
     testMatch: ['**/__tests__/**/*.ts', '**/?(*.)+(spec|test).ts'],
+    // 真实 API 与 ST 浏览器集合只能通过各自的显式入口运行。
+    testPathIgnorePatterns: ['<rootDir>/tests/live/'],
     transform: {
         '^.+\\.ts$': 'ts-jest',
     },
