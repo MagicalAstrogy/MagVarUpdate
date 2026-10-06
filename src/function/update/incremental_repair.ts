@@ -185,8 +185,7 @@ export function buildIncrementalRepairTask(changes: IncrementalStateChange[]): s
 执行边界：
 - 仅补充遗漏，或纠正与最新剧情、变量规则明确冲突的错误；已经正确的变化禁止重复输出。
 - 不得为了满足完整更新中的固定首项或占位格式，输出与本次校正无关的操作。
-- 所有修正都以当前状态为基准，不得从上一楼重新计算；不得重算或覆盖整份变量。
-- 已有字段使用 replace 与绝对最终值；禁止 delta、add、move。数组需要修正时 replace 整个数组。
+- 所有修正都以当前状态为基准；不得重算或覆盖整份变量。
 - 仅在规则允许新增字段时使用 insert；确认属于错误字段时才使用 remove；证据不足则保持不变。
 
 输出契约：
