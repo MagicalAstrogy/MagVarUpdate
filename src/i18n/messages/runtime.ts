@@ -171,6 +171,10 @@ export const runtimeMessages = defineMessages({
         'zh-CN': '增量校正请求失败或已被中止，未修改变量',
         en: 'The incremental repair failed or was cancelled; variables were not changed',
     },
+    'runtime.incrementalRepair.replayFailed': {
+        'zh-CN': '整楼重放失败，未提交校正：\n{detail}',
+        en: 'Full-floor replay failed. No repair was committed:\n{detail}',
+    },
     'runtime.incrementalRepair.sourceChanged': {
         'zh-CN': '等待期间聊天、楼层、回复版本或变量已经变化，本次结果已作废',
         en: 'The chat, floor, reply version, or variables changed while waiting; this result was discarded',

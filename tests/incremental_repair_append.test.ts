@@ -205,7 +205,6 @@ describe('append repair across original message boundaries', () => {
                 patch('[]') + '\n' + repairPatch,
             ]) {
                 const appended = appendIncrementalRepairBlock(text, repair);
-                expect(appended.startsWith(text)).toBe(true);
                 expect(extractCommands(appended)).toEqual([
                     ...extractCommands(text),
                     ...extractCommands(repair),
@@ -264,7 +263,31 @@ describe('append repair across original message boundaries', () => {
                 original,
                 `<UpdateVariable>${repairPatch}</UpdateVariable>`
             )
-        ).toBe(`${original}\n\n${repairPatch}`);
+        ).toBe(`<VariableUpdate>${originalPatch}\n\n${repairPatch}\n</VariableUpdate>\n尾注  `);
+    });
+
+    test('inserts into the last closed wrapper and keeps repeated repairs inside it', () => {
+        const original = `<UpdateVariable>${patch('[]')}</UpdateVariable>\n<UpdateVariable>${originalPatch}</UpdateVariable>\n尾注`;
+        const once = appendIncrementalRepairBlock(original, repairPatch);
+        const twice = appendIncrementalRepairBlock(once, repairPatch);
+        const target = findUpdateMarkupBlocks(twice, 'update').at(-1)!;
+        expect(twice.slice(target.contentStart, target.contentEnd)).toContain(repairPatch + '\n');
+        expect(extractCommands(twice.slice(target.end))).toEqual([]);
+        // 现有完整重试删除最后一个更新块时，也会删除其中的全部增量校正。
+        const retried =
+            twice.slice(0, twice.lastIndexOf('<UpdateVariable>')) +
+            twice.slice(twice.lastIndexOf('</UpdateVariable>') + 17);
+        expect(extractCommands(retried)).toEqual([]);
+    });
+
+    test('falls back to the end if a closed wrapper is followed by executable commands', () => {
+        const original = `<UpdateVariable>${originalPatch}</UpdateVariable>\n_.set('hp', 90);`;
+        const appended = appendIncrementalRepairBlock(original, repairPatch);
+        expect(appended.startsWith(original)).toBe(true);
+        expect(extractCommands(appended)).toEqual([
+            ...extractCommands(original),
+            ...extractCommands(repairPatch),
+        ]);
     });
 
     test.each(['', '  ', '<UpdateVariable>\n</UpdateVariable>'])(

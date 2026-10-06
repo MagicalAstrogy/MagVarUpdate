@@ -12,6 +12,7 @@ jest.mock('@/function/update/invoke_extra_model', () => ({
 
 describe('incremental repair input cancellation', () => {
     beforeEach(() => {
+        delete globalThis.__MVU_PI_MULTIPROVIDER_ENABLED__;
         const data = { stat_data: { hp: 72 }, schema: {} };
         const g = globalThis as any;
         g.toastr = { error: jest.fn(), warning: jest.fn(), info: jest.fn() };
@@ -26,6 +27,44 @@ describe('incremental repair input cancellation', () => {
         g.SillyTavern.callGenericPopup = jest.fn();
         jest.mocked(invokeExtraModelWithStrategy).mockReset().mockResolvedValue(null);
     });
+
+    afterEach(() => {
+        delete globalThis.__MVU_PI_MULTIPROVIDER_ENABLED__;
+    });
+
+    test('allows Pi tool calling without host tool calling support', async () => {
+        const store = useDataStore();
+        store.settings.额外模型解析配置.模型来源 = '更多';
+        store.settings.额外模型解析配置.应答格式 = '工具调用';
+        store.versions.tavernhelper = '4.8.3';
+        (SillyTavern.callGenericPopup as jest.Mock).mockResolvedValue('');
+        await runIncrementalExtraModelRepair();
+        expect(invokeExtraModelWithStrategy).toHaveBeenCalledTimes(1);
+    });
+
+    test('rejects Pi requests when the feature switch is off', async () => {
+        globalThis.__MVU_PI_MULTIPROVIDER_ENABLED__ = false;
+        useDataStore().settings.额外模型解析配置.模型来源 = '更多';
+        await runIncrementalExtraModelRepair();
+        expect(SillyTavern.callGenericPopup).not.toHaveBeenCalled();
+        expect(invokeExtraModelWithStrategy).not.toHaveBeenCalled();
+        expect(toastr.info).toHaveBeenCalled();
+    });
+
+    test.each(['与插头相同', '自定义'] as const)(
+        'still requires host tool calling support for %s',
+        source => {
+            const store = useDataStore();
+            store.settings.额外模型解析配置.模型来源 = source;
+            store.settings.额外模型解析配置.应答格式 = '工具调用';
+            store.versions.tavernhelper = '4.8.3';
+            return runIncrementalExtraModelRepair().then(() => {
+                expect(SillyTavern.callGenericPopup).not.toHaveBeenCalled();
+                expect(invokeExtraModelWithStrategy).not.toHaveBeenCalled();
+                expect(toastr.info).toHaveBeenCalled();
+            });
+        }
+    );
 
     test.each([false, null, undefined, 0])(
         'does not request a model after cancellation %p',

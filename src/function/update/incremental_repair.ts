@@ -1,6 +1,7 @@
 import { isExtraModelSupported } from '@/function/is_extra_model_supported';
 import { isFunctionCallingSupported } from '@/function/is_function_calling_supported';
 import { invokeExtraModelWithStrategy } from '@/function/update/invoke_extra_model';
+import { isPiMultiproviderEnabled } from '@/function/update/pi/feature_flag';
 import { type Command, extractCommands, updateVariables } from '@/function/update_variables';
 import { tr } from '@/i18n';
 import { useDataStore } from '@/store';
@@ -215,7 +216,7 @@ export function buildIncrementalRepairPromptTail(user_direction: string = ''): s
 }
 
 /**
- * 补齐原文末尾的未闭合边界后，追加独立的校正补丁，保留原文的所有字符及命令顺序。
+ * 优先在最后一个有效更新块的末尾插入校正；没有可用块时补齐文末边界后追加。
  *
  * 原文兼容形态：裸脚本、多行脚本、单个或多个 JSONPatch、脚本与补丁混排，
  * JSON/JSON5/YAML 补丁及其代码围栏、UpdateVariable/VariableUpdate/Update 包装，
@@ -226,7 +227,7 @@ export function buildIncrementalRepairPromptTail(user_direction: string = ''): s
  *
  * @param message 校正前的完整正文。
  * @param repair_block 已通过副本试执行的更新文本；JSONPatch 保留为独立块，兼容脚本原样追加。
- * @returns 原文、必要闭合文本及校正内容；校正内容为空时返回原文。
+ * @returns 保留原有文本和命令顺序的校正正文；校正内容为空时返回原文。
  */
 export function appendIncrementalRepairBlock(message: string, repair_block: string): string {
     let content = repair_block.trim();
@@ -234,11 +235,28 @@ export function appendIncrementalRepairBlock(message: string, repair_block: stri
     const wrappers = findUpdateMarkupBlocks(content, 'update');
     const outer = wrappers.length === 1 ? wrappers[0] : undefined;
     if (outer?.closed && outer.start === 0 && outer.end === content.length) {
-        // 仅移除校正回复完整的外层包装，使 JSONPatch 直接追加在原文底部。
+        // 仅移除校正回复完整的外层包装，保留独立的 JSONPatch。
         // 不修改原文标签，也不重新解析补丁数组或把兼容脚本转换成 JSONPatch。
         content = content.slice(outer.contentStart, outer.contentEnd).trim();
     }
-    return content ? `${message}${closeUpdateMarkup(message)}\n${content}` : message;
+    if (!content) return message;
+    const target = findUpdateMarkupBlocks(message, 'update')
+        .filter(block => block.closed)
+        .sort((a, b) => a.end - b.end)
+        .at(-1);
+    // 若块外还有可执行命令，仍在文末追加，避免校正先于原有操作执行。
+    if (target && extractCommands(message.slice(target.end)).length === 0) {
+        const body = message.slice(target.contentStart, target.contentEnd);
+        return (
+            message.slice(0, target.contentEnd) +
+            closeUpdateMarkup(body) +
+            '\n' +
+            content +
+            '\n' +
+            message.slice(target.contentEnd)
+        );
+    }
+    return `${message}${closeUpdateMarkup(message)}\n${content}`;
 }
 
 /**
@@ -535,7 +553,15 @@ export async function runIncrementalExtraModelRepair() {
         );
         return;
     }
-    if (store.settings.额外模型解析配置.应答格式 === '工具调用' && !isFunctionCallingSupported()) {
+    if (store.settings.额外模型解析配置.模型来源 === '更多' && !isPiMultiproviderEnabled()) {
+        toastr.info(tr('runtime.pi.featureDisabled'), tr('runtime.incrementalRepair.title'));
+        return;
+    }
+    if (
+        store.settings.额外模型解析配置.应答格式 === '工具调用' &&
+        store.settings.额外模型解析配置.模型来源 !== '更多' &&
+        !isFunctionCallingSupported()
+    ) {
         toastr.info(
             tr('runtime.button.extraModelToolCallingUnsupported'),
             tr('runtime.incrementalRepair.title')
@@ -687,20 +713,37 @@ export async function runIncrementalExtraModelRepair() {
             );
             return;
         }
-        // 先闭合原文残留边界并在底部追加校正，再从上一楼重放一次，保持正文与状态一致。
+        // 先插入校正，再从上一楼重放一次，保持正文与状态一致。
         // 若在已结算的当前楼快照上再运行整楼生命周期钩子，会重复结算。
         const repaired_content = appendIncrementalRepairBlock(anchor.message_content, repair_block);
         const applied_data = klona(previous_variables);
         // 全部字段以上一楼快照和重放结果为准，包括 schema、显示/差量数据及初始化记录。
         // 当前楼新增的世界书变量不会凭空保留，对应初始化记录也应回退，供后续楼层重新初始化。
-        // 整楼重放沿用已有更新行为；原正文的历史错误不作为新增的拒绝条件。
-        await updateVariables(repaired_content, applied_data);
+        // 试执行与重放的起点不同，必须检查整楼重放的全部错误，失败时不提交任何字段。
+        const replay_errors: string[] = [];
+        await updateVariables(repaired_content, applied_data, replay_errors);
+        if (replay_errors.length > 0) {
+            toastr.error(
+                tr('runtime.incrementalRepair.replayFailed', {
+                    detail: _.escape(replay_errors.join('\n')),
+                }),
+                tr('runtime.incrementalRepair.title')
+            );
+            return;
+        }
         if (
             !anchorStillMatches(anchor) ||
             !_.isEqual(getLastValidVariable(message_id), previous_variables)
         ) {
             toastr.warning(
                 tr('runtime.incrementalRepair.sourceChanged'),
+                tr('runtime.incrementalRepair.title')
+            );
+            return;
+        }
+        if (_.isEqual(applied_data.stat_data, latest_message_variables.stat_data)) {
+            toastr.info(
+                tr('runtime.incrementalRepair.noEffectiveChanges'),
                 tr('runtime.incrementalRepair.title')
             );
             return;

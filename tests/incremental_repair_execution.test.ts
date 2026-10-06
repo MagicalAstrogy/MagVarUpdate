@@ -166,8 +166,10 @@ describe('incremental repair executor integration', () => {
         expect(SillyTavern.chatMetadata.variables).toEqual(originalChatVariables);
     });
 
-    test('retains acceptance when the original floor reports an unrelated replay error', async () => {
+    test('rejects the entire transaction when the original floor reports replay errors', async () => {
         SillyTavern.chat[1].mes += "\n_.set('missing', 1);";
+        const originalMessage = klona(SillyTavern.chat[1]);
+        const originalChatVariables = klona(SillyTavern.chatMetadata.variables);
         eventOn(
             variable_events.COMMAND_PARSED + '_for_zod',
             (_data, _commands, content, onError) => {
@@ -180,13 +182,60 @@ describe('incremental repair executor integration', () => {
         jest.spyOn(console, 'error').mockImplementation(() => {});
         try {
             await runIncrementalExtraModelRepair();
-            expect(SillyTavern.chat[1].variables![0].stat_data.hp).toBe(80);
-            expect(SillyTavern.chatMetadata.variables.stat_data.hp).toBe(80);
-            expect(toastr.error).not.toHaveBeenCalled();
-            expect(toastr.success).toHaveBeenCalledTimes(1);
-            expect(SillyTavern.saveChat).toHaveBeenCalledTimes(1);
+            expect(SillyTavern.chat[1]).toEqual(originalMessage);
+            expect(SillyTavern.chatMetadata.variables).toEqual(originalChatVariables);
+            expect(toastr.error).toHaveBeenCalledWith(
+                expect.stringContaining('original floor warning'),
+                expect.any(String)
+            );
+            expect(toastr.success).not.toHaveBeenCalled();
+            expect(SillyTavern.saveChat).not.toHaveBeenCalled();
+            expect(setChatMessages).not.toHaveBeenCalled();
         } finally {
             jest.restoreAllMocks();
         }
+    });
+
+    test('rejects a repair that succeeds on the current state but fails on replay', async () => {
+        SillyTavern.chat[1].variables![0].stat_data.mana = 10;
+        SillyTavern.chatMetadata.variables.stat_data.mana = 10;
+        const originalMessage = klona(SillyTavern.chat[1]);
+        const originalChatVariables = klona(SillyTavern.chatMetadata.variables);
+        jest.mocked(invokeExtraModelWithStrategy).mockImplementation(async options =>
+            options!.validate_result!("_.set('mana', 20);")
+        );
+        await runIncrementalExtraModelRepair();
+        expect(SillyTavern.callGenericPopup).toHaveBeenCalledTimes(2);
+        expect(SillyTavern.chat[1]).toEqual(originalMessage);
+        expect(SillyTavern.chatMetadata.variables).toEqual(originalChatVariables);
+        expect(toastr.error).toHaveBeenCalledWith(
+            expect.stringContaining('mana'),
+            expect.any(String)
+        );
+        expect(toastr.success).not.toHaveBeenCalled();
+        expect(SillyTavern.saveChat).not.toHaveBeenCalled();
+        expect(setChatMessages).not.toHaveBeenCalled();
+    });
+
+    test('does not commit a repair that becomes a no-op under full-floor callbacks', async () => {
+        const originalMessage = klona(SillyTavern.chat[1]);
+        eventOn(variable_events.VARIABLE_UPDATE_ENDED, (variables, before) => {
+            variables.stat_data.hp = _.clamp(
+                variables.stat_data.hp,
+                before.stat_data.hp - 3,
+                before.stat_data.hp + 3
+            );
+        });
+        jest.mocked(invokeExtraModelWithStrategy).mockImplementation(async options =>
+            options!.validate_result!("_.set('hp', 80);")
+        );
+        await runIncrementalExtraModelRepair();
+        expect(SillyTavern.chat[1]).toEqual(originalMessage);
+        expect(toastr.info).toHaveBeenCalledWith(
+            expect.stringContaining('没有产生实际变化'),
+            expect.any(String)
+        );
+        expect(toastr.success).not.toHaveBeenCalled();
+        expect(SillyTavern.saveChat).not.toHaveBeenCalled();
     });
 });

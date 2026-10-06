@@ -48,7 +48,7 @@ describe('incremental extra-model repair', () => {
         expect(buildIncrementalRepairPromptTail()).toContain('用户未补充方向');
     });
 
-    test('appends a standalone repair after the complete original message', () => {
+    test('inserts the repair before the existing closing tag and preserves trailing prose', () => {
         const message = [
             '剧情正文',
             '<UpdateVariable>',
@@ -66,12 +66,13 @@ describe('incremental extra-model repair', () => {
         expect(merged.match(/<UpdateVariable>/g)).toHaveLength(1);
         expect(merged).toContain("_.set('hp', 100, 72);//受伤");
         expect(merged).toContain('"path":"/infection"');
-        expect(merged.startsWith(message + '\n\n')).toBe(true);
-        expect(
-            merged.endsWith(
-                '<JSONPatch>[{"op":"replace","path":"/infection","value":10}]</JSONPatch>'
-            )
-        ).toBe(true);
+        expect(merged.startsWith(message.slice(0, message.indexOf('</UpdateVariable>')))).toBe(
+            true
+        );
+        expect(merged.endsWith('</UpdateVariable>\n尾注')).toBe(true);
+        expect(merged.indexOf('"path":"/infection"')).toBeLessThan(
+            merged.indexOf('</UpdateVariable>')
+        );
     });
 
     test('appends only the repair payload when the message has no update wrapper', () => {
@@ -88,9 +89,8 @@ describe('incremental extra-model repair', () => {
             '<UpdateVariable><JSONPatch>[{"op":"replace","path":"/hp","value":72}]</JSONPatch></UpdateVariable>'
         );
         expect(merged).not.toContain('<UpdateVariable>');
-        expect(
-            merged.startsWith('<VariableUpdate>\n<JSONPatch>[]</JSONPatch>\n</VariableUpdate>\n\n')
-        ).toBe(true);
+        expect(merged.startsWith('<VariableUpdate>\n<JSONPatch>[]</JSONPatch>\n')).toBe(true);
+        expect(merged.endsWith('</VariableUpdate>')).toBe(true);
         expect(merged).toContain('"path":"/hp"');
     });
 

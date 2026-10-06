@@ -34,6 +34,8 @@ export function scanUpdateMarkup(input: string) {
     let blockComment = false;
     let scalarIndent: number | undefined;
     let lineStart = 0;
+    let markupDepth = 0;
+    const hasExplicitUpdate = /<(?:updatevariable|variableupdate|update)\b[^>]*>/i.test(input);
     /** 屏蔽半开区间并保留换行；hide 同时从可见负载中隐藏思考区内容。 */
     const mask = (start: number, end: number, hide = false) => {
         for (let i = start; i < end; i++) {
@@ -123,6 +125,7 @@ export function scanUpdateMarkup(input: string) {
                     if (!tag[1]) ignored.push(name);
                     mask(i, i + tag[0].length, true);
                 } else {
+                    markupDepth = Math.max(0, markupDepth + (tag[1] ? -1 : 1));
                     tokens.push({
                         name: /^json/.test(name) ? 'patch' : 'update',
                         closing: !!tag[1],
@@ -154,7 +157,14 @@ export function scanUpdateMarkup(input: string) {
                       : mode;
             pendingData = false;
         }
-        if (mode && (char === '"' || char === "'")) {
+        // 有显式更新块时，块外单词中的撇号不是字符串起点，不能吞掉后面的块。
+        // 块内的数据字符串及没有更新包装的输入仍沿用原有规则。
+        const proseApostrophe =
+            hasExplicitUpdate &&
+            markupDepth === 0 &&
+            char === "'" &&
+            /[\p{L}\p{N}]/u.test(input[i - 1] ?? '');
+        if (mode && (char === '"' || char === "'") && !proseApostrophe) {
             quote = char;
             mask(i, i + 1);
         } else if (mode === 'json' && input.startsWith('/*', i)) {

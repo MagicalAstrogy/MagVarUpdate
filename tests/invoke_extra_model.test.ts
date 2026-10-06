@@ -9,6 +9,7 @@ import {
     MVU_JSON_PATCH_RESPONSE_SCHEMA,
 } from '@/function/function_call';
 import { parseAndValidateExtraModelResult } from '@/function/update/invoke_extra_model';
+import { extractCommands } from '@/function/update_variables';
 import YAML from 'yaml';
 
 /**
@@ -30,6 +31,27 @@ describe('parseAndValidateExtraModelResult', () => {
     const patch = '[{"op":"replace","path":"/hp","value":72}]';
     const patchBlock = `<JSONPatch>${patch}</JSONPatch>`;
     const updateBlock = `<UpdateVariable>${patchBlock}</UpdateVariable>`;
+
+    test.each(['[Scene]', '# Scene', '- Scene', 'Scene: rainy', '[12:00]'])(
+        'recognizes explicit update wrappers after narrative beginning with %s',
+        header => {
+            for (const wrapper of ['UpdateVariable', 'VariableUpdate', 'Update']) {
+                const block = `<${wrapper}>${patchBlock}</${wrapper}>`;
+                const input = `${header}\nAlice's smile brightened.\n${block}`;
+                expect(parseAndValidateExtraModelResult(input)).toBe(updateBlock);
+                expect(extractCommands(input)).toEqual(extractCommands(patchBlock));
+            }
+        }
+    );
+
+    test.each(['[Scene]', '# Scene', '- Scene'])(
+        'preserves the existing unwrapped behavior after %s',
+        header => {
+            expect(extractCommands(`${header}\nAlice's smile brightened.\n${patchBlock}`)).toEqual(
+                []
+            );
+        }
+    );
 
     // 输入矩阵见本组测试上方的块注释。
     // 四种包装 × 三种语法 × 数组/对象 × 无围栏/匿名围栏/语言围栏。
