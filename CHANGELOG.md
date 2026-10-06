@@ -1,6 +1,7 @@
 # 2026-10-07
 ## 新增功能
  - 新增功能 `增量校正额外模型解析`，可以通过提示词，指导llm对变量更新结果进行补充。感谢 @NLKASHEI
+ - `更多` 渠道现在支持配置思考深度。
 ## 问题修复
  - 现在可以在更多的 `请求体排除字段` 中移除 `'max_tokens' 'max_completion_tokens' 'max_output_tokens' 'maxTokens'`，以支持部分渠道。
 
