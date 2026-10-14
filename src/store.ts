@@ -242,6 +242,12 @@ const NewSettings = z
                 随机头部: z.boolean().default(true),
 
                 启用自动请求: z.boolean().default(true),
+                最小请求字数: z.coerce
+                    .number()
+                    .catch(0)
+                    .default(0)
+                    .transform(value => Math.max(0, Math.floor(value))),
+                触发标签: z.string().default(''),
                 请求方式: z
                     .enum([
                         '依次请求，失败后重试',

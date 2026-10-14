@@ -6,6 +6,7 @@ import { isPiMultiproviderEnabled } from '@/function/update/pi/feature_flag';
 import { handleVariablesInMessage } from '@/function/update_variables';
 import { tr } from '@/i18n';
 import { useDataStore } from '@/store';
+import { compileRegex } from '@/util/regex';
 
 /** 接收时启动解析；非工具调用的自动解析在本条消息渲染后等待结果并写回。 */
 export async function onMessageReceived(
@@ -63,9 +64,29 @@ export async function onMessageReceived(
         return;
     }
 
-    if (!force && store.effective_settings.额外模型解析配置.启用自动请求 === false) {
-        console.log(tr('runtime.extraModel.autoRequestDisabledLog'));
-        return;
+    if (!force) {
+        const settings = store.effective_settings.额外模型解析配置;
+        if (!settings.启用自动请求) {
+            console.log(tr('runtime.extraModel.autoRequestDisabledLog'));
+            return;
+        }
+        // 按 Unicode 字符统计整条回复（去除首尾空白），不依赖模型的 tokenizer。
+        if (
+            settings.最小请求字数 > 0 &&
+            Array.from(message_content.trim()).length < settings.最小请求字数
+        ) {
+            console.log(tr('runtime.extraModel.belowMinLengthLog'));
+            return;
+        }
+        const trigger_tag = compileRegex(settings.触发标签);
+        if (trigger_tag.error !== undefined) {
+            console.warn(tr('runtime.extraModel.triggerTagInvalidLog'), trigger_tag.error);
+            return;
+        }
+        if (trigger_tag.regex && !trigger_tag.regex.test(message_content)) {
+            console.log(tr('runtime.extraModel.triggerTagMissingLog'));
+            return;
+        }
     }
 
     if (!isCurrentMessage()) {

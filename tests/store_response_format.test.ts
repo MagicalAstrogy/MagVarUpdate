@@ -20,6 +20,39 @@ describe('extra model response format settings', () => {
         expect(store.settings.额外模型解析配置.兼容假流式).toBe(false);
     });
 
+    test('defaults automatic request conditions to unrestricted', () => {
+        const settings = useDataStore().settings.额外模型解析配置;
+
+        expect(settings.最小请求字数).toBe(0);
+        expect(settings.触发标签).toBe('');
+    });
+
+    test('preserves automatic request conditions when loading and reloading', () => {
+        (globalThis as any).SillyTavern.extensionSettings = {
+            mvu_settings: {
+                额外模型解析配置: { 最小请求字数: 500, 触发标签: '</content>' },
+            },
+        };
+        const store = useDataStore();
+        store._reload_settings();
+
+        expect(store.settings.额外模型解析配置.最小请求字数).toBe(500);
+        expect(store.settings.额外模型解析配置.触发标签).toBe('</content>');
+    });
+
+    test.each([
+        [-10, 0],
+        [12.8, 12],
+        ['500', 500],
+        ['invalid', 0],
+    ])('normalizes minimum reply length %s to %s', (value, expected) => {
+        (globalThis as any).SillyTavern.extensionSettings = {
+            mvu_settings: { 额外模型解析配置: { 最小请求字数: value } },
+        };
+
+        expect(useDataStore().settings.额外模型解析配置.最小请求字数).toBe(expected);
+    });
+
     test('migrates legacy function calling flag to tool calling response format', () => {
         (globalThis as any).SillyTavern.extensionSettings = {
             mvu_settings: {

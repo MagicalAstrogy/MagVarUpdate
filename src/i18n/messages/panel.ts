@@ -431,6 +431,28 @@ export const panelMessages = defineMessages({
             '关闭后，AI 回复完成时不会自动触发额外模型解析；你需要主动点击“重试额外模型解析”按钮，才会执行解析并添加状态栏占位符 &lt;StatusPlaceHolderImpl/&gt;。',
         en: 'When disabled, extra-model parsing is not triggered automatically after the AI finishes replying. Click “Retry extra-model parsing” to run it and add the status-bar placeholder &lt;StatusPlaceHolderImpl/&gt;.',
     },
+    'panel.request.minLength': {
+        'zh-CN': '最小请求字数',
+        en: 'Minimum reply length',
+    },
+    'panel.request.minLengthHelp': {
+        'zh-CN':
+            'AI 回复达到此字数才自动请求额外模型解析。按整条回复去除首尾空白后的字符数计算（包含标签，不是 token 数）；0 表示不限制。若同时设置触发标签，两个条件都须满足。手动重试不受限制。',
+        en: 'Automatically request extra-model parsing only when the AI reply reaches this many characters. Counts the entire reply, including tags, after trimming leading and trailing whitespace (not tokens). Set to 0 for no minimum. If a trigger tag is also set, both conditions must be met. Manual retries bypass these conditions.',
+    },
+    'panel.request.triggerTag': {
+        'zh-CN': '触发标签',
+        en: 'Trigger tag',
+    },
+    'panel.request.triggerTagHelp': {
+        'zh-CN':
+            'AI 回复匹配此正则表达式才自动请求额外模型解析。可直接填写 &lt;/content&gt;，或用 &lt;/(content&#124;正文)&gt; 匹配多个标签；也支持 /pattern/flags 格式，例如 /content/i 忽略大小写。默认区分大小写，特殊字符需用反斜杠转义。忽略配置首尾空白，留空表示不限制；正则无效时跳过自动请求。若同时设置最小请求字数，两个条件都须满足。手动重试不受限制。',
+        en: 'Automatically request extra-model parsing only when the AI reply matches this regular expression. Enter &lt;/content&gt; directly, or use &lt;/(content&#124;正文)&gt; to match either tag. The /pattern/flags format is also supported, such as /content/i for case-insensitive matching. Matching is case-sensitive by default; escape special characters with a backslash. Leading and trailing whitespace in this setting is ignored; leave empty for no restriction. Invalid regexes skip automatic requests. If a minimum reply length is also set, both conditions must be met. Manual retries bypass these conditions.',
+    },
+    'panel.request.triggerTagInvalid': {
+        'zh-CN': '触发标签正则无效，将跳过自动请求：{error}',
+        en: 'Invalid trigger-tag regex; automatic requests will be skipped: {error}',
+    },
     'panel.request.batchWarning': {
         'zh-CN':
             '请升级酒馆助手到 4.4.3 或更高版本，否则批量请求功能可能让预设的“流式传输”设置失效',
