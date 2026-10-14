@@ -598,6 +598,18 @@ export const runtimeMessages = defineMessages({
         'zh-CN': '[MVU]不自动触发额外模型解析',
         en: '[MVU] Automatic extra-model parsing is disabled',
     },
+    'runtime.extraModel.belowMinLengthLog': {
+        'zh-CN': '[MVU]回复未达到最小请求字数，跳过自动额外模型解析',
+        en: '[MVU] Reply is below the minimum length; skipping automatic extra-model parsing',
+    },
+    'runtime.extraModel.triggerTagMissingLog': {
+        'zh-CN': '[MVU]回复未匹配触发标签正则，跳过自动额外模型解析',
+        en: '[MVU] Reply does not match the trigger-tag regex; skipping automatic extra-model parsing',
+    },
+    'runtime.extraModel.triggerTagInvalidLog': {
+        'zh-CN': '[MVU]触发标签正则无效，跳过自动额外模型解析',
+        en: '[MVU] Invalid trigger-tag regex; skipping automatic extra-model parsing',
+    },
     'runtime.extraModel.updateFailed': {
         'zh-CN': '建议调整变量更新方式；可在“输入框左下角魔棒 → 日志查看器”查看具体情况',
         en: 'Try adjusting the variable update method. Open Magic Wand → Log Viewer at the lower-left of the input box for details.',

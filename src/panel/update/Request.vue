@@ -34,6 +34,40 @@
             <Checkbox v-model="store.settings.额外模型解析配置.启用自动请求">
                 <span>{{ t('common.enabled') }}</span>
             </Checkbox>
+            <div
+                v-if="store.effective_settings.额外模型解析配置.启用自动请求"
+                class="mvu-auto-request-conditions flex-container flexFlowColumn"
+            >
+                <Field :label="t('panel.request.minLength')">
+                    <template #label-suffix>
+                        <HelpIcon :help="t('panel.request.minLengthHelp')" />
+                    </template>
+                    <input
+                        v-model.number="min_request_length"
+                        class="text_pole"
+                        type="number"
+                        min="0"
+                        step="1"
+                        :aria-label="t('panel.request.minLength')"
+                    />
+                </Field>
+                <Field :label="t('panel.request.triggerTag')">
+                    <template #label-suffix>
+                        <HelpIcon :help="t('panel.request.triggerTagHelp')" />
+                    </template>
+                    <input
+                        v-model="store.settings.额外模型解析配置.触发标签"
+                        class="text_pole"
+                        type="text"
+                        placeholder="</content>"
+                        :aria-label="t('panel.request.triggerTag')"
+                        :aria-invalid="trigger_tag_error !== undefined"
+                    />
+                    <small v-if="trigger_tag_error !== undefined" role="alert">
+                        {{ t('panel.request.triggerTagInvalid', { error: trigger_tag_error }) }}
+                    </small>
+                </Field>
+            </div>
         </Field>
     </Detail>
 </template>
@@ -50,11 +84,24 @@ import Select from '@/panel/component/Select.vue';
 import request_method_help_en from '@/panel/update/request_method.en.md';
 import request_method_help_zh_cn from '@/panel/update/request_method.zh-CN.md';
 import { useDataStore } from '@/store';
+import { compileRegex } from '@/util/regex';
 import { compare } from 'compare-versions';
 import { computed, watch } from 'vue';
 
 const store = useDataStore();
 const { locale, t } = useMvuI18n();
+const trigger_tag_error = computed(
+    () => compileRegex(store.settings.额外模型解析配置.触发标签).error
+);
+const min_request_length = computed({
+    get: () => store.settings.额外模型解析配置.最小请求字数,
+    set: value => {
+        const length = Number(value);
+        store.settings.额外模型解析配置.最小请求字数 = Number.isFinite(length)
+            ? Math.max(0, Math.floor(length))
+            : 0;
+    },
+});
 const request_method_help = computed(() =>
     locale.value === 'zh-CN' ? request_method_help_zh_cn : request_method_help_en
 );
@@ -84,3 +131,9 @@ watch(
     }
 );
 </script>
+
+<style scoped>
+.mvu-auto-request-conditions {
+    margin-left: 1rem;
+}
+</style>

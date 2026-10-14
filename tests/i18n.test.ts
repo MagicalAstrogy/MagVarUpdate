@@ -85,6 +85,14 @@ describe('MVU localization', () => {
         );
     });
 
+    test.each(APP_LOCALES)('keeps the complete trigger regex help in %s', locale => {
+        locale_ref.value = locale;
+
+        const help = tr('panel.request.triggerTagHelp');
+        expect(help).toBe(panelMessages['panel.request.triggerTagHelp'][locale]);
+        expect(help).toContain('&lt;/(content&#124;正文)&gt;');
+    });
+
     // Pi 界面文案：组合来源标签与协议名称都有对应翻译。
     test('translates provider labels and protocols used in combined source choices', () => {
         locale_ref.value = 'zh-CN';
