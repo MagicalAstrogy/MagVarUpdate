@@ -12,7 +12,10 @@ export function initResponse() {
     const controller = new AbortController();
     const receive = (message_id: number) =>
         onMessageReceived(message_id, { signal: controller.signal });
-    const throttled_receive = _.throttle(receive, 3000);
+    // receive 必须在当次 MESSAGE_RECEIVED 的异步调用链中启动，并返回 Promise 供宿主等待。
+    // 窗口内的重复事件直接丢弃，禁止定时器在尾部补调，避免脱离原事件调用链后
+    // 再读取已经变化的聊天或配置状态。
+    const throttled_receive = _.throttle(receive, 3000, { trailing: false });
     const stop_list: Array<() => void> = [];
     stop_list.push(
         controlledStoppableEventOn(tavern_events.MESSAGE_SENT, handleVariablesInMessage)
