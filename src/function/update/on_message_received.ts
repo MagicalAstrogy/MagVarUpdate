@@ -76,6 +76,7 @@ export async function onMessageReceived(
             Array.from(message_content.trim()).length < settings.最小请求字数
         ) {
             console.log(tr('runtime.extraModel.belowMinLengthLog'));
+            toastr.info(tr('runtime.extraModel.belowMinLengthLog'));
             return;
         }
         const trigger_tag = compileRegex(settings.触发标签);
@@ -85,6 +86,7 @@ export async function onMessageReceived(
         }
         if (trigger_tag.regex && !trigger_tag.regex.test(message_content)) {
             console.log(tr('runtime.extraModel.triggerTagMissingLog'));
+            toastr.info(tr('runtime.extraModel.triggerTagMissingLog'));
             return;
         }
     }

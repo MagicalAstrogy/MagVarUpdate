@@ -21,6 +21,7 @@ const mockHandleVariables = jest.mocked(handleVariablesInMessage);
 describe('自动请求条件', () => {
     beforeEach(() => {
         jest.clearAllMocks();
+        (globalThis as any).toastr = { info: jest.fn() };
         Object.assign(SillyTavern, {
             extensionSettings: {},
             name2: 'Assistant',
