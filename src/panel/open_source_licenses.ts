@@ -16,14 +16,14 @@ export type OpenSourceLicense = Readonly<{
 export const OPEN_SOURCE_LICENSES = [
     {
         packageName: '@anthropic-ai/sdk',
-        version: '0.124.0',
+        version: '0.129.0',
         license: 'MIT',
         projectUrl: 'https://github.com/anthropics/anthropic-sdk-typescript',
     },
     {
         packageName: '@earendil-works/pi-ai',
         displayName: 'Earendil Works AI',
-        version: '1.0.0',
+        version: '1.3.0',
         license: 'MIT',
         projectUrl: 'https://github.com/earendil-works/pi',
     },

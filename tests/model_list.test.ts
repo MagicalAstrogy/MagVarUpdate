@@ -50,13 +50,13 @@ jest.mock('@/function/update/pi/pi_gateway', () => {
                 'opencode',
                 'anthropic-messages',
                 'opencode-anthropic',
-                'https://opencode.ai/zen'
+                'https://opencode.ai/inference'
             ),
             'opencode-google': catalogModel(
                 'opencode',
                 'google-generative-ai',
                 'opencode-google',
-                'https://opencode.ai/zen/v1'
+                'https://opencode.ai/inference/v1'
             ),
         },
         OPENCODE_GO_MODELS: {},
@@ -376,7 +376,7 @@ describe('extra-model model-list discovery', () => {
 
         expect(fetchMock.mock.calls[1][0]).toBe('/api/backends/chat-completions/status');
         expect(JSON.parse(requestInit(fetchMock.mock.calls[1]).body as string)).toEqual({
-            reverse_proxy: 'https://opencode.ai/zen/v1',
+            reverse_proxy: 'https://opencode.ai/inference/v1',
             proxy_password: 'opencode-secret',
             chat_completion_source: 'openai',
         });

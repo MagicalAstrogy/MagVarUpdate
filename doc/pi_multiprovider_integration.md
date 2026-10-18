@@ -12,9 +12,13 @@ smoke 覆盖；34 来源与 Proxy 路由的最终全仓测试、lint、声明构
 
 ## 依赖版本与 ESM 加载
 
-当前使用 `@earendil-works/pi-ai@1.0.0` 和
+当前使用 `@earendil-works/pi-ai@1.3.0` 和
 `@google/genai@2.21.0`。Pi 的间接依赖沿用其发布版本声明（包括 Anthropic SDK
-0.124.0 和 Google SDK 2.21.0），不强行替换上游依赖。
+0.129.0 和 Google SDK 2.21.0），不强行替换上游依赖。
+
+Pi 1.3.0 目录包含 Google / OpenCode Zen 的 `gemini-4-argon`，以及 OpenCode Go 的
+`gemini-4-argon-contributor`。Google 代理适配器复用上游的思考等级转换，发送
+`thinkingLevel`；Argon 不支持关闭思考，关闭或最低等级请求会按目录约束回落到 `LOW`。
 
 Pi 1.x 在 provider 边界将 `Context.systemPrompt` 和 `Context.tools` 规范化为 transcript
 中的系统消息。Google 自定义传输适配器从该消息序列读取提示词和工具；直接调用 adapter 的测试也先调用
@@ -62,7 +66,7 @@ Codex。
 | Google Gemini              | `google-generative-ai`                                                                 | `https://generativelanguage.googleapis.com/v1beta`                                                   |
 | Groq                       | `openai-completions`                                                                   | `https://api.groq.com/openai/v1`                                                                     |
 | Hugging Face               | `openai-completions`                                                                   | `https://router.huggingface.co/v1`                                                                   |
-| Kimi For Coding            | `anthropic-messages`                                                                   | `https://api.kimi.com/coding`                                                                        |
+| Kimi For Coding            | `openai-completions`                                                                   | `https://api.kimi.com/coding/v1`                                                                        |
 | MiniMax                    | `anthropic-messages`                                                                   | `https://api.minimax.io/anthropic`                                                                   |
 | MiniMax（中国）            | `anthropic-messages`                                                                   | `https://api.minimaxi.com/anthropic`                                                                 |
 | Mistral                    | `mistral-conversations`                                                                | `https://api.mistral.ai`                                                                             |
@@ -71,8 +75,8 @@ Codex。
 | NVIDIA                     | `openai-completions`                                                                   | `https://integrate.api.nvidia.com/v1`                                                                |
 | OpenAI                     | `openai-responses`、`openai-completions`                                               | `https://api.openai.com/v1`                                                                          |
 | OpenAI Codex               | `openai-codex-responses`                                                               | `https://chatgpt.com/backend-api`                                                                    |
-| OpenCode Zen               | `anthropic-messages`、`google-generative-ai`、`openai-completions`、`openai-responses` | Messages：`https://opencode.ai/zen`；其他 API：`https://opencode.ai/zen/v1`                          |
-| OpenCode Go                | `anthropic-messages`、`openai-completions`、`openai-responses`                         | Messages：`https://opencode.ai/zen/go`；其他 API：`https://opencode.ai/zen/go/v1`                    |
+| OpenCode Zen               | `anthropic-messages`、`google-generative-ai`、`openai-completions`、`openai-responses` | Messages：`https://opencode.ai/inference`；其他 API：`https://opencode.ai/inference/v1`                          |
+| OpenCode Go                | `anthropic-messages`、`google-generative-ai`、`openai-completions`、`openai-responses`                         | Messages：`https://opencode.ai/inference/go`；其他 API：`https://opencode.ai/inference/go/v1`                    |
 | OpenRouter                 | `openai-completions`、`anthropic-messages`                                             | Completions：`https://openrouter.ai/api/v1`；Messages：`https://openrouter.ai/api`                   |
 | Qwen Token Plan            | `openai-completions`                                                                   | `https://token-plan.ap-southeast-1.maas.aliyuncs.com/compatible-mode/v1`                             |
 | Qwen Token Plan（中国）    | `openai-completions`                                                                   | `https://token-plan.cn-beijing.maas.aliyuncs.com/compatible-mode/v1`                                 |

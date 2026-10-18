@@ -22,9 +22,9 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@anthropic-ai/sdk@npm:0.124.0":
-  version: 0.124.0
-  resolution: "@anthropic-ai/sdk@npm:0.124.0"
+"@anthropic-ai/sdk@npm:0.129.0":
+  version: 0.129.0
+  resolution: "@anthropic-ai/sdk@npm:0.129.0"
   dependencies:
     json-schema-to-ts: ^3.1.1
     standardwebhooks: ^1.0.0
@@ -35,7 +35,7 @@ __metadata:
       optional: true
   bin:
     anthropic-ai-sdk: bin/cli
-  checksum: 62176555848662ca94520e673578f518f6acf7e9e9e2d179e28852f03dc6ba0df69700d0ee84a59008788d934fd2d0e2189f2e70b25e03e80ba9b17b40eb885b
+  checksum: adcf2769cb51facad68b5182d4879de2de9778ee4d5316eb1a6f2ba2ee00956fda26b24dea08ad439c4b774cf37a9c8708a48bc99fcf82987f85dd2ba3d652b2
   languageName: node
   linkType: hard
 
@@ -871,13 +871,13 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@earendil-works/pi-ai@npm:1.0.0":
-  version: 1.0.0
-  resolution: "@earendil-works/pi-ai@npm:1.0.0"
+"@earendil-works/pi-ai@npm:1.3.0":
+  version: 1.3.0
+  resolution: "@earendil-works/pi-ai@npm:1.3.0"
   dependencies:
-    "@anthropic-ai/sdk": 0.124.0
+    "@anthropic-ai/sdk": 0.129.0
     "@aws-sdk/client-bedrock-runtime": 3.1127.0
-    "@earendil-works/pi-telemetry": ^1.0.0
+    "@earendil-works/pi-telemetry": 1.3.0
     "@google/genai": 2.21.0
     "@smithy/node-http-handler": 4.12.1
     http-proxy-agent: 9.1.0
@@ -887,14 +887,14 @@ __metadata:
     typebox: 1.3.27
   bin:
     pi-ai: dist/cli.js
-  checksum: cd6099a1ba0020357bf3a2b8524a767199a0d3d3d9f081c6874d5beeeb81d452f8dcdd984ad8f50bf4a6b53d9868263265902d9f4927741c41b02c9d5e8a0616
+  checksum: 83abfc8f5dd87c5011fa7a16905664fa4da6d4365ec6345063b22c16c6aaf28c012ffd5f5979029a840d44b0502a10041d21589ff3c2bace2be0dd4614fe95d0
   languageName: node
   linkType: hard
 
-"@earendil-works/pi-telemetry@npm:^1.0.0":
-  version: 1.0.4
-  resolution: "@earendil-works/pi-telemetry@npm:1.0.4"
-  checksum: 8acf25c745044c89cbab9535c6495da13467705e4ac1dea54ab8a216a346538d15eca2abdddac131aaf867e44bc7431792103ba6f54048f2ce63d8a801109d94
+"@earendil-works/pi-telemetry@npm:1.3.0":
+  version: 1.3.0
+  resolution: "@earendil-works/pi-telemetry@npm:1.3.0"
+  checksum: 8087083d4b07917cdc5d03f74f76a010b430f3bd0af382113a5d9a98939da195094312c08450a2a75c6cacc9c03b450fdcc6007d3508d5580e66a83a125c5213
   languageName: node
   linkType: hard
 
@@ -6977,7 +6977,7 @@ __metadata:
   version: 0.0.0-use.local
   resolution: "mag-variable-update@workspace:."
   dependencies:
-    "@earendil-works/pi-ai": 1.0.0
+    "@earendil-works/pi-ai": 1.3.0
     "@eslint/js": ^9.29.0
     "@google/genai": 2.21.0
     "@intlify/devtools-types": 11.1.12
