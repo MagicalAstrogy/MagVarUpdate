@@ -31,7 +31,7 @@ jest.mock('@/function/update/pi/pi_gateway', () => {
                   : provider === 'google'
                     ? 'https://generativelanguage.googleapis.com/v1beta'
                     : provider === 'opencode'
-                      ? 'https://opencode.ai/zen/v1'
+                      ? 'https://opencode.ai/inference/v1'
                       : 'https://chatgpt.com/backend-api',
         reasoning: id === 'claude-legacy',
         input,
@@ -983,7 +983,7 @@ describe('pi runtime execution', () => {
         stream.mockImplementation((_model, _context, options) => ({
             async *[Symbol.asyncIterator]() {
                 try {
-                    await options.fetch('https://opencode.ai/zen/v1/responses', {
+                    await options.fetch('https://opencode.ai/inference/v1/responses', {
                         method: 'POST',
                         headers: { 'content-type': 'application/json' },
                         body: '{"model":"gpt-custom"}',

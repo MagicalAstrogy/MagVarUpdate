@@ -1,9 +1,14 @@
 /**
- * 测试场景：通过静态源码与产物检查，验证 Pi 只从统一网关导入，并经固定版本 ESM 加载而不嵌入主包。
+ * 测试场景：通过静态源码与临时构建产物检查，验证 Pi 只从统一网关导入，并经固定版本 ESM 加载而不嵌入主包。
  */
-const { readFileSync } = jest.requireActual('node:fs') as {
-    readFileSync(path: string, encoding: 'utf8'): string;
-};
+const { mkdtempSync, readFileSync, rmSync } = jest.requireActual(
+    'node:fs'
+) as typeof import('node:fs');
+const { execFileSync } = jest.requireActual(
+    'node:child_process'
+) as typeof import('node:child_process');
+const { tmpdir } = jest.requireActual('node:os') as typeof import('node:os');
+const { join } = jest.requireActual('node:path') as typeof import('node:path');
 
 const PI_ROOT = '@earendil-works/pi-ai';
 const ALLOWED_PI_IMPORTS = [
@@ -78,6 +83,30 @@ function hasLocalModuleSource(source_map: WebpackSourceMap, specifier: string): 
 
 // 依赖边界：允许的运行时入口、ESM 地址版本与生产产物中的第三方代码覆盖一致。
 describe('pi dependency boundary', () => {
+    let artifact_directory: string;
+
+    beforeAll(() => {
+        // PR 可以只提交源码；检查本次源码生成的产物，不能依赖仓库里上次发布的 bundle。
+        artifact_directory = mkdtempSync(join(tmpdir(), 'mvu-pi-dependency-boundary-'));
+        execFileSync(
+            process.execPath,
+            [
+                require.resolve('webpack-cli/bin/cli.js'),
+                '--mode',
+                'production',
+                '--output-path',
+                artifact_directory,
+            ],
+            { cwd: process.cwd(), encoding: 'utf8', stdio: 'pipe', timeout: 60_000 }
+        );
+    }, 65_000);
+
+    afterAll(() => {
+        if (artifact_directory) {
+            rmSync(artifact_directory, { recursive: true, force: true });
+        }
+    });
+
     test('gateway imports only the audited pi runtime entry points', () => {
         const source = readWorkspaceFile('src/function/update/pi/pi_gateway.ts');
         const imports = new Set(
@@ -96,7 +125,7 @@ describe('pi dependency boundary', () => {
         const manifest = JSON.parse(readWorkspaceFile('package.json')) as {
             dependencies: Record<string, string>;
         };
-        const bundle = readWorkspaceFile('artifact/bundle.js');
+        const bundle = readFileSync(join(artifact_directory, 'bundle.js'), 'utf8');
         const cdn = 'https://testingcf.jsdelivr.net/npm/';
         for (const specifier of ALLOWED_PI_IMPORTS) {
             expect(bundle).toContain(
@@ -116,7 +145,7 @@ describe('pi dependency boundary', () => {
 
     test('does not embed third-party Pi or provider SDK code in the MVU artifact', () => {
         const source_map = JSON.parse(
-            readWorkspaceFile('artifact/bundle.js.map')
+            readFileSync(join(artifact_directory, 'bundle.js.map'), 'utf8')
         ) as WebpackSourceMap;
         for (const specifier of EXTERNAL_PI_SDK_DEPENDENCIES) {
             expect(hasLocalModuleSource(source_map, specifier)).toBe(false);

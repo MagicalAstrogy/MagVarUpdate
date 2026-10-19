@@ -32,7 +32,7 @@ const SCRIPT_NAME = 'MVU Pi OpenRouter Browser Smoke';
 const SCRIPT_ID = '00000000-0000-4000-8000-000000000044';
 const RESULT_MARKER = 'MVU_PI_BROWSER_OK';
 const INJECTION_ID = 'MVU_PI_BROWSER_LIVE_RESULT';
-const LIVE_MODEL = 'inclusionai/ling-3.0-flash-fin:free';
+const LIVE_MODEL = process.env.MVU_PI_ST_LIVE_MODEL?.trim() || 'openai/gpt-4.1-mini';
 const BROWSER_CREDENTIAL_PLACEHOLDER = 'mvu-browser-credential-placeholder';
 const WIRE_PREFLIGHT_CREDENTIAL = 'mvu-browser-preflight-invalid';
 const ANTHROPIC_OPENROUTER_HEADER_OVERRIDES =
@@ -1044,22 +1044,12 @@ async function configurePiCase(configuration) {
     if (!iframe?.contentWindow) throw new Error('artifact-iframe-missing');
     const panelDocument = document;
 
-    const selects = [...panelDocument.querySelectorAll('select')];
-    const providerSelect = selects.find(select => {
-        const values = [...select.options].map(option => option.value);
-        return ['openai', 'openai-codex', 'anthropic', 'google'].every(value =>
-            values.includes(value)
-        );
-    });
-    if (!providerSelect) throw new Error('provider-select-missing');
-    setInputValue(providerSelect, configuration.provider, 'change');
-    await new Promise(resolve => setTimeout(resolve, 100));
-
-    const apiSelect = [...panelDocument.querySelectorAll('select')].find(select =>
-        [...select.options].some(option => option.value === configuration.api)
+    const choice = JSON.stringify([configuration.provider, configuration.api, 'api_key']);
+    const providerSelect = [...panelDocument.querySelectorAll('select')].find(select =>
+        [...select.options].some(option => option.value === choice)
     );
-    if (!apiSelect) throw new Error('api-select-missing');
-    setInputValue(apiSelect, configuration.api, 'change');
+    if (!providerSelect) throw new Error('provider-select-missing');
+    setInputValue(providerSelect, choice, 'change');
     await new Promise(resolve => setTimeout(resolve, 100));
 
     const modelInput = panelDocument.querySelector('.mvu-pi-model-controls input[type="text"]');
@@ -1086,8 +1076,8 @@ async function configurePiCase(configuration) {
         element => element.getClientRects().length > 0 && element.textContent?.trim()
     );
     return {
-        providerSelected: providerSelect.value === configuration.provider,
-        apiSelected: apiSelect.value === configuration.api,
+        providerSelected: JSON.parse(providerSelect.value)[0] === configuration.provider,
+        apiSelected: JSON.parse(providerSelect.value)[1] === configuration.api,
         endpointSelected: endpointInput.value === configuration.endpoint,
         modelSelected: modelInput.value === configuration.model,
         credentialLengthMatched: keyInput.value.length === configuration.apiKey.length,
@@ -1786,14 +1776,12 @@ async function startPiAbortCase(configuration) {
     if (window.__mvuPiLiveAbortState) throw new Error('abort-state-already-active');
 
     const retryEventId = iframe.contentWindow.getButtonEvent('重试额外模型解析');
-    const stopEventId = iframe.contentWindow.getButtonEvent('停止“更多”额外模型解析');
     const retryHandlers = context.eventSource?.events?.[retryEventId];
-    const stopHandlers = context.eventSource?.events?.[stopEventId];
     if (!Array.isArray(retryHandlers) || retryHandlers.length === 0) {
         throw new Error('retry-handler-missing');
     }
-    if (!Array.isArray(stopHandlers) || stopHandlers.length === 0) {
-        throw new Error('stop-handler-missing');
+    if (!document.getElementById('mes_stop')) {
+        throw new Error('stop-button-missing');
     }
 
     await context.setExtensionPrompt(
@@ -1832,7 +1820,7 @@ async function startPiAbortCase(configuration) {
         iframeOriginalFetch,
         topWrappedFetch: null,
         iframeWrappedFetch: null,
-        stopHandler: stopHandlers.at(-1),
+        stopHandler: () => document.getElementById('mes_stop').click(),
         preInvocation,
         requestCount: 0,
         paths: [],
@@ -1996,7 +1984,7 @@ async function startPiAbortCase(configuration) {
         started: true,
         preInvocation,
         retryHandlerCount: retryHandlers.length,
-        stopHandlerCount: stopHandlers.length,
+        stopButtonPresent: Boolean(document.getElementById('mes_stop')),
     };
 }
 

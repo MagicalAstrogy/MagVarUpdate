@@ -95,8 +95,8 @@ const OPENAI_MODEL_DISCOVERY: Readonly<
             'X-GitHub-Api-Version': '2026-06-01',
         }),
     }),
-    opencode: Object.freeze({ baseUrl: 'https://opencode.ai/zen/v1' }),
-    'opencode-go': Object.freeze({ baseUrl: 'https://opencode.ai/zen/go/v1' }),
+    opencode: Object.freeze({ baseUrl: 'https://opencode.ai/inference/v1' }),
+    'opencode-go': Object.freeze({ baseUrl: 'https://opencode.ai/inference/go/v1' }),
     'vercel-ai-gateway': Object.freeze({ baseUrl: 'https://ai-gateway.vercel.sh/v1' }),
 });
 

@@ -162,6 +162,9 @@ jest.mock('@/function/update/pi/pi_gateway', () => {
             choice === 'any' ? 'ANY' : choice === 'none' ? 'NONE' : 'AUTO'
         ),
         resolveGoogleThinkingLevel: jest.fn((_model: unknown, level: string) => level),
+        getDisabledGoogleThinkingConfig: jest.fn(() => ({ thinkingLevel: 'MINIMAL' })),
+        toGoogleThinkingLevel: jest.fn((level: string) => level.toUpperCase()),
+        usesGoogleThinkingLevel: jest.fn(() => true),
         retainGoogleThoughtSignature: jest.fn(
             (existing: string | undefined, incoming: string | undefined) =>
                 incoming && incoming.length > 0 ? incoming : existing
@@ -275,7 +278,7 @@ const MODEL: Model<'google-generative-ai'> = {
     name: 'Gemini 3 Flash',
     api: 'google-generative-ai',
     provider: 'opencode',
-    baseUrl: 'https://opencode.ai/zen/v1',
+    baseUrl: 'https://opencode.ai/inference/v1',
     reasoning: true,
     input: ['text', 'image'],
     cost: { input: 1, output: 2, cacheRead: 0.1, cacheWrite: 0 },
@@ -550,7 +553,7 @@ describe('Google proxy-aware adapter', () => {
         const [url, init] = fetch_impl.mock.calls[0]!;
         const request_init = init!;
         expect(url).toBe(
-            'https://opencode.ai/zen/v1/models/gemini-3-flash:streamGenerateContent?alt=sse'
+            'https://opencode.ai/inference/v1/models/gemini-3-flash:streamGenerateContent?alt=sse'
         );
         expect(request_init.method).toBe('POST');
         expect((request_init.headers as Headers).get('x-goog-api-key')).toBe('secret-key');
@@ -671,7 +674,7 @@ describe('Google proxy-aware adapter', () => {
             })
         );
         const target =
-            'https://opencode.ai/zen/v1/models/gemini-3-flash:streamGenerateContent?alt=sse';
+            'https://opencode.ai/inference/v1/models/gemini-3-flash:streamGenerateContent?alt=sse';
 
         expect(result).toMatchObject({ stopReason: 'stop', content: [{ text: 'proxied' }] });
         expect(st_fetch).toHaveBeenCalledTimes(2);

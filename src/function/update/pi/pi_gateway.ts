@@ -109,6 +109,7 @@ export { openAICodexResponsesApi } from '@earendil-works/pi-ai/api/openai-codex-
 export {
     convertMessages as convertGoogleMessages,
     convertTools as convertGoogleTools,
+    getDisabledGoogleThinkingConfig,
     isThinkingPart as isGoogleThinkingPart,
     // 本地 Google SDK 可能先于 Pi 固定的 SDK 版本增加枚举值，停止原因仍沿用 Pi 的映射。
     mapStopReasonString as mapGoogleStopReason,
@@ -117,6 +118,8 @@ export {
     retainThoughtSignature as retainGoogleThoughtSignature,
     retryGoogleRequest,
     supportsGoogleStrictToolSampling,
+    toGoogleThinkingLevel,
+    usesGoogleThinkingLevel,
 } from '@earendil-works/pi-ai/api/google-shared';
 export type {
     GoogleApiThinkingLevel,

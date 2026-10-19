@@ -15,6 +15,7 @@ import {
     createAssistantMessageEventStream,
     getCurrentSystemPrompt,
     getCurrentTools,
+    getDisabledGoogleThinkingConfig,
     isGoogleThinkingPart,
     mapGoogleStopReason,
     resolveGoogleFunctionCallingMode,
@@ -22,6 +23,8 @@ import {
     retainGoogleThoughtSignature,
     retryGoogleRequest,
     supportsGoogleStrictToolSampling,
+    toGoogleThinkingLevel,
+    usesGoogleThinkingLevel,
     type Api,
     type AssistantMessage,
     type AssistantMessageEventStream,
@@ -279,7 +282,7 @@ function buildParams(
         }
         config.thinkingConfig = thinking_config;
     } else if (model.reasoning && options.thinking && !options.thinking.enabled) {
-        config.thinkingConfig = getDisabledThinkingConfig(model);
+        config.thinkingConfig = getDisabledGoogleThinkingConfig(model);
     }
 
     if (options.signal) {
@@ -562,60 +565,6 @@ function streamWithInjectedFetch(
     return stream;
 }
 
-/** 识别使用思考等级配置的 Gemma 4 模型名称。 */
-function isGemma4Model(model: Model<'google-generative-ai'>): boolean {
-    return /gemma-?4/.test(model.id.toLowerCase());
-}
-
-/** 识别 Gemini 3 Pro 系列，以使用其支持的思考等级范围。 */
-function isGemini3ProModel(model: Model<'google-generative-ai'>): boolean {
-    return /gemini-3(?:\.\d+)?-pro/.test(model.id.toLowerCase());
-}
-
-/** 识别 Gemini 3 Flash 系列及对应 latest 别名。 */
-function isGemini3FlashModel(model: Model<'google-generative-ai'>): boolean {
-    const id = model.id.toLowerCase();
-    return (
-        /gemini-3(?:\.\d+)?-flash/.test(id) ||
-        id === 'gemini-flash-latest' ||
-        id === 'gemini-flash-lite-latest'
-    );
-}
-
-/** 为不同 Google 模型选择关闭或最低允许思考配置，避免发送不支持的零预算。 */
-function getDisabledThinkingConfig(model: Model<'google-generative-ai'>): ThinkingConfig {
-    if (isGemini3ProModel(model)) {
-        return { thinkingLevel: 'LOW' as ThinkingConfig['thinkingLevel'] };
-    }
-    if (isGemini3FlashModel(model) || isGemma4Model(model)) {
-        return { thinkingLevel: 'MINIMAL' as ThinkingConfig['thinkingLevel'] };
-    }
-    return { thinkingBudget: 0 };
-}
-
-/** 把 Pi 思考等级映射到当前 Google 模型实际支持的等级。 */
-function getThinkingLevel(
-    effort: ResolvedGoogleThinkingLevel,
-    model: Model<'google-generative-ai'>
-): GoogleApiThinkingLevel {
-    if (isGemini3ProModel(model)) {
-        return effort === 'minimal' || effort === 'low' ? 'LOW' : 'HIGH';
-    }
-    if (isGemma4Model(model)) {
-        return effort === 'minimal' || effort === 'low' ? 'MINIMAL' : 'HIGH';
-    }
-    switch (effort) {
-        case 'minimal':
-            return 'MINIMAL';
-        case 'low':
-            return 'LOW';
-        case 'medium':
-            return 'MEDIUM';
-        case 'high':
-            return 'HIGH';
-    }
-}
-
 /** 优先使用自定义思考预算，否则采用相应模型的预算映射；未知模型交由服务端动态分配。 */
 function getGoogleBudget(
     model: Model<'google-generative-ai'>,
@@ -671,13 +620,13 @@ function streamSimpleWithInjectedFetch(
         );
     }
     const resolved_level = resolveGoogleThinkingLevel(model, clamped_reasoning);
-    if (isGemini3ProModel(model) || isGemini3FlashModel(model) || isGemma4Model(model)) {
+    if (usesGoogleThinkingLevel(model)) {
         return streamWithInjectedFetch(
             model,
             context,
             {
                 ...base,
-                thinking: { enabled: true, level: getThinkingLevel(resolved_level, model) },
+                thinking: { enabled: true, level: toGoogleThinkingLevel(resolved_level) },
             },
             fetch_impl
         );
