@@ -434,6 +434,8 @@ export async function runPiStConfiguredLiveSmoke(options) {
                     : []),
             ];
         })
+        // 先分配预期值再筛选，单项复测与完整矩阵使用相同输入。
+        .map((scenario, index) => ({ ...scenario, value: 7 + index }))
         .filter(scenario => {
             const filters = (process.env.MVU_PI_ST_CONFIGURED_CASE || '')
                 .split(',')
@@ -454,8 +456,7 @@ export async function runPiStConfiguredLiveSmoke(options) {
         },
     };
     try {
-        for (const [index, scenario] of scenarios.entries()) {
-            const testCase = { ...scenario, value: 7 + index };
+        for (const testCase of scenarios) {
             process.stderr.write(`[pi-st-live] ${testCase.id}\n`);
             const result = {
                 id: testCase.id,

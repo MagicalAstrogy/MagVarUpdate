@@ -97,33 +97,25 @@ async function configureAnthropicOAuth(webDriver, scriptName) {
                 [...candidate.options].some(option => option.value === '更多')
             ));
             choose(root, ['与插头相同', '自定义', '更多'], '更多');
+            const choice = JSON.stringify(['anthropic', 'anthropic-messages', 'oauth']);
             await poll(() => [...root.querySelectorAll('select')].some(candidate =>
-                [...candidate.options].some(option => option.value === 'anthropic')
+                [...candidate.options].some(option => option.value === choice)
             ));
-            choose(root, ['openai', 'openai-codex', 'anthropic', 'google'], 'anthropic');
-            await poll(() => [...root.querySelectorAll('select')].some(candidate =>
-                [...candidate.options].some(option => option.value === 'oauth')
-            ));
-            choose(root, ['api_key', 'oauth'], 'oauth');
+            choose(root, [choice], choice);
             const status = await poll(() => root.querySelector('.mvu-oauth-status > span'));
             const source = [...root.querySelectorAll('select')].find(candidate =>
                 [...candidate.options].some(option => option.value === '更多')
             );
-            const provider = [...root.querySelectorAll('select')].find(candidate =>
-                [...candidate.options].some(option => option.value === 'anthropic')
+            const selected = [...root.querySelectorAll('select')].find(candidate =>
+                candidate.value === choice
             );
-            const auth = [...root.querySelectorAll('select')].find(candidate =>
-                [...candidate.options].some(option => option.value === 'oauth')
-            );
-            const api = [...root.querySelectorAll('select')].find(candidate =>
-                [...candidate.options].some(option => option.value === 'anthropic-messages')
-            );
+            const [provider, api, auth] = JSON.parse(selected?.value || '[]');
             done({
                 ok: true,
                 sourceMore: source?.value === '更多',
-                providerAnthropic: provider?.value === 'anthropic',
-                apiAnthropicMessages: api?.value === 'anthropic-messages',
-                authOAuth: auth?.value === 'oauth',
+                providerAnthropic: provider === 'anthropic',
+                apiAnthropicMessages: api === 'anthropic-messages',
+                authOAuth: auth === 'oauth',
                 oauthVisible: !!status,
                 initiallySignedOut: /not signed in|未登录/i.test(status?.textContent || ''),
                 apiKeyHidden: root.querySelectorAll('input[type="password"]').length === 0,
@@ -503,7 +495,7 @@ async function cancelAttempt(webDriver) {
                     popupClosedByHarness: probe.popups.slice(probe.popupCheckpoint)
                         .every(popup => popup.closed),
                     tokenFetchCount: probe.tokenFetchCount,
-                    credentialAbsent: !config?.pi?.credentials?.anthropic,
+                    credentialAbsent: !config?.pi?.credentials?.[config?.pi?.credentialIds?.anthropic ?? 'anthropic'],
                 });
                 return;
             }
@@ -639,7 +631,7 @@ async function switchSourceClearsAttempt(webDriver) {
                             popupClosedByHarness: probe.popups.slice(probe.popupCheckpoint)
                                 .every(popup => popup.closed),
                             tokenFetchCount: probe.tokenFetchCount,
-                            credentialAbsent: !config?.pi?.credentials?.anthropic,
+                            credentialAbsent: !config?.pi?.credentials?.[config?.pi?.credentialIds?.anthropic ?? 'anthropic'],
                         });
                         return;
                     }
@@ -716,7 +708,7 @@ async function completeValidLoopback(webDriver) {
                     if (signedIn && signOut) {
                         const config = state.iframe.contentWindow.SillyTavern?.extensionSettings
                             ?.mvu_settings?.['额外模型解析配置'];
-                        const credential = config?.pi?.credentials?.anthropic;
+                        const credential = config?.pi?.credentials?.[config?.pi?.credentialIds?.anthropic ?? 'anthropic'];
                         const displayed = [...document.querySelectorAll('input, textarea')]
                             .some(input => [probe.accessValue, probe.refreshValue]
                                 .some(secret => String(input.value || '').includes(secret))) ||
@@ -725,7 +717,7 @@ async function completeValidLoopback(webDriver) {
                         const profiles = JSON.stringify(config?.['api方案列表'] || []);
                         const credentialsOutsideAllowedSlot = JSON.stringify(Object.fromEntries(
                             Object.entries(config?.pi?.credentials || {})
-                                .filter(([provider]) => provider !== 'anthropic')
+                                .filter(([id]) => id !== (config?.pi?.credentialIds?.anthropic ?? 'anthropic'))
                         ));
                         const disallowedSettings = JSON.stringify({
                             apiKeys: config?.pi?.apiKeys || {},
@@ -830,7 +822,7 @@ async function readReloadedStatus(webDriver, scriptName, credential, expectedSig
         const status = oauth.querySelector('.mvu-oauth-status > span')?.textContent || '';
         const config = iframe.contentWindow.SillyTavern?.extensionSettings
             ?.mvu_settings?.['额外模型解析配置'];
-        const credential = config?.pi?.credentials?.anthropic;
+        const credential = config?.pi?.credentials?.[config?.pi?.credentialIds?.anthropic ?? 'anthropic'];
         const displayed = [...document.querySelectorAll('input, textarea')]
             .some(input => [accessValue, refreshValue]
                 .some(secret => String(input.value || '').includes(secret))) ||
@@ -838,7 +830,7 @@ async function readReloadedStatus(webDriver, scriptName, credential, expectedSig
                 .some(secret => (document.body.textContent || '').includes(secret));
         const credentialsOutsideAllowedSlot = JSON.stringify(Object.fromEntries(
             Object.entries(config?.pi?.credentials || {})
-                .filter(([provider]) => provider !== 'anthropic')
+                .filter(([id]) => id !== (config?.pi?.credentialIds?.anthropic ?? 'anthropic'))
         ));
         const disallowedSettings = JSON.stringify({
             apiKeys: config?.pi?.apiKeys || {},
@@ -942,7 +934,7 @@ async function signOutThroughConfirmation(webDriver, scriptName) {
                     ok: true,
                     confirmationVisible: true,
                     affirmativePresent: true,
-                    confirmationMentionsCredential: /credential|凭据/i.test(dialog.textContent || ''),
+                    confirmationMentionsCurrentAccount: /current configuration|当前配置/i.test(dialog.textContent || '') && /sign out|登出/i.test(dialog.textContent || ''),
                     confirmationDoesNotContainCredential:
                         !!probe &&
                         ![probe.accessValue, probe.refreshValue]
@@ -983,7 +975,7 @@ async function signOutThroughConfirmation(webDriver, scriptName) {
                 .some(input => /^(sign in|login|登录)$/i.test(input.value));
             const config = iframe?.contentWindow?.SillyTavern?.extensionSettings
                 ?.mvu_settings?.['额外模型解析配置'];
-            if (signedOut && login && !config?.pi?.credentials?.anthropic) {
+            if (signedOut && login && !config?.pi?.credentials?.[config?.pi?.credentialIds?.anthropic ?? 'anthropic']) {
                 const resources = [
                     ...performance.getEntriesByType('resource'),
                     ...iframe.contentWindow.performance.getEntriesByType('resource'),
@@ -1284,7 +1276,7 @@ export async function runPiStOAuthSmoke({
             {
                 confirmationVisible: signedOut.confirmationVisible,
                 affirmativePresent: signedOut.affirmativePresent,
-                confirmationMentionsCredential: signedOut.confirmationMentionsCredential,
+                confirmationMentionsCurrentAccount: signedOut.confirmationMentionsCurrentAccount,
                 confirmationDoesNotContainCredential:
                     signedOut.confirmationDoesNotContainCredential,
                 confirmed: signedOut.confirmed,

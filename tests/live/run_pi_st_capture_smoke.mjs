@@ -1446,7 +1446,7 @@ async function main() {
 
             const listenerMissChecks = {
                 listenerMissCompleted: listenerMissInvocation?.completed === true,
-                listenerMissHandledByRetryStrategy: listenerMissInvocation?.rejected === false,
+                listenerMissErrorPropagated: listenerMissInvocation?.rejected === true,
                 listenerMissConvergedWithin10Seconds:
                     Number.isFinite(listenerMissInvocation?.elapsedMs) &&
                     listenerMissInvocation.elapsedMs <= LISTENER_MISS_TIMEOUT_MS,

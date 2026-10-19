@@ -447,6 +447,7 @@ SSE 在流结束后合并输出，中断或读取失败时保留已收到的正�
   可按场景 ID 子串筛选，多个子串用逗号分隔。密钥仅在实际请求的 fetch 边界注入，界面使用占位值；报告对错误信息脱敏，写入已忽略的
   `coverage/pi-st-final/configured-cases.json`。本集合只通过上述显式命令启动，默认 `yarn test` /
   `yarn test:coverage` 排除 `tests/live/`，不会执行它；凭据文件及测试报告不得提交。
+  单项复测保留该场景在完整矩阵中的预期变量值，便于对照失败结果。
 - `update:pi:st-prompt-fixtures`
   在隔离真实浏览器中同时捕获 Legacy 与 Pi 的当前预设、其他预设、内置破限三条 prompt 路径，并生成带版本/产物 provenance 的回归 fixtures。三路分别为 12/11/15 条 messages，逐路 JSON 完全一致且没有允许差异或 normalization；覆盖宏、prompt-only 正则、角色卡、世界书过滤与深度、历史裁剪、注入和
   `filterPrompts`。这三条“聊天消息”fixtures 均未出现历史工具消息，因此首版不额外扩大该回归范围。
@@ -479,11 +480,13 @@ SSE 在流结束后合并输出，中断或读取失败时保留已收到的正�
   429 会立即停止后续请求。本次受控重试中 Responses、Anthropic Messages 和 Chat
   Completions 三条均成功返回预期响应，且路径、signal、认证头和 CORS 检查全部通过。
 - `yarn test:pi:st-server-cancel` 让真实 Firefox 中的 Pi
-  Responses 请求和主聊天请求同时连接到本机跨端口流式 HTTP 服务。停止 Pi 后，服务端观察到对应响应在
-  `finish` 前关闭，而主聊天流与 signal 仍保持活跃；只有再点击真实 `#mes_stop`
-  后主聊天流才关闭。该测试证明浏览器到可观测服务端的取消传播及两条 stop 路径隔离，不代表任何真实 Provider 已停止生成或计费。
+  Responses 请求和通过 `ChatCompletionService` 发起的独立主传输同时连接到本机跨端口流式 HTTP 服务。
+  按 generation ID 停止 Pi 后，服务端观察到对应响应在 `finish` 前关闭，而主传输仍保持活跃；
+  再中止主传输自己的 `AbortController`，确认其连接关闭。原生发送/停止按钮生命周期由 `test:pi:st-features`
+  验证。该测试证明浏览器到可观测服务端的取消传播及两条 stop 路径隔离，不代表任何真实 Provider 已停止生成或计费。
 - `yarn test:pi:st-live` 使用临时 ST/Firefox
-  profile 和同一份内存凭据尝试真实浏览器请求，并在结束前清空页面内存、扫描临时数据后再删除目录。OpenAI
+  profile 和同一份内存凭据尝试真实浏览器请求，默认模型为 `openai/gpt-4.1-mini`，
+  可通过 `MVU_PI_ST_LIVE_MODEL` 覆盖；结束前清空页面内存、扫描临时数据后再删除目录。OpenAI
   Responses 与 OpenAI Chat Completions 已分别通过：请求到达 `/api/v1/responses` 和
   `/api/v1/chat/completions`，HTTP 200、CORS、Authorization、真实且未预先中止的
   `AbortSignal`、最终响应 marker、变量更新标签和 analysis 清理均符合预期。OpenRouter-compatible

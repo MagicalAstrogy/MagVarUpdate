@@ -1,5 +1,6 @@
 /**
  * 测试场景：结合真实酒馆浏览器和本地回环流式服务器，验证停止 Pi 后网络连接确实关闭且主生成保持独立。
+ * 主传输使用 ChatCompletionService 的独立 signal；原生发送/停止按钮生命周期由 feature smoke 验证。
  * 请求使用本地测试密钥，收集服务端和浏览器两侧取消证据。
  */
 import http from 'node:http';
@@ -253,9 +254,8 @@ async function configurePi(webDriver, scriptName, endpoint) {
             try {
                 choose(['与插头相同', '自定义', '更多'], '更多');
                 await tick();
-                choose(['openai', 'openai-codex', 'anthropic', 'google'], 'openai');
-                await tick();
-                choose(['openai-responses', 'openai-completions'], 'openai-responses');
+                const sourceChoice = JSON.stringify(['openai', 'openai-responses', 'api_key']);
+                choose([sourceChoice], sourceChoice);
                 await tick();
 
                 const grid = candidateDocuments.flatMap(owner => [...owner.querySelectorAll('.mvu-field-grid')]).find(candidate =>
@@ -292,7 +292,7 @@ async function configurePi(webDriver, scriptName, endpoint) {
 async function installBrowserHarness(webDriver, scriptName, endpoint) {
     const result = await webDriver.execute(
         `
-        const [scriptName, endpoint, capturePrefix, mainModel, userMarker] = arguments;
+        const [scriptName, endpoint, capturePrefix] = arguments;
         let stage = 'context';
         try {
             const context = window.SillyTavern.getContext();
@@ -302,18 +302,19 @@ async function installBrowserHarness(webDriver, scriptName, endpoint) {
             );
             if (!iframe?.contentWindow) return { ok: false, stage: 'iframe' };
             const retryEvent = iframe.contentWindow.getButtonEvent('重试额外模型解析');
-            const stopEvent = iframe.contentWindow.getButtonEvent('停止“更多”额外模型解析');
             const retryHandlers = context.eventSource?.events?.[retryEvent];
-            const stopHandlers = context.eventSource?.events?.[stopEvent];
-            if (!retryHandlers?.length || !stopHandlers?.length) return { ok: false, stage: 'handlers' };
+            if (!retryHandlers?.length || typeof iframe.contentWindow.stopGenerationById !== 'function') {
+                return { ok: false, stage: 'handlers' };
+            }
 
             const state = {
                 originalTopFetch: window.fetch,
                 originalFrameFetch: iframe.contentWindow.fetch,
                 frame: iframe.contentWindow,
                 retryHandler: retryHandlers.at(-1),
-                stopHandler: stopHandlers.at(-1),
+                stopHandler: () => iframe.contentWindow.stopGenerationById(state.piGenerationId),
                 captureRequests: 0,
+                captureReadyCount: 0,
                 piFetches: 0,
                 mainFetches: 0,
                 unexpectedExternal: 0,
@@ -321,9 +322,6 @@ async function installBrowserHarness(webDriver, scriptName, endpoint) {
                 mainSignal: null,
                 piSignalAbortObserved: false,
                 mainSignalAbortObserved: false,
-                mainModel,
-                userMarker,
-                sendEvents: { messageSent: 0, generationStopped: 0 },
             };
             const abortError = realm => new realm.DOMException('Aborted', 'AbortError');
             const jsonResponse = value => new Response(JSON.stringify(value), {
@@ -386,18 +384,21 @@ async function installBrowserHarness(webDriver, scriptName, endpoint) {
                 return state.originalFrameFetch.call(iframe.contentWindow, input, init);
             };
 
-            const eventTypes = context.eventTypes;
-            state.messageSentListener = () => { state.sendEvents.messageSent += 1; };
-            state.generationStoppedListener = () => { state.sendEvents.generationStopped += 1; };
-            context.eventSource.on(eventTypes.MESSAGE_SENT, state.messageSentListener);
-            context.eventSource.on(eventTypes.GENERATION_STOPPED, state.generationStoppedListener);
+            state.readyEvent = helper.tavern_events?.CHAT_COMPLETION_SETTINGS_READY || 'chat_completion_settings_ready';
+            state.readyListener = data => {
+                if (typeof data?.model === 'string' && data.model.startsWith(capturePrefix)) {
+                    state.captureReadyCount += 1;
+                    state.piGenerationId = decodeURIComponent(data.model.slice(capturePrefix.length));
+                }
+            };
+            context.eventSource.on(state.readyEvent, state.readyListener);
             window.__mvuServerCancelSmoke = state;
             return { ok: true, stage: 'done' };
         } catch (error) {
             return { ok: false, stage, errorName: String(error?.name || 'Error') };
         }
         `,
-        [scriptName, endpoint, CAPTURE_MODEL_PREFIX, MAIN_MODEL, USER_MARKER]
+        [scriptName, endpoint, CAPTURE_MODEL_PREFIX]
     );
     assertServerCancel(
         result?.ok,
@@ -431,12 +432,18 @@ async function startPiRequest(webDriver) {
         const deadline = Date.now() + 30000;
         const poll = () => {
             if (state?.piFetches === 1 && state.piSignal) {
-                return done({ reached: true, captureRequests: state.captureRequests });
+                return done({
+                    reached: true,
+                    captureRequests: state.captureRequests,
+                    captureReadyCount: state.captureReadyCount,
+                    piFetches: state.piFetches,
+                });
             }
             if (Date.now() >= deadline) {
                 return done({
                     reached: false,
                     captureRequests: state?.captureRequests ?? -1,
+                    captureReadyCount: state?.captureReadyCount ?? -1,
                     piFetches: state?.piFetches ?? -1,
                 });
             }
@@ -448,93 +455,45 @@ async function startPiRequest(webDriver) {
         35_000
     );
     assertServerCancel(
-        reached?.reached && reached.captureRequests === 1,
-        `pi-provider-not-reached-${reached?.captureRequests ?? -1}-${reached?.piFetches ?? -1}`
+        reached?.reached && reached.captureReadyCount === 1,
+        `pi-provider-not-reached-${reached?.captureReadyCount ?? -1}-${reached?.piFetches ?? -1}`
     );
 }
 
-/** 启动主生成：通过实际发送链路建立独立请求，用于验证 Pi 停止的隔离性。 */
-async function startMainSend(webDriver) {
+/** 使用酒馆的 ChatCompletionService 建立独立主传输，避免 Pi 活跃期间点击被禁用的发送按钮。 */
+async function startMainTransport(webDriver) {
     const result = await webDriver.executeAsync(
         `
         const [mainModel, userMarker] = arguments;
         const done = arguments[arguments.length - 1];
-        let stage = 'initialize';
         (async () => {
             const state = window.__mvuServerCancelSmoke;
             const context = window.SillyTavern.getContext();
-            const wait = milliseconds => new Promise(resolve => setTimeout(resolve, milliseconds));
-            const fire = (selector, value, eventName) => {
-                const element = document.querySelector(selector);
-                if (!element) throw new Error(selector);
-                if (element.type === 'checkbox') element.checked = value;
-                else element.value = value;
-                element.dispatchEvent(new Event(eventName, { bubbles: true }));
-            };
-            if (document.body.dataset.generating === 'true') throw new Error('generation-not-idle');
-            context.activateSendButtons();
-            stage = 'configure-main';
-            fire('#main_api', 'openai', 'change');
-            fire('#custom_api_url_text', 'http://127.0.0.1/mvu-local-main', 'input');
-            fire('#custom_model_id', mainModel, 'input');
-            fire('#stream_toggle', false, 'change');
-            fire('#chat_completion_source', 'custom', 'change');
-            const statusBefore = state.statusRequests ?? 0;
-            document.querySelector('#api_button_openai')?.click();
-            const onlineDeadline = Date.now() + 15000;
-            while (
-                window.SillyTavern.getContext().onlineStatus === 'no_connection' &&
-                Date.now() < onlineDeadline
-            ) await wait(100);
-            if (window.SillyTavern.getContext().onlineStatus === 'no_connection') {
-                throw new Error('main-offline-' + statusBefore);
+            state.mainController = new AbortController();
+            state.mainInvocation = context.ChatCompletionService.sendRequest({
+                stream: false,
+                messages: [{ role: 'user', content: userMarker }],
+                model: mainModel,
+                chat_completion_source: 'custom',
+                custom_url: 'http://127.0.0.1/mvu-local-main',
+            }, false, state.mainController.signal).then(
+                () => ({ settled: true, rejected: false }),
+                () => ({ settled: true, rejected: true })
+            );
+            const deadline = Date.now() + 30000;
+            while (state.mainFetches !== 1 && Date.now() < deadline) {
+                await new Promise(resolve => setTimeout(resolve, 50));
             }
-
-            stage = 'send';
-            const textarea = document.querySelector('#send_textarea');
-            const sendButton = document.querySelector('#send_but');
-            if (!textarea || !sendButton) throw new Error('send-controls');
-            const chatLengthBefore = context.chat.length;
-            textarea.value = userMarker;
-            textarea.dispatchEvent(new Event('input', { bubbles: true }));
-            textarea.dispatchEvent(new Event('change', { bubbles: true }));
-            sendButton.click();
-            const mainDeadline = Date.now() + 30000;
-            while (state.mainFetches !== 1 && Date.now() < mainDeadline) await wait(50);
             done({
                 reached: state.mainFetches === 1,
-                stage,
-                signalPresent: Boolean(state.mainSignal),
-                signalAborted: state.mainSignal?.aborted === true,
-                generating: document.body.dataset.generating === 'true',
-                chatDelta: context.chat.length - chatLengthBefore,
-                userMessageSeen: context.chat.some(
-                    message => message?.is_user === true && message?.mes === userMarker
-                ),
-                messageSent: state.sendEvents.messageSent,
+                independentSignal: Boolean(state.mainSignal) && !state.mainSignal.aborted,
             });
-        })().catch(error => done({
-            reached: false,
-            stage,
-            errorName: String(error?.name || 'Error'),
-            errorCode: String(error?.message || 'unknown').slice(0, 100),
-        }));
-        `,
+        })().catch(() => done({ reached: false }));
+    `,
         [MAIN_MODEL, USER_MARKER],
-        65_000
+        35000
     );
-    assertServerCancel(
-        result?.reached,
-        `main-not-reached-${result?.stage ?? 'wait'}-${result?.errorName ?? 'none'}-${result?.errorCode ?? 'none'}`
-    );
-    assertServerCancel(result.signalPresent && !result.signalAborted, 'main-signal-initial');
-    assertServerCancel(
-        result.generating &&
-            result.chatDelta >= 1 &&
-            result.userMessageSeen &&
-            result.messageSent >= 1,
-        'main-send-lifecycle'
-    );
+    assertServerCancel(result?.reached && result.independentSignal, 'main-transport-not-reached');
     return result;
 }
 
@@ -542,9 +501,8 @@ async function startMainSend(webDriver) {
 async function stopPiAndObserveIsolation(webDriver) {
     const stopped = await webDriver.execute(`
         const state = window.__mvuServerCancelSmoke;
-        if (!state?.stopHandler) return false;
-        Promise.resolve().then(() => state.stopHandler());
-        return true;
+        if (!state?.stopHandler || typeof state.piGenerationId !== 'string') return false;
+        return state.stopHandler();
     `);
     assertServerCancel(stopped, 'pi-stop-not-dispatched');
 }
@@ -579,52 +537,24 @@ async function stopMain(webDriver) {
         `
         const done = arguments[arguments.length - 1];
         const state = window.__mvuServerCancelSmoke;
-        const stopButton = document.querySelector('#mes_stop');
-        const visible = Boolean(stopButton) && getComputedStyle(stopButton).display !== 'none';
-        const stoppedBefore = state.sendEvents.generationStopped;
-        stopButton?.click();
-        const deadline = Date.now() + 10000;
-        const poll = () => {
-            if (
-                state.mainSignal?.aborted === true &&
-                document.body.dataset.generating !== 'true'
-            ) {
-                return done({
-                    stopButtonPresent: Boolean(stopButton),
-                    stopButtonVisible: visible,
-                    mainSignalAborted: true,
-                    mainSignalAbortObserved: state.mainSignalAbortObserved,
-                    generationIdle: true,
-                    generationStopped: state.sendEvents.generationStopped > stoppedBefore,
-                    mainFetches: state.mainFetches,
-                    piFetches: state.piFetches,
-                });
-            }
-            if (Date.now() >= deadline) {
-                return done({
-                    stopButtonPresent: Boolean(stopButton),
-                    stopButtonVisible: visible,
-                    mainSignalAborted: state.mainSignal?.aborted === true,
-                    mainSignalAbortObserved: state.mainSignalAbortObserved,
-                    generationIdle: document.body.dataset.generating !== 'true',
-                    generationStopped: state.sendEvents.generationStopped > stoppedBefore,
-                    mainFetches: state.mainFetches,
-                    piFetches: state.piFetches,
-                });
-            }
-            setTimeout(poll, 50);
-        };
-        poll();
-        `,
+        state.mainController.abort();
+        Promise.race([
+            state.mainInvocation,
+            new Promise(resolve => setTimeout(() => resolve({ settled: false }), 10000)),
+        ]).then(invocation => done({
+            settled: invocation.settled,
+            mainSignalAborted: state.mainSignal?.aborted === true,
+            mainSignalAbortObserved: state.mainSignalAbortObserved,
+            piFetches: state.piFetches,
+        }));
+    `,
         [],
-        15_000
+        15000
     );
-    assertServerCancel(result?.stopButtonPresent && result.stopButtonVisible, 'main-stop-button');
     assertServerCancel(
-        result.mainSignalAborted && result.mainSignalAbortObserved && result.generationIdle,
+        result.settled && result.mainSignalAborted && result.mainSignalAbortObserved,
         'main-stop-signal'
     );
-    assertServerCancel(result.generationStopped, 'main-stop-event');
     return result;
 }
 
@@ -634,11 +564,7 @@ async function cleanupBrowserHarness(webDriver) {
         const state = window.__mvuServerCancelSmoke;
         if (!state) return { ok: false };
         const context = window.SillyTavern.getContext();
-        context.eventSource.removeListener(context.eventTypes.MESSAGE_SENT, state.messageSentListener);
-        context.eventSource.removeListener(
-            context.eventTypes.GENERATION_STOPPED,
-            state.generationStoppedListener
-        );
+        context.eventSource.removeListener(state.readyEvent, state.readyListener);
         window.fetch = state.originalTopFetch;
         state.frame.fetch = state.originalFrameFetch;
         const result = {
@@ -646,6 +572,7 @@ async function cleanupBrowserHarness(webDriver) {
             topFetchRestored: window.fetch === state.originalTopFetch,
             frameFetchRestored: state.frame.fetch === state.originalFrameFetch,
             captureRequests: state.captureRequests,
+            captureReadyCount: state.captureReadyCount,
             piFetches: state.piFetches,
             mainFetches: state.mainFetches,
             unexpectedExternal: state.unexpectedExternal,
@@ -681,7 +608,7 @@ export async function runPiStServerCancelSmoke({
         );
 
         // 双流并行：主生成开始后，两条服务端响应都应保持打开。
-        const mainSend = await startMainSend(webDriver);
+        const mainSend = await startMainTransport(webDriver);
         const bothStreaming = await waitForServer(
             harness,
             current => current.main.requests === 1 && current.main.responseHeadersSent,
@@ -750,15 +677,11 @@ export async function runPiStServerCancelSmoke({
                 !afterMainStop.main.responseFinished,
             independentRequestCounts:
                 afterMainStop.pi.requests === 1 && afterMainStop.main.requests === 1,
-            mainSendButtonLifecycle:
-                mainSend.generating && mainSend.userMessageSeen && mainSend.messageSent >= 1,
-            mainStopButtonLifecycle:
-                mainStop.stopButtonPresent &&
-                mainStop.stopButtonVisible &&
-                mainStop.generationStopped &&
-                mainStop.generationIdle,
+            independentMainTransportStarted: mainSend.reached && mainSend.independentSignal,
+            independentMainTransportStopped: mainStop.settled && mainStop.mainSignalAborted,
             noUnexpectedExternalFetch: browserCleanup.unexpectedExternal === 0,
-            captureUsedOnce: browserCleanup.captureRequests === 1,
+            // 提示词捕获可在 backend fetch 前停止，以 ready 事件确认恰好捕获一次。
+            captureUsedOnce: browserCleanup.captureReadyCount === 1,
             fetchRestored: browserCleanup.topFetchRestored && browserCleanup.frameFetchRestored,
             extraAnalysisEnded: browserCleanup.extraAnalysisEnded,
             artifactLoaded: artifactBundleRequests >= 1,
