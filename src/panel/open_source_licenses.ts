@@ -23,7 +23,7 @@ export const OPEN_SOURCE_LICENSES = [
     {
         packageName: '@earendil-works/pi-ai',
         displayName: 'Earendil Works AI',
-        version: '1.3.0',
+        version: '1.5.2',
         license: 'MIT',
         projectUrl: 'https://github.com/earendil-works/pi',
     },

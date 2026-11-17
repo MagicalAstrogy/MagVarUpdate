@@ -64,12 +64,8 @@ export {
 } from './provider_target';
 export type { PiAuthType, PiProviderKey, PiWireApi } from './provider_target';
 
-/**
- * Codex protocol level implemented by the pinned pi-ai adapter/catalog. Keep this tied to an
- * adapter upgrade rather than MVU's unrelated application version: the models endpoint uses it to
- * hide entries whose request shape the active adapter cannot yet support.
- */
-export const OPENAI_CODEX_ADAPTER_CLIENT_VERSION = '0.144.0';
+/** Codex 模型目录按客户端版本过滤；0.166.0 是官方目录为 GPT-6.2 Sol 指定的最低版本。 */
+export const OPENAI_CODEX_ADAPTER_CLIENT_VERSION = '0.166.0';
 
 /** 来源面板单个配置字段的呈现与编辑方式。 */
 export type PiFieldMode = 'hidden' | 'readonly' | 'select' | 'editable';

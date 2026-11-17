@@ -871,30 +871,37 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@earendil-works/pi-ai@npm:1.3.0":
-  version: 1.3.0
-  resolution: "@earendil-works/pi-ai@npm:1.3.0"
+"@earendil-works/pi-ai@npm:1.5.2":
+  version: 1.5.2
+  resolution: "@earendil-works/pi-ai@npm:1.5.2"
   dependencies:
     "@anthropic-ai/sdk": 0.129.0
     "@aws-sdk/client-bedrock-runtime": 3.1127.0
-    "@earendil-works/pi-telemetry": 1.3.0
+    "@earendil-works/pi-schema": 1.5.2
+    "@earendil-works/pi-telemetry": 1.5.2
     "@google/genai": 2.21.0
     "@smithy/node-http-handler": 4.12.1
     http-proxy-agent: 9.1.0
     https-proxy-agent: 9.1.0
     openai: 7.19.0
     partial-json: 0.1.7
-    typebox: 1.3.27
   bin:
     pi-ai: dist/cli.js
-  checksum: 83abfc8f5dd87c5011fa7a16905664fa4da6d4365ec6345063b22c16c6aaf28c012ffd5f5979029a840d44b0502a10041d21589ff3c2bace2be0dd4614fe95d0
+  checksum: 359ca243611ba30712c1170d49fb656a90f6539b9961ec193d7acfa2579fa07292edca8df9462a31ccb9817eca2d87cfc6a2e464b34377ae79e59750d1816adf
   languageName: node
   linkType: hard
 
-"@earendil-works/pi-telemetry@npm:1.3.0":
-  version: 1.3.0
-  resolution: "@earendil-works/pi-telemetry@npm:1.3.0"
-  checksum: 8087083d4b07917cdc5d03f74f76a010b430f3bd0af382113a5d9a98939da195094312c08450a2a75c6cacc9c03b450fdcc6007d3508d5580e66a83a125c5213
+"@earendil-works/pi-schema@npm:1.5.2":
+  version: 1.5.2
+  resolution: "@earendil-works/pi-schema@npm:1.5.2"
+  checksum: b201ac5f7a58694c649ddcc1ad809d7638e9b0529913fd90dbd1775a23e7026c67519147afd09f10527f15e08628ad20ceb5b5810be75560e4c6590d0853f823
+  languageName: node
+  linkType: hard
+
+"@earendil-works/pi-telemetry@npm:1.5.2":
+  version: 1.5.2
+  resolution: "@earendil-works/pi-telemetry@npm:1.5.2"
+  checksum: ecf9aeb7816a7095b332b8bc102acca38714f5f5ef0d2f40ce158d53f719e7839a2884609040fe0601e15c64a3ff5df45d1761158353338f04a32c39b59a321a
   languageName: node
   linkType: hard
 
@@ -6977,7 +6984,7 @@ __metadata:
   version: 0.0.0-use.local
   resolution: "mag-variable-update@workspace:."
   dependencies:
-    "@earendil-works/pi-ai": 1.3.0
+    "@earendil-works/pi-ai": 1.5.2
     "@eslint/js": ^9.29.0
     "@google/genai": 2.21.0
     "@intlify/devtools-types": 11.1.12
@@ -9678,13 +9685,6 @@ __metadata:
   version: 4.41.0
   resolution: "type-fest@npm:4.41.0"
   checksum: 7055c0e3eb188425d07403f1d5dc175ca4c4f093556f26871fe22041bc93d137d54bef5851afa320638ca1379106c594f5aa153caa654ac1a7f22c71588a4e80
-  languageName: node
-  linkType: hard
-
-"typebox@npm:1.3.27":
-  version: 1.3.27
-  resolution: "typebox@npm:1.3.27"
-  checksum: cca6860558b1ff685ef11d998ee13db0e43bbdbc5991c2f15b13de16e84894cc61414f26c995f6ebbc804aec0ca3923e7c61f168e3d1dac1cd3911499b199ce1
   languageName: node
   linkType: hard
 

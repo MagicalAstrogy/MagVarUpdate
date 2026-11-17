@@ -278,7 +278,7 @@ const MODEL: Model<'google-generative-ai'> = {
     name: 'Gemini 3 Flash',
     api: 'google-generative-ai',
     provider: 'opencode',
-    baseUrl: 'https://opencode.ai/inference/v1',
+    baseUrl: 'https://opencode.ai/inference/google/v1beta',
     reasoning: true,
     input: ['text', 'image'],
     cost: { input: 1, output: 2, cacheRead: 0.1, cacheWrite: 0 },
@@ -553,7 +553,7 @@ describe('Google proxy-aware adapter', () => {
         const [url, init] = fetch_impl.mock.calls[0]!;
         const request_init = init!;
         expect(url).toBe(
-            'https://opencode.ai/inference/v1/models/gemini-3-flash:streamGenerateContent?alt=sse'
+            'https://opencode.ai/inference/google/v1beta/models/gemini-3-flash:streamGenerateContent?alt=sse'
         );
         expect(request_init.method).toBe('POST');
         expect((request_init.headers as Headers).get('x-goog-api-key')).toBe('secret-key');
@@ -674,7 +674,7 @@ describe('Google proxy-aware adapter', () => {
             })
         );
         const target =
-            'https://opencode.ai/inference/v1/models/gemini-3-flash:streamGenerateContent?alt=sse';
+            'https://opencode.ai/inference/google/v1beta/models/gemini-3-flash:streamGenerateContent?alt=sse';
 
         expect(result).toMatchObject({ stopReason: 'stop', content: [{ text: 'proxied' }] });
         expect(st_fetch).toHaveBeenCalledTimes(2);

@@ -23,6 +23,33 @@ describe('settings unknown field passthrough', () => {
         expect(store.settings.兼容性.额外模型解析非阻塞).toBe(true);
     });
 
+    test('migrates cached OpenCode keys to the matching protocol and subscription', () => {
+        const zen = 'opencode\nhttps://opencode.ai/inference';
+        const go = 'opencode-go\nhttps://opencode.ai/inference/go';
+        const settings = (globalThis as any).SillyTavern.extensionSettings;
+        settings.mvu_settings = {
+            额外模型解析配置: {
+                pi: {
+                    apiKeys: {
+                        [zen]: 'zen-anthropic',
+                        [`${zen}/v1`]: 'zen-shared',
+                        [`${go}/v1`]: 'go-shared',
+                        [`${go}/google/v1beta`]: '',
+                    },
+                },
+            },
+        };
+        const store = useDataStore();
+        store._reload_settings();
+        expect(store.settings.额外模型解析配置.pi.apiKeys).toEqual({
+            [`${zen}/anthropic`]: 'zen-anthropic',
+            [`${zen}/openai/v1`]: 'zen-shared',
+            [`${zen}/google/v1beta`]: 'zen-shared',
+            [`${go}/openai/v1`]: 'go-shared',
+            [`${go}/google/v1beta`]: '',
+        });
+    });
+
     test('persists thinking level and defaults malformed imported levels', async () => {
         const store = useDataStore();
         store.settings.额外模型解析配置.pi.thinkingLevel = 'high';

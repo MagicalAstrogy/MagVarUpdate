@@ -69,6 +69,28 @@ const ExtraModelPiProfileSnapshot = z
 // 保留外层方案，只丢弃无效连接，应用时再要求用户补全。
 const ExtraModelPiProfile = z.union([ExtraModelPiProfileSnapshot, z.undefined()]).catch(undefined);
 
+/** OpenCode 拆分了协议地址，保留同一订阅下各旧端点缓存的密钥。 */
+function migrateOpenCodeApiKeys(keys: Record<string, string>): Record<string, string> {
+    const migrated = { ...keys };
+    for (const [provider, baseUrl] of [
+        ['opencode', 'https://opencode.ai/inference'],
+        ['opencode-go', 'https://opencode.ai/inference/go'],
+    ]) {
+        const scope = `${provider}\n${baseUrl}`;
+        if (keys[scope] !== undefined) {
+            migrated[`${scope}/anthropic`] ??= keys[scope];
+            delete migrated[scope];
+        }
+        const sharedKey = keys[`${scope}/v1`];
+        if (sharedKey !== undefined) {
+            migrated[`${scope}/openai/v1`] ??= sharedKey;
+            migrated[`${scope}/google/v1beta`] ??= sharedKey;
+            delete migrated[`${scope}/v1`];
+        }
+    }
+    return migrated;
+}
+
 // 活动连接容许保留未知字段，实际可发送性由统一预检决定。
 const ExtraModelPiSettings = z
     .object({
@@ -83,7 +105,11 @@ const ExtraModelPiSettings = z
         contextWindow: ExtraModelPiContextWindow,
         credentialIds: z.record(z.string(), z.string()).optional().catch({}),
         credentials: z.record(z.string(), z.unknown()).catch({}).default({}),
-        apiKeys: z.record(z.string(), z.string()).catch({}).default({}),
+        apiKeys: z
+            .record(z.string(), z.string())
+            .catch({})
+            .default({})
+            .transform(migrateOpenCodeApiKeys),
         customHeaders: z.string().default(''),
         customIncludeBody: z.string().default(''),
         customExcludeBody: z.string().default(''),

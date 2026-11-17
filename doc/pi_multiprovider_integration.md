@@ -12,12 +12,15 @@ smoke 覆盖；34 来源与 Proxy 路由的最终全仓测试、lint、声明构
 
 ## 依赖版本与 ESM 加载
 
-当前使用 `@earendil-works/pi-ai@1.3.0` 和
+当前使用 `@earendil-works/pi-ai@1.5.2` 和
 `@google/genai@2.21.0`。Pi 的间接依赖沿用其发布版本声明（包括 Anthropic SDK
 0.129.0 和 Google SDK 2.21.0），不强行替换上游依赖。
 
-Pi 1.3.0 目录包含 Google / OpenCode Zen 的 `gemini-4-argon`，以及 OpenCode Go 的
-`gemini-4-argon-contributor`。Google 代理适配器复用上游的思考等级转换，发送
+在“更多 → OpenAI Codex”通过 OAuth 登录后，可从订阅账号的模型列表选择 `gpt-6.2-sol`。
+MVU 补入了 Pi 1.5.2 发布后的上游目录项，默认上下文窗口为 500,000 tokens。实际访问权限以登录账号为准。[Pi 上游目录](https://github.com/earendil-works/pi/blob/cead615b48b80d1c61eecab2f0b576d16eeaf4c5/packages/ai/catalog/providers/openai-codex.ts)
+
+Google、OpenCode Zen 和 OpenCode Go 的 Pi 目录均收录 `gemini-4-argon`。
+旧 OpenCode Go 方案若使用 `gemini-4-argon-contributor`，可在账号模型列表中重新选择。Google 代理适配器复用上游的思考等级转换，发送
 `thinkingLevel`；Argon 不支持关闭思考，关闭或最低等级请求会按目录约束回落到 `LOW`。
 
 Pi 1.x 在 provider 边界将 `Context.systemPrompt` 和 `Context.tools` 规范化为 transcript
@@ -75,8 +78,8 @@ Codex。
 | NVIDIA                     | `openai-completions`                                                                   | `https://integrate.api.nvidia.com/v1`                                                                |
 | OpenAI                     | `openai-responses`、`openai-completions`                                               | `https://api.openai.com/v1`                                                                          |
 | OpenAI Codex               | `openai-codex-responses`                                                               | `https://chatgpt.com/backend-api`                                                                    |
-| OpenCode Zen               | `anthropic-messages`、`google-generative-ai`、`openai-completions`、`openai-responses` | Messages：`https://opencode.ai/inference`；其他 API：`https://opencode.ai/inference/v1`                          |
-| OpenCode Go                | `anthropic-messages`、`google-generative-ai`、`openai-completions`、`openai-responses`                         | Messages：`https://opencode.ai/inference/go`；其他 API：`https://opencode.ai/inference/go/v1`                    |
+| OpenCode Zen               | `anthropic-messages`、`google-generative-ai`、`openai-completions`、`openai-responses` | `https://opencode.ai/inference` 下按协议使用 `/anthropic`、`/google/v1beta` 或 `/openai/v1`                          |
+| OpenCode Go                | `anthropic-messages`、`google-generative-ai`、`openai-completions`、`openai-responses`                         | `https://opencode.ai/inference/go` 下按协议使用 `/anthropic`、`/google/v1beta` 或 `/openai/v1`                    |
 | OpenRouter                 | `openai-completions`、`anthropic-messages`                                             | Completions：`https://openrouter.ai/api/v1`；Messages：`https://openrouter.ai/api`                   |
 | Qwen Token Plan            | `openai-completions`                                                                   | `https://token-plan.ap-southeast-1.maas.aliyuncs.com/compatible-mode/v1`                             |
 | Qwen Token Plan（中国）    | `openai-completions`                                                                   | `https://token-plan.cn-beijing.maas.aliyuncs.com/compatible-mode/v1`                                 |

@@ -108,9 +108,11 @@ async function main() {
                       {
                           name: 'report_value',
                           description: 'Report the exact value requested by the user.',
-                          parameters: gateway.Type.Object({
-                              value: gateway.Type.Literal(expectedText),
-                          }),
+                          parameters: {
+                              type: 'object',
+                              properties: { value: { type: 'string', const: expectedText } },
+                              required: ['value'],
+                          },
                       },
                   ],
               }

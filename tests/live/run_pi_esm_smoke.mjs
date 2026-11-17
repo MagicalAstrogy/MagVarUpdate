@@ -123,6 +123,11 @@ async function browserSmoke() {
                 }
                 if (codex) {
                     check(
+                        request.url === 'https://chatgpt.com/backend-api/codex/responses',
+                        'Wrong Codex subscription endpoint'
+                    );
+                    check(body.model === 'gpt-6.2-sol', 'Wrong Codex model');
+                    check(
                         headers.get('chatgpt-account-id') === 'test-account',
                         'Missing Codex account ID'
                     );
@@ -176,18 +181,20 @@ async function browserSmoke() {
                     usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
                 });
             };
-            const model = {
-                id: 'test-model',
-                name: 'test-model',
-                api,
-                provider: codex ? 'openai-codex' : anthropic ? 'anthropic' : 'test-provider',
-                baseUrl: 'https://provider.invalid/v1',
-                reasoning: false,
-                input: ['text'],
-                contextWindow: 128_000,
-                maxTokens: 4096,
-                cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-            };
+            const model = codex
+                ? gateway.OPENAI_CODEX_MODELS['gpt-6.2-sol']
+                : {
+                      id: 'test-model',
+                      name: 'test-model',
+                      api,
+                      provider: anthropic ? 'anthropic' : 'test-provider',
+                      baseUrl: 'https://provider.invalid/v1',
+                      reasoning: false,
+                      input: ['text'],
+                      contextWindow: 128_000,
+                      maxTokens: 4096,
+                      cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+                  };
             const models = gateway.createModels({
                 authContext: { env: async () => undefined, fileExists: async () => false },
                 credentials: {
