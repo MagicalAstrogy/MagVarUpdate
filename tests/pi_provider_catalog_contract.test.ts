@@ -21,8 +21,8 @@ describe('Pi preset provider catalog contract', () => {
             });
             for (const [provider, id, baseUrl] of [
                 ['google', 'gemini-4-argon', 'https://generativelanguage.googleapis.com/v1beta'],
-                ['opencode', 'gemini-4-argon', 'https://opencode.ai/inference/v1'],
-                ['opencode-go', 'gemini-4-argon-contributor', 'https://opencode.ai/inference/go/v1'],
+                ['opencode', 'gemini-4-argon', 'https://opencode.ai/inference/google/v1beta'],
+                ['opencode-go', 'gemini-4-argon', 'https://opencode.ai/inference/go/google/v1beta'],
             ]) {
                 const model = getPiCatalogModels(provider).find(model => model.id === id);
                 assert.ok(model, provider + ': missing Argon catalog entry');

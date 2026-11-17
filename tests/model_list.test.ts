@@ -50,13 +50,13 @@ jest.mock('@/function/update/pi/pi_gateway', () => {
                 'opencode',
                 'anthropic-messages',
                 'opencode-anthropic',
-                'https://opencode.ai/inference'
+                'https://opencode.ai/inference/anthropic'
             ),
             'opencode-google': catalogModel(
                 'opencode',
                 'google-generative-ai',
                 'opencode-google',
-                'https://opencode.ai/inference/v1'
+                'https://opencode.ai/inference/google/v1beta'
             ),
         },
         OPENCODE_GO_MODELS: {},
@@ -376,7 +376,7 @@ describe('extra-model model-list discovery', () => {
 
         expect(fetchMock.mock.calls[1][0]).toBe('/api/backends/chat-completions/status');
         expect(JSON.parse(requestInit(fetchMock.mock.calls[1]).body as string)).toEqual({
-            reverse_proxy: 'https://opencode.ai/inference/v1',
+            reverse_proxy: 'https://opencode.ai/inference/openai/v1',
             proxy_password: 'opencode-secret',
             chat_completion_source: 'openai',
         });
@@ -754,7 +754,7 @@ describe('extra-model model-list discovery', () => {
             .mockResolvedValueOnce(
                 jsonResponse({
                     models: [
-                        { slug: 'gpt-codex-z', supported_in_api: false, visibility: 'list' },
+                        { slug: 'gpt-6.2-sol', supported_in_api: false, visibility: 'list' },
                         { id: 'gpt-codex-a', visibility: 'list' },
                         { slug: 'hidden', visibility: 'hide' },
                         { slug: 'internal', visibility: 'none' },
@@ -780,12 +780,12 @@ describe('extra-model model-list discovery', () => {
                 },
                 { fetch: fetchMock }
             )
-        ).resolves.toEqual(['gpt-codex-a', 'gpt-codex-z']);
+        ).resolves.toEqual(['gpt-6.2-sol', 'gpt-codex-a']);
 
         expect(fetchMock).toHaveBeenCalledTimes(2);
         const url = proxiedTarget(fetchMock.mock.calls[1]);
         expect(url.origin + url.pathname).toBe('https://chatgpt.com/backend-api/codex/models');
-        expect(url.searchParams.get('client_version')).toBe('0.144.0');
+        expect(url.searchParams.get('client_version')).toBe('0.166.0');
         const init = requestInit(fetchMock.mock.calls[1]);
         expect(init.method).toBe('GET');
         expect(init.credentials).toBe('same-origin');

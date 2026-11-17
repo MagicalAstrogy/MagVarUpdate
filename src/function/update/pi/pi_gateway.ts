@@ -6,7 +6,6 @@
  * 生产环境通过带固定版本的浏览器 ESM 加载这些入口。
  */
 export {
-    Type,
     calculateCost,
     clampThinkingLevel,
     collapseSystemMessages,
@@ -82,7 +81,13 @@ export { MOONSHOTAI_MODELS } from '@earendil-works/pi-ai/providers/moonshotai.mo
 export { MOONSHOTAI_CN_MODELS } from '@earendil-works/pi-ai/providers/moonshotai-cn.models';
 export { NVIDIA_MODELS } from '@earendil-works/pi-ai/providers/nvidia.models';
 export { OPENAI_MODELS } from '@earendil-works/pi-ai/providers/openai.models';
-export { OPENAI_CODEX_MODELS } from '@earendil-works/pi-ai/providers/openai-codex.models';
+import { OPENAI_CODEX_MODELS as codexModels } from '@earendil-works/pi-ai/providers/openai-codex.models';
+
+// Pi 上游 cead615 已收录 6.2 Sol；其 Codex 元数据与 1.5.2 中的 6.1 Sol 仅 ID 和名称不同。
+export const OPENAI_CODEX_MODELS = {
+    'gpt-6.2-sol': { ...codexModels['gpt-6.1-sol'], id: 'gpt-6.2-sol', name: 'GPT-6.2 Sol' },
+    ...codexModels,
+};
 export { OPENCODE_MODELS } from '@earendil-works/pi-ai/providers/opencode.models';
 export { OPENCODE_GO_MODELS } from '@earendil-works/pi-ai/providers/opencode-go.models';
 export { OPENROUTER_MODELS } from '@earendil-works/pi-ai/providers/openrouter.models';
